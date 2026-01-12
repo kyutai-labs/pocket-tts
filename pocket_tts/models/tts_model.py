@@ -104,6 +104,15 @@ KEY_WITH_REMOVED_ZERO = [
     "mimi.decoder_transformer.transformer.layers.1.self_attn.out_projs.0.weight",
 ]
 
+TRANSFORMER_KEYS_TO_MODIFY = [
+    "flow_lm.transformer.layers.0.self_attn.in_proj_weight",
+    "flow_lm.transformer.layers.1.self_attn.in_proj_weight", 
+    "flow_lm.transformer.layers.2.self_attn.in_proj_weight",
+    "flow_lm.transformer.layers.3.self_attn.in_proj_weight", 
+    "flow_lm.transformer.layers.4.self_attn.in_proj_weight",
+    "flow_lm.transformer.layers.5.self_attn.in_proj_weight"
+]
+
 
 def adapt_state_dict_of_TTSModel(state_dict: dict) -> dict:
     # should be removed before release
@@ -116,6 +125,9 @@ def adapt_state_dict_of_TTSModel(state_dict: dict) -> dict:
             new_state_dict[new_key] = value
         elif key in KEY_WITH_REMOVED_ZERO:
             new_key = key.replace("s.0.weight", ".weight")
+            new_state_dict[new_key] = value
+        elif key in TRANSFORMER_KEYS_TO_MODIFY:
+            new_key = key.replace(".in_proj_weight", ".in_proj.weight")
             new_state_dict[new_key] = value
         else:
             new_state_dict[key] = value

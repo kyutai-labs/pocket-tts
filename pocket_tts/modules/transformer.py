@@ -56,9 +56,7 @@ class StreamingMultiheadAttention(StatefulModule):
         kv_dim = (embed_dim // num_heads) * num_kv
         out_dim += 2 * kv_dim
         mult = 1
-        in_proj = nn.Linear(embed_dim, mult * out_dim, bias=False)
-        # We try to follow the default PyTorch MHA convention, to easily compare results.
-        self.in_proj_weight = in_proj.weight
+        self.in_proj = nn.Linear(embed_dim, mult * out_dim, bias=False)
         self.out_proj = nn.Linear(embed_dim, mult * embed_dim, bias=False)
 
     def _get_mask(self, shape: tuple[int, int], shift: int, device: torch.device) -> torch.Tensor:
@@ -66,14 +64,14 @@ class StreamingMultiheadAttention(StatefulModule):
 
     def init_state(self, batch_size: int, sequence_length: int) -> dict[str, torch.Tensor]:
         dim_per_head = self.embed_dim // self.num_heads
-        initial_current_end = torch.zeros((0,)).to(self.in_proj_weight.device)
+        initial_current_end = torch.zeros((0,)).to(self.in_proj.weight.device)
         return dict(
             current_end=initial_current_end,
             cache=torch.full(
                 (2, batch_size, sequence_length, self.num_heads, dim_per_head),
                 float("NaN"),
-                device=self.in_proj_weight.device,
-                dtype=self.in_proj_weight.dtype,
+                device=self.in_proj.weight.device,
+                dtype=self.in_proj.weight.dtype,
             ),
         )
 
@@ -101,7 +99,7 @@ class StreamingMultiheadAttention(StatefulModule):
     def forward(self, query: torch.Tensor, model_state: dict | None):
         state = self.check_model_state(model_state)
 
-        projected = nn.functional.linear(query, self.in_proj_weight)
+        projected = self.in_proj(query)
         # Reshape from (b, t, p*h*d) to (b, t, p, h, d) where p=3, h=num_heads
         b, t, _ = projected.shape
         d = self.embed_dim // self.num_heads

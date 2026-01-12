@@ -392,9 +392,6 @@ class TTSModel(nn.Module):
             and audio decoding. Generation performance is logged including
             real-time factor (RTF) metrics.
         """
-        text_to_generate, frames_after_eos_guess = prepare_text_prompt(text_to_generate)
-        if frames_after_eos is None:
-            frames_after_eos = frames_after_eos_guess
 
         # This is a very simplistic way of handling long texts. We could do much better
         # by using teacher forcing, but it would be a bit slower.
@@ -663,6 +660,8 @@ def prepare_text_prompt(text: str) -> tuple[str, int]:
 
 
 def split_into_best_sentences(tokenizer, text_to_generate: str) -> list[str]:
+    text_to_generate, _ = prepare_text_prompt(text_to_generate)
+    text_to_generate = text_to_generate.strip()
     tokens = tokenizer(text_to_generate)
     list_of_tokens = tokens.tokens[0].tolist()
 

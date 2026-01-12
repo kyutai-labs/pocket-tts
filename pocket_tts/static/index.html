@@ -281,16 +281,16 @@
                 const formData = new FormData();
                 formData.append('text', text);
 
-                // Add voice URL if provided
+                // Add voice URL if provided (only if no WAV file is uploaded)
                 const voiceUrl = document.getElementById('voice-url-input').value.trim();
-                if (voiceUrl) {
-                    formData.append('voice_url', voiceUrl);
-                }
-
-                // Add voice WAV file if uploaded
                 const voiceWavFile = document.getElementById('voice-wav-input').files[0];
+
                 if (voiceWavFile) {
+                    // If WAV file is uploaded, only use the WAV file (ignore voice URL)
                     formData.append('voice_wav', voiceWavFile);
+                } else if (voiceUrl) {
+                    // Only use voice URL if no WAV file is uploaded
+                    formData.append('voice_url', voiceUrl);
                 }
 
                 const response = await fetch('/tts', {

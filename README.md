@@ -16,12 +16,12 @@ Supports Python 3.10, 3.11, 3.12, 3.13 and 3.14. Requires PyTorch 2.5+. Does not
 
 ## Main takeaways
 * Runs on CPU
-* Small model size (100M parameters)
+* Small model size, 100M parameters
 * Audio streaming
-* Low latency (~150ms for 2-3 sentences)
-* Faster than real-time (~6x real-time on a CPU of MacBook Air M4)
+* Low latency, ~200ms to get the first audio chunk
+* Faster than real-time, ~6x real-time on a CPU of MacBook Air M4
 * Uses only 2 CPU cores
-* Very simple codebase and easy to use
+* Python API and CLI
 * Voice cloning
 * English only at the moment
 * Can handle infinitely long text inputs
@@ -110,6 +110,6 @@ We accept contributions! Feel free to open issues or pull requests on GitHub.
 You can find development instructions in the [CONTRIBUTING.md](https://github.com/kyutai-labs/pocket-tts/tree/main/CONTRIBUTING.md) file. You'll also find there how to have an editable install of the package for local development.
 
 
-## Prohibited use.
+## Prohibited use
 
 Use of our model must comply with all applicable laws and regulations and must not result in, involve, or facilitate any illegal, harmful, deceptive, fraudulent, or unauthorized activity. Prohibited uses include, without limitation, voice impersonation or cloning without explicit and lawful consent; misinformation, disinformation, or deception (including fake news, fraudulent calls, or presenting generated content as genuine recordings of real people or events); and the generation of unlawful, harmful, libelous, abusive, harassing, discriminatory, hateful, or privacy-invasive content. We disclaim all liability for any non-compliant use.

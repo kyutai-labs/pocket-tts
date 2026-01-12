@@ -44,96 +44,6 @@ torch.set_num_threads(1)
 logger = logging.getLogger(__name__)
 
 
-KEYS_TO_MODIFY = [
-    "mimi.decoder.model.0.conv.conv.bias",
-    "mimi.decoder.model.0.conv.conv.weight",
-    "mimi.decoder.model.11.conv.conv.bias",
-    "mimi.decoder.model.11.conv.conv.weight",
-    "mimi.decoder.model.2.convtr.convtr.bias",
-    "mimi.decoder.model.2.convtr.convtr.weight",
-    "mimi.decoder.model.3.block.1.conv.conv.bias",
-    "mimi.decoder.model.3.block.1.conv.conv.weight",
-    "mimi.decoder.model.3.block.3.conv.conv.bias",
-    "mimi.decoder.model.3.block.3.conv.conv.weight",
-    "mimi.decoder.model.5.convtr.convtr.bias",
-    "mimi.decoder.model.5.convtr.convtr.weight",
-    "mimi.decoder.model.6.block.1.conv.conv.bias",
-    "mimi.decoder.model.6.block.1.conv.conv.weight",
-    "mimi.decoder.model.6.block.3.conv.conv.bias",
-    "mimi.decoder.model.6.block.3.conv.conv.weight",
-    "mimi.decoder.model.8.convtr.convtr.bias",
-    "mimi.decoder.model.8.convtr.convtr.weight",
-    "mimi.decoder.model.9.block.1.conv.conv.bias",
-    "mimi.decoder.model.9.block.1.conv.conv.weight",
-    "mimi.decoder.model.9.block.3.conv.conv.bias",
-    "mimi.decoder.model.9.block.3.conv.conv.weight",
-    "mimi.downsample.conv.conv.conv.weight",
-    "mimi.encoder.model.0.conv.conv.bias",
-    "mimi.encoder.model.0.conv.conv.weight",
-    "mimi.encoder.model.1.block.1.conv.conv.bias",
-    "mimi.encoder.model.1.block.1.conv.conv.weight",
-    "mimi.encoder.model.1.block.3.conv.conv.bias",
-    "mimi.encoder.model.1.block.3.conv.conv.weight",
-    "mimi.encoder.model.11.conv.conv.bias",
-    "mimi.encoder.model.11.conv.conv.weight",
-    "mimi.encoder.model.3.conv.conv.bias",
-    "mimi.encoder.model.3.conv.conv.weight",
-    "mimi.encoder.model.4.block.1.conv.conv.bias",
-    "mimi.encoder.model.4.block.1.conv.conv.weight",
-    "mimi.encoder.model.4.block.3.conv.conv.bias",
-    "mimi.encoder.model.4.block.3.conv.conv.weight",
-    "mimi.encoder.model.6.conv.conv.bias",
-    "mimi.encoder.model.6.conv.conv.weight",
-    "mimi.encoder.model.7.block.1.conv.conv.bias",
-    "mimi.encoder.model.7.block.1.conv.conv.weight",
-    "mimi.encoder.model.7.block.3.conv.conv.bias",
-    "mimi.encoder.model.7.block.3.conv.conv.weight",
-    "mimi.encoder.model.9.conv.conv.bias",
-    "mimi.encoder.model.9.conv.conv.weight",
-    "mimi.upsample.convtr.convtr.convtr.weight",
-]
-
-KEY_WITH_REMOVED_ZERO = [
-    "mimi.encoder_transformer.transformer.layers.0.self_attn.in_projs.0.weight",
-    "mimi.encoder_transformer.transformer.layers.0.self_attn.out_projs.0.weight",
-    "mimi.encoder_transformer.transformer.layers.1.self_attn.in_projs.0.weight",
-    "mimi.encoder_transformer.transformer.layers.1.self_attn.out_projs.0.weight",
-    "mimi.decoder_transformer.transformer.layers.0.self_attn.in_projs.0.weight",
-    "mimi.decoder_transformer.transformer.layers.0.self_attn.out_projs.0.weight",
-    "mimi.decoder_transformer.transformer.layers.1.self_attn.in_projs.0.weight",
-    "mimi.decoder_transformer.transformer.layers.1.self_attn.out_projs.0.weight",
-]
-
-TRANSFORMER_KEYS_TO_MODIFY = [
-    "flow_lm.transformer.layers.0.self_attn.in_proj_weight",
-    "flow_lm.transformer.layers.1.self_attn.in_proj_weight", 
-    "flow_lm.transformer.layers.2.self_attn.in_proj_weight",
-    "flow_lm.transformer.layers.3.self_attn.in_proj_weight", 
-    "flow_lm.transformer.layers.4.self_attn.in_proj_weight",
-    "flow_lm.transformer.layers.5.self_attn.in_proj_weight"
-]
-
-
-def adapt_state_dict_of_TTSModel(state_dict: dict) -> dict:
-    # should be removed before release
-    new_state_dict = {}
-    for key, value in state_dict.items():
-        if key == "mimi.quantizer.input_proj.weight":
-            continue
-        if key in KEYS_TO_MODIFY:
-            new_key = key.replace(".conv.conv.", ".conv.").replace(".convtr.convtr.", ".convtr.")
-            new_state_dict[new_key] = value
-        elif key in KEY_WITH_REMOVED_ZERO:
-            new_key = key.replace("s.0.weight", ".weight")
-            new_state_dict[new_key] = value
-        elif key in TRANSFORMER_KEYS_TO_MODIFY:
-            new_key = key.replace(".in_proj_weight", ".in_proj.weight")
-            new_state_dict[new_key] = value
-        else:
-            new_state_dict[key] = value
-    return new_state_dict
-
-
 class TTSModel(nn.Module):
     def __init__(
         self,
@@ -242,7 +152,6 @@ class TTSModel(nn.Module):
                 weights_file = download_if_necessary(config.weights_path_without_voice_cloning)
 
             state_dict = safetensors.torch.load_file(weights_file)
-            state_dict = adapt_state_dict_of_TTSModel(state_dict)
             tts_model.load_state_dict(state_dict, strict=True)
 
         if config.flow_lm.weights_path is None and config.weights_path is None:

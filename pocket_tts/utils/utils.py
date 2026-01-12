@@ -85,7 +85,11 @@ def download_if_necessary(file_path: str) -> Path:
         splitted = file_path.split("/")
         repo_id = "/".join(splitted[:2])
         filename = "/".join(splitted[2:])
-        cached_file = hf_hub_download(repo_id=repo_id, filename=filename)
+        if "@" in filename:
+            filename, revision = filename.split("@")
+        else:
+            revision = None
+        cached_file = hf_hub_download(repo_id=repo_id, filename=filename, revision=revision)
         return Path(cached_file)
     else:
         return Path(file_path)

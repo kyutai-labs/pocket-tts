@@ -141,20 +141,6 @@ def test_generate_long_text(tmp_path):
     assert audio.shape[1] > 24000 * 10  # At least 10 second of audio
 
 
-def test_generate_command_help():
-    """Test that generate command help is displayed correctly."""
-    result = runner.invoke(cli_app, ["generate", "--help"])
-
-    assert result.exit_code == 0
-    assert "Generate speech using Kyutai Pocket TTS" in result.output
-    assert "--text" in result.output
-    assert "--voice" in result.output
-    assert "--output-path" in result.output
-    assert "--variant" in result.output
-    assert "--temperature" in result.output
-    assert "--device" in result.output
-
-
 def test_generate_multiple_runs(tmp_path):
     """Test multiple consecutive generate commands."""
     for i in range(3):

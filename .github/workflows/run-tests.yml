@@ -39,4 +39,4 @@ jobs:
         HF_TOKEN: ${{ secrets.HF_TOKEN }}
       run: |
         uvx hf auth login --token $HF_TOKEN
-        uv run -p ${{ matrix.python-version }} pytest ./tests
+        uv run -p ${{ matrix.python-version }} pytest -v ./tests

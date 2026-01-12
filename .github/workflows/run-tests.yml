@@ -37,4 +37,6 @@ jobs:
     - name: Run pytest
       env:
         HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      run: uv run -p ${{ matrix.python-version }} pytest ./tests
+      run: |
+        uvx hf auth login --token $HF_TOKEN
+        uv run -p ${{ matrix.python-version }} pytest ./tests

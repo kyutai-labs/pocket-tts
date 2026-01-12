@@ -698,7 +698,7 @@ def split_into_best_sentences(tokenizer, text_to_generate: str) -> list[str]:
             continue
 
         if current_nb_of_tokens_in_chunk + nb_tokens > max_nb_tokens_in_a_chunk:
-            chunks.append(current_chunk)
+            chunks.append(current_chunk.strip())
             current_chunk = sentence
             current_nb_of_tokens_in_chunk = nb_tokens
         else:
@@ -706,6 +706,6 @@ def split_into_best_sentences(tokenizer, text_to_generate: str) -> list[str]:
             current_nb_of_tokens_in_chunk += nb_tokens
 
     if current_chunk != "":
-        chunks.append(current_chunk)
+        chunks.append(current_chunk.strip())
 
     return chunks

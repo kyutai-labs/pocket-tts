@@ -396,6 +396,20 @@ class TTSModel(nn.Module):
         if frames_after_eos is None:
             frames_after_eos = frames_after_eos_guess
 
+        tokens = self.flow_lm.conditioner.tokenizer(text_to_generate)
+        list_of_tokens = tokens.tokens[0].tolist()
+
+        return self._generate_audio_stream_short_text(
+            model_state=model_state,
+            text_to_generate=text_to_generate,
+            frames_after_eos=frames_after_eos,
+            copy_state=copy_state,
+        )
+
+    @torch.no_grad
+    def _generate_audio_stream_short_text(
+        self, model_state: dict, text_to_generate: str, frames_after_eos: int, copy_state: bool
+    ):
         if copy_state:
             model_state = copy.deepcopy(model_state)
 
@@ -617,6 +631,7 @@ def prepare_text_prompt(text: str) -> tuple[str, int]:
     text = text.strip()
     if text == "":
         raise ValueError("Text prompt cannot be empty")
+    text = text.replace("\n", " ").replace("\r", " ").replace("  ", " ")
     number_of_words = len(text.split())
     if number_of_words <= 4:
         frames_after_eos_guess = 3

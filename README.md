@@ -14,7 +14,7 @@ Supports Python 3.10, 3.11, 3.12, 3.13 and 3.14. Requires PyTorch 2.5+. Does not
 [📚 Documentation](https://github.com/kyutai-labs/pocket-tts/tree/main/docs)
 
 
-## Features
+## Main takeaways
 * Runs on CPU
 * Small model size (100M parameters)
 * Audio streaming
@@ -24,6 +24,7 @@ Supports Python 3.10, 3.11, 3.12, 3.13 and 3.14. Requires PyTorch 2.5+. Does not
 * Very simple codebase and easy to use
 * Voice cloning
 * English only at the moment
+* Can handle infinitely long text inputs
 
 ## Trying it from the website, without installing anything
 
@@ -96,7 +97,6 @@ You can check out the [Python API documentation](https://github.com/kyutai-labs/
 At the moment, we do not support (but would love pull requests adding):
 - [Running the TTS inside a web browser (WebAssembly)](https://github.com/kyutai-labs/pocket-tts/issues/1)
 - [A compiled version with for example `torch.compile()` or `candle`.](https://github.com/kyutai-labs/pocket-tts/issues/2)
-- [Handling long prompts by splitting them in a smart way.](https://github.com/kyutai-labs/pocket-tts/issues/5)
 - [Adding silence in the text input to generate pauses.](https://github.com/kyutai-labs/pocket-tts/issues/6)
 - [Quantization to run the computation in int8.](https://github.com/kyutai-labs/pocket-tts/issues/7)
 

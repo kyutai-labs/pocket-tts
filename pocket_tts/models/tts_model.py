@@ -400,7 +400,6 @@ class TTSModel(nn.Module):
         chunks = split_into_best_sentences(self.flow_lm.conditioner.tokenizer, text_to_generate)
 
         for chunk in chunks:
-            print("generating chunk:", chunk)
             text_to_generate, frames_after_eos_guess = prepare_text_prompt(chunk)
             frames_after_eos_guess += 2
             yield from self._generate_audio_stream_short_text(

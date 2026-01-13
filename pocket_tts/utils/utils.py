@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -8,6 +9,16 @@ import safetensors.torch
 import torch
 from huggingface_hub import hf_hub_download
 from torch import nn
+
+
+def is_offline_mode() -> bool:
+    """Check if offline mode is enabled via environment variables.
+
+    Supports HF_HUB_OFFLINE, TRANSFORMERS_OFFLINE, and HF_DATASETS_OFFLINE.
+    Any of these set to "1" enables offline mode.
+    """
+    offline_vars = ["HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_DATASETS_OFFLINE"]
+    return any(os.environ.get(var, "0") == "1" for var in offline_vars)
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 
@@ -66,12 +77,17 @@ class display_execution_time:
 
 
 def download_if_necessary(file_path: str) -> Path:
+    offline = is_offline_mode()
     if file_path.startswith("http://") or file_path.startswith("https://"):
         cache_dir = make_cache_directory()
         cached_file = cache_dir / (
             hashlib.sha256(file_path.encode()).hexdigest() + "." + file_path.split(".")[-1]
         )
         if not cached_file.exists():
+            if offline:
+                raise RuntimeError(
+                    f"Offline mode is enabled but file is not cached: {file_path}"
+                )
             response = requests.get(file_path)
             response.raise_for_status()
             with open(cached_file, "wb") as f:
@@ -86,7 +102,12 @@ def download_if_necessary(file_path: str) -> Path:
             filename, revision = filename.split("@")
         else:
             revision = None
-        cached_file = hf_hub_download(repo_id=repo_id, filename=filename, revision=revision)
+        cached_file = hf_hub_download(
+            repo_id=repo_id,
+            filename=filename,
+            revision=revision,
+            local_files_only=offline,
+        )
         return Path(cached_file)
     else:
         return Path(file_path)

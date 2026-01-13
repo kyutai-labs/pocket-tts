@@ -620,7 +620,10 @@ class TTSModel(nn.Module):
             with display_execution_time("Encoding audio prompt"):
                 prompt = self._encode_audio(audio_conditioning.unsqueeze(0).to(self.device))
                 # import safetensors.torch
-                # safetensors.torch.save_file({"audio_prompt": prompt}, "embeddings/eponine.safetensors")
+                # safetensors.torch.save_file(
+                #     {"audio_prompt": prompt},
+                #     "/projects/huggingface/pocket-tts/embeddings/cosette.safetensors"
+                # )
 
         model_state = init_states(self.flow_lm, batch_size=1, sequence_length=1000)
 

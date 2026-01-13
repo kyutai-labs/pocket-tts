@@ -21,17 +21,17 @@ FIRST_CHUNK_LENGTH_SECONDS = float(os.environ.get("FIRST_CHUNK_LENGTH_SECONDS", 
 
 
 def audio_read(filepath: str | Path) -> tuple[torch.Tensor, int]:
-    """Read audio using Python's wave module."""
-    with wave.open(str(filepath), "rb") as wav_file:
-        sample_rate = wav_file.getframerate()
+    """Read audio file. Supports WAV, MP3, FLAC, and other formats via soundfile."""
+    import soundfile as sf
 
-        # Read all audio data as 16-bit signed integers
-        raw_data = wav_file.readframes(-1)
-        samples = np.frombuffer(raw_data, dtype=np.int16).astype(np.float32) / 32768.0
-
-        # Return as mono tensor (channels, samples)
-        wav = torch.from_numpy(samples.reshape(1, -1))
-        return wav, sample_rate
+    data, sample_rate = sf.read(str(filepath), dtype="float32")
+    # soundfile returns (samples,) for mono or (samples, channels) for stereo
+    if data.ndim == 1:
+        wav = torch.from_numpy(data).unsqueeze(0)  # (1, samples)
+    else:
+        # Convert to mono by averaging channels
+        wav = torch.from_numpy(data.mean(axis=1)).unsqueeze(0)
+    return wav, sample_rate
 
 
 class StreamingWAVWriter:

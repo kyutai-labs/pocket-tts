@@ -145,8 +145,9 @@ def text_to_speech(
         model_state = tts_model._cached_get_state_for_audio_prompt(voice_url, truncate=True)
         logging.warning("Using voice from URL: %s", voice_url)
     elif voice_wav is not None:
-        # Use uploaded voice file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
+        # Use uploaded voice file - preserve extension for format detection
+        suffix = Path(voice_wav.filename).suffix if voice_wav.filename else ".wav"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
             content = voice_wav.file.read()
             temp_file.write(content)
             temp_file.flush()

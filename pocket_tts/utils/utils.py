@@ -11,14 +11,10 @@ from torch import nn
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 
+_voices_names = ["alba", "marius", "javert", "jean", "fantine", "cosette", "eponine", "azelma"]
 PREDEFINED_VOICES = {
-    "marius": "hf://kyutai/pocket-tts-without-voice-cloning/embeddings/marius.safetensors",
-    "javert": "hf://kyutai/pocket-tts-without-voice-cloning/embeddings/javert.safetensors",
-    "jean": "hf://kyutai/pocket-tts-without-voice-cloning/embeddings/jean.safetensors",
-    "fantine": "hf://kyutai/pocket-tts-without-voice-cloning/embeddings/fantine.safetensors",
-    "cosette": "hf://kyutai/pocket-tts-without-voice-cloning/embeddings/cosette.safetensors",
-    "eponine": "hf://kyutai/pocket-tts-without-voice-cloning/embeddings/eponine.safetensors",
-    "azelma": "hf://kyutai/pocket-tts-without-voice-cloning/embeddings/azelma.safetensors",
+    x: f"hf://kyutai/pocket-tts-without-voice-cloning/embeddings/{x}.safetensors"
+    for x in _voices_names
 }
 
 

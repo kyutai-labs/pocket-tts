@@ -248,6 +248,9 @@ def generate(
         # Only print the result message if not writing to stdout
         if output_path != "-":
             logger.info("Results written in %s", output_path)
+        logger.info(
+            "If you want to try multiple voices and prompts quickly, try the `serve` command."
+        )
 
 
 if __name__ == "__main__":

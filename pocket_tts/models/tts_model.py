@@ -261,6 +261,7 @@ class TTSModel(nn.Module):
         conditioning = F.linear(latents, self.flow_lm.speaker_proj_weight)
         return conditioning
 
+    @torch.no_grad
     def _decode_audio_worker(self, latents_queue: queue.Queue, result_queue: queue.Queue):
         """Worker thread function for decoding audio latents from queue with immediate streaming."""
         try:
@@ -509,6 +510,7 @@ class TTSModel(nn.Module):
         generation_thread = threading.Thread(target=run_generation, daemon=True)
         generation_thread.start()
 
+    @torch.no_grad
     def _autoregressive_generation(
         self, model_state: dict, max_gen_len: int, frames_after_eos: int, latents_queue: queue.Queue
     ):

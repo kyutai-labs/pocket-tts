@@ -44,11 +44,17 @@ uvx pocket-tts generate
 pocket-tts generate
 ```
 Modify the voice with `--voice` and the text with `--text`. We provide a small catalog of voices:
-```
-"marius", "javert", "jean", "fantine", "cosette", "eponine", "azelma"
-```
+* [alba](https://huggingface.co/kyutai/tts-voices/blob/main/alba-mackenna/casual.wav)
+* [javert](https://huggingface.co/kyutai/tts-voices/blob/main/voice-donations/Butter.wav)
+* [jean](https://huggingface.co/kyutai/tts-voices/blob/main/ears/p010/freeform_speech_01.wav)
+* [fantine](https://huggingface.co/kyutai/tts-voices/blob/main/vctk/p244_023.wav)
+* [cosette](https://huggingface.co/kyutai/tts-voices/blob/main/vctk/p266_023.wav)
+* [eponine](https://huggingface.co/kyutai/tts-voices/blob/main/vctk/p262_023.wav)
+* [azelma](https://huggingface.co/kyutai/tts-voices/blob/main/vctk/p303_023.wav)
 
+The `--voice` argument can also take a plain wav file as input for voice cloning.
 Feel free to check out the [generate documentation](https://github.com/kyutai-labs/pocket-tts/tree/main/docs/generate.md) for more details and examples.
+For trying multiple voices and prompts quickly, prefer using the `serve` command.
 
 ### The `serve` command
 

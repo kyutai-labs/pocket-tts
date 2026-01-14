@@ -189,7 +189,15 @@ def serve(
     global_model_state = tts_model.get_state_for_audio_prompt(voice)
     logger.info(f"The size of the model state is {size_of_dict(global_model_state) // 1e6} MB")
 
-    uvicorn.run("pocket_tts.main:web_app", host=host, port=port, reload=reload)
+    if reload:
+        # Warning: This will fail to use the model initialized in serve() because
+        # uvicorn will re-import main.py in a new process/context.
+        # Support for reload with shared state requires a different architecture.
+        logger.warning("Auto-reload enabled. This may cause issues with model initialization.")
+        uvicorn.run("pocket_tts.main:web_app", host=host, port=port, reload=True)
+    else:
+        # Pass the app instance directly to use the global tts_model initialized above
+        uvicorn.run(web_app, host=host, port=port)
 
 
 # ------------------------------------------------------

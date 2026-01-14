@@ -2,7 +2,6 @@ import logging
 from functools import partial
 
 import torch
-import torch.export
 from beartype.typing import Callable
 from torch import nn
 from typing_extensions import Self

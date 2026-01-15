@@ -149,14 +149,15 @@ def text_to_speech(
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
             content = voice_wav.file.read()
             temp_file.write(content)
-            temp_file.flush()
+            temp_file_path = temp_file.name
+        # File is now closed after exiting the `with` block
 
-            try:
-                model_state = tts_model.get_state_for_audio_prompt(
-                    Path(temp_file.name), truncate=True
-                )
-            finally:
-                os.unlink(temp_file.name)
+        try:
+            model_state = tts_model.get_state_for_audio_prompt(
+                Path(temp_file_path), truncate=True
+            )
+        finally:
+            os.unlink(temp_file_path)
     else:
         # Use default global model state
         model_state = global_model_state

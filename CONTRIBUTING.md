@@ -89,3 +89,9 @@ To avoid those problems, we adopt the following rules:
 * If two people open very similar PRs, one of them will be merged and they'll both be credited in the commit message.
 
 This way, we ensure that the project moves forward as fast as possible, and that contributors can work on what they want without pressure or stress.
+
+
+## Pull request etiquette
+
+* While some pull requests are inevitably large, we recommend keeping them as small as possible. This makes the review process easier, faster, as well as more enjoyable. Always consider splitting large PRs into smaller ones.
+* Pull requests are always squashed when merged, so don't worry about cleaning up your commit history, don't even worry about the commit messages. Just focus on making sure the PR is easy to review and small enough.

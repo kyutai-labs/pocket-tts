@@ -3,13 +3,43 @@ use crate::models::seanet::{SEANetDecoder, SEANetEncoder};
 use crate::models::transformer::ProjectedTransformer;
 use crate::modules::conv::{ConvDownsample1d, ConvTrUpsample1d};
 use candle_core::{Result, Tensor};
-use candle_nn::VarBuilder;
+use candle_nn::{Conv1d, Conv1dConfig, Module, VarBuilder};
+
+pub struct Quantizer {
+    output_proj: Conv1d,
+}
+
+impl Quantizer {
+    pub fn new(dimension: usize, output_dimension: usize, vb: VarBuilder) -> Result<Self> {
+        let config = Conv1dConfig {
+            groups: 1,
+            padding: 0,
+            stride: 1,
+            dilation: 1,
+        };
+        let output_proj = candle_nn::conv1d_no_bias(
+            dimension,
+            output_dimension,
+            1,
+            config,
+            vb.pp("output_proj"),
+        )?;
+        Ok(Self { output_proj })
+    }
+
+    pub fn forward(&self, x: &Tensor) -> Result<Tensor> {
+        // x is [B, C, T]
+        // Conv1d expects [B, C, T] and returns [B, C_out, T]
+        self.output_proj.forward(x)
+    }
+}
 
 pub struct MimiModel {
     pub encoder: SEANetEncoder,
     pub decoder: SEANetDecoder,
     pub encoder_transformer: ProjectedTransformer,
     pub decoder_transformer: ProjectedTransformer,
+    pub quantizer: Quantizer,
     pub downsample: Option<ConvDownsample1d>,
     pub upsample: Option<ConvTrUpsample1d>,
     pub frame_rate: f64,
@@ -30,22 +60,25 @@ impl MimiModel {
         encoder_frame_rate: f64,
         sample_rate: usize,
         channels: usize,
-        dimension: usize,
+        dimension: usize,        // The quantizer input dimension (32)
+        output_dimension: usize, // The decoder input dimension (512)
         name: &str,
         vb: VarBuilder,
     ) -> Result<Self> {
+        let quantizer = Quantizer::new(dimension, output_dimension, vb.pp("quantizer"))?;
+
         let (downsample, upsample) = if encoder_frame_rate != frame_rate {
             let stride = (encoder_frame_rate / frame_rate) as usize;
             (
                 Some(ConvDownsample1d::new(
                     stride,
-                    dimension,
+                    output_dimension,
                     &format!("{}.downsample", name),
                     vb.pp("downsample"),
                 )?),
                 Some(ConvTrUpsample1d::new(
                     stride,
-                    dimension,
+                    output_dimension,
                     &format!("{}.upsample", name),
                     vb.pp("upsample"),
                 )?),
@@ -59,6 +92,7 @@ impl MimiModel {
             decoder,
             encoder_transformer,
             decoder_transformer,
+            quantizer,
             downsample,
             upsample,
             frame_rate,
@@ -75,8 +109,20 @@ impl MimiModel {
 
     pub fn encode_to_latent(&self, x: &Tensor, model_state: &mut ModelState) -> Result<Tensor> {
         // x shape [B, C, T]
-        // In streaming, we assume x is already padded if needed or handled by convolutions
-        let mut emb = self.encoder.forward(x, model_state)?;
+        let _frame_size = self.frame_size();
+        let (b, c, _t_orig) = x.dims3()?;
+
+        let t = x.dims()[2];
+        let hop = self.frame_size();
+        let x = if t % hop != 0 {
+            let padding = hop - (t % hop);
+            let pad = Tensor::zeros((b, c, padding), x.dtype(), x.device())?;
+            Tensor::cat(&[x, &pad], 2)?
+        } else {
+            x.clone()
+        };
+
+        let mut emb = self.encoder.forward(&x, model_state)?;
         let mut embs = self.encoder_transformer.forward(&emb, model_state)?;
         emb = embs.remove(0);
 
@@ -99,6 +145,9 @@ impl MimiModel {
         emb = embs.remove(0);
         let out = self.decoder.forward(&emb, model_state)?;
         Ok(out)
+    }
+    pub fn quantize(&self, x: &Tensor) -> Result<Tensor> {
+        self.quantizer.forward(x)
     }
 }
 
@@ -182,6 +231,7 @@ mod tests {
             16000,
             1,
             128,
+            512,
             "mimi",
             vb.pp("mimi"),
         )?;

@@ -5,11 +5,11 @@ use candle_nn::VarBuilder;
 use std::collections::HashMap;
 
 pub struct SEANetResnetBlock {
-    layers: Vec<Box<dyn StreamingLayer>>,
-    _name: String,
+    pub layers: Vec<Box<dyn StreamingLayer>>,
+    pub _name: String,
 }
 
-trait StreamingLayer {
+pub trait StreamingLayer {
     fn forward(&self, x: &Tensor, model_state: &mut ModelState) -> Result<Tensor>;
 }
 
@@ -79,18 +79,30 @@ impl SEANetResnetBlock {
 }
 
 pub struct SEANetEncoder {
-    layers: Vec<Box<dyn StreamingLayerWrapper>>,
+    pub layers: Vec<Box<dyn StreamingLayerWrapper>>,
     pub hop_length: usize,
-    _name: String,
+    pub _name: String,
 }
 
-trait StreamingLayerWrapper {
+pub trait StreamingLayerWrapper {
     fn forward(&self, x: &Tensor, model_state: &mut ModelState) -> Result<Tensor>;
+    fn weight(&self) -> Option<&Tensor> {
+        None
+    }
+    fn bias(&self) -> Option<&Tensor> {
+        None
+    }
 }
 
 impl StreamingLayerWrapper for StreamingConv1d {
     fn forward(&self, x: &Tensor, model_state: &mut ModelState) -> Result<Tensor> {
         self.forward(x, model_state)
+    }
+    fn weight(&self) -> Option<&Tensor> {
+        Some(self.weight())
+    }
+    fn bias(&self) -> Option<&Tensor> {
+        self.bias()
     }
 }
 
@@ -216,12 +228,12 @@ fn range(n: usize) -> std::ops::Range<usize> {
 }
 
 pub struct SEANetDecoder {
-    layers: Vec<Box<dyn StreamingLayerDecoderWrapper>>,
+    pub layers: Vec<Box<dyn StreamingLayerDecoderWrapper>>,
     pub hop_length: usize,
-    _name: String,
+    pub _name: String,
 }
 
-trait StreamingLayerDecoderWrapper {
+pub trait StreamingLayerDecoderWrapper {
     fn forward(&self, x: &Tensor, model_state: &mut ModelState) -> Result<Tensor>;
 }
 

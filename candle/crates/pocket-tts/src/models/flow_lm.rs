@@ -18,10 +18,10 @@ pub fn lsd_decode(
         let s = i as f64 / num_steps as f64;
         let t = (i + 1) as f64 / num_steps as f64;
 
-        let s_tensor = Tensor::full(s as f32, cond.narrow(0, 0, cond.dims()[0])?.shape(), dev)?
-            .to_dtype(dtype)?;
-        let t_tensor = Tensor::full(t as f32, cond.narrow(0, 0, cond.dims()[0])?.shape(), dev)?
-            .to_dtype(dtype)?;
+        // Timesteps should be 1D with batch size [B], not [B, D]
+        let batch_size = cond.dims()[0];
+        let s_tensor = Tensor::full(s as f32, (batch_size,), dev)?.to_dtype(dtype)?;
+        let t_tensor = Tensor::full(t as f32, (batch_size,), dev)?.to_dtype(dtype)?;
 
         // SimpleMLPAdaLN.forward(cond, s, t, x)
         // Here cond is the transformer output.
@@ -39,6 +39,8 @@ pub struct FlowLMModel {
     pub out_norm: LayerNorm,
     pub out_eos: Linear,
     pub bos_emb: Tensor,
+    pub emb_mean: Tensor,
+    pub emb_std: Tensor,
     pub ldim: usize,
     pub dim: usize,
 }
@@ -55,6 +57,8 @@ impl FlowLMModel {
         let out_norm = LayerNorm::new(dim, 1e-5, true, vb.pp("out_norm"))?;
         let out_eos = candle_nn::linear(dim, 1, vb.pp("out_eos"))?;
         let bos_emb = vb.get(ldim, "bos_emb")?;
+        let emb_mean = vb.get(ldim, "emb_mean")?;
+        let emb_std = vb.get(ldim, "emb_std")?;
 
         Ok(Self {
             flow_net,
@@ -63,6 +67,8 @@ impl FlowLMModel {
             out_norm,
             out_eos,
             bos_emb,
+            emb_mean,
+            emb_std,
             ldim,
             dim,
         })
@@ -104,7 +110,12 @@ impl FlowLMModel {
             .narrow(1, transformer_out.dims()[1] - 1, 1)?
             .squeeze(1)?;
 
-        let eos_score = self.out_eos.forward(&last_frame)?.to_scalar::<f32>()?;
+        let eos_score = self
+            .out_eos
+            .forward(&last_frame)?
+            .squeeze(0)?
+            .squeeze(0)?
+            .to_scalar::<f32>()?;
         let is_eos = eos_score > eos_threshold;
 
         // Generate noise

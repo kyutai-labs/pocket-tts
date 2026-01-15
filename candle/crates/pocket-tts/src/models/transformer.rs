@@ -21,7 +21,7 @@ impl StreamingTransformerLayer {
         d_model: usize,
         num_heads: usize,
         dim_feedforward: usize,
-        _context: Option<usize>,
+        context: Option<usize>,
         rope: RotaryEmbedding,
         layer_scale: Option<f32>,
         _attention_kind: &str,
@@ -32,6 +32,7 @@ impl StreamingTransformerLayer {
             d_model,
             num_heads,
             rope,
+            context,
             &format!("{}.self_attn", name),
             vb.pp("self_attn"),
         )?;

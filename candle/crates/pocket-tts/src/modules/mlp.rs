@@ -1,6 +1,5 @@
 use candle_core::{DType, Result, Tensor};
 use candle_nn::{Linear, Module, VarBuilder};
-use std::collections::HashMap;
 
 pub type StepFn = Box<dyn Fn(&Tensor) -> Result<Tensor>>;
 
@@ -112,10 +111,18 @@ impl TimestepEmbedder {
     }
 
     pub fn forward(&self, t: &Tensor) -> Result<Tensor> {
-        // args = t * freqs
+        // t is [B], freqs is [half]
+        // We need args to be [B, half] for MLP to process
+        let t = if t.dims().len() == 1 {
+            t.unsqueeze(1)? // [B] -> [B, 1]
+        } else {
+            t.clone()
+        };
+        // args = t * freqs: [B, 1] * [half] -> [B, half]
         let args = t.broadcast_mul(&self.freqs.to_dtype(t.dtype())?)?;
         let cos = args.cos()?;
         let sin = args.sin()?;
+        // [B, half] cat [B, half] -> [B, frequency_embedding_size]
         let mut x = Tensor::cat(&[cos, sin], candle_core::D::Minus1)?;
         for step in &self.mlp {
             x = step(&x)?;
@@ -270,6 +277,7 @@ mod tests {
     use super::*;
     use candle_core::{Device, Tensor};
     use candle_nn::VarBuilder;
+    use std::collections::HashMap;
 
     #[test]
     fn test_rmsnorm_parity() -> Result<()> {

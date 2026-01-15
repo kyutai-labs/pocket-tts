@@ -34,9 +34,21 @@ impl StreamingConv1d {
             groups,
         };
         let conv = if bias {
-            candle_nn::conv1d(in_channels, out_channels, kernel_size, config, vb)?
+            candle_nn::conv1d(
+                in_channels,
+                out_channels,
+                kernel_size,
+                config,
+                vb.pp("conv"),
+            )?
         } else {
-            candle_nn::conv1d_no_bias(in_channels, out_channels, kernel_size, config, vb)?
+            candle_nn::conv1d_no_bias(
+                in_channels,
+                out_channels,
+                kernel_size,
+                config,
+                vb.pp("conv"),
+            )?
         };
 
         Ok(Self {
@@ -78,7 +90,7 @@ impl StreamingConv1d {
     }
 
     pub fn forward(&self, x: &Tensor, model_state: &mut ModelState) -> Result<Tensor> {
-        let (_b, _c, t) = x.dims3()?;
+        let (b, _c, t) = x.dims3()?;
         let s = self.stride;
         if t == 0 || t % s != 0 {
             return Err(candle_core::Error::Msg(format!(
@@ -87,9 +99,13 @@ impl StreamingConv1d {
             )));
         }
 
-        let module_state = model_state
-            .get_mut(&self.name)
-            .ok_or_else(|| candle_core::Error::Msg(format!("State for {} not found", self.name)))?;
+        // Auto-initialize state if missing
+        if !model_state.contains_key(&self.name) {
+            let init = self.init_state(b, t, x.device())?;
+            model_state.insert(self.name.clone(), init);
+        }
+
+        let module_state = model_state.get_mut(&self.name).unwrap();
 
         let previous = module_state.get("previous").cloned();
         let first = module_state.get("first").cloned();
@@ -128,6 +144,14 @@ impl StreamingConv1d {
             Ok(y)
         }
     }
+
+    pub fn weight(&self) -> &Tensor {
+        self.conv.weight()
+    }
+
+    pub fn bias(&self) -> Option<&Tensor> {
+        self.conv.bias()
+    }
 }
 
 pub struct StreamingConvTranspose1d {
@@ -158,9 +182,21 @@ impl StreamingConvTranspose1d {
             groups,
         };
         let convtr = if bias {
-            candle_nn::conv_transpose1d(in_channels, out_channels, kernel_size, config, vb)?
+            candle_nn::conv_transpose1d(
+                in_channels,
+                out_channels,
+                kernel_size,
+                config,
+                vb.pp("convtr"),
+            )?
         } else {
-            candle_nn::conv_transpose1d_no_bias(in_channels, out_channels, kernel_size, config, vb)?
+            candle_nn::conv_transpose1d_no_bias(
+                in_channels,
+                out_channels,
+                kernel_size,
+                config,
+                vb.pp("convtr"),
+            )?
         };
 
         Ok(Self {
@@ -194,9 +230,15 @@ impl StreamingConvTranspose1d {
         x: &Tensor,
         model_state: &mut HashMap<String, HashMap<String, Tensor>>,
     ) -> Result<Tensor> {
-        let module_state = model_state
-            .get_mut(&self.name)
-            .ok_or_else(|| candle_core::Error::Msg(format!("State for {} not found", self.name)))?;
+        let (b, _c, t) = x.dims3()?;
+
+        // Auto-initialize state if missing
+        if !model_state.contains_key(&self.name) {
+            let init = self.init_state(b, t, x.device())?;
+            model_state.insert(self.name.clone(), init);
+        }
+
+        let module_state = model_state.get_mut(&self.name).unwrap();
 
         let mut y = self.convtr.forward(x)?;
 
@@ -225,6 +267,14 @@ impl StreamingConvTranspose1d {
         }
 
         Ok(y)
+    }
+
+    pub fn weight(&self) -> &Tensor {
+        self.convtr.weight()
+    }
+
+    pub fn bias(&self) -> Option<&Tensor> {
+        self.convtr.bias()
     }
 }
 

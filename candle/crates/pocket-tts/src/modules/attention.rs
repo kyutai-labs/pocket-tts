@@ -10,6 +10,7 @@ pub struct StreamingMultiheadAttention {
     rope: RotaryEmbedding,
     in_proj: Linear,
     out_proj: Linear,
+    context: Option<usize>,
     name: String,
 }
 
@@ -18,6 +19,7 @@ impl StreamingMultiheadAttention {
         embed_dim: usize,
         num_heads: usize,
         rope: RotaryEmbedding,
+        context: Option<usize>,
         name: &str,
         vb: VarBuilder,
     ) -> Result<Self> {
@@ -36,6 +38,7 @@ impl StreamingMultiheadAttention {
             rope,
             in_proj,
             out_proj,
+            context,
             name: name.to_string(),
         })
     }
@@ -64,13 +67,18 @@ impl StreamingMultiheadAttention {
     }
 
     pub fn forward(&self, query: &Tensor, model_state: &mut ModelState) -> Result<Tensor> {
-        let module_state = model_state
-            .get_mut(&self.name)
-            .ok_or_else(|| candle_core::Error::Msg(format!("State for {} not found", self.name)))?;
-
         let projected = self.in_proj.forward(query)?;
         let (b, t, _) = projected.dims3()?;
         let d = self.embed_dim / self.num_heads;
+
+        // Auto-initialize state if missing
+        if !model_state.contains_key(&self.name) {
+            // Estimate sequence length as t * 100 for KV cache (conservative)
+            let init = self.init_state(b, t * 100, query.device())?;
+            model_state.insert(self.name.clone(), init);
+        }
+
+        let module_state = model_state.get_mut(&self.name).unwrap();
 
         // Reshape to (b, t, 3, h, d)
         let packed = projected.reshape((b, t, 3, self.num_heads, d))?;
@@ -136,7 +144,7 @@ impl StreamingMultiheadAttention {
 
         // Handle causal mask
         let (num_queries, num_keys) = (t, current_end + t);
-        let mask = get_causal_mask(num_queries, num_keys, q.device())?;
+        let mask = get_causal_mask(num_queries, num_keys, self.context, q.device())?;
         let attn_weights = attn_weights.broadcast_add(&mask)?;
 
         let attn_probs = candle_nn::ops::softmax(&attn_weights, candle_core::D::Minus1)?;
@@ -157,11 +165,41 @@ impl StreamingMultiheadAttention {
     }
 }
 
-pub fn get_causal_mask(q_len: usize, k_len: usize, device: &candle_core::Device) -> Result<Tensor> {
+pub fn get_causal_mask(
+    q_len: usize,
+    k_len: usize,
+    context: Option<usize>,
+    device: &candle_core::Device,
+) -> Result<Tensor> {
     let mask: Vec<f32> = (0..q_len)
         .flat_map(|i| {
             (0..k_len).map(move |j| {
-                if j > i + (k_len - q_len) {
+                // causal
+                let is_future = j > i + (k_len - q_len);
+                // context
+                let is_out_of_context = if let Some(ctx) = context {
+                    // pos_q = i + (k_len - q_len)  (shift = k_len - q_len)
+                    // pos_k = j
+                    // delta = pos_q - pos_k
+                    // we want delta < ctx => pos_k > pos_q - ctx
+                    // so if pos_k <= pos_q - ctx, it's out of context
+                    let pos_q = i + (k_len - q_len);
+                    // use isize to handle negative indexing potentially, or just check bounds
+                    // pos_q >= ctx for subtraction to be safe?
+                    if pos_q >= ctx {
+                        j <= pos_q - ctx
+                    } else {
+                        false // pos_q < ctx, so pos_q - ctx would be negative. j is unsigned (>=0).
+                        // If pos_q - ctx < 0 covers everything? No, we want j > pos_q - ctx.
+                        // pos_q - k < context => k > pos_q - context
+                        // If pos_q (e.g. 2) < context (4), then 2 - k < 4 => k > -2. True for all k>=0.
+                        // So nothing is out of context.
+                    }
+                } else {
+                    false
+                };
+
+                if is_future || is_out_of_context {
                     f32::NEG_INFINITY
                 } else {
                     0.0

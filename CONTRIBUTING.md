@@ -90,6 +90,7 @@ To avoid those problems, we adopt the following rules:
 
 This way, we ensure that the project moves forward as fast as possible, and that contributors can work on what they want without pressure or stress.
 
+Of course, this does not apply to contributors asking for help or guidance on how to solve an issue. We'll just ask you to focus on asking information and avoid saying that you're working on it.
 
 ## Pull request etiquette
 

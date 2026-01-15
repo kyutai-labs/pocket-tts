@@ -21,6 +21,9 @@ dependencies = [
     "einops>=0.4.0",
     "huggingface_hub>=0.10",
     "requests>=2.20.0",
+    "pyloudnorm>=0.2.0",
+    "librosa>=0.11.0",
+    "soundfile>=0.13.1",
 ]
 
 

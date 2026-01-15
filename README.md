@@ -1,6 +1,6 @@
 # Pocket TTS
 
-![logo](https://raw.githubusercontent.com/kyutai-labs/pocket-tts/refs/heads/main/docs/logo.png)
+<img width="1446" height="622" alt="pocket-tts-logo-v2-transparent" src="https://github.com/user-attachments/assets/637b5ed6-831f-4023-9b4c-741be21ab238" />
 
 A lightweight text-to-speech (TTS) application designed to run efficiently on CPUs.
 Forget about the hassle of using GPUs and web APIs serving TTS models. With Kyutai's Pocket TTS, generating audio is just a pip install and a function call away.

@@ -249,8 +249,12 @@ def generate(
         # Only print the result message if not writing to stdout
         if output_path != "-":
             logger.info("Results written in %s", output_path)
+        logger.info("-" * 20)
         logger.info(
             "If you want to try multiple voices and prompts quickly, try the `serve` command."
+        )
+        logger.info(
+            "If you like Kyutai projects, comment, like, subscribe at https://x.com/kyutai_labs"
         )
 
 

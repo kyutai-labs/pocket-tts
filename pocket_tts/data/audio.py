@@ -5,7 +5,10 @@ We rely on av library for faster read when possible, otherwise on torchaudio.
 
 import logging
 import os
+import shutil
+import subprocess
 import sys
+import tempfile
 import wave
 from contextlib import nullcontext
 from pathlib import Path
@@ -20,18 +23,128 @@ logger = logging.getLogger(__name__)
 FIRST_CHUNK_LENGTH_SECONDS = float(os.environ.get("FIRST_CHUNK_LENGTH_SECONDS", "0"))
 
 
+def convert_audio_to_wav(input_path: str | Path, output_path: str | Path | None = None) -> Path:
+    """Convert audio file to WAV format using ffmpeg.
+
+    Supports various audio formats (MP3, M4A, FLAC, OGG, etc.) by using ffmpeg
+    for conversion. Output is 16-bit PCM, mono, 24kHz WAV format.
+
+    Args:
+        input_path: Path to input audio file (any format supported by ffmpeg)
+        output_path: Optional path for output WAV file. If None, creates a temporary file.
+
+    Returns:
+        Path to the converted WAV file.
+
+    Raises:
+        FileNotFoundError: If ffmpeg is not found or input file doesn't exist.
+        ValueError: If conversion fails.
+    """
+    input_path = Path(input_path)
+    if not input_path.exists():
+        raise FileNotFoundError(f"Audio file not found: {input_path}")
+
+    # If already WAV, return as-is (unless output_path is specified and different)
+    if input_path.suffix.lower() == ".wav":
+        if output_path is None or Path(output_path) == input_path:
+            return input_path
+        # Copy to output_path if specified
+        shutil.copy2(input_path, output_path)
+        return Path(output_path)
+
+    # Determine output path
+    if output_path is None:
+        output_path = tempfile.NamedTemporaryFile(delete=False, suffix=".wav").name
+    output_path = Path(output_path)
+
+    # Check if ffmpeg is available
+    try:
+        subprocess.run(["ffmpeg", "-version"], capture_output=True, check=True, timeout=5)
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        raise FileNotFoundError(
+            "ffmpeg is required to convert audio files. "
+            "Please install ffmpeg from https://ffmpeg.org/download.html. "
+            "On Windows, download the 'full-shared' build and ensure ffmpeg.exe is in your PATH."
+        )
+
+    # Convert using ffmpeg: 16-bit PCM, mono, 24kHz (matching model sample rate)
+    # -y: overwrite output file if it exists
+    # -i: input file
+    # -ar 24000: sample rate 24kHz
+    # -ac 1: mono (1 channel)
+    # -sample_fmt s16: 16-bit signed integer PCM
+    # -acodec pcm_s16le: PCM codec, 16-bit little-endian
+    try:
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",  # Overwrite output file
+                "-i",
+                str(input_path),
+                "-ar",
+                "24000",  # Sample rate: 24kHz
+                "-ac",
+                "1",  # Mono
+                "-sample_fmt",
+                "s16",  # 16-bit signed integer
+                "-acodec",
+                "pcm_s16le",  # PCM codec
+                str(output_path),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=300,
+        )
+        logger.info(f"Converted {input_path.suffix} to WAV: {output_path}")
+        return output_path
+    except subprocess.CalledProcessError as e:
+        error_msg = e.stderr or e.stdout or str(e)
+        raise ValueError(
+            f"Failed to convert audio file {input_path} to WAV. ffmpeg error: {error_msg}"
+        ) from e
+    except subprocess.TimeoutExpired:
+        raise ValueError(
+            f"Audio conversion timed out for {input_path}. "
+            f"The file might be too large or corrupted."
+        )
+
+
 def audio_read(filepath: str | Path) -> tuple[torch.Tensor, int]:
-    """Read audio using Python's wave module."""
-    with wave.open(str(filepath), "rb") as wav_file:
-        sample_rate = wav_file.getframerate()
+    """Read audio using Python's wave module.
 
-        # Read all audio data as 16-bit signed integers
-        raw_data = wav_file.readframes(-1)
-        samples = np.frombuffer(raw_data, dtype=np.int16).astype(np.float32) / 32768.0
+    If the file is not a WAV file, it will be automatically converted to WAV first.
+    Note: If conversion creates a temporary file, it will be cleaned up automatically
+    after reading (unless it's the same as the input file).
+    """
+    filepath = Path(filepath)
+    converted_path = None
 
-        # Return as mono tensor (channels, samples)
-        wav = torch.from_numpy(samples.reshape(1, -1))
-        return wav, sample_rate
+    # If not WAV, convert it first
+    if filepath.suffix.lower() != ".wav":
+        converted_path = convert_audio_to_wav(filepath)
+        filepath = converted_path
+
+    try:
+        with wave.open(str(filepath), "rb") as wav_file:
+            sample_rate = wav_file.getframerate()
+
+            # Read all audio data as 16-bit signed integers
+            raw_data = wav_file.readframes(-1)
+            samples = np.frombuffer(raw_data, dtype=np.int16).astype(np.float32) / 32768.0
+
+            # Return as mono tensor (channels, samples)
+            wav = torch.from_numpy(samples.reshape(1, -1))
+            return wav, sample_rate
+    finally:
+        # Clean up converted temp file if it was created
+        if converted_path and converted_path != filepath and converted_path.exists():
+            try:
+                os.unlink(converted_path)
+            except (PermissionError, FileNotFoundError):
+                # On Windows, file might still be locked. Log and continue.
+                # The OS will clean it up eventually.
+                logger.debug(f"Could not immediately delete converted temp file: {converted_path}")
 
 
 class StreamingWAVWriter:

@@ -3,6 +3,7 @@ import logging
 import os
 import tempfile
 import threading
+import time
 from pathlib import Path
 from queue import Queue
 
@@ -146,17 +147,36 @@ def text_to_speech(
         logging.warning("Using voice from URL: %s", voice_url)
     elif voice_wav is not None:
         # Use uploaded voice file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
-            content = voice_wav.file.read()
-            temp_file.write(content)
-            temp_file.flush()
+        # Save uploaded file with original extension (audio_read will handle conversion if needed)
+        temp_file_path = None
+        try:
+            original_suffix = Path(voice_wav.filename or "audio").suffix or ".wav"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=original_suffix) as temp_file:
+                content = voice_wav.file.read()
+                temp_file.write(content)
+                temp_file.flush()
+                temp_file_path = temp_file.name
 
-            try:
-                model_state = tts_model.get_state_for_audio_prompt(
-                    Path(temp_file.name), truncate=True
-                )
-            finally:
-                os.unlink(temp_file.name)
+            # audio_read() will automatically convert non-WAV files to WAV if torchaudio is available
+            model_state = tts_model.get_state_for_audio_prompt(Path(temp_file_path), truncate=True)
+        finally:
+            # Clean up temp file - handle Windows file locking gracefully
+            if temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.unlink(temp_file_path)
+                except PermissionError:
+                    # On Windows, file might still be locked. Try again after a brief delay
+                    time.sleep(0.1)
+                    try:
+                        os.unlink(temp_file_path)
+                    except (PermissionError, FileNotFoundError):
+                        # If still locked or already deleted, log and continue
+                        logger.warning(
+                            f"Could not delete temporary file {temp_file_path}, it may be cleaned up later"
+                        )
+                except FileNotFoundError:
+                    # File already deleted, ignore
+                    pass
     else:
         # Use default global model state
         model_state = global_model_state

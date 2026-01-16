@@ -11,8 +11,7 @@ from pathlib import Path
 
 import torch
 
-from pocket_tts.data.audio import stream_audio_chunks
-from pocket_tts.data.audio import audio_read
+from pocket_tts.data.audio import audio_read, stream_audio_chunks
 from pocket_tts.data.audio_utils import convert_audio
 from pocket_tts.default_parameters import (
     DEFAULT_AUDIO_PROMPT,
@@ -81,9 +80,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument(
-        "--list-voices",
-        action="store_true",
-        help="Print predefined voices and exit.",
+        "--list-voices", action="store_true", help="Print predefined voices and exit."
     )
     return parser.parse_args()
 
@@ -152,15 +149,12 @@ def _compute_similarity(pred: torch.Tensor, ref: torch.Tensor) -> dict[str, floa
 
 def build_model_state(tts_model: TTSModel, voice: str, truncate: bool) -> dict:
     if voice.lower() == "none":
-        return init_states(tts_model.flow_lm, batch_size=1, sequence_length=1000)
+        return init_states(tts_model.flow_lm, batch_size=1, sequence_length=1)
     return tts_model.get_state_for_audio_prompt(voice, truncate=truncate)
 
 
 def run_once(
-    tts_model: TTSModel,
-    model_state: dict,
-    text: str,
-    frames_after_eos: int | None,
+    tts_model: TTSModel, model_state: dict, text: str, frames_after_eos: int | None
 ) -> tuple[float, float, float, torch.Tensor]:
     start = time.perf_counter()
     audio = tts_model.generate_audio(

@@ -86,3 +86,5 @@ profile_output*
 CLAUDE.md
 QWEN.md
 .claude/
+audio/*
+benchmarks/*

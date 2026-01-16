@@ -26,11 +26,15 @@ Supports Python 3.10, 3.11, 3.12, 3.13 and 3.14. Requires PyTorch 2.5+. Does not
 * English only at the moment
 * Can handle infinitely long text inputs
 
-## Trying it from the website, without installing anything
+## Trying it from the website, without installing anything.
 
 Navigate to the [Kyutai website](https://kyutai.org/tts) to try it out directly in your browser. You can input text, select different voices, and generate speech without any installation.
 
-## Trying it with the CLI
+## Using it in GOOGLE COLAB, ready to run.
+
+Navigate to the [GOOGLE COLAB](https://colab.research.google.com/drive/1dbo5qlUveodEZPQk7cpcU3WIkAd4qA3O) to try it out directly in your browser.
+
+## Trying it with the CLI.
 
 ### The `generate` command
 You can use pocket-tts directly from the command line. We recommend using
@@ -61,7 +65,7 @@ The `--voice` argument can also take a plain wav file as input for voice cloning
 Feel free to check out the [generate documentation](https://github.com/kyutai-labs/pocket-tts/tree/main/docs/generate.md) for more details and examples.
 For trying multiple voices and prompts quickly, prefer using the `serve` command.
 
-### The `serve` command
+### The `serve` command.
 
 You can also run a local server to generate audio via HTTP requests.
 ```bash
@@ -95,7 +99,19 @@ audio = tts_model.generate_audio(voice_state, "Hello world, this is a test.")
 # Audio is a 1D torch tensor containing PCM data.
 scipy.io.wavfile.write("output.wav", tts_model.sample_rate, audio.numpy())
 ```
+The code without the need of hugging face tokens.
+```python
+from pocket_tts import TTSModel
+import scipy.io.wavfile
 
+tts_model = TTSModel.load_model()
+voice_state = tts_model.get_state_for_audio_prompt(
+    "alba" #the available models alba, javert, azelma, eponine, fantine, jean. Replace "alba" with these models if applicable.
+)
+audio = tts_model.generate_audio(voice_state, "Hello world, this is a test.")
+# Audio is a 1D torch tensor containing PCM data.
+scipy.io.wavfile.write("output.wav", tts_model.sample_rate, audio.numpy())
+```
 You can have multiple voice states around if 
 you have multiple voices you want to use. `load_model()` 
 and `get_state_for_audio_prompt()` are relatively slow operations,

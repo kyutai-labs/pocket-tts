@@ -202,19 +202,14 @@ class StreamingMultiheadAttention(StatefulModule):
             # if context is not None: cache size is (..., sequence_length, ...) ==> expected capacity
             # So pass self.context if set, else T.
 
-            capacity = self.context if self.context is not None else T
-            # If context is set but T > context, we might have issues as discussed.
-            # But we must support at least context size.
-            # For now, we assume T <= context or the user accepts the behavior.
-            # However, for robustness, if T > capacity, we should probably increase capacity?
-            # But the logic is fixed to ring buffer.
-            # Safe default: capacity = max(T, self.context) if self.context else T?
-            # init_state uses it as cache size.
+            # CRITICAL FIX: If T > context, we must allocate at least T to store the full sequence
+            # for the current forward pass, otherwise scatter_ fails.
+            # The sliding window is enforced by attn_bias later.
+            capacity = max(T, self.context) if self.context is not None else T
 
             if self.context is not None and T > self.context:
-                 # Warn or just use T? Ring buffer logic depends on modulo capacity.
-                 # If we increase capacity to T, it becomes full attention effectively?
-                 # No, _complete_ring_buffer uses modulo.
+                 # We are processing a chunk larger than window.
+                 # Buffer will hold T. attn_bias handles masking.
                  pass
 
             # Initialize state
@@ -236,32 +231,48 @@ class StreamingMultiheadAttention(StatefulModule):
 
         projected = self.in_proj(query)
 
+        # Calculate shapes
+        d = self.embed_dim // self.num_heads
+
+        # Check projected dims
+        if len(projected.shape) == 2:
+            # Handle case where B might be folded or query was Rank 2
+            pass
+
+        packed = projected.view(B, T, 3, self.num_heads, d)
+        q, k, v = torch.unbind(packed, dim=2)
+
         if self.context is not None:
             # Ring buffer path (sliding window attention)
-            return self._forward_with_context(projected, state, B, T, query.device)
+            return self._forward_with_context(q, k, v, state, B, T, query.device)
         else:
             # Append path (full-sequence attention)
-            return self._forward_without_context(projected, state, B, T, query.device)
+            return self._forward_without_context(q, k, v, state, B, T, query.device)
 
     def _forward_with_context(
-        self, projected: torch.Tensor, state: dict, B: int, T: int, device: torch.device
+        self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, state: dict, B: int, T: int, device: torch.device
     ) -> torch.Tensor:
         """Forward pass with sliding window attention (ring buffer KV cache)."""
         offset = state["offset"]
 
-        # Reshape: (b, t, 3*h*d) -> (b, h, t, d) for each of q, k, v
-        q, k, v = rearrange(projected, "b t (p h d) -> p b h t d", p=3, h=self.num_heads)
+        # q, k, v are [B, T, H, D]
+        # RoPE requires [B, H, T, D]
+        q = q.transpose(1, 2)
+        k = k.transpose(1, 2)
+        v = v.transpose(1, 2)
 
-        # Apply RoPE - requires (b, t, h, d) format
-        q = q.permute(0, 2, 1, 3)  # [B, T, H, D]
-        k = k.permute(0, 2, 1, 3)
         q, k = self.rope(q, k, offset)
-        q = q.permute(0, 2, 1, 3)  # [B, H, T, D]
-        k = k.permute(0, 2, 1, 3)
+
+        # Buffer storage expects [B, H, T, D] (matches cache layout of [B, H, Cap, D])
+        # So we pass k, v directly (already [B, H, T, D])
+        # v needs to be [B, H, T, D] too.
 
         # Complete KV cache
         kv_result = _complete_ring_buffer(state["cache"], state["end_offset"], k, v)
-        k, v, pos_k = kv_result.keys, kv_result.values, kv_result.positions
+
+        # k_out, v_out are [B, H, Cap, D] - ready for attention
+        k_out, v_out = kv_result.keys, kv_result.values
+        pos_k = kv_result.positions
 
         # Build attention bias for sliding window
         pos_k = pos_k[:, None]
@@ -270,34 +281,67 @@ class StreamingMultiheadAttention(StatefulModule):
         attn_bias = (pos_k >= 0) & (delta >= 0) & (delta < self.context)
         attn_bias = attn_bias[:, None]
 
-        x = F.scaled_dot_product_attention(q, k, v, attn_bias, dropout_p=0.0)
+        x = F.scaled_dot_product_attention(q, k_out, v_out, attn_bias, dropout_p=0.0)
         x = rearrange(x, "b h t d -> b t (h d)")
         x = self.out_proj(x)
         return x
 
     def _forward_without_context(
-        self, projected: torch.Tensor, state: dict, B: int, T: int, device: torch.device
+        self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, state: dict, B: int, T: int, device: torch.device
     ) -> torch.Tensor:
         """Forward pass with full-sequence attention (append KV cache)."""
         current_end = state["current_end"].shape[0]
 
-        # Reshape: (b, t, 3*h*d) -> (b, t, h, d) for each of q, k, v
-        d = self.embed_dim // self.num_heads
-        packed = projected.view(B, T, 3, self.num_heads, d)
-        q, k, v = torch.unbind(packed, dim=2)
+        # q, k, v are [B, T, H, D]
 
-        # Apply RoPE
+        # RoPE expects [B, H, T, D]
+        q = q.transpose(1, 2) # [B, H, T, D]
+        k = k.transpose(1, 2)
+
         q, k = self.rope(q, k, offset=current_end)
 
-        # Complete KV cache
-        k, v = _complete_append_buffer(state["cache"], current_end, k, v)
+        # Back to [B, T, H, D] for storage
+        k_store = k.transpose(1, 2)
+
+        # NOTE: v is not rotated.
+
+        # Check if cache needs resizing
+        # cache shape: [2, B, Cap, H, D]
+        cache = state["cache"]
+        added_length = k_store.shape[1]
+        needed_capacity = current_end + added_length
+        current_capacity = cache.shape[2]
+
+        if needed_capacity > current_capacity:
+            # Resize cache (double capacity or fit needed)
+            new_capacity = max(needed_capacity, current_capacity * 2)
+            # Match shape except capacity
+            new_shape = list(cache.shape)
+            new_shape[2] = new_capacity
+
+            new_cache = torch.full(
+                new_shape,
+                float("NaN"),
+                dtype=cache.dtype,
+                device=cache.device
+            )
+            # Copy existing content
+            new_cache[:, :, :current_capacity, :, :] = cache
+            state["cache"] = new_cache
+
+        # Append to buffer
+        # k_buf output is full sequence [B, T_full, H, D]
+        k_full, v_full = _complete_append_buffer(state["cache"], current_end, k_store, v)
+
+        # Attention requires [B, H, T, D]
+        k = k_full.transpose(1, 2)
+        v = v_full.transpose(1, 2)
 
         # Build causal mask
+        # T is current seq len. T_full is T + current_end
         mask_shape = (T, T + current_end)
         attn_mask = _materialize_causal_mask(mask_shape, shift=current_end, device=device)
 
-        # Attention computation (need [B, H, T, D] format)
-        q, k, v = [x.transpose(1, 2) for x in (q, k, v)]
         x = F.scaled_dot_product_attention(q, k, v, attn_mask)
         x = x.transpose(1, 2)
 

@@ -1,60 +1,43 @@
-# Contributing to Kyutai Pocket TTS
- 
-We welcome contributions from the community!
+# Contributing to Pocket TTS Candle
 
-We recommend using `uv` to work on this project. While you can use `pip` too, `uv` is less error-prone and faster.
-The instructions below assume you are using `uv`.
+We welcome contributions! This project is now primarily a Rust implementation using the Candle framework.
 
-## Installing the pre-commit
+## Prerequisites
 
-```bash
-uvx pre-commit install
-```
-This will handle file formatting and linting.
+- [Rust](https://rustup.rs/) (latest stable)
+- (Optional) [uv](https://github.com/astral-sh/uv) for interacting with the Python reference code.
 
-If you want to manually run the pre-commit hooks on all files, use:
-```bash
-uvx pre-commit run --all-files
-```
+## Development Setup
 
-## Running tests
+The project uses a standard Cargo workspace:
 
-```bash
-uv run pytest -n 3 -v
-```
-This will run the test suite with 3 parallel workers.
+```powershell
+# Build the project
+cargo build --release
 
-## Running the CLI locally
-
-You can run the CLI commands with:
-
-```bash
-uv run pocket-tts generate
+# Run all tests
+$env:HF_TOKEN="your_token_here"; cargo test --release --all-targets
 ```
 
-## Coding agents
-We use `AGENTS.md` to manage the coding agents context. If your coding agent does
-not supports reading from this file directly, you can just
-use a symlink. The most common ones are already added in the `.gitignore` file.
+## Repository Structure
 
-```bash
-ln -s AGENTS.md CLAUDE.md
-# or
-ln -s AGENTS.md QWEN.md
-```
+- `crates/pocket-tts`: Core library.
+- `crates/pocket-tts-cli`: CLI and Web Server.
+- `crates/pocket-tts-bindings`: Python bindings.
+- `assets/`: Reference assets for testing.
+- `python-reference/`: Original Python implementation.
 
-## How does this model work?
+## Style Guidelines
 
-Here is a high-level overview of the architecture:
+- Run `cargo fmt` before submitting.
+- Follow standard Rust naming conventions.
+- Keep the streaming architecture in mind for any model changes.
+- Performance is a priority; use benchmarking (`cargo bench`) to justify optimizations.
 
-![Architecture Diagram](./docs/model_arch.png)
+## Numerical Parity
 
-Overall the model has four main components:
-* The mimi vae encoder, to encode the audio prompts into a latent representation.
-* The text "encoder" which is just a simple tokenizer + embedding layer.
-* The calm model (`flow_lm` in the codebase) to generate autoregegressive the audio latents.
-* The mimi vae decoder to decode the audio latents into waveform.
+Any core model changes MUST pass the parity tests in `crates/pocket-tts/tests/parity_tests.rs` to ensure they match the Python reference behavioral baseline.
 
-Note that two threads run in parallel in the current implementation:
-* One with the calm model generating the latents.
-* One with the mimi vae decoder decoding the latents into audio.
+## Coding Agents
+
+If you are using an AI coding agent, please refer to [AGENTS.md](./AGENTS.md) for detailed implementation context and preferred patterns.

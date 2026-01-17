@@ -1,0 +1,67 @@
+[package]
+name = "pocket-tts"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "High-performance CPU-based Text-to-Speech library using Candle"
+keywords.workspace = true
+categories.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+quantized = []
+# WASM is handled by target, not feature flag - candle-core auto-detects wasm32 target
+wasm = []
+cuda = ["candle-core/cuda", "candle-nn/cuda", "candle-transformers/cuda"]
+
+
+[dependencies]
+candle-core.workspace = true
+candle-nn.workspace = true
+candle-transformers.workspace = true
+safetensors.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+byteorder.workspace = true
+tokenizers = { workspace = true, features = ["fancy-regex"] }
+lenient_semver = "0.4.2"
+rubato = "0.14.1"
+regex = "1"
+hound.workspace = true
+
+# Dependencies for all non-WASM targets
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+hf-hub.workspace = true
+memmap2.workspace = true
+sentencepiece = "0.13"
+tokenizers = { workspace = true, features = ["onig", "progressbar", "http"] }
+intel-mkl-src.workspace = true
+
+# WASM-specific dependencies
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["console"] }
+getrandom = { version = "0.3", features = ["wasm_js"] }
+console_error_panic_hook = "0.1"
+
+[[bench]]
+name = "streaming_bench"
+harness = false
+
+[dev-dependencies]
+criterion = "0.8.1"
+candle-core.workspace = true
+anyhow.workspace = true
+[[bench]]
+name = "full_benchmark"
+harness = false

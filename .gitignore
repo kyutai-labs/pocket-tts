@@ -65,25 +65,26 @@ dataset/*
 # cython output
 /audiocraft/metrics/abx/*.c
 
-# rust-analyzer
-Cargo.toml
-Cargo.lock
-!candle/**/Cargo.toml
-!candle/**/Cargo.lock
-
+# Rust
 target/
+**/target/
+docs/book/
+docs/build/
 
-# nfs files
-.nfs*
-.coverage.*
-
+# Audio / Models
 /weights
 test_en_audio_4000.model
 profile_output*
+# Generally ignore large model/audio files but allow those in assets/
 *.safetensors
 *.wav
 *.model
 *.pt
+!/assets/*.wav
+!/assets/ref_voice_conditioning.safetensors
+!/assets/ref_decoder_intermediates.safetensors
+!/assets/ref_mimi_input.safetensors
+!/crates/pocket-tts/config/*.yaml
 
 # Agents files, use a symlink to AGENTS.md instead. 
 CLAUDE.md

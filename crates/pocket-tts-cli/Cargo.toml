@@ -1,0 +1,41 @@
+[package]
+name = "pocket-tts-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "CLI and API server for Pocket TTS"
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+quantized = ["pocket-tts/quantized"]
+
+[dependencies]
+pocket-tts = { path = "../pocket-tts", version = "0.1.0" }
+candle-core.workspace = true
+anyhow.workspace = true
+clap = { workspace = true, features = ["derive"] }
+axum = { workspace = true, features = ["multipart"] }
+base64 = "0.21"
+tokio = { workspace = true, features = ["full"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+tokio-stream = "0.1"
+futures-util = "0.3"
+indicatif = "0.17"
+tower = { workspace = true, features = ["util"] }
+tower-http = { workspace = true, features = ["fs", "trace", "cors"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+owo-colors = "4"
+rust-embed = "8"
+mime_guess = "2"
+percent-encoding = "2.3"
+
+[dev-dependencies]
+assert_cmd = "2.0"
+hound = "3.5"
+tokio = { workspace = true, features = ["full", "test-util"] }
+tower = { workspace = true, features = ["util"] }

@@ -1,0 +1,22 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  pypi-publish:
+    name: PyPI Publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Publish to PyPI
+        uses: messense/maturin-action@v1
+        with:
+          command: publish
+          working-directory: crates/pocket-tts-bindings
+          args: --username __token__ --password ${{ secrets.PYPI_API_TOKEN }}

@@ -4,133 +4,87 @@ This file provides guidance to AI agents when working with code in this reposito
 
 ## Project Overview
 
-pocket-tts is a CPU-based text-to-speech (TTS) model. The project uses a flow-based language model architecture with a neural audio codec (Mimi) for efficient speech synthesis.
+pocket-tts-candle is a Rust/Candle port of the pocket-tts CPU-based text-to-speech (TTS) model. It aims for high performance and low latency on CPU.
 
 **Key Architecture Components:**
-- **FlowLMModel**: Transformer-based flow language model that generates latent representations from text using Lagrangian Self Distillation (LSD)
-- **MimiModel**: Neural audio codec (from the `moshi` package) that compresses/decompresses audio to/from latent representations
-- **Conditioners**: Text processing via SentencePiece tokenizer and lookup table embeddings
-- **Streaming Architecture**: The entire pipeline supports streaming generation via stateful modules
-- **Web API**: FastAPI-based server for HTTP API access with web interface
+- **FlowLM**: Transformer-based flow language model that generates latent representations from text using Lagrangian Self Distillation (LSD).
+- **Mimi (SEANet)**: Neural audio codec that compresses/decompresses audio to/from latent representations (v0.1.0).
+- **Conditioners**: Text processing via SentencePiece tokenizer.
+- **Streaming Architecture**: The entire pipeline supports streaming generation via stateful modules.
+- **Web API**: Axum-based server for HTTP API access with a built-in web interface.
+
+## Repository Structure
+
+The repository is organized as a Rust workspace at the root level:
+
+- `crates/pocket-tts`: Core library containing model implementations.
+- `crates/pocket-tts-cli`: CLI interface and Axum API / Static server.
+- `crates/pocket-tts-bindings`: Python bindings using PyO3.
+- `assets/`: Centralized reference assets (.wav, .safetensors).
+- `python-reference/`: Original Python codebase for reference and parity testing.
 
 ## Common Commands
 
 ### Setup and Development
-```bash
-# Install pre-commit hooks
-uvx pre-commit install
+```powershell
+# Build the project
+cargo build --release
 
-# Run tests (3 parallel workers)
-uv run pytest -n 3 -v
+# Run all tests (including integration and parity)
+$env:HF_TOKEN="your_token_here"; cargo test --release --all-targets
 
-# Run a single test
-uv run pytest tests/test_python_api.py -v
+# Run the CLI
+cargo run --release -p pocket-tts-cli -- --help
 
-# Run CLI locally (editable install)
-uv run pocket-tts generate
-uv run pocket-tts serve
+# Serve the Web UI
+cargo run --release -p pocket-tts-cli -- serve
 ```
 
-### Linting and Formatting
-Pre-commit handles this automatically, but you can run manually:
-```bash
-# Ruff will run automatically on commit via pre-commit
-# Includes: ruff-check, ruff-format (with --fix), and import sorting
+### Benchmarking
+```powershell
+# Run benchmarks
+cargo bench --release
 ```
 
-### Building (No Build Step)
-This is a pure Python package with Rust extensions in `training/rust_exts/audio_ds/` for training-time audio processing. The main package does not require building.
+## Code Structure (Rust)
 
-## Code Structure
+### Library (`crates/pocket-tts/src/`)
 
-### Main Package (`pocket_tts/`)
+- `tts_model.rs`: Orchestrates the TTS pipeline.
+- `models/`: Mimi and FlowLM implementations.
+- `modules/`: Transformer, MLP, Rope, etc.
+- `audio.rs`: Audio I/O and Resampling (robust to any input rate).
+- `weights.rs`: HuggingFace weight downloading and management.
+- `config.rs`: YAML configuration parsing.
 
-**Entry Points:**
-- `main.py`: CLI implementation with Typer (commands: `generate`, `serve`, and web interface)
-- `__init__.py`: Public API exports only `TTSModel`
-- `__main__.py`: Python module entry point
-- `default_parameters.py`: Default configuration values for generation parameters
-- `static/`: Web interface files (HTML for server UI)
+### CLI & Server (`crates/pocket-tts-cli/src/`)
 
-**Core Models (`models/`):**
-- `tts_model.py`: Main `TTSModel` class - orchestrates the entire TTS pipeline
-  - `load_model()`: Downloads weights from HuggingFace and initializes models
-  - `get_state_for_audio_prompt()`: Encodes audio prompt (voice) into model state
-  - `generate_audio_stream()`: Streaming generation that yields audio chunks
-  - Uses LRU cache for voice prompts to avoid reprocessing
-- `flow_lm.py`: `FlowLMModel` - transformer that generates latent audio codes from text
+- `main.rs`: CLI entry point using `clap`.
+- `server/`: Axum router and handlers.
+- `static/`: HTML/JS for the Web UI.
 
-**Modules (`modules/`):**
-- `transformer.py`: `StreamingTransformer` and `StreamingMultiheadAttention` with RoPE embeddings
-- `stateful_module.py`: Base class for streaming support (maintains KV cache and state)
-- `rope.py`: Rotary Position Embeddings
-- `mlp.py`: `SimpleMLPAdaLN` (AdaLN-conditioned MLP for flow prediction)
-- `conv.py`: Convolution utilities
-- `seanet.py`: SEANet encoder/decoder (copied from moshi)
+## Numerical Parity
 
-**Conditioners (`conditioners/`):**
-- `text.py`: `LUTConditioner` - SentencePiece tokenizer + embedding lookup table for text
-
-**Data (`data/`):**
-- `audio.py`: Audio I/O utilities (reading, writing WAV, streaming)
-- `audio_utils.py`: Audio processing (resampling, conversion)
-
-**Utils (`utils/`):**
-- `config.py`: Pydantic config models for FlowLM and Mimi
-- `utils.py`: HuggingFace downloads, timing utilities
-
-**Configuration (`config/`):**
-- `b6369a24.yaml`: Model configuration (transformer dims, layers, vocab size, etc.)
-
-### Testing (`tests/`)
-- `test_python_api.py`: Tests for public Python API
-- `test_cli_generate.py`: Tests for CLI generate command
-- `test_documentation_examples.py`: Ensures docs examples work
+We maintain strict numerical parity with the Python implementation where possible.
+- Parity tests are located in `crates/pocket-tts/tests/parity_tests.rs`.
+- Reference tensors are in `assets/*.safetensors`.
+- The Rust resampler is now robust and theoretically superior to the Python reference, so `ref.wav` (regardless of rate) should be used.
 
 ## Development Workflow
 
-### Key Patterns
+1. **Always use --release**: Performance is critical; never benchmark or test audio quality in debug mode.
+2. **Streaming first**: All components must support stateful streaming.
+3. **CPU Optimization**: Focus on cache-friendly operations and Candle's SIMD capabilities.
+4. **Resampling**: The code now handles non-24kHz input automatically via robustness improvements in `audio.rs`.
 
-1. **Streaming Generation**: The model generates audio frame-by-frame (12.5 Hz frame rate, 80ms per frame). All modules inherit from `StatefulModule` to maintain internal state.
+## Model Weights
 
-2. **Voice Cloning**: Audio prompts are encoded via Mimi encoder to create "voice state" (latent representations + speaker embeddings). This state is cached via `lru_cache` on `_cached_get_state_for_audio_prompt()`.
-
-3. **Flow Matching**: Uses Lagrangian Self Distillation (LSD) with configurable decode steps. Fewer steps = faster but lower quality.
-
-4. **EOS Detection**: Model predicts end-of-speech via an EOS head. Generation continues for `frames_after_eos` frames after EOS is detected.
-
-5. **Config-Driven**: Model architecture is defined in YAML configs. Weights are loaded from HuggingFace Hub via `safetensors`.
-
-### Important Implementation Details
-
-- **Thread Safety**: The code is NOT thread-safe. Server mode does not support concurrent requests.
-- **Batching**: Batch size is always 1. No batching support currently.
-- **Device**: Defaults to CPU. GPU does not provide speedup for this small model.
-- **Torch Threads**: `torch.set_num_threads(1)` in `tts_model.py` for optimal CPU performance
-- **dtype**: Models use float32 by default (configurable in YAML)
-- **Beartype**: Runtime type checking is enabled via beartype claw in `__init__.py`
-
-### Adding Features
-
-When adding features, be aware of:
-- The streaming architecture: any changes to model forward passes need to maintain state correctly
-- The config system: new model parameters must be added to config classes in `utils/config.py`
-- The public API: only `TTSModel` is exported; keep implementation details internal
-- Ruff formatting: line length 100, LF line endings, skip magic trailing comma
-
-### Model Weights
-
-Weights are downloaded from HuggingFace Hub on first use:
+Weights are downloaded from HuggingFace Hub:
 - Model weights: `hf://kyutai/pocket-tts/tts_b6369a24.safetensors`
 - Tokenizer: `hf://kyutai/pocket-tts/tokenizer.model`
-- Voice prompts: `hf://kyutai/tts-voices/<speaker>/<style>.wav`
-
-The `download_if_necessary()` utility handles `hf://` URLs and caches locally.
 
 ## Common Gotchas
 
-1. **PyTorch Version**: Requires PyTorch 2.5+. Version 2.4.0 produces incorrect audio.
-2. **Python Version**: Supports Python 3.10 through 3.14 (>= 3.10,<3.15).
-3. **uv Python Preference**: Set to "only-managed" in pyproject.toml because system Python may lack headers.
-4. **CPU-Only PyTorch**: Uses PyTorch CPU index from `download.pytorch.org/whl/cpu` in uv config.
-5. **Web Dependencies**: FastAPI and Uvicorn are included for server functionality.
+1. **HF_TOKEN**: Required for gated weights (`kyutai/pocket-tts`).
+2. **Config Discovery**: `find_config_path` looks in `crates/pocket-tts/config` and fallback locations.
+3. **MKL/Accelerate**: Ensure appropriate BLAS backends are enabled for maximum performance.

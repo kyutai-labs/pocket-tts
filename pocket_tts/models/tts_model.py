@@ -337,7 +337,8 @@ class TTSModel(nn.Module):
         """Worker thread function for decoding audio latents from queue with immediate streaming."""
         try:
             audio_chunks = []
-            mimi_state = init_states(self.mimi, batch_size=1, sequence_length=1000)
+            mimi_context = max(1, int(self.config.mimi.transformer.context))
+            mimi_state = init_states(self.mimi, batch_size=1, sequence_length=mimi_context)
             while True:
                 latent = latents_queue.get()
                 if latent is None:
@@ -702,7 +703,9 @@ class TTSModel(nn.Module):
                 #     "/projects/huggingface/pocket-tts/embeddings/cosette.safetensors"
                 # )
 
-        model_state = init_states(self.flow_lm, batch_size=1, sequence_length=1000)
+        prompt_length = int(prompt.shape[1]) if prompt.ndim >= 2 else 1
+        prompt_length = max(prompt_length, 1)
+        model_state = init_states(self.flow_lm, batch_size=1, sequence_length=prompt_length)
 
         with display_execution_time("Prompting audio"):
             self._run_flow_lm_and_increment_step(model_state=model_state, audio_conditioning=prompt)

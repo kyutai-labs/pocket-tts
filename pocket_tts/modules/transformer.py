@@ -62,22 +62,24 @@ class StreamingMultiheadAttention(StatefulModule):
     def _get_mask(self, shape: tuple[int, int], shift: int, device: torch.device) -> torch.Tensor:
         return _materialize_causal_mask(shape, shift=shift, device=device)
 
-    def init_state(self, batch_size: int, sequence_length: int) -> dict[str, torch.Tensor]:
+    def init_state(
+        self, batch_size: int, sequence_length: int, device: torch.device | str = "cpu"
+    ) -> dict[str, torch.Tensor]:
         dim_per_head = self.embed_dim // self.num_heads
-        initial_current_end = torch.zeros((0,)).to(self.in_proj.weight.device)
+        initial_current_end = torch.zeros((0,), device=device)
         return dict(
             current_end=initial_current_end,
             cache=torch.full(
                 (2, batch_size, sequence_length, self.num_heads, dim_per_head),
                 float("NaN"),
-                device=self.in_proj.weight.device,
+                device=device,
                 dtype=self.in_proj.weight.dtype,
             ),
         )
 
     def increment_step(self, state: dict, increment: int = 1):
         new_size = state["current_end"].shape[0] + increment
-        state["current_end"] = torch.zeros((new_size,)).to(state["current_end"].device)
+        state["current_end"] = torch.zeros((new_size,), device=state["current_end"].device)
 
     def _complete_kv(self, k, v, state: dict | None):
         k, v = complete_kv(state["cache"], state["current_end"], k, v)

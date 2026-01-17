@@ -75,13 +75,17 @@ class MimiStreamingMultiheadAttention(StatefulModule):
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=False)
         self.in_proj = nn.Linear(embed_dim, out_dim, bias=False)
 
-    def init_state(self, batch_size: int, sequence_length: int) -> dict[str, torch.Tensor]:
+    def init_state(
+        self, batch_size: int, sequence_length: int, device: torch.device | str = "cpu"
+    ) -> dict[str, torch.Tensor]:
         dim_per_head = self.embed_dim // self.num_heads
 
         state = {}
-        state["offset"] = torch.zeros(batch_size, dtype=torch.long)
-        state["cache"] = torch.zeros((2, batch_size, self.num_heads, sequence_length, dim_per_head))
-        state["end_offset"] = torch.zeros(batch_size, dtype=torch.long)
+        state["offset"] = torch.zeros(batch_size, dtype=torch.long, device=device)
+        state["cache"] = torch.zeros(
+            (2, batch_size, self.num_heads, sequence_length, dim_per_head), device=device
+        )
+        state["end_offset"] = torch.zeros(batch_size, dtype=torch.long, device=device)
         return state
 
     def increment_step(self, state, increment: int = 1):

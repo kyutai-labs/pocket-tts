@@ -7,12 +7,15 @@ from torch import nn
 def init_states(
     model: nn.Module, batch_size: int, sequence_length: int
 ) -> dict[str, dict[str, torch.Tensor]]:
+    # Detect device from model parameters
+    device = next(model.parameters()).device
+
     result = {}
     for module_name, module in model.named_modules():
         if not isinstance(module, StatefulModule):
             continue
         module._module_absolute_name = module_name
-        module_state = module.init_state(batch_size, sequence_length=sequence_length)
+        module_state = module.init_state(batch_size, sequence_length=sequence_length, device=device)
         result[module_name] = module_state
     return result
 
@@ -33,8 +36,8 @@ class StatefulModule(ABC, nn.Module):
         return super().__init__(*args, **kwds)
 
     @abstractmethod
-    def init_state(self, batch_size: int, sequence_length: int):
-        """Initialize the state."""
+    def init_state(self, batch_size: int, sequence_length: int, device: torch.device | str = "cpu"):
+        """Initialize the state on the specified device."""
         raise NotImplementedError
 
     def increment_step(self, state: dict, increment: int = 1):

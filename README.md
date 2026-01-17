@@ -120,6 +120,10 @@ We accept contributions! Feel free to open issues or pull requests on GitHub.
 
 You can find development instructions in the [CONTRIBUTING.md](https://github.com/kyutai-labs/pocket-tts/tree/main/CONTRIBUTING.md) file. You'll also find there how to have an editable install of the package for local development.
 
+## Alternative implementations
+
+- [babybirdprd/pocket-tts](https://github.com/babybirdprd/pocket-tts) - Candle version (Rust) with WASM and PyO3 bindings.
+
 ## Projects using pocket-tts
 
 - [lukasmwerner/pocket-reader](https://github.com/lukasmwerner/pocket-reader) - Browser screen reader

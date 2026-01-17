@@ -23,6 +23,7 @@ from pocket_tts.default_parameters import (
     DEFAULT_NOISE_CLAMP,
     DEFAULT_TEMPERATURE,
     DEFAULT_VARIANT,
+    MAX_TOKEN_PER_CHUNK,
 )
 from pocket_tts.models.flow_lm import FlowLMModel
 from pocket_tts.models.mimi import MimiModel
@@ -363,6 +364,7 @@ class TTSModel(nn.Module):
         self,
         model_state: dict,
         text_to_generate: str,
+        max_tokens: int = MAX_TOKEN_PER_CHUNK,
         frames_after_eos: int | None = None,
         copy_state: bool = True,
     ) -> torch.Tensor:
@@ -405,6 +407,7 @@ class TTSModel(nn.Module):
             text_to_generate=text_to_generate,
             frames_after_eos=frames_after_eos,
             copy_state=copy_state,
+            max_tokens=max_tokens
         ):
             audio_chunks.append(chunk)
         return torch.cat(audio_chunks, dim=0)
@@ -414,6 +417,7 @@ class TTSModel(nn.Module):
         self,
         model_state: dict,
         text_to_generate: str,
+        max_tokens: int = MAX_TOKEN_PER_CHUNK,
         frames_after_eos: int | None = None,
         copy_state: bool = True,
     ):
@@ -458,7 +462,7 @@ class TTSModel(nn.Module):
         # by using teacher forcing, but it would be a bit slower.
         # TODO: add the teacher forcing method for long texts where we use the audio of one chunk
         # as conditioning for the next chunk.
-        chunks = split_into_best_sentences(self.flow_lm.conditioner.tokenizer, text_to_generate)
+        chunks = split_into_best_sentences(self.flow_lm.conditioner.tokenizer, text_to_generate, max_tokens)
 
         for chunk in chunks:
             text_to_generate, frames_after_eos_guess = prepare_text_prompt(chunk)
@@ -600,7 +604,7 @@ class TTSModel(nn.Module):
                 backbone_input = next_latent
             steps_times.append(timer.elapsed_time_ms)
         else:
-            if os.environ.get("KPOCKET_TTS_ERROR_WITHOUT_EOS", "0") == "1":
+            if os.environ.get("POCKET_TTS_ERROR_WITHOUT_EOS", "0") == "1":
                 raise RuntimeError("Generation reached maximum length without EOS!")
             logger.warning(
                 "Maximum generation length reached without EOS, this very often indicates an error."
@@ -730,13 +734,13 @@ def prepare_text_prompt(text: str) -> tuple[str, int]:
     return text, frames_after_eos_guess
 
 
-def split_into_best_sentences(tokenizer, text_to_generate: str) -> list[str]:
+def split_into_best_sentences(tokenizer, text_to_generate: str, max_tokens: int) -> list[str]:
     text_to_generate, _ = prepare_text_prompt(text_to_generate)
     text_to_generate = text_to_generate.strip()
     tokens = tokenizer(text_to_generate)
     list_of_tokens = tokens.tokens[0].tolist()
 
-    _, *end_of_sentence_tokens = tokenizer(".!...?").tokens[0].tolist()
+    _, *end_of_sentence_tokens = tokenizer(".!,...?").tokens[0].tolist()
 
     end_of_sentences_indices = [0]
     previous_was_end_of_sentence_token = False
@@ -758,7 +762,7 @@ def split_into_best_sentences(tokenizer, text_to_generate: str) -> list[str]:
         text = tokenizer.sp.decode(list_of_tokens[start:end])
         nb_tokens_and_sentences.append((end - start, text))
 
-    max_nb_tokens_in_a_chunk = 50
+    max_nb_tokens_in_a_chunk = max_tokens
     chunks = []
     current_chunk = ""
     current_nb_of_tokens_in_chunk = 0

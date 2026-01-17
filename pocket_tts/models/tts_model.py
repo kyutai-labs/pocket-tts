@@ -32,6 +32,7 @@ from pocket_tts.modules.dummy_quantizer import DummyQuantizer
 from pocket_tts.modules.seanet import SEANetDecoder, SEANetEncoder
 from pocket_tts.modules.stateful_module import increment_steps, init_states, trim_model_state
 from pocket_tts.utils.config import Config, load_config
+from pocket_tts.utils.pause_handler import parse_pause_tags
 from pocket_tts.utils.utils import (
     PREDEFINED_VOICES,
     display_execution_time,
@@ -40,7 +41,6 @@ from pocket_tts.utils.utils import (
     size_of_dict,
 )
 from pocket_tts.utils.weights_loading import get_flow_lm_state_dict, get_mimi_state_dict
-from pocket_tts.utils.pause_handler import parse_pause_tags, duration_to_frame_count
 
 logger = logging.getLogger(__name__)
 
@@ -258,6 +258,7 @@ class TTSModel(nn.Module):
         # Apply int8 quantization if requested
         if quantize:
             from pocket_tts.utils.quantization import quantize_model
+
             logger.info("Applying int8 quantization for reduced memory")
             tts_model = quantize_model(tts_model, components=quantize_components)
 
@@ -390,44 +391,6 @@ class TTSModel(nn.Module):
         latents = encoded.transpose(-1, -2).to(torch.float32)
         conditioning = F.linear(latents, self.flow_lm.speaker_proj_weight)
         return conditioning
-
-    @torch.inference_mode
-    def _decode_audio_worker(
-        self, latents_queue: queue.SimpleQueue, result_queue: queue.SimpleQueue
-    ):
-        try:
-            mimi_state = init_states(self.mimi, batch_size=1, sequence_length=1000)
-
-            while True:
-                latent = latents_queue.get()
-                if latent is None:
-                    break
-                mimi_decoding_input = latent * self.flow_lm.emb_std + self.flow_lm.emb_mean
-                transposed = mimi_decoding_input.transpose(-1, -2)
-                quantized = self.mimi.quantizer(transposed)
-
-                t = time.monotonic()
-                audio_frame = self.mimi.decode_from_latent(quantized, mimi_state)
-                increment_steps(self.mimi, mimi_state, increment=16)
-                audio_frame_duration = audio_frame.shape[2] / self.config.mimi.sample_rate
-                # We could log the timings here.
-                logger.debug(
-                    " " * 30 + "Decoded %d ms of audio with mimi in %d ms",
-                    int(audio_frame_duration * 1000),
-                    int((time.monotonic() - t) * 1000),
-                )
-                audio_chunks.append(audio_frame)
-
-                result_queue.put(("chunk", audio_frame))
-
-                latents_queue.task_done()
-
-            # Signal completion
-            result_queue.put(("done", None))
-
-        except Exception as e:
-            # Put error in result queue
-            result_queue.put(("error", e))
 
     @torch.inference_mode
     def generate_audio(
@@ -875,81 +838,91 @@ def prepare_text_prompt(text: str) -> tuple[str, int]:
 def split_into_best_sentences(tokenizer, text_to_generate: str) -> list[str]:
     """Split text into sentence-sized chunks for generation.
 
-    This function tokenizes the input text and splits it into chunks
-    that don't exceed a maximum token limit, using sentence boundaries
-    as split points.
+    This function splits text at sentence boundaries (. ! ? ...) while respecting
+    a maximum token limit per chunk. Unlike the previous implementation, this
+    uses regex-based splitting to preserve the original text exactly, avoiding
+    content loss that occurred with token-based decoding.
 
     Args:
-        tokenizer: The text tokenizer.
+        tokenizer: The text tokenizer (used only for token counting).
         text_to_generate: Input text to split.
 
     Returns:
-        List of text chunks suitable for generation.
+        List of text chunks suitable for generation, preserving all original content.
     """
+    import re
+
     text_to_generate, _ = prepare_text_prompt(text_to_generate)
     original_text = text_to_generate.strip()
-    text_to_generate = original_text
-    tokens = tokenizer(text_to_generate)
-    list_of_tokens = tokens.tokens[0].tolist()
 
-    _, *end_of_sentence_tokens = tokenizer(".!...?").tokens[0].tolist()
+    # Split on sentence boundaries: period, exclamation, question mark, or ellipsis
+    # followed by whitespace. This preserves the original text exactly.
+    # The lookbehind ensures we keep the punctuation with the preceding sentence.
+    sentence_pattern = re.compile(r"(?<=[.!?…])\s+")
+    sentences = sentence_pattern.split(original_text)
 
-    end_of_sentences_indices = [0]
-    previous_was_end_of_sentence_token = False
+    # Handle edge case where no sentence boundaries are found
+    if len(sentences) == 0:
+        sentences = [original_text]
 
-    for token_idx, token in enumerate(list_of_tokens):
-        if token in end_of_sentence_tokens:
-            previous_was_end_of_sentence_token = True
-        else:
-            if previous_was_end_of_sentence_token:
-                end_of_sentences_indices.append(token_idx)
-            previous_was_end_of_sentence_token = False
-    end_of_sentences_indices.append(len(list_of_tokens))
+    # Filter out empty sentences and strip whitespace
+    sentences = [s.strip() for s in sentences if s.strip()]
 
-    nb_tokens_and_sentences = []
-    for i in range(len(end_of_sentences_indices) - 1):
-        start = end_of_sentences_indices[i]
-        end = end_of_sentences_indices[i + 1]
-        text = tokenizer.sp.decode(list_of_tokens[start:end])
-        nb_tokens_and_sentences.append((end - start, text))
-        logger.debug("Sentence %d: %d tokens, text='%s'", i, end - start, text)
+    if not sentences:
+        # Fallback: if everything got filtered out, use original text
+        sentences = [original_text]
 
-    max_nb_tokens_in_a_chunk = 50
+    # Count tokens for each sentence and build chunks
+    max_tokens_per_chunk = 50
     chunks = []
     current_chunk = ""
-    current_nb_of_tokens_in_chunk = 0
-    for nb_tokens, sentence in nb_tokens_and_sentences:
+    current_token_count = 0
+
+    for sentence in sentences:
+        # Count tokens in this sentence using the tokenizer
+        sentence_tokens = len(tokenizer(sentence).tokens[0].tolist())
+
         if current_chunk == "":
+            # Start a new chunk
             current_chunk = sentence
-            current_nb_of_tokens_in_chunk = nb_tokens
-            continue
-
-        if current_nb_of_tokens_in_chunk + nb_tokens > max_nb_tokens_in_a_chunk:
-            chunks.append(current_chunk.strip())
+            current_token_count = sentence_tokens
+        elif current_token_count + sentence_tokens > max_tokens_per_chunk:
+            # Current chunk would exceed limit, start a new one
+            chunks.append(current_chunk)
             current_chunk = sentence
-            current_nb_of_tokens_in_chunk = nb_tokens
+            current_token_count = sentence_tokens
         else:
-            current_chunk += " " + sentence
-            current_nb_of_tokens_in_chunk += nb_tokens
+            # Add to current chunk
+            current_chunk = current_chunk + " " + sentence
+            current_token_count += sentence_tokens
 
-    if current_chunk != "":
-        chunks.append(current_chunk.strip())
+    # Don't forget the last chunk
+    if current_chunk:
+        chunks.append(current_chunk)
 
-    # Log and validate chunks
+    # Log chunks for debugging
     if logger.isEnabledFor(logging.DEBUG):
         for i, chunk in enumerate(chunks):
             logger.debug("Chunk %d: '%s'", i, chunk)
 
-    # Sanity check: warn if significant content may have been lost
-    # This helps diagnose the sentence skipping issue
+    # Strict validation: ensure no content was lost
+    # Normalize whitespace for comparison
     combined = " ".join(chunks)
-    original_words = set(original_text.lower().split())
-    combined_words = set(combined.lower().split())
-    missing_words = original_words - combined_words
-    if missing_words:
-        logger.warning(
-            "Potential sentence skipping detected! Missing words: %s",
-            ", ".join(sorted(list(missing_words)[:10]))  # Show first 10
-        )
+    original_normalized = " ".join(original_text.split())
+    combined_normalized = " ".join(combined.split())
+
+    if original_normalized != combined_normalized:
+        # Check which words are missing
+        original_words = set(original_text.lower().split())
+        combined_words = set(combined.lower().split())
+        missing_words = original_words - combined_words
+
+        if missing_words:
+            logger.error(
+                "Content loss detected in sentence splitting! Missing words: %s",
+                ", ".join(sorted(list(missing_words)[:10])),
+            )
+            logger.debug("Original text: %s", original_text)
+            logger.debug("Combined chunks: %s", combined)
 
     return chunks

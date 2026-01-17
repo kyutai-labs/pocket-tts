@@ -591,9 +591,7 @@ class TTSModel(nn.Module):
     def _cached_get_state_for_audio_prompt(
         self, audio_conditioning: Path | str | torch.Tensor, truncate: bool = False
     ) -> dict:
-        model_state = self.get_state_for_audio_prompt(audio_conditioning, truncate)
-        trim_flow_lm_kv_cache(model_state, self.flow_lm)
-        return model_state
+        return self.get_state_for_audio_prompt(audio_conditioning, truncate)
 
     @torch.no_grad
     def get_state_for_audio_prompt(

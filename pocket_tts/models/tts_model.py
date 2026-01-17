@@ -1,5 +1,6 @@
 import copy
 import logging
+import math
 import os
 import queue
 import statistics
@@ -30,7 +31,10 @@ from pocket_tts.modules import mimi_transformer
 from pocket_tts.modules.dummy_quantizer import DummyQuantizer
 from pocket_tts.modules.seanet import SEANetDecoder, SEANetEncoder
 from pocket_tts.modules.stateful_module import increment_steps, init_states
+from pocket_tts.modules.transformer import StreamingMultiheadAttention
 from pocket_tts.utils.config import Config, load_config
+from pocket_tts.utils.dtype_utils import cast_floating_point_module
+from pocket_tts.utils.state_utils import trim_flow_lm_kv_cache
 from pocket_tts.utils.utils import (
     PREDEFINED_VOICES,
     display_execution_time,
@@ -45,6 +49,9 @@ logger = logging.getLogger(__name__)
 
 
 class TTSModel(nn.Module):
+    _TOKENS_PER_SECOND_ESTIMATE = 3.0
+    _GEN_SECONDS_PADDING = 2.0
+
     def __init__(
         self,
         flow_lm: FlowLMModel,
@@ -158,6 +165,13 @@ class TTSModel(nn.Module):
             logger.warning(
                 "No weights_path specified for FlowLM or TTSModel, model is uninitialized!"
             )
+
+        flow_dtype = getattr(torch, config.flow_lm.dtype)
+        mimi_dtype = getattr(torch, config.mimi.dtype)
+        if flow_dtype is not torch.float32:
+            cast_floating_point_module(tts_model.flow_lm, flow_dtype)
+        if mimi_dtype is not torch.float32:
+            cast_floating_point_module(tts_model.mimi, mimi_dtype)
         size_in_mb = size_of_dict(tts_model.state_dict()) // 1e6
         logging.info(f"TTS Model loaded successfully. Its size is {size_in_mb} MB")
 
@@ -202,6 +216,34 @@ class TTSModel(nn.Module):
             config, temp, lsd_decode_steps, noise_clamp, eos_threshold
         )
         return tts_model
+
+    def _flow_lm_current_end(self, model_state: dict) -> int:
+        for module_name, module in self.flow_lm.named_modules():
+            if isinstance(module, StreamingMultiheadAttention):
+                return model_state[module_name]["current_end"].shape[0]
+        return 0
+
+    def _ensure_flow_lm_cache_capacity(self, model_state: dict, required_length: int) -> None:
+        if required_length <= 0:
+            return
+        for module_name, module in self.flow_lm.named_modules():
+            if not isinstance(module, StreamingMultiheadAttention):
+                continue
+            state = model_state[module_name]
+            cache = state["cache"]
+            current_end = state["current_end"].shape[0]
+            required_length = max(required_length, current_end)
+            if cache.shape[2] >= required_length:
+                continue
+            new_cache = torch.full(
+                (2, cache.shape[1], required_length, cache.shape[3], cache.shape[4]),
+                float("NaN"),
+                device=cache.device,
+                dtype=cache.dtype,
+            )
+            if current_end:
+                new_cache[:, :, :current_end] = cache[:, :, :current_end]
+            state["cache"] = new_cache
 
     def _run_flow_lm_and_increment_step(
         self,
@@ -257,7 +299,7 @@ class TTSModel(nn.Module):
 
     def _encode_audio(self, audio: torch.Tensor) -> torch.Tensor:
         encoded = self.mimi.encode_to_latent(audio)
-        latents = encoded.transpose(-1, -2).to(torch.float32)
+        latents = encoded.transpose(-1, -2).to(self.flow_lm.speaker_proj_weight.dtype)
         conditioning = F.linear(latents, self.flow_lm.speaker_proj_weight)
         return conditioning
 
@@ -266,12 +308,16 @@ class TTSModel(nn.Module):
         """Worker thread function for decoding audio latents from queue with immediate streaming."""
         try:
             audio_chunks = []
-            mimi_state = init_states(self.mimi, batch_size=1, sequence_length=1000)
+            mimi_context = max(1, int(self.config.mimi.transformer.context))
+            mimi_state = init_states(self.mimi, batch_size=1, sequence_length=mimi_context)
+            mimi_dtype = next(self.mimi.parameters()).dtype
             while True:
                 latent = latents_queue.get()
                 if latent is None:
                     break
                 mimi_decoding_input = latent * self.flow_lm.emb_std + self.flow_lm.emb_mean
+                if mimi_decoding_input.dtype != mimi_dtype:
+                    mimi_decoding_input = mimi_decoding_input.to(mimi_dtype)
                 transposed = mimi_decoding_input.transpose(-1, -2)
                 quantized = self.mimi.quantizer(transposed)
 
@@ -484,9 +530,13 @@ class TTSModel(nn.Module):
         latents_queue: queue.Queue,
         result_queue: queue.Queue,
     ):
-        gen_len_sec = len(text_to_generate.split()) * 1 + 2.0
-        max_gen_len = int(gen_len_sec * 12.5)
         prepared = self.flow_lm.conditioner.prepare(text_to_generate)
+        token_count = prepared.tokens.shape[1]
+        word_count = len(text_to_generate.split())
+        max_gen_len = self._estimate_max_gen_len(token_count, word_count)
+        current_end = self._flow_lm_current_end(model_state)
+        required_len = current_end + token_count + max_gen_len
+        self._ensure_flow_lm_cache_capacity(model_state, required_len)
 
         with display_execution_time("Prompting text"):
             self._run_flow_lm_and_increment_step(
@@ -551,7 +601,9 @@ class TTSModel(nn.Module):
     def _cached_get_state_for_audio_prompt(
         self, audio_conditioning: Path | str | torch.Tensor, truncate: bool = False
     ) -> dict:
-        return self.get_state_for_audio_prompt(audio_conditioning, truncate)
+        model_state = self.get_state_for_audio_prompt(audio_conditioning, truncate)
+        trim_flow_lm_kv_cache(model_state, self.flow_lm)
+        return model_state
 
     @torch.no_grad
     def get_state_for_audio_prompt(
@@ -627,12 +679,24 @@ class TTSModel(nn.Module):
                 #     "/projects/huggingface/pocket-tts/embeddings/cosette.safetensors"
                 # )
 
-        model_state = init_states(self.flow_lm, batch_size=1, sequence_length=1000)
+        prompt_length = int(prompt.shape[1]) if prompt.ndim >= 2 else 1
+        prompt_length = max(prompt_length, 1)
+        model_state = init_states(self.flow_lm, batch_size=1, sequence_length=prompt_length)
 
         with display_execution_time("Prompting audio"):
             self._run_flow_lm_and_increment_step(model_state=model_state, audio_conditioning=prompt)
 
+        trim_flow_lm_kv_cache(model_state, self.flow_lm)
         return model_state
+
+    def _estimate_max_gen_len(self, token_count: int, word_count: int | None = None) -> int:
+        if token_count > 0:
+            gen_len_sec = token_count / self._TOKENS_PER_SECOND_ESTIMATE + self._GEN_SECONDS_PADDING
+        else:
+            wc = word_count or 0
+            gen_len_sec = wc * 1.0 + self._GEN_SECONDS_PADDING
+        frame_rate = float(self.config.mimi.frame_rate)
+        return max(int(math.ceil(gen_len_sec * frame_rate)), 1)
 
 
 def prepare_text_prompt(text: str) -> tuple[str, int]:

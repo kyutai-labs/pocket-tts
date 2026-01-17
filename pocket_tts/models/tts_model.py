@@ -31,9 +31,7 @@ from pocket_tts.modules import mimi_transformer
 from pocket_tts.modules.dummy_quantizer import DummyQuantizer
 from pocket_tts.modules.seanet import SEANetDecoder, SEANetEncoder
 from pocket_tts.modules.stateful_module import increment_steps, init_states
-from pocket_tts.modules.transformer import StreamingMultiheadAttention
 from pocket_tts.utils.config import Config, load_config
-from pocket_tts.utils.state_utils import trim_flow_lm_kv_cache
 from pocket_tts.utils.utils import (
     PREDEFINED_VOICES,
     display_execution_time,
@@ -164,7 +162,6 @@ class TTSModel(nn.Module):
             logger.warning(
                 "No weights_path specified for FlowLM or TTSModel, model is uninitialized!"
             )
-
         size_in_mb = size_of_dict(tts_model.state_dict()) // 1e6
         logging.info(f"TTS Model loaded successfully. Its size is {size_in_mb} MB")
 
@@ -209,34 +206,6 @@ class TTSModel(nn.Module):
             config, temp, lsd_decode_steps, noise_clamp, eos_threshold
         )
         return tts_model
-
-    def _flow_lm_current_end(self, model_state: dict) -> int:
-        for module_name, module in self.flow_lm.named_modules():
-            if isinstance(module, StreamingMultiheadAttention):
-                return model_state[module_name]["current_end"].shape[0]
-        return 0
-
-    def _ensure_flow_lm_cache_capacity(self, model_state: dict, required_length: int) -> None:
-        if required_length <= 0:
-            return
-        for module_name, module in self.flow_lm.named_modules():
-            if not isinstance(module, StreamingMultiheadAttention):
-                continue
-            state = model_state[module_name]
-            cache = state["cache"]
-            current_end = state["current_end"].shape[0]
-            required_length = max(required_length, current_end)
-            if cache.shape[2] >= required_length:
-                continue
-            new_cache = torch.full(
-                (2, cache.shape[1], required_length, cache.shape[3], cache.shape[4]),
-                float("NaN"),
-                device=cache.device,
-                dtype=cache.dtype,
-            )
-            if current_end:
-                new_cache[:, :, :current_end] = cache[:, :, :current_end]
-            state["cache"] = new_cache
 
     def _run_flow_lm_and_increment_step(
         self,
@@ -296,13 +265,79 @@ class TTSModel(nn.Module):
         conditioning = F.linear(latents, self.flow_lm.speaker_proj_weight)
         return conditioning
 
+    def _slice_kv_cache(self, model_state: dict, num_frames: int) -> None:
+        """Slice KV cache to only keep the first num_frames elements.
+
+        This optimizes memory usage when caching voice states by discarding
+        unused cache capacity beyond the actual audio prompt length.
+
+        Args:
+            model_state: The model state dict containing KV caches for all modules
+            num_frames: Number of frames to keep in the KV cache
+        """
+        original_size = 0
+        sliced_size = 0
+        for module_name, module_state in model_state.items():
+            if "cache" in module_state:
+                # KV cache has shape [2, batch_size, sequence_length, num_heads, dim_per_head]
+                cache = module_state["cache"]
+                original_size += cache.numel() * cache.element_size()
+                # Slice to keep only the first num_frames positions
+                module_state["cache"] = cache[:, :, :num_frames, :, :].clone()
+                sliced_size += module_state["cache"].numel() * module_state["cache"].element_size()
+
+        memory_saved_mb = (original_size - sliced_size) / (1024 * 1024)
+        logger.info(
+            f"Sliced KV cache from {original_size / (1024 * 1024):.1f} MB to {sliced_size / (1024 * 1024):.1f} MB "
+            f"(saved {memory_saved_mb:.1f} MB)"
+        )
+
+    def _expand_kv_cache(self, model_state: dict, sequence_length: int) -> None:
+        """Expand KV cache back to full sequence_length for generation.
+
+        When a model state is retrieved from cache with sliced KV caches,
+        this method expands them back to the full size needed for generation.
+
+        Args:
+            model_state: The model state dict containing potentially sliced KV caches
+            sequence_length: Target sequence length to expand caches to
+        """
+        for module_name, module_state in model_state.items():
+            if "cache" in module_state:
+                cache = module_state["cache"]
+                # KV cache has shape [2, batch_size, current_length, num_heads, dim_per_head]
+                current_length = cache.shape[2]
+                if current_length < sequence_length:
+                    # Create expanded cache filled with NaN for unused positions
+                    expanded_cache = torch.full(
+                        (
+                            cache.shape[0],
+                            cache.shape[1],
+                            sequence_length,
+                            cache.shape[3],
+                            cache.shape[4],
+                        ),
+                        float("NaN"),
+                        device=cache.device,
+                        dtype=cache.dtype,
+                    )
+                    # Copy existing data to the beginning
+                    expanded_cache[:, :, :current_length, :, :] = cache
+                    module_state["cache"] = expanded_cache
+
+    def _flow_lm_current_end(self, model_state: dict) -> int:
+        for module_state in model_state.values():
+            current_end = module_state.get("current_end")
+            if current_end is not None:
+                return int(current_end.shape[0])
+        return 0
+
     @torch.no_grad
     def _decode_audio_worker(self, latents_queue: queue.Queue, result_queue: queue.Queue):
         """Worker thread function for decoding audio latents from queue with immediate streaming."""
         try:
             audio_chunks = []
-            mimi_context = max(1, int(self.config.mimi.transformer.context))
-            mimi_state = init_states(self.mimi, batch_size=1, sequence_length=mimi_context)
+            mimi_state = init_states(self.mimi, batch_size=1, sequence_length=1000)
             while True:
                 latent = latents_queue.get()
                 if latent is None:
@@ -526,7 +561,7 @@ class TTSModel(nn.Module):
         max_gen_len = self._estimate_max_gen_len(token_count, word_count)
         current_end = self._flow_lm_current_end(model_state)
         required_len = current_end + token_count + max_gen_len
-        self._ensure_flow_lm_cache_capacity(model_state, required_len)
+        self._expand_kv_cache(model_state, sequence_length=required_len)
 
         with display_execution_time("Prompting text"):
             self._run_flow_lm_and_increment_step(
@@ -667,14 +702,15 @@ class TTSModel(nn.Module):
                 #     "/projects/huggingface/pocket-tts/embeddings/cosette.safetensors"
                 # )
 
-        prompt_length = int(prompt.shape[1]) if prompt.ndim >= 2 else 1
-        prompt_length = max(prompt_length, 1)
-        model_state = init_states(self.flow_lm, batch_size=1, sequence_length=prompt_length)
+        model_state = init_states(self.flow_lm, batch_size=1, sequence_length=1000)
 
         with display_execution_time("Prompting audio"):
             self._run_flow_lm_and_increment_step(model_state=model_state, audio_conditioning=prompt)
 
-        trim_flow_lm_kv_cache(model_state, self.flow_lm)
+        # Optimize memory by slicing KV cache to only keep frames from the audio prompt
+        num_audio_frames = prompt.shape[1]
+        self._slice_kv_cache(model_state, num_audio_frames)
+
         return model_state
 
     def _estimate_max_gen_len(self, token_count: int, word_count: int | None = None) -> int:

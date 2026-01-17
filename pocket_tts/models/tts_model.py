@@ -33,7 +33,6 @@ from pocket_tts.modules.seanet import SEANetDecoder, SEANetEncoder
 from pocket_tts.modules.stateful_module import increment_steps, init_states
 from pocket_tts.modules.transformer import StreamingMultiheadAttention
 from pocket_tts.utils.config import Config, load_config
-from pocket_tts.utils.dtype_utils import cast_floating_point_module
 from pocket_tts.utils.state_utils import trim_flow_lm_kv_cache
 from pocket_tts.utils.utils import (
     PREDEFINED_VOICES,
@@ -166,12 +165,6 @@ class TTSModel(nn.Module):
                 "No weights_path specified for FlowLM or TTSModel, model is uninitialized!"
             )
 
-        flow_dtype = getattr(torch, config.flow_lm.dtype)
-        mimi_dtype = getattr(torch, config.mimi.dtype)
-        if flow_dtype is not torch.float32:
-            cast_floating_point_module(tts_model.flow_lm, flow_dtype)
-        if mimi_dtype is not torch.float32:
-            cast_floating_point_module(tts_model.mimi, mimi_dtype)
         size_in_mb = size_of_dict(tts_model.state_dict()) // 1e6
         logging.info(f"TTS Model loaded successfully. Its size is {size_in_mb} MB")
 
@@ -299,7 +292,7 @@ class TTSModel(nn.Module):
 
     def _encode_audio(self, audio: torch.Tensor) -> torch.Tensor:
         encoded = self.mimi.encode_to_latent(audio)
-        latents = encoded.transpose(-1, -2).to(self.flow_lm.speaker_proj_weight.dtype)
+        latents = encoded.transpose(-1, -2).to(torch.float32)
         conditioning = F.linear(latents, self.flow_lm.speaker_proj_weight)
         return conditioning
 
@@ -310,14 +303,11 @@ class TTSModel(nn.Module):
             audio_chunks = []
             mimi_context = max(1, int(self.config.mimi.transformer.context))
             mimi_state = init_states(self.mimi, batch_size=1, sequence_length=mimi_context)
-            mimi_dtype = next(self.mimi.parameters()).dtype
             while True:
                 latent = latents_queue.get()
                 if latent is None:
                     break
                 mimi_decoding_input = latent * self.flow_lm.emb_std + self.flow_lm.emb_mean
-                if mimi_decoding_input.dtype != mimi_dtype:
-                    mimi_decoding_input = mimi_decoding_input.to(mimi_dtype)
                 transposed = mimi_decoding_input.transpose(-1, -2)
                 quantized = self.mimi.quantizer(transposed)
 

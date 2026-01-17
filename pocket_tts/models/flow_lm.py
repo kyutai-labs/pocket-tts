@@ -117,7 +117,7 @@ class FlowLMModel(nn.Module):
         input_ = self.input_linear(sequence)
 
         transformer_out = self.backbone(input_, text_embeddings, sequence, model_state=model_state)
-        transformer_out = transformer_out.to(self.out_eos.weight.dtype)
+        transformer_out = transformer_out.to(torch.float32)
         assert lsd_decode_steps > 0
 
         transformer_out = transformer_out[:, -1]

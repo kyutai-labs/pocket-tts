@@ -740,7 +740,7 @@ def split_into_best_sentences(tokenizer, text_to_generate: str, max_tokens: int)
     tokens = tokenizer(text_to_generate)
     list_of_tokens = tokens.tokens[0].tolist()
 
-    _, *end_of_sentence_tokens = tokenizer(".!,...?").tokens[0].tolist()
+    _, *end_of_sentence_tokens = tokenizer(".!...?").tokens[0].tolist()
 
     end_of_sentences_indices = [0]
     previous_was_end_of_sentence_token = False

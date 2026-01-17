@@ -10,9 +10,7 @@ def test_readme_example():
     from pocket_tts import TTSModel
 
     tts_model = TTSModel.load_model()
-    voice_state = tts_model.get_state_for_audio_prompt(
-        "hf://kyutai/tts-voices/alba-mackenna/casual.wav"
-    )
+    voice_state = tts_model.get_state_for_audio_prompt("cosette")
     audio = tts_model.generate_audio(voice_state, "Hello world, this is a test.")
     # Audio is a torch tensor containing PCM data.
     scipy.io.wavfile.write("output.wav", tts_model.sample_rate, audio.numpy())
@@ -27,9 +25,7 @@ def test_quick_start():
     tts_model = TTSModel.load_model()
 
     # Get voice state from an audio file
-    voice_state = tts_model.get_state_for_audio_prompt(
-        "hf://kyutai/tts-voices/alba-mackenna/casual.wav"
-    )
+    voice_state = tts_model.get_state_for_audio_prompt("marius")
 
     # Generate audio
     audio = tts_model.generate_audio(voice_state, "Hello world, this is a test.")
@@ -79,6 +75,9 @@ def test_get_state_for_audio_prompt():
     from pocket_tts import TTSModel
 
     model = TTSModel.load_model()
+    # hack to make it work without auth
+    model.has_voice_cloning = True
+
     # From HuggingFace URL
     voice_state = model.get_state_for_audio_prompt(
         "hf://kyutai/tts-voices/alba-mackenna/casual.wav"
@@ -99,9 +98,7 @@ def test_generate_audio():
 
     model = TTSModel.load_model()
 
-    voice_state = model.get_state_for_audio_prompt(
-        "hf://kyutai/tts-voices/alba-mackenna/casual.wav"
-    )
+    voice_state = model.get_state_for_audio_prompt("marius")
 
     # Generate audio
     audio = model.generate_audio(voice_state, "Hello world!", frames_after_eos=2, copy_state=True)
@@ -115,9 +112,7 @@ def test_generate_audio_stream():
 
     model = TTSModel.load_model()
 
-    voice_state = model.get_state_for_audio_prompt(
-        "hf://kyutai/tts-voices/alba-mackenna/casual.wav"
-    )
+    voice_state = model.get_state_for_audio_prompt("fantine")
     # Stream generation
     for chunk in model.generate_audio_stream(voice_state, "Long text content..."):
         # Process each chunk as it's generated
@@ -131,17 +126,13 @@ def test_voice_management():
     model = TTSModel.load_model()
     # Preload multiple voices
     voices = {
-        "casual": model.get_state_for_audio_prompt(
-            "hf://kyutai/tts-voices/alba-mackenna/casual.wav"
-        ),
-        "funny": model.get_state_for_audio_prompt(
-            "https://huggingface.co/kyutai/tts-voices/resolve/main/expresso/ex01-ex02_default_001_channel1_168s.wav"
-        ),
+        "casual": model.get_state_for_audio_prompt("alba"),
+        "serious": model.get_state_for_audio_prompt("marius"),
     }
 
     # Generate with different voices
     casual_audio = model.generate_audio(voices["casual"], "Hey there!")
-    funny_audio = model.generate_audio(voices["funny"], "Good morning.")
+    funny_audio = model.generate_audio(voices["serious"], "Good morning.")
 
 
 def test_batch_processing():
@@ -152,9 +143,7 @@ def test_batch_processing():
 
     model = TTSModel.load_model()
 
-    voice_state = model.get_state_for_audio_prompt(
-        "hf://kyutai/tts-voices/alba-mackenna/casual.wav"
-    )
+    voice_state = model.get_state_for_audio_prompt("azelma")
     # Process multiple texts efficiently by re-using the same voice state
     texts = [
         "First sentence to generate.",

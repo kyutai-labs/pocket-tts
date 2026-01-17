@@ -463,10 +463,13 @@ class TTSModel(nn.Module):
         for chunk in chunks:
             text_to_generate, frames_after_eos_guess = prepare_text_prompt(chunk)
             frames_after_eos_guess += 2
+            effective_frames = (
+                frames_after_eos if frames_after_eos is not None else frames_after_eos_guess
+            )
             yield from self._generate_audio_stream_short_text(
                 model_state=model_state,
                 text_to_generate=chunk,
-                frames_after_eos=frames_after_eos_guess,
+                frames_after_eos=effective_frames,
                 copy_state=copy_state,
             )
 

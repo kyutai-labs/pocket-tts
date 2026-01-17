@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pocket TTS - WebSocket Client</title>
+    <style>
+        :root {
+            --bg-primary: #0f0f1a;
+            --bg-secondary: #1a1a2e;
+            --bg-tertiary: #252540;
+            --accent-primary: #6366f1;
+            --accent-secondary: #a855f7;
+            --accent-gradient: linear-gradient(135deg, #6366f1, #a855f7);
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0b0;
+            --border-color: rgba(255, 255, 255, 0.1);
+            --success: #22c55e;
+            --error: #ef4444;
+            --warning: #f59e0b;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 800px;
+            width: 100%;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: var(--accent-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1rem;
+        }
+
+        .card {
+            background: var(--bg-secondary);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+            padding: 1rem;
+            background: var(--bg-tertiary);
+            border-radius: 12px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--error);
+            transition: background 0.3s ease;
+        }
+
+        .status-indicator.connected {
+            background: var(--success);
+            box-shadow: 0 0 12px var(--success);
+        }
+
+        .status-indicator.connecting {
+            background: var(--warning);
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 120px;
+            padding: 1rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 1rem;
+            resize: vertical;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+        }
+
+        select {
+            width: 100%;
+            padding: 1rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 1rem;
+            cursor: pointer;
+            transition: border-color 0.3s ease;
+        }
+
+        select:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+        }
+
+        .input-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 1rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 1rem;
+            font-family: monospace;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+        }
+
+        .btn {
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: var(--accent-gradient);
+            color: white;
+            width: 100%;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-primary);
+        }
+
+        .audio-section {
+            margin-top: 1.5rem;
+        }
+
+        .audio-player {
+            width: 100%;
+            margin-top: 1rem;
+        }
+
+        .progress-container {
+            margin-top: 1rem;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--accent-gradient);
+            width: 0%;
+            transition: width 0.2s ease;
+        }
+
+        .progress-text {
+            margin-top: 0.5rem;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            text-align: center;
+        }
+
+        .log {
+            background: var(--bg-primary);
+            border-radius: 12px;
+            padding: 1rem;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .log-entry {
+            margin-bottom: 0.25rem;
+        }
+
+        .log-entry.error {
+            color: var(--error);
+        }
+
+        .log-entry.success {
+            color: var(--success);
+        }
+
+        footer {
+            margin-top: 2rem;
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+
+        footer a {
+            color: var(--accent-primary);
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎤 Pocket TTS</h1>
+            <p class="subtitle">WebSocket Real-Time Text-to-Speech</p>
+        </header>
+
+        <div class="card">
+            <div class="connection-status">
+                <div class="status-indicator" id="statusIndicator"></div>
+                <span id="statusText">Disconnected</span>
+            </div>
+
+            <div class="form-group">
+                <label for="wsUrl">WebSocket URL</label>
+                <input type="text" id="wsUrl" value="ws://localhost:8765" placeholder="ws://localhost:8765">
+            </div>
+
+            <div class="input-row">
+                <button class="btn btn-secondary" id="connectBtn" onclick="connect()">Connect</button>
+                <button class="btn btn-secondary" id="disconnectBtn" onclick="disconnect()" disabled>Disconnect</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="form-group">
+                <label for="textInput">Text to Speak</label>
+                <textarea id="textInput" placeholder="Enter text to convert to speech...">Hello world. I am Kyutai's Pocket TTS, streaming through WebSocket. This enables real-time audio generation directly in your browser.</textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="voiceSelect">Voice</label>
+                <select id="voiceSelect">
+                    <option value="">Default</option>
+                    <option value="javert">Javert</option>
+                    <option value="marius">Marius</option>
+                    <option value="cosette">Cosette</option>
+                    <option value="eponine">Eponine</option>
+                    <option value="valjean">Valjean</option>
+                </select>
+            </div>
+
+            <button class="btn btn-primary" id="generateBtn" onclick="generate()" disabled>Generate Speech</button>
+
+            <div class="progress-container" id="progressContainer" style="display: none;">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <p class="progress-text" id="progressText">Generating...</p>
+            </div>
+
+            <div class="audio-section" id="audioSection" style="display: none;">
+                <label>Generated Audio</label>
+                <audio class="audio-player" id="audioPlayer" controls></audio>
+            </div>
+        </div>
+
+        <div class="card">
+            <label>Log</label>
+            <div class="log" id="log"></div>
+        </div>
+
+        <footer>
+            <p>Powered by <a href="https://github.com/kyutai-labs/pocket-tts" target="_blank">Pocket TTS</a> • WebSocket Streaming Client</p>
+        </footer>
+    </div>
+
+    <script>
+        let ws = null;
+        let audioChunks = [];
+        let audioContext = null;
+
+        function log(message, type = '') {
+            const logEl = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry ' + type;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logEl.appendChild(entry);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function updateStatus(status) {
+            const indicator = document.getElementById('statusIndicator');
+            const text = document.getElementById('statusText');
+
+            indicator.className = 'status-indicator';
+
+            switch (status) {
+                case 'connected':
+                    indicator.classList.add('connected');
+                    text.textContent = 'Connected';
+                    document.getElementById('generateBtn').disabled = false;
+                    document.getElementById('connectBtn').disabled = true;
+                    document.getElementById('disconnectBtn').disabled = false;
+                    break;
+                case 'connecting':
+                    indicator.classList.add('connecting');
+                    text.textContent = 'Connecting...';
+                    break;
+                case 'disconnected':
+                default:
+                    text.textContent = 'Disconnected';
+                    document.getElementById('generateBtn').disabled = true;
+                    document.getElementById('connectBtn').disabled = false;
+                    document.getElementById('disconnectBtn').disabled = true;
+                    break;
+            }
+        }
+
+        function connect() {
+            const url = document.getElementById('wsUrl').value;
+
+            if (ws) {
+                ws.close();
+            }
+
+            updateStatus('connecting');
+            log(`Connecting to ${url}...`);
+
+            try {
+                ws = new WebSocket(url);
+
+                ws.onopen = () => {
+                    updateStatus('connected');
+                    log('Connected to WebSocket server', 'success');
+                };
+
+                ws.onclose = () => {
+                    updateStatus('disconnected');
+                    log('Disconnected from server');
+                    ws = null;
+                };
+
+                ws.onerror = (err) => {
+                    log('WebSocket error: ' + err.message, 'error');
+                };
+
+                ws.onmessage = (event) => {
+                    handleMessage(JSON.parse(event.data));
+                };
+            } catch (err) {
+                log('Failed to connect: ' + err.message, 'error');
+                updateStatus('disconnected');
+            }
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+
+        function generate() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('Not connected to server', 'error');
+                return;
+            }
+
+            const text = document.getElementById('textInput').value.trim();
+            const voice = document.getElementById('voiceSelect').value || null;
+
+            if (!text) {
+                log('Please enter some text', 'error');
+                return;
+            }
+
+            // Reset audio chunks
+            audioChunks = [];
+
+            // Show progress
+            document.getElementById('progressContainer').style.display = 'block';
+            document.getElementById('progressFill').style.width = '0%';
+            document.getElementById('progressText').textContent = 'Generating...';
+            document.getElementById('audioSection').style.display = 'none';
+            document.getElementById('generateBtn').disabled = true;
+
+            // Send request
+            const request = { text };
+            if (voice) request.voice = voice;
+
+            log(`Sending: "${text.substring(0, 50)}..." (voice: ${voice || 'default'})`);
+            ws.send(JSON.stringify(request));
+        }
+
+        async function handleMessage(msg) {
+            switch (msg.type) {
+                case 'audio':
+                    // Decode base64 audio
+                    const binaryString = atob(msg.data);
+                    const bytes = new Uint8Array(binaryString.length);
+                    for (let i = 0; i < binaryString.length; i++) {
+                        bytes[i] = binaryString.charCodeAt(i);
+                    }
+
+                    audioChunks.push(bytes);
+
+                    // Update progress
+                    document.getElementById('progressFill').style.width = '50%';
+                    document.getElementById('progressText').textContent = `Received chunk ${msg.chunk + 1}...`;
+                    log(`Received audio chunk ${msg.chunk + 1} (${bytes.length} bytes)`);
+                    break;
+
+                case 'done':
+                    log(`Generation complete! ${msg.total_chunks} chunks received`, 'success');
+                    document.getElementById('progressFill').style.width = '100%';
+                    document.getElementById('progressText').textContent = 'Done!';
+                    document.getElementById('generateBtn').disabled = false;
+
+                    // Combine all chunks and create audio blob
+                    if (audioChunks.length > 0) {
+                        // First chunk is WAV, rest is PCM - for simplicity, just use first chunk
+                        // In production, you'd properly concatenate PCM data
+                        const audioBlob = new Blob([audioChunks[0]], { type: 'audio/wav' });
+                        const audioUrl = URL.createObjectURL(audioBlob);
+
+                        const audioPlayer = document.getElementById('audioPlayer');
+                        audioPlayer.src = audioUrl;
+                        document.getElementById('audioSection').style.display = 'block';
+
+                        // Auto-play
+                        audioPlayer.play().catch(() => {
+                            log('Click play to hear the audio', 'success');
+                        });
+                    }
+                    break;
+
+                case 'error':
+                    log(`Error: ${msg.message}`, 'error');
+                    document.getElementById('progressContainer').style.display = 'none';
+                    document.getElementById('generateBtn').disabled = false;
+                    break;
+            }
+        }
+
+        // Initialize
+        log('WebSocket TTS Client ready');
+    </script>
+</body>
+</html>

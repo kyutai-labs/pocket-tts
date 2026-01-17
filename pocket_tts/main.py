@@ -215,6 +215,61 @@ def serve(
 
 
 @cli_app.command()
+def websocket(
+    voice: Annotated[
+        str, typer.Option(help="Path to voice prompt audio file (voice to clone)")
+    ] = DEFAULT_AUDIO_PROMPT,
+    host: Annotated[str, typer.Option(help="Host to bind to")] = "localhost",
+    port: Annotated[int, typer.Option(help="Port to bind to")] = 8765,
+    device: Annotated[str, typer.Option(help="Device to use")] = "cpu",
+    compile_model: Annotated[
+        bool, typer.Option("--compile", help="Enable torch.compile for inference")
+    ] = False,
+    compile_backend: Annotated[str, typer.Option(help="torch.compile backend")] = "inductor",
+    compile_mode: Annotated[str, typer.Option(help="torch.compile mode")] = "reduce-overhead",
+    compile_fullgraph: Annotated[bool, typer.Option(help="torch.compile fullgraph")] = False,
+    compile_dynamic: Annotated[bool, typer.Option(help="torch.compile dynamic")] = False,
+    compile_targets: Annotated[
+        str, typer.Option(help="Compile targets: all, flow-lm, mimi-decoder (comma-separated).")
+    ] = "all",
+):
+    """Start a WebSocket server for real-time TTS streaming.
+
+    This enables browsers to connect via WebSocket and receive
+    generated audio in real-time. Useful for web applications
+    that need TTS without running the model client-side.
+
+    Example:
+        uvx pocket-tts websocket --port 8765
+
+    Then connect from browser JavaScript:
+        const ws = new WebSocket('ws://localhost:8765');
+        ws.send(JSON.stringify({text: 'Hello world', voice: 'javert'}));
+    """
+    from pocket_tts.websocket_server import create_websocket_server
+
+    with enable_logging("pocket_tts", logging.INFO):
+        logger.info("Loading TTS model...")
+        model = TTSModel.load_model(DEFAULT_VARIANT)
+        model.to(device)
+
+        if compile_model:
+            model.compile_for_inference(
+                backend=compile_backend,
+                mode=compile_mode,
+                fullgraph=compile_fullgraph,
+                dynamic=compile_dynamic,
+                targets=compile_targets,
+            )
+
+        model_state = model.get_state_for_audio_prompt(voice)
+        logger.info(f"Model loaded. State size: {size_of_dict(model_state) // 1e6} MB")
+
+        server = create_websocket_server(model, model_state, host, port)
+        server.run()
+
+
+@cli_app.command()
 def generate(
     text: Annotated[
         str, typer.Option(help="Text to generate")

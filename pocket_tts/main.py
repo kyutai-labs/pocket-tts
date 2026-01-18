@@ -146,17 +146,22 @@ def text_to_speech(
         logging.warning("Using voice from URL: %s", voice_url)
     elif voice_wav is not None:
         # Use uploaded voice file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+        temp_path = temp_file.name
+        try:
             content = voice_wav.file.read()
             temp_file.write(content)
             temp_file.flush()
+            temp_file.close()  # Close before reading on Windows
 
+            model_state = tts_model.get_state_for_audio_prompt(
+                Path(temp_path), truncate=True
+            )
+        finally:
             try:
-                model_state = tts_model.get_state_for_audio_prompt(
-                    Path(temp_file.name), truncate=True
-                )
-            finally:
-                os.unlink(temp_file.name)
+                os.unlink(temp_path)
+            except PermissionError:
+                pass  # File may still be in use on Windows, will be cleaned up later
     else:
         # Use default global model state
         model_state = global_model_state

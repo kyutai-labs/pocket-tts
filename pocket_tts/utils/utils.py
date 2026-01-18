@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -86,6 +87,28 @@ def download_if_necessary(file_path: str) -> Path:
             filename, revision = filename.split("@")
         else:
             revision = None
+        
+        # Check for local override
+        local_models_path = os.environ.get("POCKET_TTS_LOCAL_MODELS_PATH")
+        if local_models_path:
+            local_base = Path(local_models_path)
+            # Try full path (mirroring HF structure)
+            local_file_structured = local_base / filename
+            # Try flat path (just the filename)
+            local_file_flat = local_base / Path(filename).name
+            
+            if local_file_structured.exists():
+                logging.info(f"Found local file override: {local_file_structured}")
+                return local_file_structured
+            elif local_file_flat.exists():
+                logging.info(f"Found local file override (flat): {local_file_flat}")
+                return local_file_flat
+            else:
+                logging.warning(
+                    f"POCKET_TTS_LOCAL_MODELS_PATH is set to {local_models_path}, "
+                    f"but could not find {filename} (checked {local_file_structured} and {local_file_flat})"
+                )
+
         cached_file = hf_hub_download(repo_id=repo_id, filename=filename, revision=revision)
         return Path(cached_file)
     else:

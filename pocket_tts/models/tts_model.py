@@ -209,14 +209,14 @@ class TTSModel(nn.Module):
                 if not path_str:
                     return path_str
                 # Extract filename from URL or path
-                 # Common case: hf://.../filename.ext@hash
+                # Common case: hf://.../filename.ext@hash
                 if "hf://" in path_str:
-                     parts = path_str.split("/")
-                     filename_part = parts[-1]
-                     if "@" in filename_part:
-                         filename = filename_part.split("@")[0]
-                     else:
-                         filename = filename_part
+                    parts = path_str.split("/")
+                    filename_part = parts[-1]
+                    if "@" in filename_part:
+                        filename = filename_part.split("@")[0]
+                    else:
+                        filename = filename_part
                 elif "http" in path_str:
                     filename = path_str.split("/")[-1]
                 else:
@@ -232,14 +232,17 @@ class TTSModel(nn.Module):
             if config.weights_path:
                 config.weights_path = check_local_override(config.weights_path)
             if config.weights_path_without_voice_cloning:
-                config.weights_path_without_voice_cloning = check_local_override(config.weights_path_without_voice_cloning)
+                config.weights_path_without_voice_cloning = check_local_override(
+                    config.weights_path_without_voice_cloning
+                )
             
             if config.flow_lm:
                 if config.flow_lm.weights_path:
                     config.flow_lm.weights_path = check_local_override(config.flow_lm.weights_path)
                 if config.flow_lm.lookup_table and config.flow_lm.lookup_table.tokenizer_path:
-                    config.flow_lm.lookup_table.tokenizer_path = check_local_override(config.flow_lm.lookup_table.tokenizer_path)
-            
+                    config.flow_lm.lookup_table.tokenizer_path = check_local_override(
+                        config.flow_lm.lookup_table.tokenizer_path)
+                    )
             if config.mimi and config.mimi.weights_path:
                 config.mimi.weights_path = check_local_override(config.mimi.weights_path)
 

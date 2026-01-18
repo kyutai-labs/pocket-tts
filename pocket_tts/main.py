@@ -181,7 +181,9 @@ def serve(
     host: Annotated[str, typer.Option(help="Host to bind to")] = "localhost",
     port: Annotated[int, typer.Option(help="Port to bind to")] = 8000,
     reload: Annotated[bool, typer.Option(help="Enable auto-reload")] = False,
-    variant: Annotated[str, typer.Option(help="Model signature or path to config")] = DEFAULT_VARIANT,
+    variant: Annotated[
+        str, typer.Option(help="Model signature or path to config")
+    ] = DEFAULT_VARIANT,
 ):
     """Start the FastAPI server."""
 

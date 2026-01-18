@@ -1,8 +1,6 @@
-from typing import Dict, Optional
-
 import torch
+import torch.nn as nn
 from einops import rearrange
-from torch import nn
 from torch.nn import functional as F
 
 from pocket_tts.modules.rope import RotaryEmbedding
@@ -137,32 +135,48 @@ class StreamingMultiheadAttention(StatefulModule):
         self.in_proj = nn.Linear(embed_dim, out_dim, bias=False)
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=False)
 
-    # Remove type hints to prevent beartype wrapping (fixes JIT undefined torch)
-    def init_state(self, batch_size: int, sequence_length: int) -> Dict[str, torch.Tensor]:
-        """Initialize the state in a JIT-compatible way."""
+    def init_state(self, batch_size: int, sequence_length: int) -> dict[str, torch.Tensor]:
         dim_per_head = self.embed_dim // self.num_heads
-        ref = self.in_proj.weight
 
         if self.context is not None:
             # Ring buffer mode for sliding window attention
             return {
-                "offset": ref.new_zeros((batch_size,)).long(),
-                "cache": ref.new_zeros(
+                "offset": torch.zeros(batch_size, dtype=torch.long),
+                "cache": torch.zeros(
                     (2, batch_size, self.num_heads, sequence_length, dim_per_head)
                 ),
-                "end_offset": ref.new_zeros((batch_size,)).long(),
+                "end_offset": torch.zeros(batch_size, dtype=torch.long),
             }
         else:
-            # Use reference tensor to create new tensors without accessing 'torch' global
-            # which is hidden by beartype wrapper in JIT
+            # Append mode for full-sequence attention
+            # NOTE: Use next(parameters) to get device/dtype safely.
+            # Fallback for quantized modules (empty parameters)
+            try:
+                param = next(self.parameters())
+                device = param.device
+                dtype = param.dtype
+            except StopIteration:
+                # Quantized modules might not have parameters. Check buffers.
+                try:
+                    buf = next(self.buffers())
+                    device = buf.device
+                    dtype = buf.dtype
+                except StopIteration:
+                    device = torch.device("cpu")
+                    dtype = torch.float32
 
-            # current_end needs to be long. new_zeros creates float (matches ref).
-            # We assume .long() is JIT supported.
+            # Ensure cache is float32 even if weights are quantized
+            if dtype in (torch.qint8, torch.quint8):
+                dtype = torch.float32
+
+            initial_current_end = torch.zeros((0,)).to(device)
             return {
-                "current_end": ref.new_zeros(int(batch_size)).long(),
-                "cache": ref.new_full(
-                    [2, int(batch_size), int(sequence_length), self.num_heads, dim_per_head],
-                    float("nan"),
+                "current_end": initial_current_end,
+                "cache": torch.full(
+                    (2, batch_size, sequence_length, self.num_heads, dim_per_head),
+                    float("NaN"),
+                    device=device,
+                    dtype=dtype,
                 ),
             }
 
@@ -173,36 +187,39 @@ class StreamingMultiheadAttention(StatefulModule):
             new_size = state["current_end"].shape[0] + increment
             state["current_end"] = torch.zeros((new_size,)).to(state["current_end"].device)
 
-    def forward(
-        self, query: torch.Tensor, model_state: Optional[Dict[str, Dict[str, torch.Tensor]]]
-    ) -> torch.Tensor:
+    def forward(self, query: torch.Tensor, model_state: dict | None) -> torch.Tensor:
         if model_state is None:
             # Create a temporary state for this forward pass
             B, T = query.shape[:2]
             # Use T as capacity if context is None (append mode), otherwise use context relative to T?
             # Actually init_state expects 'sequence_length' which dictates buffer size.
-            # If context is None, init_state builds a buffer of size 'sequence_length'.
             # If context is set, init_state builds a ring buffer of that size (ignoring sequence_length arg usually? No check init_state)
 
-            # Explicitly capture self.context for JIT type refinement
-            context_val = self.context
-            if context_val is not None:
-                capacity = max(T, context_val)
-            else:
-                capacity = T
+            # Check init_state logic:
+            # if context is not None: cache size is (..., sequence_length, ...) ==> expected capacity
+            # So pass self.context if set, else T.
 
-            if context_val is not None:
-                if T > context_val:
-                    # We are processing a chunk larger than window.
-                    # Buffer will hold T. attn_bias handles masking.
-                    pass
+            # CRITICAL FIX: If T > context, we must allocate at least T to store the full sequence
+            # for the current forward pass, otherwise scatter_ fails.
+            # The sliding window is enforced by attn_bias later.
+            capacity = max(T, self.context) if self.context is not None else T
+
+            if self.context is not None and T > self.context:
+                # We are processing a chunk larger than window.
+                # Buffer will hold T. attn_bias handles masking.
+                pass
 
             # Initialize state
             state_dict = self.init_state(B, capacity)
 
-            # No need to move, init_state uses ref.new_...
-
-            # The structure of our state dict is simple for this module
+            # Move to device/dtype
+            device = query.device
+            dtype = query.dtype
+            for k, v in state_dict.items():
+                if isinstance(v, torch.Tensor):
+                    state_dict[k] = v.to(device=device)
+                    if v.is_floating_point():
+                        state_dict[k] = v.to(dtype=dtype)
             state = state_dict
         else:
             state = self.get_state(model_state)
@@ -220,14 +237,14 @@ class StreamingMultiheadAttention(StatefulModule):
             pass
 
         packed = projected.view(B, T, 3, self.num_heads, d)
-        q, k, v = packed.unbind(dim=2)
+        q, k, v = torch.unbind(packed, dim=2)
 
         if self.context is not None:
             # Ring buffer path (sliding window attention)
             return self._forward_with_context(q, k, v, state, B, T, query.device)
         else:
             # Append path (full-sequence attention)
-            return self._forward_without_context(q, k, v, state, B, T)
+            return self._forward_without_context(q, k, v, state, B, T, query.device)
 
     def _forward_with_context(
         self,
@@ -250,16 +267,16 @@ class StreamingMultiheadAttention(StatefulModule):
 
         q, k = self.rope(q, k, offset)
 
-        # Buffer storage expects [B, H, T, D] (matches cache layout of [B, H, Cap, D])
-        # So we pass k, v directly (already [B, H, T, D])
-        # v needs to be [B, H, T, D] too.
-
         # Complete KV cache
+        # _complete_ring_buffer expects [B, H, T, D] for k and v
         kv_result = _complete_ring_buffer(state["cache"], state["end_offset"], k, v)
-
-        # k_out, v_out are [B, H, Cap, D] - ready for attention
+        # kv_result provides cached K/V in [B, T_full, H, D] or similar?
+        # We need [B, H, T_full, D] for attention.
         k_out, v_out = kv_result.keys, kv_result.values
         pos_k = kv_result.positions
+
+        k = k_out.transpose(1, 2)
+        v = v_out.transpose(1, 2)
 
         # Build attention bias for sliding window
         pos_k = pos_k[:, None]
@@ -268,7 +285,7 @@ class StreamingMultiheadAttention(StatefulModule):
         attn_bias = (pos_k >= 0) & (delta >= 0) & (delta < self.context)
         attn_bias = attn_bias[:, None]
 
-        x = F.scaled_dot_product_attention(q, k_out, v_out, attn_bias, dropout_p=0.0)
+        x = F.scaled_dot_product_attention(q, k, v, attn_bias, dropout_p=0.0)
         x = rearrange(x, "b h t d -> b t (h d)")
         x = self.out_proj(x)
         return x
@@ -278,58 +295,30 @@ class StreamingMultiheadAttention(StatefulModule):
         q: torch.Tensor,
         k: torch.Tensor,
         v: torch.Tensor,
-        state: Dict[str, torch.Tensor],
+        state: dict,
         B: int,
         T: int,
+        device: torch.device,
     ) -> torch.Tensor:
         """Forward pass with full-sequence attention (append KV cache)."""
         current_end = state["current_end"].shape[0]
 
         # q, k, v are [B, T, H, D]
-        device = q.device
 
         # RoPE expects [B, H, T, D]
         q = q.transpose(1, 2)  # [B, H, T, D]
         k = k.transpose(1, 2)
 
-        # Create scalar tensor for offset to satisfy JIT/rope unannotated args
-        offset_tensor = q.new_full((), current_end)
-        q, k = self.rope(q, k, offset=offset_tensor)
+        q, k = self.rope(q, k, offset=current_end)
 
         # Back to [B, T, H, D] for storage
         k_store = k.transpose(1, 2)
 
         # NOTE: v is not rotated.
 
-        # Check if cache needs resizing
-        # cache shape: [2, B, Cap, H, D]
-        cache = state["cache"]
-        added_length = k_store.shape[1]
-        needed_capacity = current_end + added_length
-        current_capacity = cache.shape[2]
-
-        if needed_capacity > current_capacity:
-            # Resize cache (double capacity or fit needed)
-            new_capacity = max(needed_capacity, current_capacity * 2)
-            # Match shape except capacity
-            new_shape = list(cache.shape)
-            new_shape[2] = new_capacity
-
-            new_cache = cache.new_full(new_shape, float("NaN"))
-            # Copy existing content
-            new_cache[:, :, :current_capacity, :, :] = cache
-            state["cache"] = new_cache
-
         # Append to buffer
         # k_buf output is full sequence [B, T_full, H, D]
-        # Inline _complete_append_buffer
-        added_len = k_store.shape[1]
-        cache = state["cache"]
-        cache[0, :, current_end : current_end + added_len] = k_store
-        cache[1, :, current_end : current_end + added_len] = v
-
-        k_full = cache[0, :, : current_end + added_len]
-        v_full = cache[1, :, : current_end + added_len]
+        k_full, v_full = _complete_append_buffer(state["cache"], current_end, k_store, v)
 
         # Attention requires [B, H, T, D]
         k = k_full.transpose(1, 2)
@@ -338,29 +327,9 @@ class StreamingMultiheadAttention(StatefulModule):
         # Build causal mask
         # T is current seq len. T_full is T + current_end
         mask_shape = (T, T + current_end)
+        attn_mask = _materialize_causal_mask(mask_shape, shift=current_end, device=device)
 
-        # Inline _materialize_causal_mask
-        shift = current_end
-        # Use q.new_full to avoid global torch
-        mask_tensor = q.new_full(mask_shape, 1.0)
-        attn_mask = mask_tensor.tril(diagonal=shift)
-        attn_mask = attn_mask.log()
-
-        # Manual attention to avoid global F.scaled_dot_product_attention
-        # q: [B, H, T, D], k: [B, H, S, D], v: [B, H, S, D]
-        d_head = q.shape[-1]
-        # scale = 1 / sqrt(d_head)
-        scale = d_head**-0.5
-
-        # attn_weights: [B, H, T, S]
-        attn_weights = q.matmul(k.transpose(-2, -1)) * scale
-
-        # attn_mask: [T, S] broadcast to [B, H, T, S]
-        attn_weights = attn_weights + attn_mask
-
-        attn_weights = attn_weights.softmax(dim=-1)
-
-        x = attn_weights.matmul(v)  # [B, H, T, D]
+        x = F.scaled_dot_product_attention(q, k, v, attn_mask)
         x = x.transpose(1, 2)
 
         # Reshape and project

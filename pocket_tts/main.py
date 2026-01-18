@@ -439,25 +439,26 @@ def export(
         str, typer.Option(help="Output directory for exported model files")
     ] = "./exported_model",
     components: Annotated[
-        str, typer.Option(help="Components to export: all, flow-lm, mimi-decoder")
+        str, typer.Option(help="Components to export: all, flow-lm, mimi-decoder, conditioner")
     ] = "all",
+    format: Annotated[str, typer.Option(help="Export format: torchscript, onnx")] = "torchscript",
     variant: Annotated[str, typer.Option(help="Model variant")] = DEFAULT_VARIANT,
 ):
-    """Export model to TorchScript for faster inference.
+    """Export model to TorchScript or ONNX for faster inference.
 
-    This command exports pocket-tts model components to TorchScript format,
-    which can provide faster inference in production environments.
+    This command exports pocket-tts model components to the specified format,
+    enabling faster inference or cross-platform usage (like ONNX in browsers).
 
     Example:
-        uvx pocket-tts export --output-dir ./my_model
+        uvx pocket-tts export --format onnx --output-dir ./onnx_model
     """
-    from pocket_tts.utils.export_model import export_to_torchscript
+    from pocket_tts.utils.export_model import export_model
 
     logger.info(f"Loading model variant: {variant}")
     tts_model = TTSModel.load_model(variant)
 
-    logger.info(f"Exporting components: {components} to {output_dir}")
-    results = export_to_torchscript(tts_model, output_dir, components=components)
+    logger.info(f"Exporting components: {components} to {output_dir} (format: {format})")
+    results = export_model(tts_model, output_dir, components=components, format=format)
 
     if results:
         logger.info("Export complete!")

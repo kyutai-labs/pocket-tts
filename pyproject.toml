@@ -28,7 +28,14 @@ dependencies = [
 
 
 [dependency-groups]
-dev = ["coverage>=7.6.12", "line-profiler>=5.0.0", "pytest>=9.0.2", "pytest-xdist>=3.8.0"]
+dev = [
+  "coverage>=7.6.12",
+  "line-profiler>=5.0.0",
+  "pytest>=9.0.2",
+  "pytest-xdist>=3.8.0",
+  "onnx>=1.15.0",
+  "onnxruntime>=1.17.0",
+]
 
 
 [tool.uv.sources]

@@ -55,7 +55,7 @@ def run_sox_stat(path: Path) -> dict[str, Any]:
 def compute_python_metrics(path: Path) -> dict[str, Any]:
     try:
         import librosa  # type: ignore
-        import numpy as np  # type: ignore
+# Import numpy_rs for NumPy replacement
         import pyloudnorm as pyln  # type: ignore
         import soundfile as sf  # type: ignore
     except Exception as exc:  # pragma: no cover - optional deps
@@ -73,12 +73,12 @@ def compute_python_metrics(path: Path) -> dict[str, Any]:
     except Exception:
         lra = None
 
-    sample_peak = float(np.max(np.abs(audio)))
+    sample_peak = float(np_rs.max(np_rs.abs(audio)))
 
     # Pitch via librosa.yin
     f0 = librosa.yin(audio, fmin=60, fmax=300, sr=sr)
     rms = librosa.feature.rms(y=audio, frame_length=2048, hop_length=512)[0]
-    energy_thresh = np.percentile(rms, 40)
+    energy_thresh = np_rs.percentile(rms, 40)
     voiced_mask = rms > energy_thresh
 
     min_len = min(len(f0), len(voiced_mask))
@@ -95,19 +95,19 @@ def compute_python_metrics(path: Path) -> dict[str, Any]:
         "lufs_integrated": float(integ_lufs),
         "lra": float(lra) if lra is not None else None,
         "sample_peak": sample_peak,
-        "f0_hz_median": float(np.median(voiced_f0)) if voiced_f0.size else None,
-        "f0_hz_mean": float(np.mean(voiced_f0)) if voiced_f0.size else None,
-        "f0_hz_min": float(np.min(voiced_f0)) if voiced_f0.size else None,
-        "f0_hz_max": float(np.max(voiced_f0)) if voiced_f0.size else None,
-        "voiced_frame_ratio": float(np.mean(voiced_mask)) if voiced_mask.size else None,
-        "spectral_centroid_hz_mean": float(np.mean(centroid)),
-        "spectral_centroid_hz_median": float(np.median(centroid)),
-        "spectral_rolloff_hz_mean": float(np.mean(rolloff)),
-        "spectral_rolloff_hz_median": float(np.median(rolloff)),
-        "spectral_flatness_mean": float(np.mean(flatness)),
-        "spectral_flatness_median": float(np.median(flatness)),
-        "zcr_mean": float(np.mean(zcr)),
-        "zcr_median": float(np.median(zcr)),
+        "f0_hz_median": float(np_rs.median(voiced_f0)) if voiced_f0.size else None,
+        "f0_hz_mean": float(np_rs.mean(voiced_f0)) if voiced_f0.size else None,
+        "f0_hz_min": float(np_rs.min(voiced_f0)) if voiced_f0.size else None,
+        "f0_hz_max": float(np_rs.max(voiced_f0)) if voiced_f0.size else None,
+        "voiced_frame_ratio": float(np_rs.mean(voiced_mask)) if voiced_mask.size else None,
+        "spectral_centroid_hz_mean": float(np_rs.mean(centroid)),
+        "spectral_centroid_hz_median": float(np_rs.median(centroid)),
+        "spectral_rolloff_hz_mean": float(np_rs.mean(rolloff)),
+        "spectral_rolloff_hz_median": float(np_rs.median(rolloff)),
+        "spectral_flatness_mean": float(np_rs.mean(flatness)),
+        "spectral_flatness_median": float(np_rs.median(flatness)),
+        "zcr_mean": float(np_rs.mean(zcr)),
+        "zcr_median": float(np_rs.median(zcr)),
     }
 
 

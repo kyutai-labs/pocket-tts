@@ -32,6 +32,59 @@ from pocket_tts.rust_audio import (  # noqa: E402
 # resample_audio - Resample audio (linear or sinc interpolation)
 # apply_fade - Apply fade in/out to audio
 # compute_audio_metrics - Compute RMS, peak, and dynamic range
+from pocket_tts.rust_audio import (  # noqa: E402
+    normalize_audio,
+    apply_gain,
+    resample_audio,
+    apply_fade,
+    compute_audio_metrics,
+)
+
+# NumPy replacement via rust-numpy (drop-in replacement with fallback to NumPy)
+try:
+    from pocket_tts.numpy_rs import (  # noqa: E402
+        arange,
+        array,
+        clip,
+        min,
+        max,
+        mean,
+        median,
+        sum,
+        sqrt,
+        log,
+        std,
+        var,
+        reshape,
+        transpose,
+        concatenate,
+        vstack,
+        hstack,
+        zeros,
+        ones,
+        eye,
+        linspace,
+        interp,
+        dot,
+        matmul,
+        abs,
+        power,
+        _RUST_NUMPY_AVAILABLE,
+    )
+except ImportError:
+    _RUST_NUMPY_AVAILABLE = False
+
+# Public methods:
+# TTSModel.device
+# TTSModel.sample_rate
+# TTSModel.load_model
+# TTSModel.generate_audio
+# TTSModel.generate_audio_stream
+# TTSModel.get_state_for_audio_prompt
+
+# Public audio I/O:
+# load_wav - Load audio file (industry-standard alias for audio_read)
+# save_audio - Save audio with guaranteed save functionality
 
 __all__ = [
     "TTSModel",
@@ -42,4 +95,32 @@ __all__ = [
     "resample_audio",
     "apply_fade",
     "compute_audio_metrics",
+    # NumPy replacement functions
+    "arange",
+    "array",
+    "clip",
+    "min",
+    "max",
+    "mean",
+    "median",
+    "sum",
+    "sqrt",
+    "log",
+    "std",
+    "var",
+    "reshape",
+    "transpose",
+    "concatenate",
+    "vstack",
+    "hstack",
+    "zeros",
+    "ones",
+    "eye",
+    "linspace",
+    "interp",
+    "dot",
+    "matmul",
+    "abs",
+    "power",
+    "_RUST_NUMPY_AVAILABLE",
 ]

@@ -1,11 +1,12 @@
 
-import numpy as np
+# Import numpy_rs for NumPy replacement
+from pocket_tts.numpy_rs import (arange, array, clip, max, min, sum, abs, sqrt, log, std, var, reshape, transpose, concatenate, vstack, hstack, zeros, ones, eye, linspace, interp, dot, matmul, power) as np_rs
 import scipy.io.wavfile
 import torch
 from pathlib import Path
 from typing import Union
 
-def save_audio(path: Union[str, Path], audio: Union[torch.Tensor, np.ndarray], sample_rate: int) -> None:
+def save_audio(path: Union[str, Path], audio: Union[torch.Tensor, np_rs.ndarray], sample_rate: int) -> None:
     """Save audio to a WAV file with automatic type conversion.
 
     Args:

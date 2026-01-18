@@ -66,20 +66,21 @@ class TTSWebSocketServer:
         For the first chunk, includes WAV header. Subsequent chunks
         are raw PCM data for efficient streaming.
         """
-        import numpy as np
+        # Import numpy_rs for NumPy replacement
+from pocket_tts.numpy_rs import (arange, array, clip, max, min, sum, abs, sqrt, log, std, var, reshape, transpose, concatenate, vstack, hstack, zeros, ones, eye, linspace, interp, dot, matmul, power) as np_rs
         import torch
 
         # Convert to numpy
         if isinstance(audio_chunk, torch.Tensor):
             audio_np = audio_chunk.cpu().numpy()
         else:
-            audio_np = np.array(audio_chunk)
+            audio_np = np_rs.array(audio_chunk)
 
         # Ensure float32 and clamp
-        audio_np = np.clip(audio_np, -1.0, 1.0).astype(np.float32)
+        audio_np = np_rs.clip(audio_np, -1.0, 1.0).astype(np_rs.float32)
 
         # Convert to 16-bit PCM
-        audio_int16 = (audio_np * 32767).astype(np.int16)
+        audio_int16 = (audio_np * 32767).astype(np_rs.int16)
 
         if is_first:
             # Return full WAV with header for first chunk

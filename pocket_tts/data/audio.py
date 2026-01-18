@@ -11,7 +11,8 @@ from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
-import numpy as np
+# Import numpy_rs for NumPy replacement
+from pocket_tts.numpy_rs import (arange, array, clip, max, min, sum, abs, sqrt, log, std, var, reshape, transpose, concatenate, vstack, hstack, zeros, ones, eye, linspace, interp, dot, matmul, power) as np_rs
 import torch
 from beartype.typing import Iterator
 
@@ -35,7 +36,7 @@ def audio_read(filepath: str | Path) -> tuple[torch.Tensor, int]:
 
         # Read all audio data as 16-bit signed integers
         raw_data = wav_file.readframes(-1)
-        samples = np.frombuffer(raw_data, dtype=np.int16).astype(np.float32) / 32768.0
+        samples = np_rs.frombuffer(raw_data, dtype=np_rs.int16).astype(np_rs.float32) / 32768.0
 
         # Return as mono tensor (channels, samples)
         wav = torch.from_numpy(samples.reshape(1, -1))

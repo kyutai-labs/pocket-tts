@@ -110,3 +110,8 @@ benchmark_rust_cli_vs_numpy.py
 thoughts/
 training/
 .sisyphus/
+
+# ONNX export directories (large binary files)
+onnx_export_*/
+*.onnx
+*.onnx.data

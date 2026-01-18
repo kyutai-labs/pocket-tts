@@ -201,12 +201,9 @@ class TTSModel(nn.Module):
         if str(variant).endswith(".yaml"):
             config_path = Path(variant)
             config = load_config(config_path)
-            
-            
             # Helper to check for local file override
             config_dir = config_path.parent.resolve()
-            
-            
+
             def check_local_override(path_str):
                 if not path_str:
                     return path_str
@@ -223,8 +220,6 @@ class TTSModel(nn.Module):
                     filename = path_str.split("/")[-1]
                 else:
                     filename = Path(path_str).name
-                
-                
                 local_file = config_dir / filename
                 if local_file.exists():
                     logger.info(f"Found local override for {filename} at {local_file}")
@@ -238,8 +233,6 @@ class TTSModel(nn.Module):
                 config.weights_path_without_voice_cloning = check_local_override(
                     config.weights_path_without_voice_cloning
                 )
-            
-            
             if config.flow_lm:
                 if config.flow_lm.weights_path:
                     config.flow_lm.weights_path = check_local_override(config.flow_lm.weights_path)
@@ -252,8 +245,6 @@ class TTSModel(nn.Module):
 
         else:
             config = load_config(Path(__file__).parents[1] / f"config/{variant}.yaml")
-            
-            
         tts_model = TTSModel._from_pydantic_config_with_weights(
             config, temp, lsd_decode_steps, noise_clamp, eos_threshold
         )

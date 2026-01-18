@@ -87,7 +87,7 @@ def download_if_necessary(file_path: str) -> Path:
             filename, revision = filename.split("@")
         else:
             revision = None
-        
+
         # Check for local override
         local_models_path = os.environ.get("POCKET_TTS_LOCAL_MODELS_PATH")
         if local_models_path:
@@ -96,7 +96,7 @@ def download_if_necessary(file_path: str) -> Path:
             local_file_structured = local_base / filename
             # Try flat path (just the filename)
             local_file_flat = local_base / Path(filename).name
-            
+
             if local_file_structured.exists():
                 logging.info(f"Found local file override: {local_file_structured}")
                 return local_file_structured

@@ -88,7 +88,7 @@ def write_to_queue(queue, text_to_generate, model_state):
             self.queue.put(None)
 
     audio_chunks = tts_model.generate_audio_stream(
-        model_state=model_state, text_to_generate=text_to_generate,
+        model_state=model_state, text_to_generate=text_to_generate
     )
     stream_audio_chunks(FileLikeToQueue(queue), audio_chunks, tts_model.config.mimi.sample_rate)
 
@@ -245,7 +245,7 @@ def generate(
             model_state=model_state_for_voice,
             text_to_generate=text,
             frames_after_eos=frames_after_eos,
-            max_tokens=max_tokens
+            max_tokens=max_tokens,
         )
 
         stream_audio_chunks(output_path, audio_chunks, tts_model.config.mimi.sample_rate)

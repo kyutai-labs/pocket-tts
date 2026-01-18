@@ -407,7 +407,7 @@ class TTSModel(nn.Module):
             text_to_generate=text_to_generate,
             frames_after_eos=frames_after_eos,
             copy_state=copy_state,
-            max_tokens=max_tokens
+            max_tokens=max_tokens,
         ):
             audio_chunks.append(chunk)
         return torch.cat(audio_chunks, dim=0)
@@ -462,7 +462,9 @@ class TTSModel(nn.Module):
         # by using teacher forcing, but it would be a bit slower.
         # TODO: add the teacher forcing method for long texts where we use the audio of one chunk
         # as conditioning for the next chunk.
-        chunks = split_into_best_sentences(self.flow_lm.conditioner.tokenizer, text_to_generate, max_tokens)
+        chunks = split_into_best_sentences(
+            self.flow_lm.conditioner.tokenizer, text_to_generate, max_tokens
+        )
 
         for chunk in chunks:
             text_to_generate, frames_after_eos_guess = prepare_text_prompt(chunk)

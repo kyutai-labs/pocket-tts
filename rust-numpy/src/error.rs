@@ -27,6 +27,9 @@ pub enum NumPyError {
     #[error("Invalid dtype: {dtype}")]
     InvalidDtype { dtype: String },
 
+    #[error("Invalid operation: {operation}")]
+    InvalidOperation { operation: String },
+
     #[error("Memory allocation failed: requested {size} bytes")]
     MemoryError { size: usize },
 
@@ -74,6 +77,15 @@ pub enum NumPyError {
 
     #[error("Thread error: {message}")]
     ThreadError { message: String },
+
+    #[error("Polynomial error: {message}")]
+    PolynomialError { message: String },
+
+    #[error("Datetime error: {message}")]
+    DatetimeError { message: String },
+
+    #[error("Window function error: {message}")]
+    WindowError { message: String },
 }
 
 impl NumPyError {
@@ -102,6 +114,13 @@ impl NumPyError {
     pub fn invalid_dtype(dtype: impl Into<String>) -> Self {
         Self::InvalidDtype {
             dtype: dtype.into(),
+        }
+    }
+
+    /// Dtype validation error (alias for invalid_dtype)
+    pub fn dtype_error(message: impl Into<String>) -> Self {
+        Self::InvalidDtype {
+            dtype: message.into(),
         }
     }
 
@@ -192,6 +211,45 @@ impl NumPyError {
     pub fn thread_error(message: impl Into<String>) -> Self {
         Self::ThreadError {
             message: message.into(),
+        }
+    }
+
+    pub fn invalid_operation(operation: impl Into<String>) -> Self {
+        Self::InvalidOperation {
+            operation: operation.into(),
+        }
+    }
+
+    pub fn from_linalg_error<E: std::fmt::Display>(err: E) -> Self {
+        Self::LinAlgError {
+            operation: "linalg_operation".to_string(),
+            message: err.to_string(),
+        }
+    }
+
+    pub fn polynomial_error(message: impl Into<String>) -> Self {
+        Self::PolynomialError {
+            message: message.into(),
+        }
+    }
+
+    pub fn datetime_error(message: impl Into<String>) -> Self {
+        Self::DatetimeError {
+            message: message.into(),
+        }
+    }
+
+    pub fn window_error(message: impl Into<String>) -> Self {
+        Self::WindowError {
+            message: message.into(),
+        }
+    }
+
+    /// Simple value error with just a message (dtype defaults to "value")
+    pub fn invalid_value(message: impl Into<String>) -> Self {
+        Self::ValueError {
+            value: message.into(),
+            dtype: "value".to_string(),
         }
     }
 }

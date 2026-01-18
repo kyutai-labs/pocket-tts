@@ -15,29 +15,49 @@
 //! ```
 
 pub mod array;
+pub mod array_creation;
+pub mod array_manipulation;
+pub mod advanced_broadcast;
+pub mod bitwise;
 pub mod broadcasting;
+pub mod comparison_ufuncs;
 pub mod constants;
+pub mod datetime;
 pub mod dtype;
+#[cfg(test)]
+mod dtype_tests;
 pub mod error;
+pub mod fft;
+pub mod io;
+pub mod linalg;
+pub mod math_ufuncs;
 pub mod memory;
+pub mod parallel_ops;
+pub mod polynomial;
+pub mod random;
+pub mod set_ops;
+pub mod simd_ops;
 pub mod slicing;
+pub mod sorting;
 pub mod strides;
 pub mod ufunc;
 pub mod ufunc_ops;
+pub mod window;
 
 #[cfg(feature = "std")]
 // Modules system - structure ready for expansion
 #[cfg(feature = "python")]
 pub mod python;
 
-#[cfg(feature = "blas")]
-pub mod blas;
-
 // Re-export key types for convenience
-pub use array::{Array, ArrayView, ArrayViewMut};
+pub use array::Array;
+pub use array_creation::{arange, array, clip, log, min};
+pub use array_manipulation::exports::*;
+pub use bitwise::*;
 pub use dtype::{Dtype, DtypeKind};
 pub use error::{NumPyError, Result};
-pub use ufunc::Ufunc;
+pub use io::*;
+pub use ufunc_ops::UfuncEngine;
 
 /// Version information
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

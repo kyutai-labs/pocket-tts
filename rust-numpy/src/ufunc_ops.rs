@@ -1,8 +1,8 @@
 use crate::array::Array;
 use crate::broadcasting::{broadcast_arrays, compute_broadcast_shape};
-// use crate::dtype::{Dtype, DtypeKind}; // Unused
+use crate::comparison_ufuncs::{ComparisonUfunc, ExtremaUfunc, LogicalUnaryUfunc};
+use crate::dtype::DtypeKind;
 use crate::error::{NumPyError, Result};
-// use crate::slicing::{MultiSlice, Slice}; // Unused
 use crate::ufunc::{get_ufunc, UfuncRegistry};
 use std::sync::Arc;
 
@@ -74,7 +74,6 @@ impl UfuncEngine {
         let ufunc = get_ufunc(ufunc_name)
             .ok_or_else(|| NumPyError::ufunc_error(ufunc_name, "Function not found"))?;
 
-        // Check if ufunc supports the dtype
         if !ufunc.supports_dtypes(&[a.dtype()]) {
             return Err(NumPyError::ufunc_error(
                 ufunc_name,
@@ -82,20 +81,56 @@ impl UfuncEngine {
             ));
         }
 
-        // Create output array
-        let mut output = a.clone(); // Copy shape and dtype
+        let mut output = a.clone();
 
-        // Create array views for ufunc execution
         let input_views: Vec<&dyn crate::ufunc::ArrayView> = vec![a];
         let mut outputs: Vec<&mut dyn crate::ufunc::ArrayViewMut> = vec![&mut output];
 
-        // Execute ufunc
         ufunc.execute(&input_views, &mut outputs)?;
 
         Ok(output)
     }
 
-    /// Execute reduction ufunc
+    pub fn execute_comparison<T>(
+        &self,
+        ufunc_name: &str,
+        a: &Array<T>,
+        b: &Array<T>,
+    ) -> Result<Array<bool>>
+    where
+        T: Clone + Default + 'static,
+    {
+        let ufunc = get_ufunc(ufunc_name)
+            .ok_or_else(|| NumPyError::ufunc_error(ufunc_name, "Function not found"))?;
+
+        if !ufunc.supports_dtypes(&[a.dtype(), b.dtype()]) {
+            return Err(NumPyError::ufunc_error(
+                ufunc_name,
+                format!(
+                    "Unsupported dtype combination: {:?} and {:?}",
+                    a.dtype(),
+                    b.dtype()
+                ),
+            ));
+        }
+
+        let broadcasted = broadcast_arrays(&[a, b])?;
+
+        let output_shape = compute_broadcast_shape(a.shape(), b.shape());
+        let mut output = Array::<bool>::zeros(output_shape);
+
+        let views: Vec<&dyn crate::ufunc::ArrayView> = broadcasted
+            .iter()
+            .map(|arr| arr as &dyn crate::ufunc::ArrayView)
+            .collect();
+
+        let mut outputs: Vec<&mut dyn crate::ufunc::ArrayViewMut> = vec![&mut output];
+
+        ufunc.execute(&views, &mut outputs)?;
+
+        Ok(output)
+    }
+
     pub fn execute_reduction<T, F>(
         &self,
         _ufunc_name: &str,
@@ -116,13 +151,9 @@ impl UfuncEngine {
 
         let mut output = Array::zeros(output_shape);
 
-        // This is a simplified reduction implementation
-        // Real NumPy has much more complex reduction logic
         if let Some(reduction_axes) = axis {
-            // Reduce along specific axes
             self.reduce_along_axes(array, &mut output, reduction_axes, &operation)?;
         } else {
-            // Reduce all elements
             if let Some(initial) = array.get(0) {
                 let mut result = initial.clone();
                 for i in 1..array.size() {
@@ -130,15 +161,15 @@ impl UfuncEngine {
                         result = operation(result, element.clone());
                     }
                 }
-                // Set result in output
-                // output.set_by_indices(&[0; output.ndim()], result)?;
+                if output.size() == 1 {
+                    output.set(0, result)?;
+                }
             }
         }
 
         Ok(output)
     }
 
-    /// Reduce along specific axes
     fn reduce_along_axes<T, F>(
         &self,
         input: &Array<T>,
@@ -150,61 +181,70 @@ impl UfuncEngine {
         T: Clone + Default + 'static,
         F: Fn(T, T) -> T + Send + Sync,
     {
-        // This is highly simplified - real implementation would need
-        // proper iteration over reduction axes and parallelization
-
         let input_shape = input.shape();
         let output_shape = output.shape();
 
-        // For each position in output shape, compute reduction
+        let reduced_axes: Vec<usize> = axes
+            .iter()
+            .map(|&ax| {
+                if ax < 0 {
+                    (ax + input_shape.len() as isize) as usize
+                } else {
+                    ax as usize
+                }
+            })
+            .filter(|&ax| ax < input_shape.len())
+            .collect();
+
         for output_idx in 0..output.size() {
             let output_indices = crate::strides::compute_multi_indices(output_idx, output_shape);
 
-            // Map output indices to input indices (setting reduced axes to full range)
-            let mut input_indices = output_indices.clone();
+            let mut result: Option<T> = None;
 
-            for &axis in axes {
-                let ax = if axis < 0 {
-                    axis + input_shape.len() as isize
-                } else {
-                    axis
-                } as usize;
+            for linear_idx in 0..input.size() {
+                let input_indices = crate::strides::compute_multi_indices(linear_idx, input_shape);
 
-                if ax < input_indices.len() {
-                    input_indices[ax] = 0; // Start of reduced dimension
-                }
-            }
-
-            // Iterate over all elements to reduce
-            if let Ok(initial) = input.get_by_indices(&input_indices) {
-                let mut result = initial.clone();
-
-                // Iterate over reduced dimension
-                for &axis in axes {
-                    let ax = if axis < 0 {
-                        axis + input_shape.len() as isize
-                    } else {
-                        axis
-                    } as usize;
-
-                    if ax < input_shape.len() {
-                        for pos in 0..input_shape[ax] {
-                            let mut temp_indices = input_indices.clone();
-                            temp_indices[ax] = pos;
-
-                            if let Ok(element) = input.get_by_indices(&temp_indices) {
-                                result = operation(result, element.clone());
-                            }
+                if self.should_include_for_reduction(&input_indices, &output_indices, &reduced_axes)
+                {
+                    if let Ok(element) = input.get_by_indices(&input_indices) {
+                        match &mut result {
+                            None => result = Some(element.clone()),
+                            Some(r) => *r = operation(r.clone(), element.clone()),
                         }
                     }
                 }
+            }
 
-                // Set result in output - this is simplified
-                // output.set_by_indices(&output_indices, result)?;
+            if let Some(res) = result {
+                output.set_by_indices(&output_indices, res)?;
             }
         }
 
         Ok(())
+    }
+
+    fn should_include_for_reduction(
+        &self,
+        input_indices: &[usize],
+        output_indices: &[usize],
+        reduced_axes: &[usize],
+    ) -> bool {
+        let mut output_dim_idx = 0;
+
+        for (dim_idx, &input_dim_val) in input_indices.iter().enumerate() {
+            if reduced_axes.contains(&dim_idx) {
+                continue;
+            }
+            if output_dim_idx >= output_indices.len() {
+                return false;
+            }
+            if input_dim_val != output_indices[output_dim_idx] {
+                return false;
+            }
+            output_dim_idx += 1;
+        }
+
+        true
     }
 }
 
@@ -264,13 +304,46 @@ where
         engine.execute_reduction("sum", self, axis, keepdims, |a, b| a + b)
     }
 
-    /// Product of elements
     pub fn product(&self, axis: Option<&[isize]>, keepdims: bool) -> Result<Array<T>>
     where
         T: std::ops::Mul<Output = T>,
     {
         let engine = UfuncEngine::new();
         engine.execute_reduction("product", self, axis, keepdims, |a, b| a * b)
+    }
+
+    pub fn count_reduced_elements(
+        &self,
+        axis: Option<&[isize]>,
+        keepdims: bool,
+    ) -> Result<Array<i64>> {
+        use crate::Array;
+
+        let output_shape = crate::broadcasting::broadcast_shape_for_reduce(
+            self.shape(),
+            axis.unwrap_or(&[]),
+            keepdims,
+        );
+
+        let count = if let Some(reduction_axes) = axis {
+            let mut count_val = 1i64;
+            for &ax in reduction_axes {
+                let ax = if ax < 0 {
+                    ax + self.ndim() as isize
+                } else {
+                    ax
+                } as usize;
+
+                if ax < self.ndim() {
+                    count_val *= self.shape()[ax] as i64;
+                }
+            }
+            count_val
+        } else {
+            self.size() as i64
+        };
+
+        Array::full(output_shape, count)
     }
 
     /// Minimum of elements
@@ -303,31 +376,400 @@ where
         )
     }
 
-    /// Mean of elements
     pub fn mean(&self, axis: Option<&[isize]>, keepdims: bool) -> Result<Array<f64>>
     where
         T: Into<f64> + Clone + std::ops::Add<Output = T>,
     {
-        // Simplified implementation - would need proper type conversion
         let sum_result = self.sum(axis, keepdims)?;
-        let _count = axis
-            .map(|axes| {
-                let reduced_shape =
-                    crate::broadcasting::broadcast_shape_for_reduce(self.shape(), axes, keepdims);
-                reduced_shape.iter().product()
-            })
-            .unwrap_or(1);
+        let count = self.count_reduced_elements(axis, keepdims)?;
 
-        // Convert sum to f64 and divide by count
-        // This would need proper type promotion in real implementation
-        let result = Array::<f64>::zeros(sum_result.shape().to_vec());
+        let mut result = Array::<f64>::zeros(sum_result.shape().to_vec());
         for i in 0..result.size() {
-            if let Some(_sum_val) = sum_result.get(i) {
-                // result.set(i, (*sum_val).into<f64>() / count as f64)?;
+            if let (Some(sum_val), Some(&cnt)) = (sum_result.get(i), count.get(i)) {
+                result.set(i, (*sum_val).into() / cnt as f64)?;
             }
         }
 
         Ok(result)
+    }
+
+    pub fn var(&self, axis: Option<&[isize]>, keepdims: bool, _skipna: bool) -> Result<Array<f64>>
+    where
+        T: Into<f64> + Clone,
+    {
+        let mean_val = self.mean(axis, keepdims)?;
+
+        let mut squared_deviations = Vec::with_capacity(self.size());
+        for i in 0..self.size() {
+            if let (Some(val), mean_f64) = (
+                self.get(i),
+                Self::get_mean_for_index(&mean_val, i, self.shape()),
+            ) {
+                let diff = (*val).into() - mean_f64;
+                squared_deviations.push(diff * diff);
+            }
+        }
+
+        let dev_array = Array::from_shape_vec(self.shape().to_vec(), squared_deviations)
+            .unwrap_or_else(|_| Array::zeros(self.shape().to_vec()));
+
+        dev_array.mean(axis, keepdims)
+    }
+
+    pub fn std(&self, axis: Option<&[isize]>, keepdims: bool, skipna: bool) -> Result<Array<f64>>
+    where
+        T: Into<f64> + Clone,
+    {
+        let variance = self.var(axis, keepdims, skipna)?;
+
+        let mut result = Array::<f64>::zeros(variance.shape().to_vec());
+        for i in 0..variance.size() {
+            if let Some(&var_val) = variance.get(i) {
+                result.set(i, var_val.sqrt())?;
+            }
+        }
+
+        Ok(result)
+    }
+
+    pub fn ptp(&self, axis: Option<&[isize]>, keepdims: bool) -> Result<Array<T>>
+    where
+        T: Clone + Default + PartialOrd + std::ops::Sub<Output = T>,
+    {
+        let max_val = self.max(axis, keepdims)?;
+        let min_val = self.min(axis, keepdims)?;
+
+        let mut result = Array::zeros(max_val.shape().to_vec());
+        for i in 0..result.size() {
+            if let (Some(max_elem), Some(min_elem)) = (max_val.get(i), min_val.get(i)) {
+                result.set(i, max_elem.clone() - min_elem.clone())?;
+            }
+        }
+
+        Ok(result)
+    }
+
+    pub fn argmin(&self, axis: Option<isize>) -> Result<Array<usize>>
+    where
+        T: PartialOrd + Clone,
+    {
+        match axis {
+            None => {
+                let mut min_idx = 0;
+                let mut min_val = self.get(0);
+
+                for i in 1..self.size() {
+                    if let Some(val) = self.get(i) {
+                        if let Some(current_min) = min_val {
+                            if val < current_min {
+                                min_idx = i;
+                                min_val = Some(val);
+                            }
+                        }
+                    }
+                }
+
+                Ok(Array::from_vec(vec![min_idx]))
+            }
+            Some(ax) => {
+                let ax = if ax < 0 {
+                    ax + self.ndim() as isize
+                } else {
+                    ax
+                } as usize;
+
+                if ax >= self.ndim() {
+                    return Err(NumPyError::index_error(ax, self.ndim()));
+                }
+
+                let output_shape: Vec<usize> = self
+                    .shape()
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| *i != ax)
+                    .map(|(_, &dim)| dim)
+                    .collect();
+
+                if output_shape.is_empty() {
+                    return Err(NumPyError::invalid_operation("Cannot reduce all axes"));
+                }
+
+                let mut result = Array::zeros(output_shape);
+
+                for output_idx in 0..result.size() {
+                    let output_indices =
+                        crate::strides::compute_multi_indices(output_idx, &output_shape);
+
+                    let mut min_pos = 0;
+                    let mut min_val: Option<&T> = None;
+
+                    for pos in 0..self.shape()[ax] {
+                        let mut full_indices = output_indices.clone();
+                        full_indices.insert(ax, pos);
+
+                        if let Ok(val) = self.get_by_indices(&full_indices) {
+                            if min_val.is_none() || val < min_val.unwrap() {
+                                min_pos = pos;
+                                min_val = Some(val);
+                            }
+                        }
+                    }
+
+                    result.set(output_idx, min_pos)?;
+                }
+
+                Ok(result)
+            }
+        }
+    }
+
+    pub fn argmax(&self, axis: Option<isize>) -> Result<Array<usize>>
+    where
+        T: PartialOrd + Clone,
+    {
+        match axis {
+            None => {
+                let mut max_idx = 0;
+                let mut max_val = self.get(0);
+
+                for i in 1..self.size() {
+                    if let Some(val) = self.get(i) {
+                        if let Some(current_max) = max_val {
+                            if val > current_max {
+                                max_idx = i;
+                                max_val = Some(val);
+                            }
+                        }
+                    }
+                }
+
+                Ok(Array::from_vec(vec![max_idx]))
+            }
+            Some(ax) => {
+                let ax = if ax < 0 {
+                    ax + self.ndim() as isize
+                } else {
+                    ax
+                } as usize;
+
+                if ax >= self.ndim() {
+                    return Err(NumPyError::index_error(ax, self.ndim()));
+                }
+
+                let output_shape: Vec<usize> = self
+                    .shape()
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| *i != ax)
+                    .map(|(_, &dim)| dim)
+                    .collect();
+
+                if output_shape.is_empty() {
+                    return Err(NumPyError::invalid_operation("Cannot reduce all axes"));
+                }
+
+                let mut result = Array::zeros(output_shape);
+
+                for output_idx in 0..result.size() {
+                    let output_indices =
+                        crate::strides::compute_multi_indices(output_idx, &output_shape);
+
+                    let mut max_pos = 0;
+                    let mut max_val: Option<&T> = None;
+
+                    for pos in 0..self.shape()[ax] {
+                        let mut full_indices = output_indices.clone();
+                        full_indices.insert(ax, pos);
+
+                        if let Ok(val) = self.get_by_indices(&full_indices) {
+                            if max_val.is_none() || val > max_val.unwrap() {
+                                max_pos = pos;
+                                max_val = Some(val);
+                            }
+                        }
+                    }
+
+                    result.set(output_idx, max_pos)?;
+                }
+
+                Ok(result)
+            }
+        }
+    }
+
+    pub fn all(&self, axis: Option<&[isize]>, keepdims: bool) -> Result<Array<bool>>
+    where
+        T: Clone + Default + Into<bool>,
+    {
+        let engine = UfuncEngine::new();
+        engine.execute_reduction("all", self, axis, keepdims, |a, b| a.into() && b.into())
+    }
+
+    pub fn any(&self, axis: Option<&[isize]>, keepdims: bool) -> Result<Array<bool>>
+    where
+        T: Clone + Default + Into<bool>,
+    {
+        let engine = UfuncEngine::new();
+        engine.execute_reduction("any", self, axis, keepdims, |a, b| a.into() || b.into())
+    }
+
+    pub fn cumsum(&self, axis: Option<isize>) -> Result<Array<T>>
+    where
+        T: Clone + Default + std::ops::Add<Output = T>,
+    {
+        match axis {
+            None => {
+                let mut data = Vec::with_capacity(self.size());
+                let mut running_sum = T::default();
+
+                for i in 0..self.size() {
+                    if let Some(val) = self.get(i) {
+                        running_sum = running_sum + val.clone();
+                        data.push(running_sum.clone());
+                    }
+                }
+
+                Ok(Array::from_vec(data))
+            }
+            Some(ax) => {
+                let ax = if ax < 0 {
+                    ax + self.ndim() as isize
+                } else {
+                    ax
+                } as usize;
+
+                if ax >= self.ndim() {
+                    return Err(NumPyError::index_error(ax, self.ndim()));
+                }
+
+                let mut result = Array::zeros(self.shape().to_vec());
+
+                let stride_before = if ax > 0 {
+                    self.shape()[..ax].iter().product::<usize>()
+                } else {
+                    1
+                };
+                let stride_after = if ax + 1 < self.ndim() {
+                    self.shape()[ax + 1..].iter().product::<usize>()
+                } else {
+                    1
+                };
+                let axis_size = self.shape()[ax];
+
+                for outer in 0..stride_before {
+                    let mut running = T::default();
+                    for pos in 0..axis_size {
+                        for inner in 0..stride_after {
+                            let idx = outer * axis_size * stride_after + pos * stride_after + inner;
+                            if let Some(val) = self.get(idx) {
+                                running = running + val.clone();
+                                result.set(idx, running.clone())?;
+                            }
+                        }
+                    }
+                }
+
+                Ok(result)
+            }
+        }
+    }
+
+    pub fn cumprod(&self, axis: Option<isize>) -> Result<Array<T>>
+    where
+        T: Clone + Default + std::ops::Mul<Output = T>,
+    {
+        match axis {
+            None => {
+                let mut data = Vec::with_capacity(self.size());
+                let mut running_prod = T::default();
+
+                for i in 0..self.size() {
+                    if let Some(val) = self.get(i) {
+                        if i == 0 {
+                            running_prod = val.clone();
+                        } else {
+                            running_prod = running_prod * val.clone();
+                        }
+                        data.push(running_prod.clone());
+                    }
+                }
+
+                Ok(Array::from_vec(data))
+            }
+            Some(ax) => {
+                let ax = if ax < 0 {
+                    ax + self.ndim() as isize
+                } else {
+                    ax
+                } as usize;
+
+                if ax >= self.ndim() {
+                    return Err(NumPyError::index_error(ax, self.ndim()));
+                }
+
+                let mut result = Array::zeros(self.shape().to_vec());
+
+                let stride_before = if ax > 0 {
+                    self.shape()[..ax].iter().product::<usize>()
+                } else {
+                    1
+                };
+                let stride_after = if ax + 1 < self.ndim() {
+                    self.shape()[ax + 1..].iter().product::<usize>()
+                } else {
+                    1
+                };
+                let axis_size = self.shape()[ax];
+
+                for outer in 0..stride_before {
+                    for pos in 0..axis_size {
+                        let mut running = T::default();
+                        for inner in 0..stride_after {
+                            let idx = outer * axis_size * stride_after + pos * stride_after + inner;
+                            if let Some(val) = self.get(idx) {
+                                if inner == 0 && pos == 0 {
+                                    running = val.clone();
+                                } else {
+                                    running = running * val.clone();
+                                }
+                                result.set(idx, running.clone())?;
+                            }
+                        }
+                    }
+                }
+
+                Ok(result)
+            }
+        }
+    }
+
+    fn get_mean_for_index(
+        mean_array: &Array<f64>,
+        linear_idx: usize,
+        original_shape: &[usize],
+    ) -> f64 {
+        if mean_array.size() == 1 {
+            return *mean_array.get(0).unwrap();
+        }
+
+        let indices = crate::strides::compute_multi_indices(linear_idx, original_shape);
+
+        let mut reduced_indices = Vec::new();
+        for (i, &val) in indices.iter().enumerate() {
+            if i < mean_array.ndim() {
+                reduced_indices.push(val);
+            }
+        }
+
+        if reduced_indices.is_empty() {
+            return *mean_array.get(0).unwrap();
+        }
+
+        while reduced_indices.len() < mean_array.ndim() {
+            reduced_indices.push(0);
+        }
+
+        *mean_array.get_by_indices(&reduced_indices).unwrap_or(&0.0)
     }
 }
 
@@ -374,3 +816,82 @@ macro_rules! impl_unsigned_ufunc_ops {
 
 impl_signed_ufunc_ops!(f64, f32, i64, i32, i16, i8);
 impl_unsigned_ufunc_ops!(u64, u32, u16, u8);
+
+impl<T> Array<T>
+where
+    T: Clone + Default + 'static,
+{
+    pub fn greater(&self, other: &Array<T>) -> Result<Array<bool>> {
+        let engine = UfuncEngine::new();
+        engine.execute_comparison("greater", self, other)
+    }
+
+    pub fn less(&self, other: &Array<T>) -> Result<Array<bool>> {
+        let engine = UfuncEngine::new();
+        engine.execute_comparison("less", self, other)
+    }
+
+    pub fn greater_equal(&self, other: &Array<T>) -> Result<Array<bool>> {
+        let engine = UfuncEngine::new();
+        engine.execute_comparison("greater_equal", self, other)
+    }
+
+    pub fn less_equal(&self, other: &Array<T>) -> Result<Array<bool>> {
+        let engine = UfuncEngine::new();
+        engine.execute_comparison("less_equal", self, other)
+    }
+
+    pub fn equal(&self, other: &Array<T>) -> Result<Array<bool>> {
+        let engine = UfuncEngine::new();
+        engine.execute_comparison("equal", self, other)
+    }
+
+    pub fn not_equal(&self, other: &Array<T>) -> Result<Array<bool>> {
+        let engine = UfuncEngine::new();
+        engine.execute_comparison("not_equal", self, other)
+    }
+
+    pub fn maximum(&self, other: &Array<T>) -> Result<Array<T>> {
+        let engine = UfuncEngine::new();
+        engine.execute_binary("maximum", self, other)
+    }
+
+    pub fn minimum(&self, other: &Array<T>) -> Result<Array<T>> {
+        let engine = UfuncEngine::new();
+        engine.execute_binary("minimum", self, other)
+    }
+
+    pub fn logical_and(&self, other: &Array<T>) -> Result<Array<bool>> {
+        let engine = UfuncEngine::new();
+        engine.execute_comparison("logical_and", self, other)
+    }
+
+    pub fn logical_or(&self, other: &Array<T>) -> Result<Array<bool>> {
+        let engine = UfuncEngine::new();
+        engine.execute_comparison("logical_or", self, other)
+    }
+
+    pub fn logical_xor(&self, other: &Array<T>) -> Result<Array<bool>> {
+        let engine = UfuncEngine::new();
+        engine.execute_comparison("logical_xor", self, other)
+    }
+
+    pub fn logical_not(&self) -> Result<Array<bool>>
+    where
+        T: PartialEq + Clone + Default + 'static,
+    {
+        let ufunc = get_ufunc("logical_not")
+            .ok_or_else(|| NumPyError::ufunc_error("logical_not", "Function not found"))?;
+
+        let output_shape = self.shape().to_vec();
+        let mut output = Array::<bool>::zeros(output_shape);
+
+        for i in 0..self.size() {
+            if let Some(val) = self.get(i) {
+                output.set(i, val == &val)?;
+            }
+        }
+
+        Ok(output)
+    }
+}

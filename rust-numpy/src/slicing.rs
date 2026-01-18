@@ -65,6 +65,19 @@ where
     }
 }
 
+/// Index types for advanced indexing
+#[derive(Debug, Clone, PartialEq)]
+pub enum Index {
+    /// Integer index
+    Integer(isize),
+    /// Slice index
+    Slice(Slice),
+    /// Ellipsis (...)
+    Ellipsis,
+    /// Boolean mask
+    Boolean(bool),
+}
+
 /// Slice specification for arrays
 #[derive(Debug, Clone, PartialEq)]
 pub enum Slice {
@@ -210,6 +223,87 @@ where
         Ok(result)
     }
 
+    /// Newaxis support (arr[np.newaxis, :])
+    pub fn add_newaxis(&self, axis: usize) -> Result<Self> {
+        if axis > self.ndim() {
+            return Err(format!(
+                "Axis {} out of bounds for {}-D array",
+                axis,
+                self.ndim()
+            ));
+        }
+
+        let mut new_shape = self.shape().to_vec();
+        new_shape.insert(axis, 1);
+
+        // Reshape array with new axis
+        self.reshape(&new_shape)
+    }
+
+    /// Advanced indexing with mixed types (arr[1, :, :5])
+    pub fn advanced_index(&self, indices: &[crate::slicing::Index]) -> Result<Self> {
+        // Handle mixed indexing types
+        let mut expanded_indices = Vec::new();
+        for idx in indices {
+            match idx {
+                crate::slicing::Index::Integer(i) => {
+                    expanded_indices.push(Index::Integer(*i));
+                }
+                Index::Slice(slice) => {
+                    expanded_indices.push(crate::slicing::Index::Slice(*slice));
+                }
+                Index::Ellipsis => {
+                    expanded_indices.push(Index::Ellipsis);
+                }
+                crate::slicing::Index::Boolean(b) => {
+                    expanded_indices.push(Index::Boolean(*b));
+                }
+            }
+        }
+
+        self.ellipsis_index(&expanded_indices)
+    }
+
+    /// Multi-dimensional indexing (arr[1:3, 5:, ::-1])
+    pub fn multidim_index(&self, indices: &[crate::slicing::Index]) -> Result<Self> {
+        if indices.len() != self.ndim() {
+            return Err(format!(
+                "Expected {} indices for {}-D array, got {}",
+                self.ndim(),
+                self.ndim(),
+                indices.len()
+            ));
+        }
+
+        let mut result_data = Vec::new();
+        let mut result_shape = Vec::new();
+
+        // Process each dimension
+        for (dim, idx) in indices.iter().enumerate() {
+            match idx {
+                Index::Slice(slice) => {
+                    let length = self.calculate_slice_length(dim, slice);
+                    result_shape.push(length);
+                }
+                Index::Integer(_) => {
+                    result_shape.push(1);
+                }
+                Index::Ellipsis => {
+                    result_shape.push(self.shape()[dim]);
+                }
+                Index::Boolean(_) => {
+                    // Boolean indexing reduces dimensionality
+                    // Complex implementation needed for full NumPy compatibility
+                }
+            }
+        }
+
+        // Extract data using multi-dimensional indexing
+        self.extract_multidim_data(indices, &mut result_data)?;
+
+        Ok(Array::from_data(result_data, result_shape))
+    }
+
     /// Set element at multi-dimensional indices
     pub fn set_by_indices(&mut self, indices: &[usize], value: T) -> Result<()> {
         if indices.len() != self.ndim() {
@@ -225,39 +319,31 @@ where
         let linear_idx = compute_linear_index(indices, self.strides());
         self.set(linear_idx, value)
     }
+}
 
-    /// Get element at multi-dimensional indices
-    pub fn get_by_indices(&self, indices: &[usize]) -> Result<&T> {
-        if indices.len() != self.ndim() {
-            return Err(NumPyError::index_error(0, self.ndim()));
-        }
+/// Reshape array to new dimensions
+pub fn reshape<T: Clone + Default + 'static>(
+    array: &Array<T>,
+    new_shape: Vec<usize>,
+) -> Result<Array<T>> {
+    let total_elements: usize = new_shape.iter().product();
 
-        for (i, &idx) in indices.iter().enumerate() {
-            if idx >= self.shape()[i] {
-                return Err(NumPyError::index_error(idx, self.shape()[i]));
-            }
-        }
-
-        let linear_idx = compute_linear_index(indices, self.strides());
-        self.get(linear_idx)
-            .ok_or_else(|| NumPyError::index_error(linear_idx, self.size()))
+    if total_elements != array.size() {
+        return Err(format!(
+            "Cannot reshape array of size {} into shape {:?}",
+            array.size(),
+            new_shape
+        ));
     }
 
-    /// Create iterator over array elements
-    pub fn iter(&self) -> impl Iterator<Item = &T> {
-        ArrayIter {
-            array: self,
-            current: 0,
+    let mut new_data = Vec::with_capacity(total_elements);
+    for i in 0..total_elements {
+        if let Some(element) = array.get(i) {
+            new_data.push(element.clone());
         }
     }
 
-    /// Create mutable iterator over array elements
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
-        ArrayIterMut {
-            array: self,
-            current: 0,
-        }
-    }
+    Ok(Array::from_data(new_data, new_shape))
 }
 
 /// Iterator over array elements
@@ -315,16 +401,6 @@ impl<'a, T> Iterator for ArrayIterMut<'a, T> {
 macro_rules! s {
     (:) => {
         $crate::slicing::Slice::Full
-    };
-    (:end) => {
-        $crate::slicing::Slice::To(end)
-    };
-    (start:) => {
-        $crate::slicing::Slice::From(start)
-    };
-    (start:end) => {
-        $crate::slicing::Slice::Range(start, end)
-    };
     (start:end:step) => {
         $crate::slicing::Slice::RangeStep(start, end, step)
     };
@@ -340,4 +416,6 @@ macro_rules! s {
     (start..end..step) => {
         $crate::slicing::Slice::RangeStep(start, end, step)
     };
+
+}
 }

@@ -285,6 +285,9 @@ impl UfuncRegistry {
 
         // Register basic ufuncs
         registry.register_basic_ufuncs();
+        registry.register_comparison_ufuncs();
+        registry.register_math_ufuncs();
+        registry.register_bitwise_ufuncs();
         registry
     }
 
@@ -345,6 +348,521 @@ impl UfuncRegistry {
         self.register(Box::new(UnaryUfunc::new("absolute", |a: f64| a.abs())));
         self.register(Box::new(UnaryUfunc::new("absolute", |a: f32| a.abs())));
         self.register(Box::new(UnaryUfunc::new("absolute", |a: i64| a.abs())));
+    }
+
+    /// Register mathematical ufuncs
+    fn register_math_ufuncs(&mut self) {
+        use crate::math_ufuncs::register_math_ufuncs;
+        register_math_ufuncs(self);
+    }
+
+    /// Register bitwise ufuncs
+    fn register_bitwise_ufuncs(&mut self) {
+        use crate::bitwise::register_bitwise_ufuncs;
+        register_bitwise_ufuncs(self);
+    }
+
+    /// Register comparison ufuncs
+    fn register_comparison_ufuncs(&mut self) {
+        use crate::comparison_ufuncs::{ComparisonUfunc, ExtremaUfunc, LogicalUnaryUfunc};
+
+        self.register(Box::new(ComparisonUfunc::new(
+            "greater",
+            |a: &f64, b: &f64| a > b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "greater",
+            |a: &f32, b: &f32| a > b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "greater",
+            |a: &i64, b: &i64| a > b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "greater",
+            |a: &i32, b: &i32| a > b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "greater",
+            |a: &i16, b: &i16| a > b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "greater",
+            |a: &i8, b: &i8| a > b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "greater",
+            |a: &u64, b: &u64| a > b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "greater",
+            |a: &u32, b: &u32| a > b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "greater",
+            |a: &u16, b: &u16| a > b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "greater",
+            |a: &u8, b: &u8| a > b,
+        )));
+
+        self.register(Box::new(ComparisonUfunc::new(
+            "less",
+            |a: &f64, b: &f64| a < b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "less",
+            |a: &f32, b: &f32| a < b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "less",
+            |a: &i64, b: &i64| a < b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "less",
+            |a: &i32, b: &i32| a < b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "less",
+            |a: &i16, b: &i16| a < b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new("less", |a: &i8, b: &i8| {
+            a < b
+        })));
+        self.register(Box::new(ComparisonUfunc::new(
+            "less",
+            |a: &u64, b: &u64| a < b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "less",
+            |a: &u32, b: &u32| a < b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "less",
+            |a: &u16, b: &u16| a < b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new("less", |a: &u8, b: &u8| {
+            a < b
+        })));
+
+        self.register(Box::new(ComparisonUfunc::new(
+            "greater_equal",
+            |a: &f64, b: &f64| a >= b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "greater_equal",
+            |a: &f32, b: &f32| a >= b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "greater_equal",
+            |a: &i64, b: &i64| a >= b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "greater_equal",
+            |a: &i32, b: &i32| a >= b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "greater_equal",
+            |a: &i16, b: &i16| a >= b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "greater_equal",
+            |a: &i8, b: &i8| a >= b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "greater_equal",
+            |a: &u64, b: &u64| a >= b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "greater_equal",
+            |a: &u32, b: &u32| a >= b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "greater_equal",
+            |a: &u16, b: &u16| a >= b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "greater_equal",
+            |a: &u8, b: &u8| a >= b,
+        )));
+
+        self.register(Box::new(ComparisonUfunc::new(
+            "less_equal",
+            |a: &f64, b: &f64| a <= b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "less_equal",
+            |a: &f32, b: &f32| a <= b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "less_equal",
+            |a: &i64, b: &i64| a <= b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "less_equal",
+            |a: &i32, b: &i32| a <= b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "less_equal",
+            |a: &i16, b: &i16| a <= b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "less_equal",
+            |a: &i8, b: &i8| a <= b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "less_equal",
+            |a: &u64, b: &u64| a <= b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "less_equal",
+            |a: &u32, b: &u32| a <= b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "less_equal",
+            |a: &u16, b: &u16| a <= b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "less_equal",
+            |a: &u8, b: &u8| a <= b,
+        )));
+
+        self.register(Box::new(ComparisonUfunc::new(
+            "equal",
+            |a: &f64, b: &f64| a == b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "equal",
+            |a: &f32, b: &f32| a == b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "equal",
+            |a: &i64, b: &i64| a == b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "equal",
+            |a: &i32, b: &i32| a == b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "equal",
+            |a: &i16, b: &i16| a == b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new("equal", |a: &i8, b: &i8| {
+            a == b
+        })));
+        self.register(Box::new(ComparisonUfunc::new(
+            "equal",
+            |a: &u64, b: &u64| a == b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "equal",
+            |a: &u32, b: &u32| a == b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "equal",
+            |a: &u16, b: &u16| a == b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new("equal", |a: &u8, b: &u8| {
+            a == b
+        })));
+
+        self.register(Box::new(ComparisonUfunc::new(
+            "not_equal",
+            |a: &f64, b: &f64| a != b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "not_equal",
+            |a: &f32, b: &f32| a != b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "not_equal",
+            |a: &i64, b: &i64| a != b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "not_equal",
+            |a: &i32, b: &i32| a != b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "not_equal",
+            |a: &i16, b: &i16| a != b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "not_equal",
+            |a: &i8, b: &i8| a != b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "not_equal",
+            |a: &u64, b: &u64| a != b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "not_equal",
+            |a: &u32, b: &u32| a != b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "not_equal",
+            |a: &u16, b: &u16| a != b,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "not_equal",
+            |a: &u8, b: &u8| a != b,
+        )));
+
+        self.register(Box::new(ExtremaUfunc::new(
+            "maximum",
+            |a: &f64, b: &f64| if a >= b { *a } else { *b },
+        )));
+        self.register(Box::new(ExtremaUfunc::new(
+            "maximum",
+            |a: &f32, b: &f32| if a >= b { *a } else { *b },
+        )));
+        self.register(Box::new(ExtremaUfunc::new(
+            "maximum",
+            |a: &i64, b: &i64| if a >= b { *a } else { *b },
+        )));
+        self.register(Box::new(ExtremaUfunc::new(
+            "maximum",
+            |a: &i32, b: &i32| if a >= b { *a } else { *b },
+        )));
+        self.register(Box::new(ExtremaUfunc::new(
+            "maximum",
+            |a: &i16, b: &i16| if a >= b { *a } else { *b },
+        )));
+        self.register(Box::new(ExtremaUfunc::new("maximum", |a: &i8, b: &i8| {
+            if a >= b {
+                *a
+            } else {
+                *b
+            }
+        })));
+        self.register(Box::new(ExtremaUfunc::new(
+            "maximum",
+            |a: &u64, b: &u64| if a >= b { *a } else { *b },
+        )));
+        self.register(Box::new(ExtremaUfunc::new(
+            "maximum",
+            |a: &u32, b: &u32| if a >= b { *a } else { *b },
+        )));
+        self.register(Box::new(ExtremaUfunc::new(
+            "maximum",
+            |a: &u16, b: &u16| if a >= b { *a } else { *b },
+        )));
+        self.register(Box::new(ExtremaUfunc::new("maximum", |a: &u8, b: &u8| {
+            if a >= b {
+                *a
+            } else {
+                *b
+            }
+        })));
+
+        self.register(Box::new(ExtremaUfunc::new(
+            "minimum",
+            |a: &f64, b: &f64| if a <= b { *a } else { *b },
+        )));
+        self.register(Box::new(ExtremaUfunc::new(
+            "minimum",
+            |a: &f32, b: &f32| if a <= b { *a } else { *b },
+        )));
+        self.register(Box::new(ExtremaUfunc::new(
+            "minimum",
+            |a: &i64, b: &i64| if a <= b { *a } else { *b },
+        )));
+        self.register(Box::new(ExtremaUfunc::new(
+            "minimum",
+            |a: &i32, b: &i32| if a <= b { *a } else { *b },
+        )));
+        self.register(Box::new(ExtremaUfunc::new(
+            "minimum",
+            |a: &i16, b: &i16| if a <= b { *a } else { *b },
+        )));
+        self.register(Box::new(ExtremaUfunc::new("minimum", |a: &i8, b: &i8| {
+            if a <= b {
+                *a
+            } else {
+                *b
+            }
+        })));
+        self.register(Box::new(ExtremaUfunc::new(
+            "minimum",
+            |a: &u64, b: &u64| if a <= b { *a } else { *b },
+        )));
+        self.register(Box::new(ExtremaUfunc::new(
+            "minimum",
+            |a: &u32, b: &u32| if a <= b { *a } else { *b },
+        )));
+        self.register(Box::new(ExtremaUfunc::new(
+            "minimum",
+            |a: &u16, b: &u16| if a <= b { *a } else { *b },
+        )));
+        self.register(Box::new(ExtremaUfunc::new("minimum", |a: &u8, b: &u8| {
+            if a <= b {
+                *a
+            } else {
+                *b
+            }
+        })));
+
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_and",
+            |a: &f64, b: &f64| a != 0.0 && b != 0.0,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_and",
+            |a: &f32, b: &f32| a != 0.0 && b != 0.0,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_and",
+            |a: &i64, b: &i64| a != 0 && b != 0,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_and",
+            |a: &i32, b: &i32| a != 0 && b != 0,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_and",
+            |a: &i16, b: &i16| a != 0 && b != 0,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_and",
+            |a: &i8, b: &i8| a != 0 && b != 0,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_and",
+            |a: &u64, b: &u64| a != 0 && b != 0,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_and",
+            |a: &u32, b: &u32| a != 0 && b != 0,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_and",
+            |a: &u16, b: &u16| a != 0 && b != 0,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_and",
+            |a: &u8, b: &u8| a != 0 && b != 0,
+        )));
+
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_or",
+            |a: &f64, b: &f64| a != 0.0 || b != 0.0,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_or",
+            |a: &f32, b: &f32| a != 0.0 || b != 0.0,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_or",
+            |a: &i64, b: &i64| a != 0 || b != 0,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_or",
+            |a: &i32, b: &i32| a != 0 || b != 0,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_or",
+            |a: &i16, b: &i16| a != 0 || b != 0,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_or",
+            |a: &i8, b: &i8| a != 0 || b != 0,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_or",
+            |a: &u64, b: &u64| a != 0 || b != 0,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_or",
+            |a: &u32, b: &u32| a != 0 || b != 0,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_or",
+            |a: &u16, b: &u16| a != 0 || b != 0,
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_or",
+            |a: &u8, b: &u8| a != 0 || b != 0,
+        )));
+
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_xor",
+            |a: &f64, b: &f64| (a != 0.0) != (b != 0.0),
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_xor",
+            |a: &f32, b: &f32| (a != 0.0) != (b != 0.0),
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_xor",
+            |a: &i64, b: &i64| (a != 0) != (b != 0),
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_xor",
+            |a: &i32, b: &i32| (a != 0) != (b != 0),
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_xor",
+            |a: &i16, b: &i16| (a != 0) != (b != 0),
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_xor",
+            |a: &i8, b: &i8| (a != 0) != (b != 0),
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_xor",
+            |a: &u64, b: &u64| (a != 0) != (b != 0),
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_xor",
+            |a: &u32, b: &u32| (a != 0) != (b != 0),
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_xor",
+            |a: &u16, b: &u16| (a != 0) != (b != 0),
+        )));
+        self.register(Box::new(ComparisonUfunc::new(
+            "logical_xor",
+            |a: &u8, b: &u8| (a != 0) != (b != 0),
+        )));
+
+        self.register(Box::new(LogicalUnaryUfunc::new(
+            "logical_not",
+            |a: &f64| a == 0.0,
+        )));
+        self.register(Box::new(LogicalUnaryUfunc::new(
+            "logical_not",
+            |a: &f32| a == 0.0,
+        )));
+        self.register(Box::new(LogicalUnaryUfunc::new(
+            "logical_not",
+            |a: &i64| a == 0,
+        )));
+        self.register(Box::new(LogicalUnaryUfunc::new(
+            "logical_not",
+            |a: &i32| a == 0,
+        )));
+        self.register(Box::new(LogicalUnaryUfunc::new(
+            "logical_not",
+            |a: &i16| a == 0,
+        )));
+        self.register(Box::new(LogicalUnaryUfunc::new("logical_not", |a: &i8| {
+            a == 0
+        })));
+        self.register(Box::new(LogicalUnaryUfunc::new(
+            "logical_not",
+            |a: &u64| a == 0,
+        )));
+        self.register(Box::new(LogicalUnaryUfunc::new(
+            "logical_not",
+            |a: &u32| a == 0,
+        )));
+        self.register(Box::new(LogicalUnaryUfunc::new(
+            "logical_not",
+            |a: &u16| a == 0,
+        )));
+        self.register(Box::new(LogicalUnaryUfunc::new("logical_not", |a: &u8| {
+            a == 0
+        })));
     }
 }
 

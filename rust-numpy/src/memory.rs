@@ -1,6 +1,13 @@
 // use crate::error::{NumPyError, Result};
 // use std::sync::Arc;
 
+/// Memory layout options for arrays
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemoryLayout {
+    RowMajor,
+    ColumnMajor,
+}
+
 /// Memory manager for efficient array data handling
 pub struct MemoryManager<T> {
     data: Vec<T>,
@@ -59,6 +66,13 @@ impl<T> MemoryManager<T> {
 
     /// Clone data (deep copy)
     pub fn clone_data(&self) -> Vec<T>
+    where
+        T: Clone,
+    {
+        self.data.clone()
+    }
+
+    pub fn as_vec(&self) -> Vec<T>
     where
         T: Clone,
     {

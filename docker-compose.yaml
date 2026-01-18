@@ -1,18 +1,12 @@
 services:
   pocket-tts:
     build: .
-    container_name: pocket-tts
     ports:
       - "8000:8000"
     volumes:
-      # Persist model cache across container restarts to avoid re-downloading
       - pocket_tts_cache:/root/.cache/pocket_tts
       - hf_cache:/root/.cache/huggingface
-    environment:
-      # Optional: set logging level or other app-specific env vars here
-      - LOG_LEVEL=INFO
-    # Bind to 0.0.0.0 to allow traffic from outside the container
-    command: ["uv", "run", "pocket-tts", "serve", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["uv", "run", "pocket-tts", "serve", "--host", "0.0.0.0"]
     restart: unless-stopped
 
 volumes:

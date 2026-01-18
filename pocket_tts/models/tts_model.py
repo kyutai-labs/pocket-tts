@@ -241,7 +241,7 @@ class TTSModel(nn.Module):
                     config.flow_lm.weights_path = check_local_override(config.flow_lm.weights_path)
                 if config.flow_lm.lookup_table and config.flow_lm.lookup_table.tokenizer_path:
                     config.flow_lm.lookup_table.tokenizer_path = check_local_override(
-                        config.flow_lm.lookup_table.tokenizer_path)
+                        config.flow_lm.lookup_table.tokenizer_path
                     )
             if config.mimi and config.mimi.weights_path:
                 config.mimi.weights_path = check_local_override(config.mimi.weights_path)

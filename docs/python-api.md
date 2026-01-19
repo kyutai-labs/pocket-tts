@@ -89,13 +89,14 @@ print(f"Sample rate: {model.sample_rate} Hz")
 
 #### Methods
 
-##### `get_state_for_audio_prompt(audio_conditioning, truncate=False)`
+##### `get_state_for_audio_prompt(audio_conditioning, truncate=False, export_path=None)`
 
-Extract model state for a given audio file or URL (voice cloning).
+Extract model state for a given audio file or URL (voice cloning), or load from .safetensors.
 
 **Parameters:**
-- `audio_conditioning` (Path | str | torch.Tensor): Audio file path, URL, or tensor
+- `audio_conditioning` (Path | str | torch.Tensor): Audio or .safetensors file path, URL, or tensor
 - `truncate` (bool): Whether to truncate the audio (default: False)
+- `export_path` (Path | str): local .safetensors file to save voice embedding to
 
 **Returns:**
 - `dict`: Model state dictionary containing hidden states and positional information
@@ -111,11 +112,19 @@ voice_state = model.get_state_for_audio_prompt("hf://kyutai/tts-voices/alba-mack
 # From local file
 voice_state = model.get_state_for_audio_prompt("./my_voice.wav")
 
+# Load state from wav and export to .safetensors file for later use
+voice_state = model.get_state_for_audio_prompt("./my_voice.wav", export_path="./my_voice.safetensors")
+
+# Reload state from local .safetensors file (much faster than loading from wav)
+voice_state = model.get_state_for_audio_prompt("./my_voices.safetensors")
+
 # From HTTP URL
 voice_state = model.get_state_for_audio_prompt(
     "https://huggingface.co/kyutai/tts-voices/resolve"
     "/main/expresso/ex01-ex02_default_001_channel1_168s.wav"
 )
+
+
 ```
 
 ##### `generate_audio(model_state, text_to_generate, frames_after_eos=None, copy_state=True)`
@@ -188,6 +197,50 @@ voices = {
 # Generate with different voices
 casual_audio = model.generate_audio(voices["casual"], "Hey there!")
 funny_audio = model.generate_audio(voices["funny"], "Good morning.")
+```
+
+### Saving Voices Embedding For Reuse
+
+```python
+model.get_state_for_audio_prompt("./my_voice.wav")
+```
+
+is relatively slow. If you use `my_voice.wav` frequently, leverage `get_state_for_audio_prompt`'s export feature to save the voice state as a .safetensors file and reload it instead of the wav file for subsequent uses.
+
+```python
+# do this once
+voice_state = model.get_state_for_audio_prompt("./my_voice.wav", export_path="./my_voice.safetensors")
+
+# then afterwards, this is much faster
+voice_state = model.get_state_for_audio_prompt("./my_voice.safetensors")
+```
+
+Here is a code snippet to convert a folder of wav to .safetensors files while loading voice states into associative array `voice_states`
+
+```python
+from pocket_tts import TTSModel
+from pathlib import Path
+from os.path import getmtime
+
+tts_model = TTSModel()
+voice_states = {}
+
+for path in Path('./my_voices').iterdir():
+    if not path.is_file() or path.suffix not in ['.safetensors', '.wav']:
+        continue
+    voice = path.stem
+    if voice in voices:
+        continue
+    sft = path.with_suffix('.safetensors')
+    wav = path.with_suffix('.wav')
+    if not sft.exists() or wav.exists() and getmtime(wav) > getmtime(sft):
+        print(f"Extracting voice {voice}")
+        data = tts_model.get_state_for_audio_prompt(wav, truncate=True, export_path=sft)
+    else:
+        data = tts_model.get_state_for_audio_prompt(sft)
+    voice_states[voice] = data
+
+print(f"{len(voice_states)} voices loaded: {sorted(list(voice_states.keys()))}")
 ```
 
 ### Batch Processing

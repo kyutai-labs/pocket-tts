@@ -142,7 +142,7 @@ def text_to_speech(
             raise HTTPException(
                 status_code=400, detail="voice_url must start with http://, https://, or hf://"
             )
-        model_state = tts_model._cached_get_state_for_audio_prompt(voice_url, truncate=True)
+        model_state = tts_model._cached_get_state_for_audio_prompt(voice_url)
         logging.warning("Using voice from URL: %s", voice_url)
     elif voice_wav is not None:
         # Use uploaded voice file - preserve extension for format detection

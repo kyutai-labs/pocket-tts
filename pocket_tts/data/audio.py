@@ -24,10 +24,17 @@ def audio_read(filepath: str | Path) -> tuple[torch.Tensor, int]:
     """Read audio using Python's wave module."""
     with wave.open(str(filepath), "rb") as wav_file:
         sample_rate = wav_file.getframerate()
+        n_channels = wav_file.getnchannels()
 
         # Read all audio data as 16-bit signed integers
         raw_data = wav_file.readframes(-1)
         samples = np.frombuffer(raw_data, dtype=np.int16).astype(np.float32) / 32768.0
+
+        # Handle multi-channel audio
+        if n_channels > 1:
+            samples = samples.reshape(-1, n_channels)
+            # Average channels to create mono
+            samples = samples.mean(axis=1)
 
         # Return as mono tensor (channels, samples)
         wav = torch.from_numpy(samples.reshape(1, -1))

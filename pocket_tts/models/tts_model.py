@@ -606,7 +606,7 @@ class TTSModel(nn.Module):
                 backbone_input = next_latent
             steps_times.append(timer.elapsed_time_ms)
         else:
-            if os.environ.get("POCKET_TTS_ERROR_WITHOUT_EOS", "0") == "1":
+            if os.environ.get("KPOCKET_TTS_ERROR_WITHOUT_EOS", "0") == "1":
                 raise RuntimeError("Generation reached maximum length without EOS!")
             logger.warning(
                 "Maximum generation length reached without EOS, this very often indicates an error."

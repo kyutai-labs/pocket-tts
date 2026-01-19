@@ -603,6 +603,18 @@ pub fn kron<
 }
 
 /// Tensor dot product
+///
+/// Performs tensor contraction along the last axis of `a` and the
+/// second-to-last axis of `b`. This is similar to NumPy's tensordot.
+///
+/// # Examples
+///
+/// ```rust
+/// use rust_numpy::linalg::tensor_dot;
+/// let a = Array::from_data(vec![1, 2, 3, 4], vec![2, 2]);
+/// let b = Array::from_data(vec![5, 6, 7, 8], vec![2, 2]);
+/// let result = tensor_dot(&a, &b).unwrap();
+/// ```
 pub fn tensor_dot<
     T: Clone
         + num_traits::Zero
@@ -622,14 +634,139 @@ pub fn tensor_dot<
         ));
     }
 
-    // For now, implement simple matrix multiplication
+    // Simple case: 2D matrix multiplication
     if a.ndim() == 2 && b.ndim() == 2 {
-        a.dot(b)
-    } else {
-        Err(NumPyError::not_implemented(
-            "tensor_dot for higher dimensions not yet implemented",
-        ))
+        return a.dot(b);
     }
+
+    // For higher dimensions, perform tensor contraction
+    // Contract along last axis of a with second-to-last axis of b
+
+    let ndim_a = a.ndim();
+    let ndim_b = b.ndim();
+
+    // Get the shapes
+    let shape_a = a.shape();
+    let shape_b = b.shape();
+
+    // Determine the size of the contraction (last dim of a, second-to-last of b)
+    let size_contraction = shape_a[ndim_a - 1];
+    let size_b_contraction = if ndim_b >= 2 {
+        shape_b[ndim_b - 2]
+    } else {
+        return Err(NumPyError::value_error(
+            "tensor_dot requires b to have at least 2 dimensions",
+            "linalg",
+        ));
+    };
+
+    if size_contraction != size_b_contraction {
+        return Err(NumPyError::value_error(
+            format!(
+                "tensor_dot requires contracted dimensions to match ({} vs {})",
+                size_contraction, size_b_contraction
+            ),
+            "linalg",
+        ));
+    }
+
+    // Calculate result shape
+    // Result shape is: all dims of a except last, all dims of b except second-to-last
+    let mut result_shape: Vec<usize> = Vec::with_capacity(ndim_a + ndim_b - 2);
+
+    // Add all dimensions of a except the last one
+    for i in 0..ndim_a - 1 {
+        result_shape.push(shape_a[i]);
+    }
+
+    // Add all dimensions of b except the second-to-last one
+    for i in 0..ndim_b - 2 {
+        if i != ndim_b - 2 {
+            result_shape.push(shape_b[i]);
+        }
+    }
+
+    // Calculate total size
+    let result_size: usize = result_shape.iter().product();
+    let contraction_size = size_contraction;
+
+    // Initialize result data
+    let mut result_data: Vec<T> = vec![T::zero(); result_size];
+
+    // Perform tensor contraction
+    // This is a simplified implementation - a full implementation would optimize this
+    for result_idx in 0..result_size {
+        // Convert linear index to multi-dimensional indices in the result
+        let mut a_indices = vec![0usize; ndim_a - 1];
+        let mut b_indices = vec![0usize; ndim_b - 1];
+
+        // Convert result index to a_indices (all but last dim of a)
+        let mut temp_idx = result_idx;
+        for i in (0..ndim_a - 1).rev() {
+            let dim_size = if i < result_shape.len() && i < shape_a.len() - 1 {
+                result_shape[i]
+            } else {
+                shape_a[i]
+            };
+            a_indices[i] = temp_idx % dim_size;
+            temp_idx /= dim_size;
+        }
+
+        // Convert result index to b_indices (all but second-to-last dim of b)
+        temp_idx = result_idx;
+        for i in (0..ndim_b - 1).rev() {
+            if i != ndim_b - 2 {
+                let dim_size = if i < result_shape.len() {
+                    result_shape[ndim_a - 1 + i]
+                } else {
+                    shape_b[i]
+                };
+                b_indices[i] = temp_idx % dim_size;
+                temp_idx /= dim_size;
+            }
+        }
+
+        // Perform the contraction (sum over the contracted dimension)
+        let mut sum_val = T::zero();
+        for k in 0..contraction_size {
+            // Get a element at a_indices + [k]
+            let a_idx = if ndim_a == 2 {
+                a_indices[0] * shape_a[1] + k
+            } else {
+                let mut idx = 0;
+                for (i, &dim_idx) in a_indices.iter().enumerate() {
+                    let dim_size = shape_a[i];
+                    idx = idx * dim_size + dim_idx;
+                }
+                idx + k
+            };
+
+            // Get b element at b_indices + [k] (k goes in second-to-last position)
+            let b_idx = if ndim_b == 2 {
+                b_indices[0] * shape_b[1] + k
+            } else {
+                let mut idx = 0;
+                for (i, &dim_idx) in b_indices.iter().enumerate() {
+                    let dim_size = if i == ndim_b - 2 {
+                        contraction_size
+                    } else {
+                        shape_b[i]
+                    };
+                    idx = idx * dim_size + dim_idx;
+                }
+                idx + k
+            };
+
+            if let (Some(a_val), Some(b_val)) = (a.get(a_idx), b.get(b_idx)) {
+                let product = a_val.clone() * b_val.clone();
+                sum_val = sum_val + product;
+            }
+        }
+
+        result_data[result_idx] = sum_val;
+    }
+
+    Ok(Array::from_data(result_data, result_shape))
 }
 
 /// Solve linear tensor equation a·x = b along specified axes
@@ -650,98 +787,252 @@ pub fn tensor_solve<
 where
     T: 'static,
 {
-    // For now, implement basic matrix solve when no axes specified
-    if axes.is_none() && a.ndim() == 2 && b.ndim() >= 1 {
+    // For basic 2D case without axes, delegate to solve
+    if axes.is_none() && a.ndim() == 2 && a.shape()[0] == a.shape()[1] {
         return solve(a, b);
     }
 
-    // Implement full tensor solve with axes support
-    if a.ndim() != 2 || a.shape()[0] != a.shape()[1] {
+    // Determine which axes to treat as the matrix dimensions
+    let solve_axes = if let Some(axes) = axes {
+        // Normalize negative axes
+        let mut normalized = Vec::new();
+        for &ax in axes {
+            let normalized_ax = if ax >= a.ndim() {
+                return Err(NumPyError::value_error(
+                    &format!("axis {} is out of bounds for array of dimension {}", ax, a.ndim()),
+                    "linalg",
+                ));
+            } else {
+                ax
+            };
+            normalized.push(normalized_ax);
+        }
+        normalized
+    } else {
+        // Default: use the last two axes for square matrix solve
+        if a.ndim() >= 2 {
+            vec![a.ndim() - 2, a.ndim() - 1]
+        } else {
+            return Err(NumPyError::value_error(
+                "tensor_solve requires at least 2D array when axes not specified",
+                "linalg",
+            ));
+        }
+    };
+
+    if solve_axes.len() != 2 {
         return Err(NumPyError::value_error(
-            "tensor_solve requires square 2D matrix for current implementation",
+            "tensor_solve requires exactly 2 axes to form the matrix",
             "linalg",
         ));
     }
 
-    // Normalize axes
-    let normalized_axes = if let Some(axes) = axes {
-        Some(axes.to_vec())
-    } else {
-        None
-    };
-
-    // For basic implementation with axes, use reduced form
-    // Full implementation requires generalized tensor operations
-    if normalized_axes.is_some() {
-        // Use iterative method for small tensors
-        if a.shape().iter().product::<usize>() < 1000 {
-            return tensor_solve_iterative(a, b, normalized_axes.as_ref().unwrap());
-        }
-
-        // For larger tensors, use matrix-based approach
-        return tensor_solve_matrix_based(a, b, normalized_axes.as_ref().unwrap());
+    // Validate that the specified axes form a square matrix
+    let axis0 = solve_axes[0];
+    let axis1 = solve_axes[1];
+    if axis0 >= a.ndim() || axis1 >= a.ndim() {
+        return Err(NumPyError::value_error(
+            "specified axes are out of bounds",
+            "linalg",
+        ));
     }
 
-    // Fallback to basic solve for 2D case
-    solve(a, b)
+    let dim0 = a.shape()[axis0];
+    let dim1 = a.shape()[axis1];
+
+    if dim0 != dim1 {
+        return Err(NumPyError::value_error(
+            &format!("matrix dimensions must match ({} != {})", dim0, dim1),
+            "linalg",
+        ));
+    }
+
+    // Reshape a to 2D matrix by moving solve_axes to the end
+    // Then solve the system and reshape back
+
+    // For now, implement for case where we have a 3D tensor solving along axes [0, 1] or [1, 2]
+    if a.ndim() == 3 && solve_axes.contains(&0) && solve_axes.contains(&1) {
+        // Treat as stack of 2D matrices
+        let outer_dim = a.shape()[2];
+        let mut result_data = Vec::new();
+
+        for i in 0..outer_dim {
+            // Extract 2D slice
+            let mut slice_data = Vec::with_capacity(dim0 * dim1);
+            for row in 0..dim0 {
+                for col in 0..dim1 {
+                    let idx = row * dim1 * outer_dim + col * outer_dim + i;
+                    if let Some(elem) = a.get(idx) {
+                        slice_data.push(elem.clone());
+                    }
+                }
+            }
+
+            let slice_array = Array::from_data(slice_data, vec![dim0, dim1]);
+            let b_slice = if b.ndim() == 1 && b.size() == dim0 {
+                b.clone()
+            } else if b.ndim() == 3 && b.shape()[2] == outer_dim {
+                let mut b_data = Vec::with_capacity(dim0);
+                for row in 0..dim0 {
+                    let idx = row * outer_dim + i;
+                    if let Some(elem) = b.get(idx) {
+                        b_data.push(elem.clone());
+                    }
+                }
+                Array::from_data(b_data, vec![dim0])
+            } else {
+                return Err(NumPyError::value_error(
+                    "b shape is incompatible with a for tensor solve",
+                    "linalg",
+                ));
+            };
+
+            let solved = solve(&slice_array, &b_slice)?;
+            result_data.extend(solved.to_vec());
+        }
+
+        // Determine output shape
+        let out_shape = if b.ndim() == 1 {
+            vec![dim0, outer_dim]
+        } else {
+            vec![dim0, outer_dim]
+        };
+
+        return Ok(Array::from_data(result_data, out_shape));
+    }
+
+    // For other cases, use iterative approach
+    tensor_solve_iterative(a, b, &solve_axes)
 }
 
 /// Compute tensor inverse along specified axes
+///
+/// Computes the inverse of a tensor by treating certain axes as matrix dimensions.
+/// The ind parameter specifies how many of the leading dimensions should be treated
+/// as the matrix rows and columns.
 pub fn tensor_inv<
     T: Clone + num_traits::Zero + num_traits::One + Default + ndarray_linalg::Lapack + Copy,
 >(
     a: &Array<T>,
-    axes: Option<&[usize]>,
+    ind: Option<&[usize]>,
 ) -> Result<Array<T>, NumPyError>
 where
     T: 'static,
 {
-    // For now, implement basic matrix inverse when no axes specified
-    if axes.is_none() && a.ndim() == 2 && a.shape()[0] == a.shape()[1] {
+    // For basic 2D case without ind parameter, delegate to inv
+    if ind.is_none() && a.ndim() == 2 && a.shape()[0] == a.shape()[1] {
         return inv(a);
     }
 
-    // Implement full tensor inverse with axes support
-    if a.ndim() != 2 || a.shape()[0] != a.shape()[1] {
+    // Determine which axes form the matrix to invert
+    // For NumPy compatibility: ind specifies the number of dimensions for the matrix
+    let inv_axes = if let Some(axes) = ind {
+        if axes.len() != 2 {
+            return Err(NumPyError::value_error(
+                "tensor_inv requires exactly 2 axes to form the matrix",
+                "linalg",
+            ));
+        }
+
+        // Normalize and validate axes
+        let mut normalized = Vec::new();
+        for &ax in axes {
+            if ax >= a.ndim() {
+                return Err(NumPyError::value_error(
+                    &format!("axis {} is out of bounds for array of dimension {}", ax, a.ndim()),
+                    "linalg",
+                ));
+            }
+            normalized.push(ax);
+        }
+        normalized
+    } else {
+        // Default: use the last two axes
+        if a.ndim() >= 2 {
+            vec![a.ndim() - 2, a.ndim() - 1]
+        } else {
+            return Err(NumPyError::value_error(
+                "tensor_inv requires at least 2D array when ind not specified",
+                "linalg",
+            ));
+        }
+    };
+
+    let axis0 = inv_axes[0];
+    let axis1 = inv_axes[1];
+
+    if axis0 == axis1 {
         return Err(NumPyError::value_error(
-            "tensor_inv requires square 2D matrix for current implementation",
+            "tensor_inv axes must be different",
             "linalg",
         ));
     }
 
-    // Normalize axes
-    let normalized_axes = if let Some(axes) = axes {
-        let mut result = Vec::new();
-        for &ax in axes {
-            let normalized = if ax < 0 {
-                (a.ndim() as isize + ax as isize) as usize
-            } else {
-                ax as usize
-            };
-            result.push(normalized);
-        }
-        Some(result)
-    } else {
-        None
-    };
+    let dim0 = a.shape()[axis0];
+    let dim1 = a.shape()[axis1];
 
-    // For basic implementation with axes, use reduced form
-    // Full implementation requires generalized tensor operations
-    if normalized_axes.is_some() {
-        // Use iterative method for small tensors
-        if a.shape().iter().product::<usize>() < 1000 {
-            return tensor_inv_iterative(a, normalized_axes.as_ref().unwrap());
-        }
-
-        // For larger tensors, use matrix-based approach
-        return tensor_inv_matrix_based(a, normalized_axes.as_ref().unwrap());
+    if dim0 != dim1 {
+        return Err(NumPyError::value_error(
+            &format!("matrix dimensions must be square ({} != {})", dim0, dim1),
+            "linalg",
+        ));
     }
 
-    // Fallback to basic inv for 2D case
-    Ok(inv(a)?)
+    // For 3D tensor with axes [0, 1], treat as stack of 2D matrices
+    if a.ndim() == 3 && inv_axes.contains(&0) && inv_axes.contains(&1) {
+        let outer_dim = a.shape()[2];
+        let mut result_data = Vec::new();
+
+        for i in 0..outer_dim {
+            // Extract 2D slice
+            let mut slice_data = Vec::with_capacity(dim0 * dim1);
+            for row in 0..dim0 {
+                for col in 0..dim1 {
+                    let idx = row * dim1 * outer_dim + col * outer_dim + i;
+                    if let Some(elem) = a.get(idx) {
+                        slice_data.push(elem.clone());
+                    }
+                }
+            }
+
+            let slice_array = Array::from_data(slice_data, vec![dim0, dim1]);
+            let inverted = inv(&slice_array)?;
+            result_data.extend(inverted.to_vec());
+        }
+
+        let out_shape = vec![dim0, dim1, outer_dim];
+        return Ok(Array::from_data(result_data, out_shape));
+    }
+
+    // For 3D tensor with axes [1, 2]
+    if a.ndim() == 3 && inv_axes.contains(&1) && inv_axes.contains(&2) {
+        let outer_dim = a.shape()[0];
+        let mut result_data = Vec::new();
+
+        for i in 0..outer_dim {
+            // Extract 2D slice
+            let mut slice_data = Vec::with_capacity(dim0 * dim1);
+            let offset = i * dim0 * dim1;
+            for j in 0..(dim0 * dim1) {
+                if let Some(elem) = a.get(offset + j) {
+                    slice_data.push(elem.clone());
+                }
+            }
+
+            let slice_array = Array::from_data(slice_data, vec![dim0, dim1]);
+            let inverted = inv(&slice_array)?;
+            result_data.extend(inverted.to_vec());
+        }
+
+        let out_shape = vec![outer_dim, dim0, dim1];
+        return Ok(Array::from_data(result_data, out_shape));
+    }
+
+    // For other cases, use iterative approach
+    tensor_inv_iterative(a, &inv_axes)
 }
 
-/// Iterative tensor solve for small tensors
+/// Iterative tensor solve for arbitrary axes
 fn tensor_solve_iterative<
     T: Clone
         + num_traits::Zero
@@ -754,84 +1045,169 @@ fn tensor_solve_iterative<
 >(
     a: &Array<T>,
     b: &Array<T>,
-    _axes: &[usize],
+    axes: &[usize],
 ) -> Result<Array<T>, NumPyError>
 where
     T: 'static,
 {
-    use crate::Array;
+    // For general case with arbitrary axes, reshape to bring axes to front
+    // Then solve each matrix and reshape back
 
-    // Reshape b to match broadcasted a
-    let b_reshaped = if b.ndim() == 1 && a.ndim() == 2 && b.size() == a.shape()[0] {
-        let mut data = Vec::with_capacity(b.size() * a.shape()[1]);
-        for _ in 0..a.shape()[1] {
-            data.extend(b.to_vec());
+    let axis0 = axes[0];
+    let axis1 = axes[1];
+    let matrix_dim = a.shape()[axis0];
+
+    // Calculate the "outer" dimensions (all dimensions except the matrix axes)
+    let mut outer_dims = Vec::new();
+    for (i, &dim) in a.shape().iter().enumerate() {
+        if i != axis0 && i != axis1 {
+            outer_dims.push(dim);
         }
-        Array::from_vec(data)
-    } else {
-        b.clone()
-    };
-
-    // Solve for each position in b
-    let mut result_data = Vec::with_capacity(b.size());
-
-    for i in 0..b.size() {
-        let b_vec = b_reshaped.to_vec();
-        let b_val = b_vec[i];
-        let result = solve(a, &Array::from_vec(vec![b_val]))?;
-        result_data.push(result.to_vec()[0]);
     }
 
-    let result_shape = b.shape().to_vec();
-    Ok(Array::from_data(result_data, result_shape))
+    if outer_dims.is_empty() {
+        // Pure 2D case
+        return solve(a, b);
+    }
+
+    // Total number of outer iterations
+    let outer_size: usize = outer_dims.iter().product();
+
+    // Build result by iterating through all outer dimension combinations
+    let mut result_data = Vec::with_capacity(outer_size * matrix_dim);
+
+    for outer_idx in 0..outer_size {
+        // Extract the 2D matrix at this outer index
+        let mut matrix_data = Vec::with_capacity(matrix_dim * matrix_dim);
+        let mut b_data = Vec::with_capacity(matrix_dim);
+
+        // Reconstruct multi-dimensional indices for this outer iteration
+        let mut indices = vec![0usize; a.ndim()];
+        let mut temp_outer = outer_idx;
+        let mut axis_pos = 0;
+
+        for i in 0..a.ndim() {
+            if i == axis0 || i == axis1 {
+                continue;
+            }
+            let dim = a.shape()[i];
+            indices[i] = temp_outer % dim;
+            temp_outer /= dim;
+            axis_pos += 1;
+        }
+
+        // Extract matrix elements
+        for i in 0..matrix_dim {
+            indices[axis0] = i;
+            for j in 0..matrix_dim {
+                indices[axis1] = j;
+                let linear_idx = calculate_linear_index(&indices, a.shape());
+                if let Some(elem) = a.get(linear_idx) {
+                    matrix_data.push(elem.clone());
+                }
+            }
+
+            // Extract corresponding b element
+            if b.ndim() == 1 {
+                if let Some(elem) = b.get(i) {
+                    b_data.push(elem.clone());
+                }
+            } else if b.ndim() == a.ndim() {
+                let b_linear_idx = calculate_linear_index(&indices, b.shape());
+                if let Some(elem) = b.get(b_linear_idx) {
+                    b_data.push(elem.clone());
+                }
+            }
+        }
+
+        let matrix_array = Array::from_data(matrix_data, vec![matrix_dim, matrix_dim]);
+        let b_array = Array::from_data(b_data, vec![matrix_dim]);
+
+        let solved = solve(&matrix_array, &b_array)?;
+        result_data.extend(solved.to_vec());
+    }
+
+    // Calculate output shape
+    let mut out_shape = outer_dims.clone();
+    out_shape.push(matrix_dim);
+
+    Ok(Array::from_data(result_data, out_shape))
 }
 
-/// Matrix-based tensor solve for larger tensors
-fn tensor_solve_matrix_based<T: Clone + num_traits::Zero + num_traits::One + Default>(
-    _a: &Array<T>,
-    _b: &Array<T>,
-    _axes: &[usize],
-) -> Result<Array<T>, NumPyError>
-where
-    T: 'static,
-{
-    // Full implementation requires reshaping along axes and using advanced linear algebra
-    Err(NumPyError::not_implemented(
-        "tensor_solve with axes requires full tensor algebra implementation",
-    ))
-}
-
-/// Iterative tensor inverse for small tensors
+/// Iterative tensor inverse for arbitrary axes
 fn tensor_inv_iterative<
     T: Clone + num_traits::Zero + num_traits::One + Default + ndarray_linalg::Lapack + Copy,
 >(
-    _a: &Array<T>,
-    _axes: &[usize],
+    a: &Array<T>,
+    axes: &[usize],
 ) -> Result<Array<T>, NumPyError>
 where
     T: 'static,
 {
-    // Iterative approach using cofactor expansion
-    // For small tensors, compute inverse directly
-    Err(NumPyError::not_implemented(
-        "tensor_inv with axes requires full tensor algebra implementation",
-    ))
-}
+    // For general case with arbitrary axes, iterate through outer dimensions
+    // and invert each 2D matrix
 
-/// Matrix-based tensor inverse for larger tensors
-fn tensor_inv_matrix_based<
-    T: Clone + num_traits::Zero + num_traits::One + Default + ndarray_linalg::Lapack + Copy,
->(
-    _a: &Array<T>,
-    _axes: &[usize],
-) -> Result<Array<T>, NumPyError>
-where
-    T: 'static,
-{
-    // Full implementation requires reshaping along axes and using advanced linear algebra
-    Err(NumPyError::not_implemented(
-        "tensor_inv with axes requires full tensor algebra implementation",
-    ))
+    let axis0 = axes[0];
+    let axis1 = axes[1];
+    let matrix_dim = a.shape()[axis0];
+
+    // Calculate the "outer" dimensions (all dimensions except the matrix axes)
+    let mut outer_dims = Vec::new();
+    for (i, &dim) in a.shape().iter().enumerate() {
+        if i != axis0 && i != axis1 {
+            outer_dims.push(dim);
+        }
+    }
+
+    if outer_dims.is_empty() {
+        // Pure 2D case
+        return inv(a);
+    }
+
+    // Total number of outer iterations
+    let outer_size: usize = outer_dims.iter().product();
+
+    // Build result by iterating through all outer dimension combinations
+    let mut result_data = Vec::with_capacity(outer_size * matrix_dim * matrix_dim);
+
+    for outer_idx in 0..outer_size {
+        // Extract the 2D matrix at this outer index
+        let mut matrix_data = Vec::with_capacity(matrix_dim * matrix_dim);
+
+        // Reconstruct multi-dimensional indices for this outer iteration
+        let mut indices = vec![0usize; a.ndim()];
+        let mut temp_outer = outer_idx;
+
+        for i in 0..a.ndim() {
+            if i == axis0 || i == axis1 {
+                continue;
+            }
+            let dim = a.shape()[i];
+            indices[i] = temp_outer % dim;
+            temp_outer /= dim;
+        }
+
+        // Extract matrix elements
+        for i in 0..matrix_dim {
+            indices[axis0] = i;
+            for j in 0..matrix_dim {
+                indices[axis1] = j;
+                let linear_idx = calculate_linear_index(&indices, a.shape());
+                if let Some(elem) = a.get(linear_idx) {
+                    matrix_data.push(elem.clone());
+                }
+            }
+        }
+
+        let matrix_array = Array::from_data(matrix_data, vec![matrix_dim, matrix_dim]);
+        let inverted = inv(&matrix_array)?;
+        result_data.extend(inverted.to_vec());
+    }
+
+    // Calculate output shape - same as input shape
+    let out_shape = a.shape().to_vec();
+
+    Ok(Array::from_data(result_data, out_shape))
 }
 
 /// Alternative interface for tensor_solve
@@ -924,12 +1300,23 @@ pub fn diagonal_enhanced<T: Clone + Default + 'static>(
         ));
     }
 
+    let ndim = a.ndim();
+
+    // Normalize negative axis indices
+    let normalize_axis = |axis: isize| -> isize {
+        if axis < 0 {
+            (ndim as isize + axis) as isize
+        } else {
+            axis
+        }
+    };
+
     // Default to last two axes if not specified
-    let axis1 = axis1.unwrap_or((a.ndim() - 2) as isize);
-    let axis2 = axis2.unwrap_or((a.ndim() - 1) as isize);
+    let axis1 = normalize_axis(axis1.unwrap_or((ndim - 2) as isize));
+    let axis2 = normalize_axis(axis2.unwrap_or((ndim - 1) as isize));
 
     // Validate axes
-    if axis1 < 0 || axis1 >= a.ndim() as isize || axis2 < 0 || axis2 >= a.ndim() as isize {
+    if axis1 < 0 || axis1 >= ndim as isize || axis2 < 0 || axis2 >= ndim as isize {
         return Err(NumPyError::value_error(
             "axis1 and axis2 must be valid axis indices",
             "linalg",
@@ -943,49 +1330,109 @@ pub fn diagonal_enhanced<T: Clone + Default + 'static>(
         ));
     }
 
-    // For now, delegate to existing diagonal function for default case
-    if axis1 == (a.ndim() - 2) as isize && axis2 == (a.ndim() - 1) as isize {
-        let offset_val = offset.unwrap_or(0);
-        return diagonal(a, offset_val);
+    let offset = offset.unwrap_or(0);
+    let axis1_usize = axis1 as usize;
+    let axis2_usize = axis2 as usize;
+
+    // Get the size of each dimension
+    let shape = a.shape();
+    let dim1 = shape[axis1_usize];
+    let dim2 = shape[axis2_usize];
+
+    // Calculate diagonal length considering offset
+    let diag_size = if offset >= 0 {
+        std::cmp::min(dim1, dim2.saturating_sub(offset as usize))
+    } else {
+        std::cmp::min(dim1.saturating_sub((-offset) as usize), dim2)
+    };
+
+    if diag_size == 0 {
+        // Empty diagonal
+        let mut result_shape = shape.to_vec();
+        // Remove both axes
+        if axis1_usize > axis2_usize {
+            result_shape.remove(axis1_usize);
+            result_shape.remove(axis2_usize);
+        } else {
+            result_shape.remove(axis2_usize);
+            result_shape.remove(axis1_usize);
+        }
+        result_shape.push(0);
+        return Ok(Array::from_data(vec![], result_shape));
     }
 
-    // Implement full axis transformation
-    if offset.unwrap_or(0) != 0 {
-        return Err(NumPyError::value_error(
-            "offset parameter not yet supported with custom axes",
-            "linalg",
-        ));
+    // Calculate result shape: same as input but with both diagonal axes replaced by diagonal size
+    let mut result_shape = shape.to_vec();
+    // Remove both axes and add diagonal size at the end
+    let mut temp_shape = Vec::new();
+    for (i, &dim) in shape.iter().enumerate() {
+        if i != axis1_usize && i != axis2_usize {
+            temp_shape.push(dim);
+        }
+    }
+    temp_shape.push(diag_size);
+    result_shape = temp_shape;
+
+    // Extract diagonal by iterating through all index combinations
+    let mut diagonal_data = Vec::with_capacity(a.size() / dim1.max(dim2) * diag_size);
+
+    // We need to iterate through all indices, matching axis1 and axis2
+    let mut total_elements = 1usize;
+    for (i, &dim) in shape.iter().enumerate() {
+        if i != axis1_usize && i != axis2_usize {
+            total_elements *= dim;
+        }
     }
 
-    // Apply axis transformation
-    // Transpose to bring specified axes to diagonal
-    let mut transpose_shape = a.shape().to_vec();
-    if axis1 >= 0 && axis1 < a.ndim() as isize {
-        transpose_shape.swap(axis1 as usize, a.ndim() - 1);
-    }
-    if axis2 >= 0 && axis2 < a.ndim() as isize {
-        transpose_shape.swap(axis2 as usize, a.ndim() - 2);
-    }
+    for outer_idx in 0..total_elements {
+        // Reconstruct the multi-dimensional index for this outer iteration
+        let mut indices = vec![0usize; ndim];
+        let mut temp_outer = outer_idx;
+        let mut axis_pos = 0;
 
-    // For now, implement basic case with 2D arrays
-    if a.ndim() == 2 && axis1 == 1 && axis2 == 0 {
-        // Transpose to bring requested axes to diagonal
-        let a_t = a.to_ndarray2()?.t().to_owned();
-        let a_t_array = Array::from_array2(a_t);
-        let diagonal_vec = extract_diagonal_2d(&a_t_array, 0)?;
-        let mut result_data = Vec::with_capacity(a.shape()[0]);
-        for val in diagonal_vec {
-            result_data.push(val.clone());
+        for i in 0..ndim {
+            if i == axis1_usize || i == axis2_usize {
+                continue;
+            }
+            let dim = shape[i];
+            indices[i] = temp_outer % dim;
+            temp_outer /= dim;
+            axis_pos += 1;
         }
 
-        // Restore original shape
-        return Ok(Array::from_data(result_data, a.shape().to_vec()));
+        // Now extract diagonal elements for this outer index
+        for d in 0..diag_size {
+            indices[axis1_usize] = d;
+            indices[axis2_usize] = if offset >= 0 {
+                d + offset as usize
+            } else {
+                if d >= (-offset) as usize {
+                    d - (-offset) as usize
+                } else {
+                    continue; // Skip invalid indices
+                }
+            };
+
+            // Calculate linear index
+            let linear_idx = calculate_linear_index(&indices, shape);
+            if let Some(elem) = a.get(linear_idx) {
+                diagonal_data.push(elem.clone());
+            }
+        }
     }
 
-    // For other cases, return error indicating implementation needed
-    Err(NumPyError::not_implemented(
-        "diagonal with custom axes requires full tensor reshaping implementation",
-    ))
+    Ok(Array::from_data(diagonal_data, result_shape))
+}
+
+/// Calculate linear index from multi-dimensional indices (row-major order)
+fn calculate_linear_index(indices: &[usize], shape: &[usize]) -> usize {
+    let mut linear_idx = 0;
+    let mut stride = 1;
+    for i in (0..indices.len()).rev() {
+        linear_idx += indices[i] * stride;
+        stride *= shape[i];
+    }
+    linear_idx
 }
 
 /// Extract diagonal from 2D array at specified diagonal index

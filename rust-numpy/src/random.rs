@@ -11,12 +11,13 @@
 //! including various distributions, generators, and sampling methods.
 
 use crate::array::Array;
-use crate::dtype::{Dtype, DtypeKind};
+use crate::dtype::Dtype;
 use crate::error::NumPyError;
+use rand::distributions::Distribution;
 use rand::prelude::*;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use rand_distr::uniform::SampleUniform;
-use rand_distr::{Beta, Binomial, ChiSquared, Gamma, Gumbel, LogNormal, Normal, Poisson};
+use rand_distr::{Beta, Binomial, ChiSquared, Exp, Gamma, Gumbel, LogNormal, Normal, Poisson};
 use std::cell::RefCell;
 
 /// Random number generator interface
@@ -24,22 +25,22 @@ pub trait RandomGenerator: Rng + Send + Sync + 'static {
     /// Generate random numbers with given shape
     fn random<T>(&mut self, shape: &[usize], dtype: Dtype) -> Result<Array<T>, NumPyError>
     where
-        T: Clone;
+        T: Clone + Default + 'static;
 
     /// Generate integers in range
     fn randint<T>(&mut self, low: T, high: T, shape: &[usize]) -> Result<Array<T>, NumPyError>
     where
-        T: Clone + PartialOrd;
+        T: Clone + PartialOrd + SampleUniform + Default + 'static;
 
     /// Generate uniform random numbers
     fn uniform<T>(&mut self, low: T, high: T, shape: &[usize]) -> Result<Array<T>, NumPyError>
     where
-        T: Clone + PartialOrd;
+        T: Clone + PartialOrd + SampleUniform + Default + 'static;
 
     /// Generate normal random numbers
     fn normal<T>(&mut self, mean: T, std: T, shape: &[usize]) -> Result<Array<T>, NumPyError>
     where
-        T: Clone;
+        T: Clone + PartialOrd + SampleUniform + Default + 'static;
 }
 
 /// Default random number generator using StdRng
@@ -84,40 +85,40 @@ impl rand::RngCore for DefaultGenerator {
 impl RandomGenerator for DefaultGenerator {
     fn random<T>(&mut self, shape: &[usize], dtype: Dtype) -> Result<Array<T>, NumPyError>
     where
-        T: Clone,
+        T: Clone + Default + 'static,
     {
         let size = shape.iter().product();
         let mut data = Vec::with_capacity(size);
 
-        match dtype.kind() {
-            DtypeKind::Float32 => {
+        match dtype {
+            Dtype::Float32 { .. } => {
                 for _ in 0..size {
                     let val: f32 = self.rng.gen();
-                    data.push(unsafe { std::mem::transmute(val) });
+                    data.push(unsafe { std::mem::transmute_copy(&val) });
                 }
             }
-            DtypeKind::Float64 => {
+            Dtype::Float64 { .. } => {
                 for _ in 0..size {
                     let val: f64 = self.rng.gen();
-                    data.push(unsafe { std::mem::transmute(val) });
+                    data.push(unsafe { std::mem::transmute_copy(&val) });
                 }
             }
-            DtypeKind::Int32 => {
+            Dtype::Int32 { .. } => {
                 for _ in 0..size {
                     let val: i32 = self.rng.gen();
-                    data.push(unsafe { std::mem::transmute(val) });
+                    data.push(unsafe { std::mem::transmute_copy(&val) });
                 }
             }
-            DtypeKind::Int64 => {
+            Dtype::Int64 { .. } => {
                 for _ in 0..size {
                     let val: i64 = self.rng.gen();
-                    data.push(unsafe { std::mem::transmute(val) });
+                    data.push(unsafe { std::mem::transmute_copy(&val) });
                 }
             }
-            DtypeKind::Bool => {
+            Dtype::Bool => {
                 for _ in 0..size {
                     let val: bool = self.rng.gen();
-                    data.push(unsafe { std::mem::transmute(val) });
+                    data.push(unsafe { std::mem::transmute_copy(&val) });
                 }
             }
             _ => {
@@ -132,13 +133,13 @@ impl RandomGenerator for DefaultGenerator {
 
     fn randint<T>(&mut self, low: T, high: T, shape: &[usize]) -> Result<Array<T>, NumPyError>
     where
-        T: Clone + PartialOrd,
+        T: Clone + PartialOrd + SampleUniform + Default + 'static,
     {
         let size = shape.iter().product();
         let mut data = Vec::with_capacity(size);
 
         for _ in 0..size {
-            data.push(self.rng.gen_range(low..high));
+            data.push(self.rng.gen_range(low.clone()..high.clone()));
         }
 
         Ok(Array::from_data(data, shape.to_vec()))
@@ -146,45 +147,48 @@ impl RandomGenerator for DefaultGenerator {
 
     fn uniform<T>(&mut self, low: T, high: T, shape: &[usize]) -> Result<Array<T>, NumPyError>
     where
-        T: Clone + PartialOrd,
+        T: Clone + PartialOrd + SampleUniform + Default + 'static,
     {
         let size = shape.iter().product();
         let mut data = Vec::with_capacity(size);
 
         for _ in 0..size {
-            data.push(self.rng.gen_range(low..high));
+            data.push(self.rng.gen_range(low.clone()..high.clone()));
         }
 
         Ok(Array::from_data(data, shape.to_vec()))
     }
 
-    fn normal<T>(&mut self, mean: T, std: T, shape: &[usize]) -> Result<Array<T>, NumPyError>
+    fn normal<T>(&mut self, mean: T, std_dev: T, shape: &[usize]) -> Result<Array<T>, NumPyError>
     where
-        T: Clone,
+        T: Clone + PartialOrd + SampleUniform + Default + 'static,
     {
         let size = shape.iter().product();
         let mut data = Vec::with_capacity(size);
 
         for _ in 0..size {
-            data.push(self.rng.gen_range(mean..std));
+            data.push(self.rng.gen_range(mean.clone()..std_dev.clone()));
         }
 
         Ok(Array::from_data(data, shape.to_vec()))
     }
 }
 
-/// Thread-local random generator instance
+// Thread-local random generator instance
 thread_local! {
     static DEFAULT_RNG: RefCell<DefaultGenerator> = RefCell::new(DefaultGenerator::new());
 }
 
 /// Generate random array with default generator
-pub fn random<T: Clone>(shape: &[usize], dtype: Dtype) -> Result<Array<T>, NumPyError> {
+pub fn random<T: Clone + Default + 'static>(
+    shape: &[usize],
+    dtype: Dtype,
+) -> Result<Array<T>, NumPyError> {
     DEFAULT_RNG.with(|rng| rng.borrow_mut().random(shape, dtype))
 }
 
 /// Generate random integers
-pub fn randint<T: Clone + PartialOrd>(
+pub fn randint<T: Clone + PartialOrd + SampleUniform + Default + 'static>(
     low: T,
     high: T,
     shape: &[usize],
@@ -193,7 +197,7 @@ pub fn randint<T: Clone + PartialOrd>(
 }
 
 /// Generate uniform random numbers
-pub fn uniform<T: Clone + PartialOrd>(
+pub fn uniform<T: Clone + PartialOrd + SampleUniform + Default + 'static>(
     low: T,
     high: T,
     shape: &[usize],
@@ -202,12 +206,18 @@ pub fn uniform<T: Clone + PartialOrd>(
 }
 
 /// Generate normal random numbers
-pub fn normal<T: Clone>(mean: T, std: T, shape: &[usize]) -> Result<Array<T>, NumPyError> {
+pub fn normal<T: Clone + PartialOrd + SampleUniform + Default + 'static>(
+    mean: T,
+    std: T,
+    shape: &[usize],
+) -> Result<Array<T>, NumPyError> {
     DEFAULT_RNG.with(|rng| rng.borrow_mut().normal(mean, std, shape))
 }
 
 /// Generate standard normal random numbers (mean=0, std=1)
-pub fn standard_normal<T: Clone + From<f64>>(shape: &[usize]) -> Result<Array<T>, NumPyError> {
+pub fn standard_normal<T: Clone + From<f64> + PartialOrd + SampleUniform + Default + 'static>(
+    shape: &[usize],
+) -> Result<Array<T>, NumPyError> {
     normal(T::from(0.0), T::from(1.0), shape)
 }
 
@@ -222,7 +232,10 @@ pub fn permutation(n: usize) -> Result<Array<usize>, NumPyError> {
 }
 
 /// Random choice from array
-pub fn choice<T: Clone>(a: &Array<T>, size: usize) -> Result<Array<T>, NumPyError> {
+pub fn choice<T: Clone + Default + 'static>(
+    a: &Array<T>,
+    size: usize,
+) -> Result<Array<T>, NumPyError> {
     let n = a.size();
     if n == 0 {
         return Err(NumPyError::invalid_value("Cannot choose from empty array"));
@@ -245,10 +258,16 @@ pub fn choice<T: Clone>(a: &Array<T>, size: usize) -> Result<Array<T>, NumPyErro
 }
 
 /// Random sample without replacement
-pub fn sample<T: Clone>(a: &Array<T>, k: usize) -> Result<Array<T>, NumPyError> {
+pub fn sample<T: Clone + Default + 'static>(
+    a: &Array<T>,
+    k: usize,
+) -> Result<Array<T>, NumPyError> {
     let n = a.size();
     if k > n {
-        return Err(NumPyError::value_error("Sample size cannot be larger than array size",  ));
+        return Err(NumPyError::value_error(
+            "Sample size cannot be larger than array size",
+            "sample",
+        ));
     }
 
     let mut indices: Vec<usize> = (0..n).collect();
@@ -302,7 +321,7 @@ pub fn seed(seed: u64) {
 /// Get random generator state
 pub fn get_state() -> u64 {
     use rand::RngCore;
-    DEFAULT_RNG.with(|rng| rng.borrow().rng.next_u64())
+    DEFAULT_RNG.with(|rng| rng.borrow_mut().rng.next_u64())
 }
 
 /// Set random generator state
@@ -327,14 +346,14 @@ pub fn set_state(state: u64) {
 /// Array of drawn samples
 pub fn binomial<T>(n: isize, p: T, size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
 where
-    T: Clone + Into<f64> + From<f64> + 'static,
+    T: Clone + Into<f64> + From<f64> + Default + 'static,
 {
     if n < 0 {
         return Err(NumPyError::invalid_value("n must be non-negative"));
     }
     let p_f64 = p.into();
     if p_f64 < 0.0 || p_f64 > 1.0 {
-        return Err(NumPyError::value_error("p must be in [0, 1]"));
+        return Err(NumPyError::value_error("p must be in [0, 1]", "binomial"));
     }
 
     let shape = size.unwrap_or(&[1]);
@@ -343,14 +362,15 @@ where
 
     DEFAULT_RNG.with(|rng| {
         let mut rng = rng.borrow_mut();
-        let dist =
-            Binomial::new(n as u64, p_f64).map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
+        let dist = Binomial::new(n as u64, p_f64)
+            .map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
 
         for _ in 0..total_size {
             let sample = dist.sample(&mut rng.rng) as f64;
             data.push(T::from(sample));
         }
-    });
+        Ok::<(), NumPyError>(())
+    })?;
 
     Ok(Array::from_data(data, shape.to_vec()))
 }
@@ -369,7 +389,7 @@ where
 /// Array of drawn samples
 pub fn poisson<T>(lam: T, size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
 where
-    T: Clone + Into<f64> + From<f64> + 'static,
+    T: Clone + Into<f64> + From<f64> + Default + 'static,
 {
     let lam_f64 = lam.into();
     if lam_f64 < 0.0 {
@@ -388,7 +408,8 @@ where
             let sample = dist.sample(&mut rng.rng) as f64;
             data.push(T::from(sample));
         }
-    });
+        Ok::<(), NumPyError>(())
+    })?;
 
     Ok(Array::from_data(data, shape.to_vec()))
 }
@@ -407,7 +428,7 @@ where
 /// Array of drawn samples
 pub fn exponential<T>(scale: T, size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
 where
-    T: Clone + Into<f64> + From<f64> + 'static,
+    T: Clone + Into<f64> + From<f64> + Default + 'static,
 {
     let scale_f64 = scale.into();
     if scale_f64 <= 0.0 {
@@ -420,14 +441,15 @@ where
 
     DEFAULT_RNG.with(|rng| {
         let mut rng = rng.borrow_mut();
-        let dist = Exponential::new(1.0 / scale_f64)
-            .map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
+        let dist =
+            Exp::new(1.0 / scale_f64).map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
 
         for _ in 0..total_size {
             let sample = dist.sample(&mut rng.rng);
-            data.push(T::from(sample * scale_f64));
+            data.push(T::from(sample * scale_f64)); // Wait, Exp(lambda) has mean 1/lambda. numpy exponential(scale) has mean scale. So lambda = 1/scale.
         }
-    });
+        Ok::<(), NumPyError>(())
+    })?;
 
     Ok(Array::from_data(data, shape.to_vec()))
 }
@@ -447,7 +469,7 @@ where
 /// Array of drawn samples
 pub fn gamma<T>(shape: T, scale: T, size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
 where
-    T: Clone + Into<f64> + From<f64> + 'static,
+    T: Clone + Into<f64> + From<f64> + Default + 'static,
 {
     let shape_f64 = shape.into();
     let scale_f64 = scale.into();
@@ -472,7 +494,8 @@ where
             let sample = dist.sample(&mut rng.rng);
             data.push(T::from(sample));
         }
-    });
+        Ok::<(), NumPyError>(())
+    })?;
 
     Ok(Array::from_data(data, shape_arr.to_vec()))
 }
@@ -492,7 +515,7 @@ where
 /// Array of drawn samples
 pub fn beta<T>(a: T, b: T, size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
 where
-    T: Clone + Into<f64> + From<f64> + 'static,
+    T: Clone + Into<f64> + From<f64> + Default + 'static,
 {
     let a_f64 = a.into();
     let b_f64 = b.into();
@@ -510,13 +533,15 @@ where
 
     DEFAULT_RNG.with(|rng| {
         let mut rng = rng.borrow_mut();
-        let dist = Beta::new(a_f64, b_f64).map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
+        let dist =
+            Beta::new(a_f64, b_f64).map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
 
         for _ in 0..total_size {
             let sample = dist.sample(&mut rng.rng);
             data.push(T::from(sample));
         }
-    });
+        Ok::<(), NumPyError>(())
+    })?;
 
     Ok(Array::from_data(data, shape.to_vec()))
 }
@@ -535,11 +560,14 @@ where
 /// Array of drawn samples
 pub fn chisquare<T>(df: T, size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
 where
-    T: Clone + Into<f64> + From<f64> + 'static,
+    T: Clone + Into<f64> + From<f64> + Default + 'static,
 {
     let df_f64 = df.into();
     if df_f64 <= 0.0 {
-        return Err(NumPyError::value_error("degrees of freedom must be positive",  ));
+        return Err(NumPyError::value_error(
+            "degrees of freedom must be positive",
+            "chisquare",
+        ));
     }
 
     let shape = size.unwrap_or(&[1]);
@@ -548,13 +576,15 @@ where
 
     DEFAULT_RNG.with(|rng| {
         let mut rng = rng.borrow_mut();
-        let dist = ChiSquared::new(df_f64).map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
+        let dist =
+            ChiSquared::new(df_f64).map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
 
         for _ in 0..total_size {
             let sample = dist.sample(&mut rng.rng);
             data.push(T::from(sample));
         }
-    });
+        Ok::<(), NumPyError>(())
+    })?;
 
     Ok(Array::from_data(data, shape.to_vec()))
 }
@@ -574,7 +604,7 @@ where
 /// Array of drawn samples
 pub fn gumbel<T>(loc: T, scale: T, size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
 where
-    T: Clone + Into<f64> + From<f64> + 'static,
+    T: Clone + Into<f64> + From<f64> + Default + 'static,
 {
     let loc_f64 = loc.into();
     let scale_f64 = scale.into();
@@ -589,14 +619,15 @@ where
 
     DEFAULT_RNG.with(|rng| {
         let mut rng = rng.borrow_mut();
-        let dist =
-            Gumbel::new(loc_f64, scale_f64).map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
+        let dist = Gumbel::new(loc_f64, scale_f64)
+            .map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
 
         for _ in 0..total_size {
             let sample = dist.sample(&mut rng.rng);
             data.push(T::from(sample));
         }
-    });
+        Ok::<(), NumPyError>(())
+    })?;
 
     Ok(Array::from_data(data, shape.to_vec()))
 }
@@ -616,7 +647,7 @@ where
 /// Array of drawn samples
 pub fn laplace<T>(loc: T, scale: T, size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
 where
-    T: Clone + Into<f64> + From<f64> + 'static,
+    T: Clone + Into<f64> + From<f64> + Default + 'static,
 {
     let loc_f64 = loc.into();
     let scale_f64 = scale.into();
@@ -631,14 +662,14 @@ where
 
     DEFAULT_RNG.with(|rng| {
         let mut rng = rng.borrow_mut();
-        let dist = Laplace::new(loc_f64, scale_f64)
-            .map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
 
         for _ in 0..total_size {
-            let sample = dist.sample(&mut rng.rng);
+            let u: f64 = rng.rng.gen::<f64>() - 0.5;
+            let sample = loc_f64 - scale_f64 * u.signum() * (1.0 - 2.0 * u.abs()).ln();
             data.push(T::from(sample));
         }
-    });
+        Ok::<(), NumPyError>(())
+    })?;
 
     Ok(Array::from_data(data, shape.to_vec()))
 }
@@ -658,7 +689,7 @@ where
 /// Array of drawn samples
 pub fn lognormal<T>(mean: T, sigma: T, size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
 where
-    T: Clone + Into<f64> + From<f64> + 'static,
+    T: Clone + Into<f64> + From<f64> + Default + 'static,
 {
     let mean_f64 = mean.into();
     let sigma_f64 = sigma.into();
@@ -680,7 +711,8 @@ where
             let sample = dist.sample(&mut rng.rng);
             data.push(T::from(sample));
         }
-    });
+        Ok::<(), NumPyError>(())
+    })?;
 
     Ok(Array::from_data(data, shape.to_vec()))
 }
@@ -704,7 +736,7 @@ pub fn multinomial<T>(
     size: Option<&[usize]>,
 ) -> Result<Array<T>, NumPyError>
 where
-    T: Clone + Into<f64> + From<f64> + 'static,
+    T: Clone + Into<f64> + From<f64> + Default + 'static,
 {
     if n < 0 {
         return Err(NumPyError::invalid_value("n must be non-negative"));
@@ -715,7 +747,10 @@ where
 
     // Check probabilities are valid
     if pvals_f64.iter().any(|&p| p < 0.0) {
-        return Err(NumPyError::value_error("probabilities must be non-negative",  ));
+        return Err(NumPyError::value_error(
+            "probabilities must be non-negative",
+            "multinomial",
+        ));
     }
 
     let sum: f64 = pvals_f64.iter().sum();
@@ -766,7 +801,8 @@ where
                 data.push(T::from(result as f64));
             }
         }
-    });
+        Ok::<(), NumPyError>(())
+    })?;
 
     Ok(Array::from_data(data, output_shape))
 }
@@ -785,13 +821,15 @@ where
 /// Array of drawn samples
 pub fn dirichlet<T>(alpha: &Array<T>, size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
 where
-    T: Clone + Into<f64> + From<f64> + 'static,
+    T: Clone + Into<f64> + From<f64> + Default + 'static,
 {
     let alpha_f64: Vec<f64> = alpha.to_vec().into_iter().map(|x| x.into()).collect();
 
     // Check concentration parameters are valid
     if alpha_f64.iter().any(|&a| a <= 0.0) {
-        return Err(NumPyError::invalid_value("alpha parameters must be positive"));
+        return Err(NumPyError::invalid_value(
+            "alpha parameters must be positive",
+        ));
     }
 
     let k = alpha_f64.len();
@@ -827,7 +865,8 @@ where
                 data.push(T::from(sample / sum));
             }
         }
-    });
+        Ok::<(), NumPyError>(())
+    })?;
 
     Ok(Array::from_data(data, output_shape))
 }
@@ -839,7 +878,7 @@ where
 /// Legacy function equivalent to numpy.random.rand
 pub fn rand<T>(d0: usize, d1: Option<usize>) -> Result<Array<T>, NumPyError>
 where
-    T: Clone + Into<f64> + From<f64> + 'static,
+    T: Clone + Into<f64> + From<f64> + PartialOrd + Default + 'static,
 {
     let shape = if let Some(d1_val) = d1 {
         vec![d0, d1_val]
@@ -866,7 +905,7 @@ where
 /// Legacy function equivalent to numpy.random.randn
 pub fn randn<T>(d0: usize, d1: Option<usize>) -> Result<Array<T>, NumPyError>
 where
-    T: Clone + Into<f64> + From<f64> + 'static,
+    T: Clone + Into<f64> + From<f64> + Default + 'static,
 {
     let shape = if let Some(d1_val) = d1 {
         vec![d0, d1_val]
@@ -885,7 +924,8 @@ where
             let sample = dist.sample(&mut rng.rng);
             data.push(T::from(sample));
         }
-    });
+        Ok::<(), NumPyError>(())
+    })?;
 
     Ok(Array::from_data(data, shape))
 }
@@ -899,9 +939,9 @@ pub fn random_integers<T>(
     size: Option<&[usize]>,
 ) -> Result<Array<T>, NumPyError>
 where
-    T: Clone + PartialOrd + SampleUniform + 'static,
+    T: Clone + PartialOrd + SampleUniform + Default + num_traits::NumCast + 'static,
 {
-    let high_val = high.unwrap_or(T::from(100)); // Default high = 100
+    let high_val = high.unwrap_or(num_traits::cast::NumCast::from(100).unwrap()); // Default high = 100
     let shape = size.unwrap_or(&[1]);
     randint(low, high_val, shape)
 }
@@ -911,7 +951,7 @@ where
 /// Legacy function equivalent to random_sample
 pub fn random_sample<T>(size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
 where
-    T: Clone + Into<f64> + From<f64> + 'static,
+    T: Clone + Into<f64> + From<f64> + PartialOrd + SampleUniform + Default + 'static,
 {
     let shape = size.unwrap_or(&[1]);
     uniform(T::from(0.0), T::from(1.0), shape)
@@ -922,7 +962,7 @@ where
 /// Legacy function equivalent to numpy.random.ranf
 pub fn ranf<T>(size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
 where
-    T: Clone + Into<f64> + From<f64> + 'static,
+    T: Clone + Into<f64> + From<f64> + PartialOrd + SampleUniform + Default + 'static,
 {
     random_sample(size)
 }
@@ -932,7 +972,7 @@ where
 /// Legacy function for compatibility
 pub fn legacy_sample<T>(size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
 where
-    T: Clone + Into<f64> + From<f64> + 'static,
+    T: Clone + Into<f64> + From<f64> + PartialOrd + SampleUniform + Default + 'static,
 {
     random_sample(size)
 }
@@ -944,21 +984,22 @@ impl RandomDist {
     /// Exponential distribution
     pub fn exponential<T>(scale: T, shape: &[usize]) -> Result<Array<T>, NumPyError>
     where
-        T: Clone + From<f64>,
+        T: Clone + From<f64> + Into<f64> + Default + 'static,
     {
         let size = shape.iter().product();
         let mut data = Vec::with_capacity(size);
 
         DEFAULT_RNG.with(|rng| {
             let mut rng = rng.borrow_mut();
-            let scale_f64 = scale.clone().into();
-            let dist = Exponential::new(1.0 / scale_f64)
-                .map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
+            let scale_f64: f64 = scale.clone().into();
+            let dist =
+                Exp::new(1.0 / scale_f64).map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
             for _ in 0..size {
                 let sample = dist.sample(&mut rng.rng);
                 data.push(T::from(sample * scale_f64));
             }
-        });
+            Ok::<(), NumPyError>(())
+        })?;
 
         Ok(Array::from_data(data, shape.to_vec()))
     }
@@ -966,7 +1007,7 @@ impl RandomDist {
     /// Poisson distribution
     pub fn poisson<T>(lambda: T, shape: &[usize]) -> Result<Array<T>, NumPyError>
     where
-        T: Clone + From<f64> + Into<f64>,
+        T: Clone + From<f64> + Into<f64> + Default + 'static,
     {
         let size = shape.iter().product();
         let mut data = Vec::with_capacity(size);
@@ -980,7 +1021,8 @@ impl RandomDist {
                 let sample = dist.sample(&mut rng.rng) as f64;
                 data.push(T::from(sample));
             }
-        });
+            Ok::<(), NumPyError>(())
+        })?;
 
         Ok(Array::from_data(data, shape.to_vec()))
     }
@@ -988,7 +1030,7 @@ impl RandomDist {
     /// Binomial distribution
     pub fn binomial<T>(n: T, p: T, shape: &[usize]) -> Result<Array<T>, NumPyError>
     where
-        T: Clone + From<f64> + Into<f64>,
+        T: Clone + From<f64> + Into<f64> + Default + 'static,
     {
         let size = shape.iter().product();
         let mut data = Vec::with_capacity(size);
@@ -1003,7 +1045,8 @@ impl RandomDist {
                 let sample = dist.sample(&mut rng.rng) as f64;
                 data.push(T::from(sample));
             }
-        });
+            Ok::<(), NumPyError>(())
+        })?;
 
         Ok(Array::from_data(data, shape.to_vec()))
     }
@@ -1011,7 +1054,7 @@ impl RandomDist {
     /// Gamma distribution
     pub fn gamma<T>(shape_param: T, scale: T, array_shape: &[usize]) -> Result<Array<T>, NumPyError>
     where
-        T: Clone + From<f64> + Into<f64>,
+        T: Clone + From<f64> + Into<f64> + Default + 'static,
     {
         let size = array_shape.iter().product();
         let mut data = Vec::with_capacity(size);
@@ -1026,7 +1069,10 @@ impl RandomDist {
                 let sample = dist.sample(&mut rng.rng);
                 data.push(T::from(sample));
             }
-        });
+            Ok::<(), NumPyError>(())
+        })?; // Add error check
+             // Note: The original code logic was missing ? or handling for with error.
+             // Assuming with returns Result, we need to propagate it.
 
         Ok(Array::from_data(data, array_shape.to_vec()))
     }
@@ -1034,7 +1080,7 @@ impl RandomDist {
     /// Beta distribution
     pub fn beta<T>(alpha: T, beta_param: T, shape: &[usize]) -> Result<Array<T>, NumPyError>
     where
-        T: Clone + From<f64> + Into<f64>,
+        T: Clone + From<f64> + Into<f64> + Default + 'static,
     {
         let size = shape.iter().product();
         let mut data = Vec::with_capacity(size);
@@ -1049,7 +1095,8 @@ impl RandomDist {
                 let sample = dist.sample(&mut rng.rng);
                 data.push(T::from(sample));
             }
-        });
+            Ok::<(), NumPyError>(())
+        })?;
 
         Ok(Array::from_data(data, shape.to_vec()))
     }
@@ -1067,7 +1114,7 @@ impl RandomUtils {
         params: &[f64],
     ) -> Result<Array<T>, NumPyError>
     where
-        T: Clone + From<f64>,
+        T: Clone + From<f64> + Into<f64> + PartialOrd + SampleUniform + Default + 'static,
     {
         match distribution {
             "uniform" => uniform(T::from(0.0), T::from(1.0), shape),
@@ -1081,11 +1128,10 @@ impl RandomUtils {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::array::Array;
 
     #[test]
     fn test_random_generation() {
-        let arr = random(&[2, 3], Dtype::Float64).unwrap();
+        let arr: Array<f64> = random(&[2, 3], Dtype::Float64 { byteorder: None }).unwrap();
         assert_eq!(arr.shape(), vec![2, 3]);
     }
 

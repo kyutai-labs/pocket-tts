@@ -140,14 +140,20 @@ mod tests {
         let back = half.to_f32();
 
         // Test basic conversion
-        assert!((back - 1.5).abs() < f16::EPSILON, "f16 conversion failed");
+        assert!(
+            (back - 1.5).abs() < f16::EPSILON.to_f32(),
+            "f16 conversion failed"
+        );
 
         // Test special values
         let inf = f16::INFINITY;
         assert!(inf.to_f32().is_infinite(), "f16 infinity not preserved");
 
         let neg_inf = f16::NEG_INFINITY;
-        assert!(neg_inf.to_f32().is_infinite(), "f16 negative infinity not preserved");
+        assert!(
+            neg_inf.to_f32().is_infinite(),
+            "f16 negative infinity not preserved"
+        );
 
         let nan = f16::NAN;
         assert!(nan.to_f32().is_nan(), "f16 NaN not preserved");
@@ -179,22 +185,47 @@ mod tests {
     fn test_all_dtypes_parse() {
         // Test that all major dtypes can be parsed
         let dtypes = [
-            "int8", "i1", "int16", "i2", "int32", "i4", "int64", "i8",
-            "intp", "ip",
-            "uint8", "u1", "uint16", "u2", "uint32", "u4", "uint64", "u8",
-            "uintp", "up",
-            "float16", "f2", "float32", "f4", "float64", "f8",
-            "complex32", "c4", "complex64", "c8", "complex128", "c16",
-            "bool", "str", "unicode", "object",
+            "int8",
+            "i1",
+            "int16",
+            "i2",
+            "int32",
+            "i4",
+            "int64",
+            "i8",
+            "intp",
+            "ip",
+            "uint8",
+            "u1",
+            "uint16",
+            "u2",
+            "uint32",
+            "u4",
+            "uint64",
+            "u8",
+            "uintp",
+            "up",
+            "float16",
+            "f2",
+            "float32",
+            "f4",
+            "float64",
+            "f8",
+            "complex32",
+            "c4",
+            "complex64",
+            "c8",
+            "complex128",
+            "c16",
+            "bool",
+            "str",
+            "unicode",
+            "object",
         ];
 
         for dtype_str in dtypes.iter() {
             let result = Dtype::from_str(dtype_str);
-            assert!(
-                result.is_ok(),
-                "Failed to parse dtype: {}",
-                dtype_str
-            );
+            assert!(result.is_ok(), "Failed to parse dtype: {}", dtype_str);
         }
     }
 

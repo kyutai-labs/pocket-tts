@@ -15,7 +15,7 @@
 //! - Compression support for NPZ files
 
 use std::fs::File;
-use std::io::{BufReader, BufWriter, Read, Seek, Write};
+use std::io::{BufRead, BufReader, BufWriter, Read, Seek, Write};
 use std::path::Path;
 
 use bytemuck::{cast_slice, Pod};
@@ -121,6 +121,8 @@ pub fn load<T>(
 ) -> Result<Array<T>>
 where
     T: Clone + Default + Pod + 'static,
+    T: std::str::FromStr,
+    T::Err: std::fmt::Display,
 {
     let mmap_mode = mmap_mode.map(|s| s.parse()).transpose()?;
 
@@ -136,16 +138,7 @@ where
             load_npz_single(file, mmap_mode, fix_imports, encoding)
         }
         FileFormat::Text => loadtxt(
-            file,
-            None,
-            "#",
-            None,
-            None,
-            vec![],
-            false,
-            1,
-            encoding,
-            None,
+            file, None, "#", " ", None, 0, None, false, 0, encoding, None,
         ),
         _ => Err(NumPyError::file_format_error(
             "unknown",
@@ -158,6 +151,7 @@ where
 pub fn save<T>(file: &str, arr: &Array<T>, allow_pickle: bool, fix_imports: bool) -> Result<()>
 where
     T: Clone + Default + Pod + 'static,
+    T: std::fmt::Display,
 {
     if !allow_pickle {
         save_npy(file, arr)
@@ -207,6 +201,7 @@ pub fn loadtxt<T>(
 ) -> Result<Array<T>>
 where
     T: Clone + Default + std::str::FromStr + 'static,
+    T::Err: std::fmt::Display,
 {
     let file = File::open(fname)
         .map_err(|e| NumPyError::io_error(format!("Failed to open file: {}", e)))?;
@@ -248,10 +243,11 @@ where
                 .enumerate()
                 .map(|(i, part)| {
                     if i < converters.len() {
-                        converters[i](part)
+                        Ok(converters[i](part))
                     } else {
-                        part.parse()
-                            .map_err(|_| NumPyError::value_error(part, "numeric conversion"))
+                        part.parse().map_err(|_| {
+                            NumPyError::value_error(part.to_string(), "numeric conversion")
+                        })
                     }
                 })
                 .collect::<std::result::Result<Vec<_>, _>>()?
@@ -259,8 +255,9 @@ where
             selected_parts
                 .iter()
                 .map(|part| {
-                    part.parse()
-                        .map_err(|_| NumPyError::value_error(part, "numeric conversion"))
+                    part.parse().map_err(|_| {
+                        NumPyError::value_error(part.to_string(), "numeric conversion")
+                    })
                 })
                 .collect::<std::result::Result<Vec<_>, _>>()?
         };
@@ -455,7 +452,8 @@ pub fn fromfile<T>(
     offset: isize,
 ) -> Result<Array<T>>
 where
-    T: Clone + Default + Pod + 'static,
+    T: Clone + Default + Pod + std::str::FromStr + 'static,
+    T::Err: std::fmt::Display,
 {
     let mut file = File::open(file)
         .map_err(|e| NumPyError::io_error(format!("Failed to open file: {}", e)))?;
@@ -499,7 +497,8 @@ where
 /// Create array from string data
 pub fn fromstring<T>(string: &str, dtype: Dtype, count: isize, sep: &str) -> Result<Array<T>>
 where
-    T: Clone + Default + std::str::FromStr + 'static,
+    T: Clone + Default + std::str::FromStr + Pod + 'static,
+    T::Err: std::fmt::Display,
 {
     if sep.is_empty() {
         let bytes = string.as_bytes();
@@ -518,7 +517,7 @@ where
             .map(|part| {
                 part.trim()
                     .parse()
-                    .map_err(|_| NumPyError::value_error(part, "numeric conversion"))
+                    .map_err(|_| NumPyError::value_error(part.to_string(), "numeric conversion"))
             })
             .collect();
 
@@ -566,18 +565,21 @@ fn savez_to_zip<T, W: Write + Seek>(
 where
     T: Clone + Default + Pod + 'static,
 {
-    use std::io::Seek;
     use zip::write::FileOptions;
 
     for (name, array) in args {
         let npy_data = create_npy_data(array)?;
 
         let filename = format!("{}.npy", name);
-        zip_writer.start_file(filename, FileOptions::default())?;
+        zip_writer
+            .start_file(filename, FileOptions::default())
+            .map_err(|e| NumPyError::io_error(e.to_string()))?;
         zip_writer.write_all(&npy_data)?;
     }
 
-    zip_writer.finish()?;
+    zip_writer
+        .finish()
+        .map_err(|e| NumPyError::io_error(e.to_string()))?;
     Ok(())
 }
 

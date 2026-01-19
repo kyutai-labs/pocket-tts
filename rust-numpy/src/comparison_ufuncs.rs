@@ -1,8 +1,10 @@
 use crate::array::Array;
 use crate::broadcasting::{broadcast_arrays, compute_broadcast_shape};
+
 use crate::dtype::DtypeKind;
 use crate::error::{NumPyError, Result};
-use crate::ufunc::{get_ufunc, Ufunc};
+// use crate::error::{NumPyError, Result}; // Removed duplicate
+use crate::ufunc::Ufunc;
 use std::marker::PhantomData;
 
 pub struct ComparisonUfunc<T, F>
@@ -31,7 +33,7 @@ where
 
 impl<T, F> Ufunc for ComparisonUfunc<T, F>
 where
-    T: Clone + 'static + Send + Sync,
+    T: Clone + Default + 'static + Send + Sync,
     F: Fn(&T, &T) -> bool + Send + Sync,
 {
     fn name(&self) -> &'static str {
@@ -201,7 +203,7 @@ where
 
 impl<T, F> Ufunc for ExtremaUfunc<T, F>
 where
-    T: Clone + 'static + Send + Sync,
+    T: Clone + Default + 'static + Send + Sync,
     F: Fn(&T, &T) -> T + Send + Sync,
 {
     fn name(&self) -> &'static str {

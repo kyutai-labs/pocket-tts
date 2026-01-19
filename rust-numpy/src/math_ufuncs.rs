@@ -18,6 +18,7 @@ use crate::broadcasting::{broadcast_arrays, compute_broadcast_shape};
 use crate::dtype::DtypeKind;
 use crate::error::{NumPyError, Result};
 use crate::ufunc::{get_ufunc, ArrayView, Ufunc};
+use num_traits::{FloatConst, Zero};
 use std::f64::consts;
 use std::marker::PhantomData;
 
@@ -171,7 +172,7 @@ where
 
 impl<T, F> Ufunc for MathBinaryUfunc<T, F>
 where
-    T: Clone + 'static + Send + Sync,
+    T: Clone + 'static + Send + Sync + Default,
     F: Fn(&T, &T) -> T + Send + Sync,
 {
     fn name(&self) -> &'static str {
@@ -312,15 +313,15 @@ macro_rules! impl_trig_ops_float {
         $(
             impl TrigOps<$t> for $t {
                 fn sin(&self) -> $t {
-                    self.sin()
+                    num_traits::Float::sin(*self)
                 }
 
                 fn cos(&self) -> $t {
-                    self.cos()
+                    num_traits::Float::cos(*self)
                 }
 
                 fn tan(&self) -> $t {
-                    self.tan()
+                    num_traits::Float::tan(*self)
                 }
 
                 fn arcsin(&self) -> Result<$t> {
@@ -348,29 +349,29 @@ macro_rules! impl_trig_ops_float {
                 }
 
                 fn hypot(&self, other: &$t) -> $t {
-                    (*self).hypot(**other)
+                    num_traits::Float::hypot(*self, *other)
                 }
 
                 fn degrees(&self) -> $t {
-                    self * (180.0 / consts::PI)
+                    *self * (180.0 / consts::PI) as $t
                 }
 
                 fn radians(&self) -> $t {
-                    self * (consts::PI / 180.0)
+                    *self * (consts::PI / 180.0) as $t
                 }
             }
 
             impl HyperbolicOps<$t> for $t {
                 fn sinh(&self) -> $t {
-                    self.sinh()
+                    num_traits::Float::sinh(*self)
                 }
 
                 fn cosh(&self) -> $t {
-                    self.cosh()
+                    num_traits::Float::cosh(*self)
                 }
 
                 fn tanh(&self) -> $t {
-                    self.tanh()
+                    num_traits::Float::tanh(*self)
                 }
 
                 fn arcsinh(&self) -> $t {
@@ -396,15 +397,15 @@ macro_rules! impl_trig_ops_float {
 
             impl ExpLogOps<$t> for $t {
                 fn exp(&self) -> $t {
-                    self.exp()
+                    num_traits::Float::exp(*self)
                 }
 
                 fn exp2(&self) -> $t {
-                    self.exp2()
+                    num_traits::Float::exp2(*self)
                 }
 
                 fn expm1(&self) -> $t {
-                    self.expm1()
+                    <$t as num_traits::Float>::exp_m1(*self)
                 }
 
                 fn log(&self) -> Result<$t> {
@@ -420,7 +421,7 @@ macro_rules! impl_trig_ops_float {
                         return Err(NumPyError::value_error(format!("log2 domain error: {}", self),
                             "float64".to_string(),  ));
                     }
-                    Ok(self.log2())
+                    self.log2()
                 }
 
                 fn log10(&self) -> Result<$t> {
@@ -428,7 +429,7 @@ macro_rules! impl_trig_ops_float {
                         return Err(NumPyError::value_error(format!("log10 domain error: {}", self),
                             "float64".to_string(),  ));
                     }
-                    Ok(self.log10())
+                    self.log10()
                 }
 
                 fn log1p(&self) -> $t {
@@ -451,7 +452,7 @@ macro_rules! impl_trig_ops_float {
             impl RoundingOps<$t> for $t {
                 fn round(&self, decimals: isize) -> $t {
                     if decimals == 0 {
-                        self.round()
+                        num_traits::Float::round(*self)
                     } else {
                         let factor = 10.0_f64.powi(decimals as i32) as $t;
                         (self * factor).round() / factor
@@ -459,19 +460,19 @@ macro_rules! impl_trig_ops_float {
                 }
 
                 fn rint(&self) -> $t {
-                    self.round()
+                    num_traits::Float::round(*self)
                 }
 
                 fn floor(&self) -> $t {
-                    self.floor()
+                    num_traits::Float::floor(*self)
                 }
 
                 fn ceil(&self) -> $t {
-                    self.ceil()
+                    num_traits::Float::ceil(*self)
                 }
 
                 fn trunc(&self) -> $t {
-                    self.trunc()
+                    num_traits::Float::trunc(*self)
                 }
 
                 fn fix(&self) -> $t {
@@ -492,23 +493,23 @@ macro_rules! impl_trig_ops_complex {
         $(
             impl TrigOps<$t> for $t {
                 fn sin(&self) -> $t {
-                    num_complex::Complex::new(self.re.sin() * self.im.cosh(), self.re.cos() * self.im.sinh())
+                    num_complex::Complex::sin(*self)
                 }
 
                 fn cos(&self) -> $t {
-                    num_complex::Complex::new(self.re.cos() * self.im.cosh(), -self.re.sin() * self.im.sinh())
+                    num_complex::Complex::cos(*self)
                 }
 
                 fn tan(&self) -> $t {
-                    self.sin() / self.cos()
+                    num_complex::Complex::tan(*self)
                 }
 
                 fn arcsin(&self) -> Result<$t> {
-                    Ok((-num_complex::Complex::i() * (num_complex::Complex::i() * self + (1.0 - self * self).sqrt()).ln()))
+                    Ok((-<$t>::i() * (<$t>::i() * self + (1.0 - self * self).sqrt()).ln()))
                 }
 
                 fn arccos(&self) -> Result<$t> {
-                    Ok(-num_complex::Complex::i() * (self + num_complex::Complex::i() * (1.0 - self * self).sqrt()).ln())
+                    Ok(-<$t>::i() * (self + <$t>::i() * (1.0 - self * self).sqrt()).ln())
                 }
 
                 fn arctan(&self) -> $t {
@@ -524,25 +525,29 @@ macro_rules! impl_trig_ops_complex {
                 }
 
                 fn degrees(&self) -> $t {
-                    self * (180.0 / consts::PI)
+                    let pi = <$t as num_complex::ComplexFloat>::Real::PI();
+                    let factor: <$t as num_complex::ComplexFloat>::Real = num_traits::NumCast::from(180.0).unwrap();
+                    *self * (factor / pi)
                 }
 
                 fn radians(&self) -> $t {
-                    self * (consts::PI / 180.0)
+                    let pi = <$t as num_complex::ComplexFloat>::Real::PI();
+                    let factor: <$t as num_complex::ComplexFloat>::Real = num_traits::NumCast::from(180.0).unwrap();
+                    *self * (pi / factor)
                 }
             }
 
             impl HyperbolicOps<$t> for $t {
                 fn sinh(&self) -> $t {
-                    num_complex::Complex::new(self.re.sinh() * self.im.cos(), self.re.cosh() * self.im.sin())
+                    num_complex::Complex::sinh(*self)
                 }
 
                 fn cosh(&self) -> $t {
-                    num_complex::Complex::new(self.re.cosh() * self.im.cos(), self.re.sinh() * self.im.sin())
+                    num_complex::Complex::cosh(*self)
                 }
 
                 fn tanh(&self) -> $t {
-                    self.sinh() / self.cosh()
+                    num_complex::Complex::tanh(*self)
                 }
 
                 fn arcsinh(&self) -> $t {
@@ -560,11 +565,12 @@ macro_rules! impl_trig_ops_complex {
 
             impl ExpLogOps<$t> for $t {
                 fn exp(&self) -> $t {
-                    self.exp()
+                    num_complex::Complex::exp(*self)
                 }
 
                 fn exp2(&self) -> $t {
-                    (self * num_complex::Complex::new(2.0_f64.ln(), 0.0)).exp()
+                    let ln2: <$t as num_complex::ComplexFloat>::Real = num_traits::NumCast::from(std::f64::consts::LN_2).unwrap();
+                    (self * <$t>::new(ln2, <$t as num_complex::ComplexFloat>::Real::zero())).exp()
                 }
 
                 fn expm1(&self) -> $t {
@@ -576,11 +582,13 @@ macro_rules! impl_trig_ops_complex {
                 }
 
                 fn log2(&self) -> Result<$t> {
-                    Ok(self.ln() / num_complex::Complex::new(2.0_f64.ln(), 0.0))
+                    let ln2: <$t as num_complex::ComplexFloat>::Real = num_traits::NumCast::from(std::f64::consts::LN_2).unwrap();
+                    Ok(self.ln() / <$t>::new(ln2, <$t as num_complex::ComplexFloat>::Real::zero()))
                 }
 
                 fn log10(&self) -> Result<$t> {
-                    Ok(self.ln() / num_complex::Complex::new(10.0_f64.ln(), 0.0))
+                    let ln10: <$t as num_complex::ComplexFloat>::Real = num_traits::NumCast::from(std::f64::consts::LN_10).unwrap();
+                    Ok(self.ln() / <$t>::new(ln10, <$t as num_complex::ComplexFloat>::Real::zero()))
                 }
 
                 fn log1p(&self) -> $t {
@@ -602,7 +610,7 @@ macro_rules! impl_trig_ops_complex {
 
             impl RoundingOps<$t> for $t {
                 fn round(&self, decimals: isize) -> $t {
-                    let factor = 10.0_f64.powi(decimals as i32) as f64;
+                    let factor: <$t as num_complex::ComplexFloat>::Real = num_traits::NumCast::from(10.0_f64.powi(decimals as i32)).unwrap();
                     num_complex::Complex::new(
                         (self.re * factor).round() / factor,
                         (self.im * factor).round() / factor,
@@ -646,13 +654,13 @@ impl_trig_ops_complex!(num_complex::Complex32, num_complex::Complex64);
 #[cfg(feature = "simd")]
 pub fn sin<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + TrigOps<T> + 'static,
+    T: Clone + TrigOps<T> + Default + 'static,
 {
     #[cfg(target_arch = "x86_64")]
     {
         return sin_simd(x);
     }
-    
+
     #[cfg(not(target_arch = "x86_64"))]
     {
         return sin_scalar(x);
@@ -662,7 +670,7 @@ where
 #[cfg(not(feature = "simd"))]
 pub fn sin<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + TrigOps<T> + 'static,
+    T: Clone + TrigOps<T> + Default + 'static,
 {
     sin_scalar(x)
 }
@@ -672,7 +680,7 @@ where
 #[cfg(target_arch = "x86_64")]
 fn sin_simd<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + TrigOps<T> + 'static,
+    T: Clone + TrigOps<T> + Default + 'static,
 {
     use crate::simd_ops;
 
@@ -691,7 +699,7 @@ where
 /// Compute sine using scalar operations (non-SIMD or fallback)
 fn sin_scalar<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + TrigOps<T> + 'static,
+    T: Clone + TrigOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("sin") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -709,13 +717,13 @@ where
 #[cfg(feature = "simd")]
 pub fn cos<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + TrigOps<T> + 'static,
+    T: Clone + TrigOps<T> + Default + 'static,
 {
     #[cfg(target_arch = "x86_64")]
     {
         return cos_simd(x);
     }
-    
+
     #[cfg(not(target_arch = "x86_64"))]
     {
         return cos_scalar(x);
@@ -725,7 +733,7 @@ where
 #[cfg(not(feature = "simd"))]
 pub fn cos<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + TrigOps<T> + 'static,
+    T: Clone + TrigOps<T> + Default + 'static,
 {
     cos_scalar(x)
 }
@@ -735,7 +743,7 @@ where
 #[cfg(target_arch = "x86_64")]
 fn cos_simd<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + TrigOps<T> + 'static,
+    T: Clone + TrigOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("cos") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -752,7 +760,7 @@ where
 /// Compute cosine using scalar operations (non-SIMD or fallback)
 fn cos_scalar<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + TrigOps<T> + 'static,
+    T: Clone + TrigOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("cos") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -769,7 +777,7 @@ where
 /// Compute tangent of each element
 pub fn tan<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + TrigOps<T> + 'static,
+    T: Clone + TrigOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("tan") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -786,7 +794,7 @@ where
 /// Compute arcsine of each element
 pub fn arcsin<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + TrigOps<T> + 'static,
+    T: Clone + TrigOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("arcsin") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -803,7 +811,7 @@ where
 /// Compute arccosine of each element
 pub fn arccos<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + TrigOps<T> + 'static,
+    T: Clone + TrigOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("arccos") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -820,7 +828,7 @@ where
 /// Compute arctangent of each element
 pub fn arctan<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + TrigOps<T> + 'static,
+    T: Clone + TrigOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("arctan") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -837,7 +845,7 @@ where
 /// Compute arctangent of y/x element-wise
 pub fn arctan2<T>(x1: &Array<T>, x2: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + TrigOps<T> + 'static,
+    T: Clone + TrigOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("arctan2") {
         let broadcast_shape = compute_broadcast_shape(x1.shape(), x2.shape());
@@ -858,7 +866,7 @@ where
 /// Compute hypotenuse element-wise
 pub fn hypot<T>(x1: &Array<T>, x2: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + TrigOps<T> + 'static,
+    T: Clone + TrigOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("hypot") {
         let broadcast_shape = compute_broadcast_shape(x1.shape(), x2.shape());
@@ -879,7 +887,7 @@ where
 /// Convert angles from radians to degrees
 pub fn degrees<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + TrigOps<T> + 'static,
+    T: Clone + TrigOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("degrees") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -896,7 +904,7 @@ where
 /// Convert angles from degrees to radians
 pub fn radians<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + TrigOps<T> + 'static,
+    T: Clone + TrigOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("radians") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -915,7 +923,7 @@ where
 /// Compute hyperbolic sine of each element
 pub fn sinh<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + HyperbolicOps<T> + 'static,
+    T: Clone + HyperbolicOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("sinh") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -932,7 +940,7 @@ where
 /// Compute hyperbolic cosine of each element
 pub fn cosh<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + HyperbolicOps<T> + 'static,
+    T: Clone + HyperbolicOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("cosh") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -949,7 +957,7 @@ where
 /// Compute hyperbolic tangent of each element
 pub fn tanh<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + HyperbolicOps<T> + 'static,
+    T: Clone + HyperbolicOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("tanh") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -966,7 +974,7 @@ where
 /// Compute inverse hyperbolic sine of each element
 pub fn arcsinh<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + HyperbolicOps<T> + 'static,
+    T: Clone + HyperbolicOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("arcsinh") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -983,7 +991,7 @@ where
 /// Compute inverse hyperbolic cosine of each element
 pub fn arccosh<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + HyperbolicOps<T> + 'static,
+    T: Clone + HyperbolicOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("arccosh") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -1000,7 +1008,7 @@ where
 /// Compute inverse hyperbolic tangent of each element
 pub fn arctanh<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + HyperbolicOps<T> + 'static,
+    T: Clone + HyperbolicOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("arctanh") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -1020,13 +1028,13 @@ where
 #[cfg(feature = "simd")]
 pub fn exp<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + ExpLogOps<T> + 'static,
+    T: Clone + ExpLogOps<T> + Default + 'static,
 {
     #[cfg(target_arch = "x86_64")]
     {
         return exp_simd(x);
     }
-    
+
     #[cfg(not(target_arch = "x86_64"))]
     {
         return exp_scalar(x);
@@ -1036,7 +1044,7 @@ where
 #[cfg(not(feature = "simd"))]
 pub fn exp<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + ExpLogOps<T> + 'static,
+    T: Clone + ExpLogOps<T> + Default + 'static,
 {
     exp_scalar(x)
 }
@@ -1046,7 +1054,7 @@ where
 #[cfg(target_arch = "x86_64")]
 fn exp_simd<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + ExpLogOps<T> + 'static,
+    T: Clone + ExpLogOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("exp") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -1063,7 +1071,7 @@ where
 /// Compute exponential using scalar operations (non-SIMD or fallback)
 fn exp_scalar<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + ExpLogOps<T> + 'static,
+    T: Clone + ExpLogOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("exp") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -1080,7 +1088,7 @@ where
 /// Compute 2**x of each element
 pub fn exp2<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + ExpLogOps<T> + 'static,
+    T: Clone + ExpLogOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("exp2") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -1097,7 +1105,7 @@ where
 /// Compute exp(x) - 1 of each element
 pub fn expm1<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + ExpLogOps<T> + 'static,
+    T: Clone + ExpLogOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("expm1") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -1115,13 +1123,13 @@ where
 #[cfg(feature = "simd")]
 pub fn log<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + ExpLogOps<T> + 'static,
+    T: Clone + ExpLogOps<T> + Default + 'static,
 {
     #[cfg(target_arch = "x86_64")]
     {
         return log_simd(x);
     }
-    
+
     #[cfg(not(target_arch = "x86_64"))]
     {
         return log_scalar(x);
@@ -1131,7 +1139,7 @@ where
 #[cfg(not(feature = "simd"))]
 pub fn log<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + ExpLogOps<T> + 'static,
+    T: Clone + ExpLogOps<T> + Default + 'static,
 {
     log_scalar(x)
 }
@@ -1141,7 +1149,7 @@ where
 #[cfg(target_arch = "x86_64")]
 fn log_simd<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + ExpLogOps<T> + 'static,
+    T: Clone + ExpLogOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("log") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -1158,7 +1166,7 @@ where
 /// Compute logarithm using scalar operations (non-SIMD or fallback)
 fn log_scalar<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + ExpLogOps<T> + 'static,
+    T: Clone + ExpLogOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("log") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -1175,7 +1183,7 @@ where
 /// Compute base-2 logarithm of each element
 pub fn log2<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + ExpLogOps<T> + 'static,
+    T: Clone + ExpLogOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("log2") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -1192,7 +1200,7 @@ where
 /// Compute base-10 logarithm of each element
 pub fn log10<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + ExpLogOps<T> + 'static,
+    T: Clone + ExpLogOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("log10") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -1209,7 +1217,7 @@ where
 /// Compute log(1 + x) of each element
 pub fn log1p<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + ExpLogOps<T> + 'static,
+    T: Clone + ExpLogOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("log1p") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -1226,7 +1234,7 @@ where
 /// Compute log(exp(x1) + exp(x2)) element-wise
 pub fn logaddexp<T>(x1: &Array<T>, x2: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + ExpLogOps<T> + 'static,
+    T: Clone + ExpLogOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("logaddexp") {
         let broadcast_shape = compute_broadcast_shape(x1.shape(), x2.shape());
@@ -1247,7 +1255,7 @@ where
 /// Compute log2(exp2(x1) + exp2(x2)) element-wise
 pub fn logaddexp2<T>(x1: &Array<T>, x2: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + ExpLogOps<T> + 'static,
+    T: Clone + ExpLogOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("logaddexp2") {
         let broadcast_shape = compute_broadcast_shape(x1.shape(), x2.shape());
@@ -1270,7 +1278,7 @@ where
 /// Round array to given number of decimals
 pub fn round_<T>(a: &Array<T>, decimals: isize) -> Result<Array<T>>
 where
-    T: Clone + RoundingOps<T> + 'static,
+    T: Clone + RoundingOps<T> + Default + 'static,
 {
     let mut output = Array::from_data(vec![T::default(); a.size()], a.shape().to_vec());
 
@@ -1287,7 +1295,7 @@ where
 /// Alias for round_ function (NumPy compatibility)
 pub fn around<T>(a: &Array<T>, decimals: isize) -> Result<Array<T>>
 where
-    T: Clone + RoundingOps<T> + 'static,
+    T: Clone + RoundingOps<T> + Default + 'static,
 {
     round_(a, decimals)
 }
@@ -1295,7 +1303,7 @@ where
 /// Round to nearest integer
 pub fn rint<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + RoundingOps<T> + 'static,
+    T: Clone + RoundingOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("rint") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -1312,7 +1320,7 @@ where
 /// Floor of each element
 pub fn floor<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + RoundingOps<T> + 'static,
+    T: Clone + RoundingOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("floor") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -1329,7 +1337,7 @@ where
 /// Ceiling of each element
 pub fn ceil<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + RoundingOps<T> + 'static,
+    T: Clone + RoundingOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("ceil") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -1346,7 +1354,7 @@ where
 /// Truncate each element toward zero
 pub fn trunc<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + RoundingOps<T> + 'static,
+    T: Clone + RoundingOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("trunc") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -1363,7 +1371,7 @@ where
 /// Round each element toward zero
 pub fn fix<T>(x: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + RoundingOps<T> + 'static,
+    T: Clone + RoundingOps<T> + Default + 'static,
 {
     if let Some(ufunc) = get_ufunc("fix") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
@@ -1417,8 +1425,10 @@ pub fn register_math_ufuncs(registry: &mut crate::ufunc::UfuncRegistry) {
         "arcsin",
         |x: &f32| {
             if *x < -1.0 || *x > 1.0 {
-                Err(NumPyError::value_error(format!("arcsin domain error: {}", x),
-                    "float32".to_string(),  ))
+                Err(NumPyError::value_error(
+                    format!("arcsin domain error: {}", x),
+                    "float32".to_string(),
+                ))
             } else {
                 Ok(x.asin())
             }
@@ -1428,8 +1438,10 @@ pub fn register_math_ufuncs(registry: &mut crate::ufunc::UfuncRegistry) {
         "arcsin",
         |x: &f64| {
             if *x < -1.0 || *x > 1.0 {
-                Err(NumPyError::value_error(format!("arcsin domain error: {}", x),
-                    "float64".to_string(),  ))
+                Err(NumPyError::value_error(
+                    format!("arcsin domain error: {}", x),
+                    "float64".to_string(),
+                ))
             } else {
                 Ok(x.asin())
             }
@@ -1440,8 +1452,10 @@ pub fn register_math_ufuncs(registry: &mut crate::ufunc::UfuncRegistry) {
         "arccos",
         |x: &f32| {
             if *x < -1.0 || *x > 1.0 {
-                Err(NumPyError::value_error(format!("arccos domain error: {}", x),
-                    "float32".to_string(),  ))
+                Err(NumPyError::value_error(
+                    format!("arccos domain error: {}", x),
+                    "float32".to_string(),
+                ))
             } else {
                 Ok(x.acos())
             }
@@ -1451,8 +1465,10 @@ pub fn register_math_ufuncs(registry: &mut crate::ufunc::UfuncRegistry) {
         "arccos",
         |x: &f64| {
             if *x < -1.0 || *x > 1.0 {
-                Err(NumPyError::value_error(format!("arccos domain error: {}", x),
-                    "float64".to_string(),  ))
+                Err(NumPyError::value_error(
+                    format!("arccos domain error: {}", x),
+                    "float64".to_string(),
+                ))
             } else {
                 Ok(x.acos())
             }
@@ -1473,11 +1489,11 @@ pub fn register_math_ufuncs(registry: &mut crate::ufunc::UfuncRegistry) {
 
     registry.register(Box::new(MathBinaryUfunc::new(
         "hypot",
-        |x: &f32, y: &f32| x.hypot(*y),
+        |x: &f32, y: &f32| x.hypot(y),
     )));
     registry.register(Box::new(MathBinaryUfunc::new(
         "hypot",
-        |x: &f64, y: &f64| x.hypot(*y),
+        |x: &f64, y: &f64| x.hypot(y),
     )));
 
     registry.register(Box::new(MathUnaryUfunc::new("degrees", |x: &f32| {
@@ -1539,8 +1555,10 @@ pub fn register_math_ufuncs(registry: &mut crate::ufunc::UfuncRegistry) {
         "arccosh",
         |x: &f32| {
             if *x < 1.0 {
-                Err(NumPyError::value_error(format!("arccosh domain error: {}", x),
-                    "float32".to_string(),  ))
+                Err(NumPyError::value_error(
+                    format!("arccosh domain error: {}", x),
+                    "float32".to_string(),
+                ))
             } else {
                 Ok(x.acosh())
             }
@@ -1550,8 +1568,10 @@ pub fn register_math_ufuncs(registry: &mut crate::ufunc::UfuncRegistry) {
         "arccosh",
         |x: &f64| {
             if *x < 1.0 {
-                Err(NumPyError::value_error(format!("arccosh domain error: {}", x),
-                    "float64".to_string(),  ))
+                Err(NumPyError::value_error(
+                    format!("arccosh domain error: {}", x),
+                    "float64".to_string(),
+                ))
             } else {
                 Ok(x.acosh())
             }
@@ -1562,8 +1582,10 @@ pub fn register_math_ufuncs(registry: &mut crate::ufunc::UfuncRegistry) {
         "arctanh",
         |x: &f32| {
             if *x <= -1.0 || *x >= 1.0 {
-                Err(NumPyError::value_error(format!("arctanh domain error: {}", x),
-                    "float32".to_string(),  ))
+                Err(NumPyError::value_error(
+                    format!("arctanh domain error: {}", x),
+                    "float32".to_string(),
+                ))
             } else {
                 Ok(x.atanh())
             }
@@ -1573,8 +1595,10 @@ pub fn register_math_ufuncs(registry: &mut crate::ufunc::UfuncRegistry) {
         "arctanh",
         |x: &f64| {
             if *x <= -1.0 || *x >= 1.0 {
-                Err(NumPyError::value_error(format!("arctanh domain error: {}", x),
-                    "float64".to_string(),  ))
+                Err(NumPyError::value_error(
+                    format!("arctanh domain error: {}", x),
+                    "float64".to_string(),
+                ))
             } else {
                 Ok(x.atanh())
             }
@@ -1601,16 +1625,20 @@ pub fn register_math_ufuncs(registry: &mut crate::ufunc::UfuncRegistry) {
 
     registry.register(Box::new(MathUnaryUfuncWithResult::new("log", |x: &f32| {
         if *x <= 0.0 {
-            Err(NumPyError::value_error(format!("log domain error: {}", x),
-                "float32".to_string(),  ))
+            Err(NumPyError::value_error(
+                format!("log domain error: {}", x),
+                "float32".to_string(),
+            ))
         } else {
             Ok(x.ln())
         }
     })));
     registry.register(Box::new(MathUnaryUfuncWithResult::new("log", |x: &f64| {
         if *x <= 0.0 {
-            Err(NumPyError::value_error(format!("log domain error: {}", x),
-                "float64".to_string(),  ))
+            Err(NumPyError::value_error(
+                format!("log domain error: {}", x),
+                "float64".to_string(),
+            ))
         } else {
             Ok(x.ln())
         }
@@ -1620,10 +1648,12 @@ pub fn register_math_ufuncs(registry: &mut crate::ufunc::UfuncRegistry) {
         "log2",
         |x: &f32| {
             if *x <= 0.0 {
-                Err(NumPyError::value_error(format!("log2 domain error: {}", x),
-                    "float32".to_string(),  ))
+                Err(NumPyError::value_error(
+                    format!("log2 domain error: {}", x),
+                    "float32".to_string(),
+                ))
             } else {
-                Ok(x.log2())
+                x.log2()
             }
         },
     )));
@@ -1631,10 +1661,12 @@ pub fn register_math_ufuncs(registry: &mut crate::ufunc::UfuncRegistry) {
         "log2",
         |x: &f64| {
             if *x <= 0.0 {
-                Err(NumPyError::value_error(format!("log2 domain error: {}", x),
-                    "float64".to_string(),  ))
+                Err(NumPyError::value_error(
+                    format!("log2 domain error: {}", x),
+                    "float64".to_string(),
+                ))
             } else {
-                Ok(x.log2())
+                x.log2()
             }
         },
     )));
@@ -1643,10 +1675,12 @@ pub fn register_math_ufuncs(registry: &mut crate::ufunc::UfuncRegistry) {
         "log10",
         |x: &f32| {
             if *x <= 0.0 {
-                Err(NumPyError::value_error(format!("log10 domain error: {}", x),
-                    "float32".to_string(),  ))
+                Err(NumPyError::value_error(
+                    format!("log10 domain error: {}", x),
+                    "float32".to_string(),
+                ))
             } else {
-                Ok(x.log10())
+                x.log10()
             }
         },
     )));
@@ -1654,10 +1688,12 @@ pub fn register_math_ufuncs(registry: &mut crate::ufunc::UfuncRegistry) {
         "log10",
         |x: &f64| {
             if *x <= 0.0 {
-                Err(NumPyError::value_error(format!("log10 domain error: {}", x),
-                    "float64".to_string(),  ))
+                Err(NumPyError::value_error(
+                    format!("log10 domain error: {}", x),
+                    "float64".to_string(),
+                ))
             } else {
-                Ok(x.log10())
+                x.log10()
             }
         },
     )));
@@ -1700,8 +1736,12 @@ pub fn register_math_ufuncs(registry: &mut crate::ufunc::UfuncRegistry) {
     )));
 
     // Rounding functions
-    registry.register(Box::new(MathUnaryUfunc::new("rint", |x: &f32| x.round())));
-    registry.register(Box::new(MathUnaryUfunc::new("rint", |x: &f64| x.round())));
+    registry.register(Box::new(MathUnaryUfunc::new("rint", |x: &f32| {
+        (*x).round()
+    })));
+    registry.register(Box::new(MathUnaryUfunc::new("rint", |x: &f64| {
+        (*x).round()
+    })));
 
     registry.register(Box::new(MathUnaryUfunc::new("floor", |x: &f32| x.floor())));
     registry.register(Box::new(MathUnaryUfunc::new("floor", |x: &f64| x.floor())));

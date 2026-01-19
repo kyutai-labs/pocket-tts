@@ -11,23 +11,21 @@ use std::fmt;
 use std::ops::{Index, IndexMut};
 use std::sync::Arc;
 
-use ndarray::ArrayBase;
-use ndarray::{Array1, Array2, ArrayD, Ix1, Ix2, ShapeBuilder};
-use num_complex::Complex64;
+use ndarray::ShapeBuilder;
 
 use crate::dtype::Dtype;
 use crate::error::NumPyError;
-use crate::memory::{MemoryLayout, MemoryManager};
+use crate::memory::MemoryManager;
 use crate::ufunc::ArrayView;
 
 /// Main array structure
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Array<T> {
-    data: Arc<MemoryManager<T>>,
-    shape: Vec<usize>,
-    strides: Vec<isize>,
-    dtype: Dtype,
-    offset: usize,
+    pub data: Arc<MemoryManager<T>>,
+    pub shape: Vec<usize>,
+    pub strides: Vec<isize>,
+    pub dtype: Dtype,
+    pub offset: usize,
 }
 
 /// Array creation and manipulation methods
@@ -35,9 +33,7 @@ impl<T> Array<T>
 where
     T: Clone + Default + 'static,
 {
-    /// Create new array from data and shape
     pub fn from_data(data: Vec<T>, shape: Vec<usize>) -> Self {
-        let dtype = Dtype::from_type::<T>();
         let strides = compute_strides(&shape);
         let memory_manager = Arc::new(MemoryManager::from_vec(data));
         Self {
@@ -48,8 +44,43 @@ where
             offset: 0,
         }
     }
+}
 
-    /// Get array as vector (consumes array)
+impl<T> Array<T> {
+    /// Get array shape
+    pub fn shape(&self) -> &[usize] {
+        &self.shape
+    }
+
+    /// Get array strides
+    pub fn strides(&self) -> &[isize] {
+        &self.strides
+    }
+
+    /// Get array dtype
+    pub fn dtype(&self) -> &Dtype {
+        &self.dtype
+    }
+
+    /// Get array size (total elements)
+    pub fn size(&self) -> usize {
+        self.shape.iter().product()
+    }
+
+    /// Get number of dimensions
+    pub fn ndim(&self) -> usize {
+        self.shape.len()
+    }
+
+    /// Check if array is empty
+    pub fn is_empty(&self) -> bool {
+        self.size() == 0
+    }
+
+    /// Get iterator over array elements
+    pub fn iter(&self) -> std::slice::Iter<'_, T> {
+        self.data.as_slice().iter()
+    }
     ///
     /// Note: Returns a Vec by copying the array data.
     /// For non-consuming access, use as_slice() instead to avoid allocation.
@@ -70,40 +101,9 @@ where
         self.as_slice()
     }
 
-    /// Get array shape
-    pub fn shape(&self) -> &[usize] {
-        &self.shape
-    }
-
-    /// Get array strides
-    pub fn strides(&self) -> &[isize] {
-        &self.strides
-    }
-
-    /// Get array dtype
-    pub fn dtype(&self) -> Dtype {
-        self.dtype
-    }
-
-    /// Get array size (total elements)
-    pub fn size(&self) -> usize {
-        self.shape.iter().product()
-    }
-
-    /// Get number of dimensions
-    pub fn ndim(&self) -> usize {
-        self.shape.len()
-    }
-
-    /// Check if array is empty
-    pub fn is_empty(&self) -> bool {
-        self.size() == 0
-    }
-
     /// Get element at linear index
     pub fn get_linear(&self, index: usize) -> Option<&T> {
-        let data = self.data.as_ref().as_vec();
-        data.get(index)
+        self.as_slice().get(index)
     }
 
     /// Set element at linear index
@@ -133,7 +133,10 @@ where
     }
 
     /// Create 2D array from matrix
-    pub fn from_array2(array2: ndarray::Array2<T>) -> Self {
+    pub fn from_array2(array2: ndarray::Array2<T>) -> Self
+    where
+        T: 'static,
+    {
         let shape = array2.shape().to_vec();
         let strides = compute_strides(&shape);
         let memory_manager = Arc::new(MemoryManager::from_vec(array2.into_raw_vec()));
@@ -146,8 +149,22 @@ where
         }
     }
 
+    /// Matrix multiplication
+    pub fn dot(&self, other: &Array<T>) -> Result<Array<T>, NumPyError>
+    where
+        T: Clone + Default + ndarray::LinalgScalar + 'static,
+    {
+        let a = self.to_ndarray2()?;
+        let b = other.to_ndarray2()?;
+        let res = a.dot(&b);
+        Ok(Array::from_array2(res))
+    }
+
     /// Convert to ndarray 2D matrix
-    pub fn to_ndarray2(&self) -> Result<ndarray::Array2<T>, NumPyError> {
+    pub fn to_ndarray2(&self) -> Result<ndarray::Array2<T>, NumPyError>
+    where
+        T: Clone,
+    {
         if self.ndim() != 2 {
             return Err(NumPyError::invalid_operation(
                 "to_ndarray2 requires 2D array",
@@ -158,7 +175,7 @@ where
         let data = self.data.as_ref().as_vec();
 
         // Create ndarray2 with proper shape
-        let shape_builder = ShapeBuilder::default().shape((rows, cols));
+
         let array2 = ndarray::Array2::from_shape_vec((rows, cols), data.to_vec())
             .map_err(|e| NumPyError::invalid_operation(&e.to_string()))?;
 
@@ -166,7 +183,10 @@ where
     }
 
     /// Transpose array
-    pub fn transpose(&self) -> Self {
+    pub fn transpose(&self) -> Self
+    where
+        T: Clone,
+    {
         if self.ndim() != 2 {
             // For higher dimensions, just return clone (proper transpose requires more work)
             return self.clone();
@@ -189,19 +209,49 @@ where
             data: memory_manager,
             shape: new_shape,
             strides: new_strides,
-            dtype: self.dtype,
+            dtype: self.dtype.clone(),
             offset: 0,
         }
     }
 
     /// Broadcast array to new shape
-    pub fn broadcast_to(&self, shape: &[usize]) -> Result<Self, NumPyError> {
+    pub fn broadcast_to(&self, shape: &[usize]) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + 'static,
+    {
         crate::broadcasting::broadcast_to(self, shape)
     }
-
     /// Reshape array
-    pub fn reshape(&self, new_shape: &[usize]) -> Result<Self, NumPyError> {
+    pub fn reshape(&self, new_shape: &[usize]) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + 'static,
+    {
         crate::slicing::reshape(self, new_shape.to_vec())
+    }
+
+    /// Check if array is C-contiguous
+    pub fn is_c_contiguous(&self) -> bool {
+        let mut expected_stride = 1isize;
+        for (i, &dim) in self.shape.iter().enumerate().rev() {
+            if self.strides[i] != expected_stride {
+                return false;
+            }
+            expected_stride *= dim as isize;
+        }
+        true
+    }
+
+    /// Create array from shape and vector
+    /// Create array from shape and vector
+    pub fn from_shape_vec(shape: Vec<usize>, data: Vec<T>) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + 'static,
+    {
+        let size: usize = shape.iter().product();
+        if data.len() != size {
+            return Err(NumPyError::shape_mismatch(vec![size], vec![data.len()]));
+        }
+        Ok(Self::from_data(data, shape))
     }
 }
 
@@ -286,6 +336,12 @@ where
         Self::from_data(data, shape)
     }
 
+    /// Create 0-D array from scalar
+    pub fn from_scalar(value: T, shape: Vec<usize>) -> Self {
+        let data = vec![value];
+        Self::from_data(data, shape)
+    }
+
     /// Create array from vector (1D)
     pub fn from_vec(data: Vec<T>) -> Self {
         let shape = vec![data.len()];
@@ -298,11 +354,6 @@ where
             dtype: Dtype::from_type::<T>(),
             offset: 0,
         }
-    }
-
-    /// Create array from vector and shape
-    pub fn from_shape_vec(shape: Vec<usize>, data: Vec<T>) -> Self {
-        Self::from_data(data, shape)
     }
 
     /// Create identity matrix
@@ -332,4 +383,16 @@ pub fn compute_strides(shape: &[usize]) -> Vec<isize> {
     // Reverse to get correct order
     strides.reverse();
     strides
+}
+
+impl<T> Clone for Array<T> {
+    fn clone(&self) -> Self {
+        Self {
+            data: self.data.clone(),
+            shape: self.shape.clone(),
+            strides: self.strides.clone(),
+            dtype: self.dtype.clone(),
+            offset: self.offset,
+        }
+    }
 }

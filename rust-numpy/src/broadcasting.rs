@@ -92,26 +92,26 @@ pub fn are_shapes_compatible(shape1: &[usize], shape2: &[usize]) -> bool {
 /// Copy data with broadcasting
 fn broadcast_copy<T>(src: &Array<T>, dst: &mut Array<T>) -> Result<()>
 where
-    T: Clone + Copy + Default + 'static,
+    T: Clone + Default + 'static,
 {
     let src_shape = src.shape();
     let dst_shape = dst.shape();
-    
+
     if src_shape.is_empty() {
         // Scalar broadcasting - use Copy trait to avoid cloning
         if let Some(scalar) = src.get(0) {
             for i in 0..dst.size() {
-                dst.set(i, *scalar)?;
+                dst.set(i, scalar.clone())?;
             }
         }
         return Ok(());
     }
-    
+
     if src_shape == dst_shape {
         // Simple copy
         return copy_array(src, dst);
     }
-    
+
     // General broadcasting case
     broadcast_general(src, dst)
 }

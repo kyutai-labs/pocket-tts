@@ -91,7 +91,7 @@ where
         data: std::sync::Arc::new(memory_manager),
         shape: prototype.shape().to_vec(),
         strides: compute_strides(&prototype.shape()),
-        dtype: prototype.dtype(),
+        dtype: prototype.dtype().clone(),
         offset: 0,
     })
 }
@@ -115,7 +115,7 @@ where
         data: std::sync::Arc::new(memory_manager),
         shape: prototype.shape().to_vec(),
         strides: compute_strides(&prototype.shape()),
-        dtype: prototype.dtype(),
+        dtype: prototype.dtype().clone(),
         offset: 0,
     })
 }
@@ -139,7 +139,7 @@ where
         data: std::sync::Arc::new(memory_manager),
         shape: prototype.shape().to_vec(),
         strides: compute_strides(&prototype.shape()),
-        dtype: prototype.dtype(),
+        dtype: prototype.dtype().clone(),
         offset: 0,
     })
 }
@@ -164,7 +164,7 @@ where
         data: std::sync::Arc::new(memory_manager),
         shape: prototype.shape().to_vec(),
         strides: compute_strides(&prototype.shape()),
-        dtype: prototype.dtype(),
+        dtype: prototype.dtype().clone(),
         offset: 0,
     })
 }
@@ -210,7 +210,7 @@ where
         }
     }
 
-    let memory_manager = MemoryManager::from_vec(data);
+    let memory_manager = MemoryManager::from_vec(data.clone());
 
     Ok(Array::from_data(data, vec![N, M]))
 }
@@ -475,7 +475,7 @@ where
 
     let mut data = Vec::with_capacity(num);
     for i in 0..num {
-        let value = start.clone() * ratio.clone().pow(T::from(i).unwrap());
+        let value = start.clone() * ratio.clone().powf(T::from(i).unwrap());
         data.push(value);
     }
 
@@ -562,9 +562,9 @@ where
 
         result.push(Array {
             data: std::sync::Arc::new(memory_manager),
-            shape,
+            shape: shape.clone(),
             strides: compute_strides(&shape),
-            dtype: arr.dtype(),
+            dtype: arr.dtype().clone(),
             offset: 0,
         });
     }
@@ -655,7 +655,7 @@ where
         data: std::sync::Arc::new(memory_manager),
         shape: vec![size],
         strides: compute_strides(&[size]),
-        dtype: a.dtype(),
+        dtype: a.dtype().clone(),
         offset: 0,
     })
 }
@@ -734,7 +734,7 @@ where
         data: a.data.clone(),
         shape: new_shape,
         strides: new_strides,
-        dtype: a.dtype(),
+        dtype: a.dtype().clone(),
         offset: a.offset,
     })
 }
@@ -766,7 +766,7 @@ where
             data: std::sync::Arc::new(memory_manager),
             shape: vec![1],
             strides: compute_strides(&[1]),
-            dtype: a.dtype(),
+            dtype: a.dtype().clone(),
             offset: 0,
         })
     } else {
@@ -802,7 +802,7 @@ where
                 data: std::sync::Arc::new(memory_manager),
                 shape: vec![1, 1],
                 strides: compute_strides(&[1, 1]),
-                dtype: a.dtype(),
+                dtype: a.dtype().clone(),
                 offset: 0,
             })
         }
@@ -814,7 +814,7 @@ where
                 data: std::sync::Arc::new(memory_manager),
                 shape: vec![1, a.shape()[0]],
                 strides: compute_strides(&[1, a.shape()[0]]),
-                dtype: a.dtype(),
+                dtype: a.dtype().clone(),
                 offset: 0,
             })
         }
@@ -850,7 +850,7 @@ where
                 data: std::sync::Arc::new(memory_manager),
                 shape: vec![1, 1, 1],
                 strides: compute_strides(&[1, 1, 1]),
-                dtype: a.dtype(),
+                dtype: a.dtype().clone(),
                 offset: 0,
             })
         }
@@ -862,7 +862,7 @@ where
                 data: std::sync::Arc::new(memory_manager),
                 shape: vec![1, 1, a.shape()[0]],
                 strides: compute_strides(&[1, 1, a.shape()[0]]),
-                dtype: a.dtype(),
+                dtype: a.dtype().clone(),
                 offset: 0,
             })
         }
@@ -874,7 +874,7 @@ where
                 data: std::sync::Arc::new(memory_manager),
                 shape: vec![1, a.shape()[0], a.shape()[1]],
                 strides: compute_strides(&[1, a.shape()[0], a.shape()[1]]),
-                dtype: a.dtype(),
+                dtype: a.dtype().clone(),
                 offset: 0,
             })
         }

@@ -91,7 +91,7 @@ pub enum ArrayOrInt {
 /// Sort array in-place or return a copy
 pub fn sort<T>(a: &mut Array<T>, axis: Option<isize>, kind: &str, order: &str) -> Result<Array<T>>
 where
-    T: Clone + PartialOrd + ComparisonOps<T> + Send + Sync + 'static,
+    T: Clone + PartialOrd + ComparisonOps<T> + Default + Send + Sync + 'static,
 {
     let sort_kind = SortKind::from_str(kind)?;
     let sort_order = SortOrder::from_str(order)?;
@@ -105,7 +105,7 @@ where
             // Flatten and sort
             let mut data = a.to_vec();
             sort_slice(&mut data, sort_kind, sort_order)?;
-            Array::from_shape_vec(vec![data.len()], data)
+            Ok(Array::from_shape_vec(vec![data.len()], data)?)
         }
         Some(ax) => {
             let axis = normalize_axis(ax, a.ndim())?;
@@ -136,7 +136,7 @@ where
             // Flatten and argsort
             let data = a.to_vec();
             let indices = argsort_slice(&data, sort_kind, sort_order)?;
-            Array::from_shape_vec(vec![indices.len()], indices)
+            Ok(Array::from_shape_vec(vec![indices.len()], indices)?)
         }
         Some(ax) => {
             let axis = normalize_axis(ax, a.ndim())?;
@@ -157,7 +157,7 @@ where
     }
 
     let first_shape = keys[0].shape();
-    for (i, key) in keys.iter().enumerate() {
+    for (_i, key) in keys.iter().enumerate() {
         if key.shape() != first_shape {
             return Err(NumPyError::shape_mismatch(
                 first_shape.to_vec(),
@@ -171,7 +171,7 @@ where
             // Flatten and lexsort
             let key_data: Vec<Vec<T>> = keys.iter().map(|k| k.to_vec()).collect();
             let indices = lexsort_slices(&key_data, true)?; // true = ascending
-            Array::from_shape_vec(vec![indices.len()], indices)
+            Ok(Array::from_shape_vec(vec![indices.len()], indices)?)
         }
         Some(ax) => {
             let axis = normalize_axis(ax, keys[0].ndim())?;
@@ -219,7 +219,7 @@ where
 /// Return elements from an array that meet a condition
 pub fn extract<T>(condition: &Array<bool>, arr: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + Send + Sync + 'static,
+    T: Clone + Default + Send + Sync + 'static,
 {
     if condition.shape() != arr.shape() {
         return Err(NumPyError::shape_mismatch(
@@ -244,13 +244,13 @@ where
 /// Count the number of non-zero elements
 pub fn count_nonzero<T>(a: &Array<T>) -> Result<usize>
 where
-    T: ComparisonOps<T> + Clone + Send + Sync + 'static,
+    T: ComparisonOps<T> + num_traits::Zero + Clone + Send + Sync + 'static,
 {
     let mut count = 0;
 
     for i in 0..a.size() {
         if let Some(val) = a.get(i) {
-            if !val.logical_not() {
+            if !val.is_zero() {
                 count += 1;
             }
         }
@@ -262,13 +262,13 @@ where
 /// Return indices of non-zero elements
 pub fn nonzero<T>(a: &Array<T>) -> Result<Vec<Array<isize>>>
 where
-    T: ComparisonOps<T> + Clone + Send + Sync + 'static,
+    T: ComparisonOps<T> + num_traits::Zero + Clone + Send + Sync + 'static,
 {
     let mut indices = Vec::new();
 
     for i in 0..a.size() {
         if let Some(val) = a.get(i) {
-            if !val.logical_not() {
+            if !val.is_zero() {
                 indices.push(i);
             }
         }
@@ -289,14 +289,14 @@ where
                 .iter()
                 .map(|&linear_idx| {
                     let mut idx = linear_idx;
-                    let mut dim_idx = 0;
+                    let mut dim_idx;
 
                     for (d, &size) in a.shape().iter().enumerate() {
                         if d < a.ndim() - 1 {
-                            dim_idx = idx % size as isize;
-                            idx /= size as isize;
+                            dim_idx = (idx % size) as isize;
+                            idx /= size;
                         } else {
-                            dim_idx = idx;
+                            dim_idx = idx as isize;
                         }
 
                         if d == dim {
@@ -315,13 +315,13 @@ where
 /// Return flattened indices of non-zero elements
 pub fn flatnonzero<T>(a: &Array<T>) -> Result<Array<isize>>
 where
-    T: ComparisonOps<T> + Clone + Send + Sync + 'static,
+    T: ComparisonOps<T> + num_traits::Zero + Clone + Send + Sync + 'static,
 {
     let mut indices = Vec::new();
 
     for i in 0..a.size() {
         if let Some(val) = a.get(i) {
-            if !val.logical_not() {
+            if !val.is_zero() {
                 indices.push(i as isize);
             }
         }
@@ -399,21 +399,26 @@ where
             Array::from_shape_vec(vec![], vec![max_idx as isize])
         }
         Some(axes) => {
-            // Argmax along axes
-            let mut result = a.clone();
-            for &ax in axes {
-                let ax = normalize_axis(ax, result.ndim())?;
-                result = argmax_along_axis(&result, ax)?;
+            if axes.is_empty() {
+                return Err(NumPyError::invalid_operation("argmax axes cannot be empty"));
             }
+            if axes.len() > 1 {
+                return Err(NumPyError::not_implemented("argmax with multiple axes"));
+            }
+            let ax = normalize_axis(axes[0], a.ndim())?;
+            let mut result = argmax_along_axis(a, ax)?;
 
             if !keepdims {
-                // Reduce dimensions
                 let mut new_shape = result.shape().to_vec();
-                for &ax in axes.iter().rev() {
-                    let ax = normalize_axis(ax, new_shape.len())?;
-                    new_shape.remove(ax);
-                }
-                result.reshape(&new_shape)?;
+                let ax = normalize_axis(axes[0], new_shape.len() + 1)?;
+                // Note: new_shape usually has dim 1 at axis. remove it.
+                // But argmax_along_axis returns reduced dimension?
+                // Assuming argmax_along_axis preserves rank with 1?
+                // Let's check argmax_along_axis implementation.
+                // It returns result_shape with axis=1 (line 1018).
+                // So removing it is valid.
+                new_shape.remove(ax);
+                result = result.reshape(&new_shape)?;
             }
 
             Ok(result)
@@ -443,21 +448,20 @@ where
             Array::from_shape_vec(vec![], vec![min_idx as isize])
         }
         Some(axes) => {
-            // Argmin along axes
-            let mut result = a.clone();
-            for &ax in axes {
-                let ax = normalize_axis(ax, result.ndim())?;
-                result = argmin_along_axis(&result, ax)?;
+            if axes.is_empty() {
+                return Err(NumPyError::invalid_operation("argmin axes cannot be empty"));
             }
+            if axes.len() > 1 {
+                return Err(NumPyError::not_implemented("argmin with multiple axes"));
+            }
+            let ax = normalize_axis(axes[0], a.ndim())?;
+            let mut result = argmin_along_axis(a, ax)?;
 
             if !keepdims {
-                // Reduce dimensions
                 let mut new_shape = result.shape().to_vec();
-                for &ax in axes.iter().rev() {
-                    let ax = normalize_axis(ax, new_shape.len())?;
-                    new_shape.remove(ax);
-                }
-                result.reshape(&new_shape)?;
+                let ax = normalize_axis(axes[0], new_shape.len() + 1)?;
+                new_shape.remove(ax);
+                result = result.reshape(&new_shape)?;
             }
 
             Ok(result)
@@ -490,7 +494,7 @@ where
                 }
             };
             let indices = argpartition_slice(&data, kth_val, sort_kind, sort_order)?;
-            Array::from_shape_vec(vec![indices.len()], indices)
+            Ok(Array::from_shape_vec(vec![indices.len()], indices)?)
         }
         Some(ax) => {
             let axis = normalize_axis(ax, a.ndim())?;
@@ -508,7 +512,7 @@ pub fn partition<T>(
     order: &str,
 ) -> Result<Array<T>>
 where
-    T: Clone + PartialOrd + ComparisonOps<T> + Send + Sync + 'static,
+    T: Clone + PartialOrd + ComparisonOps<T> + Default + Send + Sync + 'static,
 {
     let sort_kind = SortKind::from_str(kind)?;
     let sort_order = SortOrder::from_str(order)?;
@@ -524,7 +528,7 @@ where
                 }
             };
             partition_slice(&mut data, kth_val, sort_kind, sort_order)?;
-            Array::from_shape_vec(vec![data.len()], data)
+            Ok(Array::from_shape_vec(vec![data.len()], data)?)
         }
         Some(ax) => {
             let axis = normalize_axis(ax, a.ndim())?;
@@ -562,6 +566,7 @@ where
         SortKind::MergeSort => mergesort(data, order),
         SortKind::HeapSort => heapsort(data, order),
     }
+    Ok(())
 }
 
 /// Argsort a slice
@@ -820,7 +825,7 @@ where
     merged.extend_from_slice(&left[i..]);
     merged.extend_from_slice(&right[j..]);
 
-    data.copy_from_slice(&merged);
+    data.clone_from_slice(&merged);
 }
 
 /// Heapsort implementation
@@ -885,12 +890,12 @@ fn sort_along_axis<T>(
     order: SortOrder,
 ) -> Result<Array<T>>
 where
-    T: Clone + PartialOrd + ComparisonOps<T> + Send + Sync + 'static,
+    T: Clone + Default + PartialOrd + ComparisonOps<T> + Send + Sync + 'static,
 {
     if a.ndim() == 1 {
         let mut data = a.to_vec();
         sort_slice(&mut data, kind, order)?;
-        return Array::from_shape_vec(vec![data.len()], data);
+        return Ok(Array::from_shape_vec(vec![data.len()], data)?);
     }
 
     let mut result_data = Vec::with_capacity(a.size());
@@ -919,7 +924,7 @@ where
         result_data.extend_from_slice(&slice_data);
     }
 
-    Array::from_shape_vec(shape.to_vec(), result_data)
+    Ok(Array::from_shape_vec(shape.to_vec(), result_data)?)
 }
 
 fn argsort_along_axis<T>(
@@ -940,7 +945,7 @@ where
         stride *= shape[i];
     }
 
-    let mut result_shape = shape.to_vec();
+    let result_shape = shape.to_vec();
     let num_slices = a.size() / axis_size;
     let mut result_data = Vec::with_capacity(a.size());
 
@@ -959,7 +964,7 @@ where
         result_data.extend_from_slice(&indices);
     }
 
-    Array::from_shape_vec(result_shape, result_data)
+    Ok(Array::from_shape_vec(result_shape, result_data)?)
 }
 
 fn lexsort_along_axis<T>(keys: &[&Array<T>], axis: usize, ascending: bool) -> Result<Array<isize>>
@@ -999,7 +1004,7 @@ where
         result_data.extend_from_slice(&indices);
     }
 
-    Array::from_shape_vec(shape.to_vec(), result_data)
+    Ok(Array::from_shape_vec(shape.to_vec(), result_data)?)
 }
 
 fn argmax_along_axis<T>(a: &Array<T>, axis: usize) -> Result<Array<isize>>
@@ -1036,7 +1041,7 @@ where
         result_data.push(max_idx as isize);
     }
 
-    Array::from_shape_vec(result_shape, result_data)
+    Ok(Array::from_shape_vec(result_shape, result_data)?)
 }
 
 fn argmin_along_axis<T>(a: &Array<T>, axis: usize) -> Result<Array<isize>>
@@ -1073,7 +1078,7 @@ where
         result_data.push(min_idx as isize);
     }
 
-    Array::from_shape_vec(result_shape, result_data)
+    Ok(Array::from_shape_vec(result_shape, result_data)?)
 }
 
 fn argpartition_along_axis<T>(
@@ -1123,7 +1128,7 @@ where
         result_data.extend_from_slice(&indices);
     }
 
-    Array::from_shape_vec(shape.to_vec(), result_data)
+    Ok(Array::from_shape_vec(shape.to_vec(), result_data)?)
 }
 
 fn partition_along_axis<T>(
@@ -1134,7 +1139,7 @@ fn partition_along_axis<T>(
     order: SortOrder,
 ) -> Result<Array<T>>
 where
-    T: Clone + PartialOrd + ComparisonOps<T> + Send + Sync + 'static,
+    T: Clone + Default + PartialOrd + ComparisonOps<T> + Send + Sync + 'static,
 {
     let shape = a.shape();
     let axis_size = shape[axis];
@@ -1172,7 +1177,7 @@ where
         result_data.extend_from_slice(&slice_data);
     }
 
-    Array::from_shape_vec(shape.to_vec(), result_data)
+    Ok(Array::from_shape_vec(shape.to_vec(), result_data)?)
 }
 
 // ===== Utility Functions =====
@@ -1199,25 +1204,24 @@ fn compute_index_along_axis(
 
     // Add indices for dimensions after the axis
     for i in (axis + 1)..shape.len() {
-        index += (remaining % shape[i]);
+        index += remaining % shape[i];
         remaining /= shape[i];
     }
 
     index
 }
 
-fn quicksort_by_key<T, K>(indices: &mut [isize], keys: &[K], order: SortOrder)
+fn quicksort_by_key<K>(indices: &mut [isize], keys: &[K], order: SortOrder)
 where
-    T: PartialOrd + ComparisonOps<T>,
-    K: PartialOrd + ComparisonOps<T>,
+    K: PartialOrd + ComparisonOps<K>,
 {
     if indices.len() <= 1 {
         return;
     }
 
     let pivot = partition_by_key(indices, keys, order);
-    quicksort_by_key::<T, K>(&mut indices[..pivot], keys, order);
-    quicksort_by_key::<T, K>(&mut indices[pivot + 1..], keys, order);
+    quicksort_by_key::<K>(&mut indices[..pivot], keys, order);
+    quicksort_by_key::<K>(&mut indices[pivot + 1..], keys, order);
 }
 
 fn partition_by_key<K>(indices: &mut [isize], keys: &[K], order: SortOrder) -> usize
@@ -1249,18 +1253,17 @@ where
     i
 }
 
-fn mergesort_by_key<T, K>(indices: &mut [isize], keys: &[K], order: SortOrder)
+fn mergesort_by_key<K>(indices: &mut [isize], keys: &[K], order: SortOrder)
 where
-    T: PartialOrd + ComparisonOps<T>,
-    K: PartialOrd + ComparisonOps<T>,
+    K: PartialOrd + ComparisonOps<K>,
 {
     if indices.len() <= 1 {
         return;
     }
 
     let mid = indices.len() / 2;
-    mergesort_by_key::<T, K>(&mut indices[..mid], keys, order);
-    mergesort_by_key::<T, K>(&mut indices[mid..], keys, order);
+    mergesort_by_key::<K>(&mut indices[..mid], keys, order);
+    mergesort_by_key::<K>(&mut indices[mid..], keys, order);
 
     let mut merged = Vec::with_capacity(indices.len());
     let (left, right) = indices.split_at_mut(mid);
@@ -1288,10 +1291,9 @@ where
     indices.copy_from_slice(&merged);
 }
 
-fn heapsort_by_key<T, K>(indices: &mut [isize], keys: &[K], order: SortOrder)
+fn heapsort_by_key<K>(indices: &mut [isize], keys: &[K], order: SortOrder)
 where
-    T: PartialOrd + ComparisonOps<T>,
-    K: PartialOrd + ComparisonOps<T>,
+    K: PartialOrd + ComparisonOps<K>,
 {
     let n = indices.len();
 
@@ -1358,7 +1360,7 @@ where
         return;
     }
 
-    let pivot = partition(data, SortOrder::Ascending);
+    let pivot = partition_helper(data, SortOrder::Ascending);
 
     match k.cmp(&pivot) {
         Ordering::Less => quickselect(&mut data[..pivot], k),
@@ -1410,6 +1412,336 @@ where
             left = i;
         } else {
             break;
+        }
+    }
+}
+
+/// Return the k-th smallest element(s) along a given axis.
+///
+/// This function finds the k-th smallest element(s) in an array without sorting
+/// the entire array, using the quickselect algorithm for efficiency.
+///
+/// # Arguments
+///
+/// * `a` - Input array
+/// * `k` - The index (0-indexed) of the element to find. For multi-dimensional arrays,
+///         this is applied along the specified axis.
+/// * `axis` - Optional axis along which to operate. If None, array is flattened first.
+///
+/// # Returns
+///
+/// Array containing the k-th smallest element(s)
+///
+/// # Examples
+///
+/// ```rust
+/// use rust_numpy::{array, sorting::kth_value};
+/// let a = array![3, 1, 4, 1, 5, 9, 2, 6];
+/// let result = kth_value(&a, 3, None).unwrap(); // 4th smallest (0-indexed)
+/// // result == 3
+/// ```
+pub fn kth_value<T>(
+    a: &Array<T>,
+    k: usize,
+    axis: Option<isize>,
+) -> Result<Array<T>>
+where
+    T: Clone + Default + Ord + 'static,
+{
+    // Local quickselect that only requires Ord
+    fn quickselect_ord<T: Ord + Clone>(data: &mut [T], k: usize) {
+        let mut left = 0;
+        let mut right = data.len();
+
+        while left < right {
+            if left == right - 1 {
+                break;
+            }
+
+            let pivot_idx = left + (right - left) / 2;
+            let pivot = data[pivot_idx].clone();
+
+            let mut i = left;
+            let mut j = right - 1;
+
+            loop {
+                while data[i] < pivot {
+                    i += 1;
+                }
+                while data[j] > pivot {
+                    if j == 0 {
+                        break;
+                    }
+                    j -= 1;
+                }
+                if i <= j {
+                    data.swap(i, j);
+                    i += 1;
+                    if j == 0 {
+                        break;
+                    }
+                    j -= 1;
+                }
+            }
+
+            if k <= j {
+                right = j + 1;
+            } else if k >= i {
+                left = i;
+            } else {
+                break;
+            }
+        }
+    }
+
+    if a.is_empty() {
+        return Err(NumPyError::invalid_value("Cannot get kth element of empty array"));
+    }
+
+    match axis {
+        None => {
+            // Flatten the array
+            let flat_data = a.to_vec();
+            if k >= flat_data.len() {
+                return Err(NumPyError::invalid_value(
+                    &format!("k={} is out of bounds for array of size {}", k, flat_data.len()),
+                ));
+            }
+            let mut data = flat_data.clone();
+            quickselect_ord(&mut data, k);
+            Ok(Array::from_data(vec![data[k].clone()], vec![1]))
+        }
+        Some(axis) => {
+            // For simplicity, we'll handle only 1D and 2D cases
+            // A more complete implementation would handle arbitrary dimensions
+            if a.ndim() == 1 {
+                let data = a.to_vec();
+                if k >= data.len() {
+                    return Err(NumPyError::invalid_value(
+                        &format!("k={} is out of bounds for array of size {}", k, data.len()),
+                    ));
+                }
+                let mut data_clone = data.clone();
+                quickselect_ord(&mut data_clone, k);
+                Ok(Array::from_data(vec![data_clone[k].clone()], vec![1]))
+            } else if a.ndim() == 2 {
+                let normalized_axis = if axis < 0 {
+                    2 + axis as usize
+                } else {
+                    axis as usize
+                };
+
+                if normalized_axis >= 2 {
+                    return Err(NumPyError::invalid_value("Axis out of bounds for 2D array"));
+                }
+
+                let shape = a.shape();
+                let (outer_len, inner_len) = if normalized_axis == 0 {
+                    (shape[1], shape[0])
+                } else {
+                    (shape[0], shape[1])
+                };
+
+                if k >= inner_len {
+                    return Err(NumPyError::invalid_value(
+                        &format!("k={} is out of bounds for axis of size {}", k, inner_len),
+                    ));
+                }
+
+                let mut result = Vec::with_capacity(outer_len);
+
+                for i in 0..outer_len {
+                    let mut slice_data: Vec<T> = if normalized_axis == 0 {
+                        // Get column i
+                        (0..inner_len).map(|j| a.get(j * shape[1] + i).unwrap().clone()).collect()
+                    } else {
+                        // Get row i
+                        (0..inner_len).map(|j| a.get(i * inner_len + j).unwrap().clone()).collect()
+                    };
+
+                    quickselect_ord(&mut slice_data, k);
+                    result.push(slice_data[k].clone());
+                }
+
+                let result_shape = if normalized_axis == 0 {
+                    vec![outer_len]
+                } else {
+                    vec![outer_len]
+                };
+
+                Ok(Array::from_data(result, result_shape))
+            } else {
+                Err(NumPyError::not_implemented("kth_value for arrays with ndim > 2"))
+            }
+        }
+    }
+}
+
+/// Return the indices of the k-th smallest element(s) along a given axis.
+///
+/// This function finds the index (indices) of the k-th smallest element(s) in an array
+/// without sorting the entire array, using the quickselect algorithm for efficiency.
+///
+/// # Arguments
+///
+/// * `a` - Input array
+/// * `k` - The index (0-indexed) of the element to find. For multi-dimensional arrays,
+///         this is applied along the specified axis.
+/// * `axis` - Optional axis along which to operate. If None, array is flattened first.
+///
+/// # Returns
+///
+/// Array containing the index/indices of the k-th smallest element(s)
+///
+/// # Examples
+///
+/// ```rust
+/// use rust_numpy::{array, sorting::kth_index};
+/// let a = array![3, 1, 4, 1, 5, 9, 2, 6];
+/// let result = kth_index(&a, 3, None).unwrap(); // 4th smallest (0-indexed)
+/// // The 4th smallest value is 3, which appears at index 0
+/// ```
+pub fn kth_index<T>(
+    a: &Array<T>,
+    k: usize,
+    axis: Option<isize>,
+) -> Result<Array<usize>>
+where
+    T: Clone + Default + Ord + 'static,
+{
+    if a.is_empty() {
+        return Err(NumPyError::invalid_value("Cannot get kth element of empty array"));
+    }
+
+    match axis {
+        None => {
+            // Flatten the array
+            let flat_data = a.to_vec();
+            if k >= flat_data.len() {
+                return Err(NumPyError::invalid_value(
+                    &format!("k={} is out of bounds for array of size {}", k, flat_data.len()),
+                ));
+            }
+
+            // Create indexed pairs and quickselect by value
+            let mut indexed: Vec<(usize, T)> = flat_data.iter().cloned().enumerate().collect();
+            let kth_idx = quickselect_by_value(&mut indexed, k);
+            Ok(Array::from_data(vec![kth_idx], vec![1]))
+        }
+        Some(axis) => {
+            // For simplicity, we'll handle only 1D and 2D cases
+            if a.ndim() == 1 {
+                let data = a.to_vec();
+                if k >= data.len() {
+                    return Err(NumPyError::invalid_value(
+                        &format!("k={} is out of bounds for array of size {}", k, data.len()),
+                    ));
+                }
+
+                let mut indexed: Vec<(usize, T)> = data.iter().cloned().enumerate().collect();
+                let kth_idx = quickselect_by_value(&mut indexed, k);
+                Ok(Array::from_data(vec![kth_idx], vec![1]))
+            } else if a.ndim() == 2 {
+                let normalized_axis = if axis < 0 {
+                    2 + axis as usize
+                } else {
+                    axis as usize
+                };
+
+                if normalized_axis >= 2 {
+                    return Err(NumPyError::invalid_value("Axis out of bounds for 2D array"));
+                }
+
+                let shape = a.shape();
+                let (outer_len, inner_len) = if normalized_axis == 0 {
+                    (shape[1], shape[0])
+                } else {
+                    (shape[0], shape[1])
+                };
+
+                if k >= inner_len {
+                    return Err(NumPyError::invalid_value(
+                        &format!("k={} is out of bounds for axis of size {}", k, inner_len),
+                    ));
+                }
+
+                let mut result = Vec::with_capacity(outer_len);
+
+                for i in 0..outer_len {
+                    let indexed: Vec<(usize, T)> = if normalized_axis == 0 {
+                        // Get column i with indices
+                        (0..inner_len)
+                            .map(|j| (j, a.get(j * shape[1] + i).unwrap().clone()))
+                            .collect()
+                    } else {
+                        // Get row i with indices
+                        (0..inner_len)
+                            .map(|j| (j, a.get(i * inner_len + j).unwrap().clone()))
+                            .collect()
+                    };
+
+                    let kth_idx = quickselect_by_value(&mut indexed.clone(), k);
+                    result.push(kth_idx);
+                }
+
+                let result_shape = if normalized_axis == 0 {
+                    vec![outer_len]
+                } else {
+                    vec![outer_len]
+                };
+
+                Ok(Array::from_data(result, result_shape))
+            } else {
+                Err(NumPyError::not_implemented("kth_index for arrays with ndim > 2"))
+            }
+        }
+    }
+}
+
+/// Quickselect that returns the index after selecting by value
+fn quickselect_by_value<T: Ord + Clone>(indexed_data: &mut [(usize, T)], k: usize) -> usize {
+    let mut left = 0;
+    let mut right = indexed_data.len();
+
+    loop {
+        if left == right {
+            return left;
+        }
+
+        let pivot_idx = left + (right - left) / 2;
+        let pivot = indexed_data[pivot_idx].1.clone();
+
+        let mut i = left;
+        let mut j = right - 1;
+
+        indexed_data.swap(pivot_idx, right - 1);
+
+        loop {
+            while indexed_data[i].1 < pivot {
+                i += 1;
+            }
+            while indexed_data[j].1 > pivot {
+                if j == 0 {
+                    break;
+                }
+                j -= 1;
+            }
+            if i <= j {
+                indexed_data.swap(i, j);
+                i += 1;
+                if j == 0 {
+                    break;
+                }
+                j -= 1;
+            }
+        }
+
+        indexed_data.swap(i, right - 1);
+
+        if k <= i {
+            right = i;
+        } else {
+            left = i + 1;
         }
     }
 }

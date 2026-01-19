@@ -49,13 +49,13 @@ where
         + Send
         + Sync
         + 'static
-        + From<i64>,
+        + num_traits::cast::NumCast,
 {
     let sum_result = parallel_sum(array)?;
     let count = array.size() as i64;
 
     Ok(crate::Array::from_vec(vec![
-        sum_result.to_vec()[0].clone() / T::from(count),
+        sum_result.to_vec()[0].clone() / num_traits::cast::NumCast::from(count).unwrap(),
     ]))
 }
 
@@ -195,7 +195,8 @@ where
         + std::ops::Div<Output = T>
         + Send
         + Sync
-        + 'static,
+        + 'static
+        + num_traits::NumCast,
 {
     Err(NumPyError::not_implemented(
         "parallel_mean requires rayon feature",

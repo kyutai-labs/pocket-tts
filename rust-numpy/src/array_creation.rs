@@ -1,7 +1,7 @@
 //! Array creation and manipulation functions
 
 use crate::array::Array;
-use crate::dtype::{Dtype, DtypeKind};
+use crate::dtype::Dtype;
 use crate::error::{NumPyError, Result};
 
 /// Create an array from a Python-like list of values.
@@ -73,34 +73,22 @@ pub fn arange(start: f32, stop: f32, step: Option<f32>) -> Result<Array<f32>> {
 /// ```
 pub fn clip<T>(array: &Array<T>, a_min: Option<T>, a_max: Option<T>) -> Result<Array<T>>
 where
-    T: Clone + PartialOrd + 'static,
+    T: PartialOrd + Clone + num_traits::Bounded + Default + 'static,
 {
-    let min_val = a_min.unwrap_or_else(|| {
-        array
-            .data()
-            .iter()
-            .cloned()
-            .fold(T::max_value(), |a, b| a.min(b))
-    });
-
-    let max_val = a_max.unwrap_or_else(|| {
-        array
-            .data()
-            .iter()
-            .cloned()
-            .fold(T::min_value(), |a, b| a.max(b))
-    });
-
     let clipped: Vec<T> = array
         .data()
         .iter()
-        .map(|&x| {
+        .map(|x| {
             let mut val = x.clone();
-            if let Some(min_v) = a_min {
-                val = val.max(min_v.clone());
+            if let Some(min_v) = &a_min {
+                if val < *min_v {
+                    val = min_v.clone();
+                }
             }
-            if let Some(max_v) = a_max {
-                val = val.min(max_v.clone());
+            if let Some(max_v) = &a_max {
+                if val > *max_v {
+                    val = max_v.clone();
+                }
             }
             val
         })
@@ -124,7 +112,7 @@ where
 /// ```
 pub fn min<T>(array: &Array<T>) -> Result<T>
 where
-    T: Clone + PartialOrd + 'static,
+    T: PartialOrd + Copy + num_traits::Bounded + 'static,
 {
     if array.size() == 0 {
         return Err(NumPyError::invalid_value("min() arg is an empty sequence"));
@@ -134,7 +122,7 @@ where
         .data()
         .iter()
         .cloned()
-        .fold(T::max_value(), |a, b| a.min(b)))
+        .fold(T::max_value(), |a, b| if a < b { a } else { b }))
 }
 
 /// Compute natural logarithm element-wise (similar to np.log).
@@ -152,17 +140,17 @@ where
 /// ```
 pub fn log<T>(array: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + Into<f64> + From<f64> + 'static,
+    T: num_traits::Float + Default + 'static,
 {
     let logged: Vec<T> = array
         .data()
         .iter()
         .map(|&x| {
-            let x_f64: f64 = x.into();
+            let x_f64 = x.to_f64().unwrap_or(0.0);
             if x_f64 <= 0.0 {
-                T::from(f64::NEG_INFINITY)
+                T::from(f64::NEG_INFINITY).unwrap_or(T::zero())
             } else {
-                T::from(x_f64.ln())
+                T::from(x_f64.ln()).unwrap_or(T::zero())
             }
         })
         .collect();
@@ -209,7 +197,7 @@ mod tests {
     #[test]
     fn test_clip_basic() {
         let input = vec![1.0, 2.0, 3.0, 4.0, 5.0];
-        let arr = Array::from_vec(input).unwrap();
+        let arr = Array::from_vec(input);
         let clipped = clip(&arr, Some(2.0), Some(4.0)).unwrap();
         let data = clipped.data();
         assert_eq!(data[0], 2.0);
@@ -222,7 +210,7 @@ mod tests {
     #[test]
     fn test_clip_no_min() {
         let input = vec![1.0, 2.0, 3.0];
-        let arr = Array::from_vec(input).unwrap();
+        let arr = Array::from_vec(input);
         let clipped = clip(&arr, None, Some(2.0)).unwrap();
         let data = clipped.data();
         assert_eq!(data[0], 1.0);
@@ -233,7 +221,7 @@ mod tests {
     #[test]
     fn test_clip_no_max() {
         let input = vec![1.0, 2.0, 3.0];
-        let arr = Array::from_vec(input).unwrap();
+        let arr = Array::from_vec(input);
         let clipped = clip(&arr, Some(2.0), None).unwrap();
         let data = clipped.data();
         assert_eq!(data[0], 2.0);
@@ -244,7 +232,7 @@ mod tests {
     #[test]
     fn test_min() {
         let input = vec![3.0, 1.0, 4.0, 1.0, 5.0];
-        let arr = Array::from_vec(input).unwrap();
+        let arr = Array::from_vec(input);
         let min_val = min(&arr).unwrap();
         assert_eq!(min_val, 1.0);
     }
@@ -252,15 +240,15 @@ mod tests {
     #[test]
     fn test_min_empty() {
         let input: Vec<f32> = vec![];
-        let arr = Array::from_vec(input).unwrap();
+        let arr = Array::from_vec(input);
         let result = min(&arr);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_log() {
-        let input = vec![1.0, 2.0, 10.0, 0.5, f32::EXP];
-        let arr = Array::from_vec(input).unwrap();
+        let input = vec![1.0, 2.0, 10.0, 0.5, std::f32::consts::E];
+        let arr = Array::from_vec(input);
         let logged = log(&arr).unwrap();
         let data = logged.data();
         assert!((data[0] - 0.0f32.ln()).abs() < 1e-6);
@@ -273,11 +261,13 @@ mod tests {
     #[test]
     fn test_log_negative() {
         let input = vec![-1.0, 0.0, 1.0];
-        let arr = Array::from_vec(input).unwrap();
+        let arr = Array::from_vec(input);
         let logged = log(&arr).unwrap();
         let data = logged.data();
-        assert!(data[0].is_infinite() && data[0] < 0.0);
-        assert!(data[1].is_infinite() && data[1] < 0.0);
+        let v0: f32 = data[0];
+        let v1: f32 = data[1];
+        assert!(v0.is_infinite() && v0 < 0.0);
+        assert!(v1.is_infinite() && v1 < 0.0);
         assert!((data[2] - 0.0f32.ln()).abs() < 1e-6);
     }
 }

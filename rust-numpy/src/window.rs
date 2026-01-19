@@ -16,7 +16,10 @@ where
     T: Float + std::fmt::Debug + 'static,
 {
     if M == 0 {
-        return Err(NumPyError::value_error("Window length M must be positive", "window"));
+        return Err(NumPyError::value_error(
+            "Window length M must be positive",
+            "window",
+        ));
     }
 
     let mut window = Array1::zeros(M);
@@ -40,13 +43,16 @@ where
     T: Float + std::fmt::Debug + 'static,
 {
     if M == 0 {
-        return Err(NumPyError::value_error("Window length M must be positive", "window"));
+        return Err(NumPyError::value_error(
+            "Window length M must be positive",
+            "window",
+        ));
     }
 
     let mut window = Array1::zeros(M);
     let two_pi = T::from(2.0 * std::f64::consts::PI).unwrap();
     let four_pi = T::from(4.0 * std::f64::consts::PI).unwrap();
-    let six_pi = T::from(6.0 * std::f64::consts::PI).unwrap();
+    let _six_pi = T::from(6.0 * std::f64::consts::PI).unwrap();
 
     for n in 0..M {
         let n_float = T::from(n).unwrap();
@@ -67,7 +73,10 @@ where
     T: Float + std::fmt::Debug + 'static,
 {
     if M == 0 {
-        return Err(NumPyError::value_error("Window length M must be positive", "window"));
+        return Err(NumPyError::value_error(
+            "Window length M must be positive",
+            "window",
+        ));
     }
 
     let mut window = Array1::zeros(M);
@@ -91,7 +100,10 @@ where
     T: Float + std::fmt::Debug + 'static,
 {
     if M == 0 {
-        return Err(NumPyError::value_error("Window length M must be positive", "window"));
+        return Err(NumPyError::value_error(
+            "Window length M must be positive",
+            "window",
+        ));
     }
 
     let mut window = Array1::zeros(M);
@@ -109,10 +121,13 @@ where
 
 pub fn kaiser<T>(M: usize, beta: T) -> Result<Array1<T>, NumPyError>
 where
-    T: Float + std::fmt::Debug + 'static,
+    T: Float + std::fmt::Debug + std::ops::AddAssign + std::ops::MulAssign + 'static,
 {
     if M == 0 {
-        return Err(NumPyError::value_error("Window length M must be positive", "window"));
+        return Err(NumPyError::value_error(
+            "Window length M must be positive",
+            "window",
+        ));
     }
 
     let mut window = Array1::zeros(M);
@@ -141,11 +156,17 @@ where
     T: Float + std::fmt::Debug + 'static,
 {
     if M == 0 {
-        return Err(NumPyError::value_error("Window length M must be positive", "window"));
+        return Err(NumPyError::value_error(
+            "Window length M must be positive",
+            "window",
+        ));
     }
 
     if std <= T::zero() {
-        return Err(NumPyError::value_error("Standard deviation must be positive", "window"));
+        return Err(NumPyError::value_error(
+            "Standard deviation must be positive",
+            "window",
+        ));
     }
 
     let mut window = Array1::zeros(M);
@@ -166,15 +187,24 @@ where
     T: Float + std::fmt::Debug + 'static,
 {
     if M == 0 {
-        return Err(NumPyError::value_error("Window length M must be positive", "window"));
+        return Err(NumPyError::value_error(
+            "Window length M must be positive",
+            "window",
+        ));
     }
 
     if std <= T::zero() {
-        return Err(NumPyError::value_error("Standard deviation must be positive", "window"));
+        return Err(NumPyError::value_error(
+            "Standard deviation must be positive",
+            "window",
+        ));
     }
 
     if exponent <= T::zero() {
-        return Err(NumPyError::value_error("Exponent must be positive", "window"));
+        return Err(NumPyError::value_error(
+            "Exponent must be positive",
+            "window",
+        ));
     }
 
     let mut window = Array1::zeros(M);
@@ -195,7 +225,10 @@ where
     T: Float + Zero + std::fmt::Debug + 'static,
 {
     if M == 0 {
-        return Err(NumPyError::value_error("Window length M must be positive", "window"));
+        return Err(NumPyError::value_error(
+            "Window length M must be positive",
+            "window",
+        ));
     }
 
     Ok(Array1::from_elem(M, T::one()))
@@ -206,7 +239,10 @@ where
     T: Float + std::fmt::Debug + 'static,
 {
     if M == 0 {
-        return Err(NumPyError::value_error("Window length M must be positive", "window"));
+        return Err(NumPyError::value_error(
+            "Window length M must be positive",
+            "window",
+        ));
     }
 
     let mut window = Array1::zeros(M);
@@ -236,7 +272,10 @@ where
     T: Float + std::fmt::Debug + 'static,
 {
     if M == 0 {
-        return Err(NumPyError::value_error("Window length M must be positive", "window"));
+        return Err(NumPyError::value_error(
+            "Window length M must be positive",
+            "window",
+        ));
     }
 
     let mut window = Array1::zeros(M);
@@ -265,7 +304,10 @@ where
     T: Float + std::fmt::Debug + 'static,
 {
     if M == 0 {
-        return Err(NumPyError::value_error("Window length M must be positive", "window"));
+        return Err(NumPyError::value_error(
+            "Window length M must be positive",
+            "window",
+        ));
     }
 
     let mut window = Array1::zeros(M);
@@ -295,7 +337,10 @@ where
     T: Float + std::fmt::Debug + 'static,
 {
     if M == 0 {
-        return Err(NumPyError::value_error("Window length M must be positive", "window"));
+        return Err(NumPyError::value_error(
+            "Window length M must be positive",
+            "window",
+        ));
     }
 
     let mut window = Array1::zeros(M);
@@ -323,7 +368,10 @@ where
     T: Float + std::fmt::Debug + 'static,
 {
     if M == 0 {
-        return Err(NumPyError::value_error("Window length M must be positive", "window"));
+        return Err(NumPyError::value_error(
+            "Window length M must be positive",
+            "window",
+        ));
     }
 
     let mut window = Array1::zeros(M);
@@ -353,11 +401,17 @@ where
     T: Float + std::fmt::Debug + 'static,
 {
     if M == 0 {
-        return Err(NumPyError::value_error("Window length M must be positive", "window"));
+        return Err(NumPyError::value_error(
+            "Window length M must be positive",
+            "window",
+        ));
     }
 
     if k < 0 || k >= nw.min((M / 2) as isize) {
-        return Err(NumPyError::value_error("k must be in range [0, min(nw, M/2))", "window"));
+        return Err(NumPyError::value_error(
+            "k must be in range [0, min(nw, M/2))",
+            "window",
+        ));
     }
 
     let nw_float = T::from(nw as f64).unwrap();
@@ -383,11 +437,17 @@ where
     T: Float + std::fmt::Debug + 'static,
 {
     if M == 0 {
-        return Err(NumPyError::value_error("Window length M must be positive", "window"));
+        return Err(NumPyError::value_error(
+            "Window length M must be positive",
+            "window",
+        ));
     }
 
     if attenuation <= T::zero() {
-        return Err(NumPyError::value_error("Attenuation must be positive", "window"));
+        return Err(NumPyError::value_error(
+            "Attenuation must be positive",
+            "window",
+        ));
     }
 
     let mut window = Array1::zeros(M);
@@ -412,7 +472,7 @@ where
 
 fn bessel_i0<T>(x: T) -> T
 where
-    T: Float + std::fmt::Debug,
+    T: Float + std::fmt::Debug + std::ops::AddAssign + std::ops::MulAssign,
 {
     let x_sq = x * x / T::from(14.0625).unwrap();
 

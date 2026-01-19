@@ -2,8 +2,7 @@
 
 use super::{Polynomial, PolynomialBase};
 use crate::error::NumPyError;
-use ndarray::{Array1, Array2};
-use num_complex::Complex;
+use ndarray::Array1;
 use num_traits::{Float, Num, One, Zero};
 
 /// Generalized Laguerre polynomials
@@ -16,13 +15,19 @@ pub struct Laguerre<T> {
 
 impl<T> Laguerre<T>
 where
-    T: Float + Num + std::fmt::Debug + 'static,
+    T: Float
+        + Num
+        + std::fmt::Debug
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::MulAssign
+        + std::ops::SubAssign
+        + std::ops::DivAssign,
 {
     pub fn new(coeffs: &Array1<T>) -> Result<Self, NumPyError> {
         if coeffs.len() == 0 {
             return Err(NumPyError::invalid_value(
                 "Laguerre coefficients cannot be empty",
-                "laguerre",
             ));
         }
 
@@ -61,7 +66,14 @@ where
 
 impl<T> PolynomialBase<T> for Laguerre<T>
 where
-    T: Float + Num + std::fmt::Debug + 'static,
+    T: Float
+        + Num
+        + std::fmt::Debug
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::MulAssign
+        + std::ops::SubAssign
+        + std::ops::DivAssign,
 {
     fn coeffs(&self) -> &Array1<T> {
         &self.coeffs
@@ -121,7 +133,14 @@ where
 
 fn laguerre_eval_recursive<T>(coeffs: &Array1<T>, x: T) -> T
 where
-    T: Float + Num + std::fmt::Debug,
+    T: Float
+        + Num
+        + std::fmt::Debug
+        + std::ops::AddAssign
+        + std::ops::MulAssign
+        + std::ops::SubAssign
+        + std::ops::DivAssign
+        + 'static,
 {
     if coeffs.len() == 0 {
         return T::zero();
@@ -135,9 +154,10 @@ where
         if n > 0 {
             let mut binomial_sum = T::zero();
             for k in 0..=n {
-                let binomial = binomial_coefficient(n, k);
-                let sign = T::from((-1.0_f64).powi(k as i32)).unwrap();
-                let factorial_part = T::from(factorial(n) / factorial(k)).unwrap();
+                let binomial = binomial_coefficient::<T>(n, k);
+                let sign = num_traits::cast::NumCast::from((-1.0_f64).powi(k as i32)).unwrap();
+                let factorial_part =
+                    num_traits::cast::NumCast::from(factorial(n) / factorial(k)).unwrap();
                 binomial_sum += binomial * sign * factorial_part * x.powi(k as i32);
             }
             lag_n = binomial_sum / T::from(factorial(n)).unwrap();
@@ -151,7 +171,14 @@ where
 
 fn polynomial_to_laguerre<T>(poly_coeffs: &Array1<T>) -> Result<Array1<T>, NumPyError>
 where
-    T: Float + Num + std::fmt::Debug + 'static,
+    T: Float
+        + Num
+        + std::fmt::Debug
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::MulAssign
+        + std::ops::SubAssign
+        + std::ops::DivAssign,
 {
     let n = poly_coeffs.len();
     let mut lag_coeffs = Array1::zeros(n);
@@ -177,7 +204,14 @@ where
 
 fn laguerre_to_polynomial<T>(lag_coeffs: &Array1<T>) -> Result<Array1<T>, NumPyError>
 where
-    T: Float + Num + std::fmt::Debug + 'static,
+    T: Float
+        + Num
+        + std::fmt::Debug
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::MulAssign
+        + std::ops::SubAssign
+        + std::ops::DivAssign,
 {
     let n = lag_coeffs.len();
     let mut poly_coeffs = Array1::zeros(n);
@@ -198,7 +232,7 @@ where
 
 fn laguerre_derivative_coeffs<T>(coeffs: &Array1<T>, m: usize) -> Result<Array1<T>, NumPyError>
 where
-    T: Float + Num + std::fmt::Debug + 'static,
+    T: Float + Num + std::fmt::Debug + 'static + std::ops::AddAssign + std::ops::MulAssign,
 {
     if m == 0 {
         return Ok(coeffs.clone());
@@ -225,7 +259,7 @@ where
 
 fn laguerre_derivative_factor<T>(k: usize, j: usize, m: usize) -> T
 where
-    T: Float + Num,
+    T: Float + Num + std::ops::MulAssign,
 {
     if m > k {
         return T::zero();
@@ -245,13 +279,23 @@ fn laguerre_integral_coeffs<T>(
     k: Option<T>,
 ) -> Result<Array1<T>, NumPyError>
 where
-    T: Float + Num + std::fmt::Debug + 'static,
+    T: Float
+        + Num
+        + std::fmt::Debug
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::MulAssign
+        + std::ops::SubAssign
+        + std::ops::DivAssign,
 {
     let n = coeffs.len();
     let mut integ_coeffs = Array1::zeros(n + m);
 
-    for _ in 0..m {
-        integ_coeffs.push(k.unwrap_or(T::zero()));
+    // Zeros are already initialized
+    if let Some(kval) = k {
+        for i in 0..m {
+            integ_coeffs[i] = kval;
+        }
     }
 
     for k in 0..n {

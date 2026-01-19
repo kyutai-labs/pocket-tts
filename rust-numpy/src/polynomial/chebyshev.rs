@@ -2,8 +2,7 @@
 
 use super::{Polynomial, PolynomialBase};
 use crate::error::NumPyError;
-use ndarray::{Array1, Array2};
-use num_complex::Complex;
+use ndarray::Array1;
 use num_traits::{Float, Num, One, Zero};
 
 /// Chebyshev polynomials of the first kind
@@ -16,13 +15,19 @@ pub struct Chebyshev<T> {
 
 impl<T> Chebyshev<T>
 where
-    T: Float + Num + std::fmt::Debug + 'static,
+    T: Float
+        + Num
+        + std::fmt::Debug
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::SubAssign
+        + std::ops::MulAssign
+        + std::ops::DivAssign,
 {
     pub fn new(coeffs: &Array1<T>) -> Result<Self, NumPyError> {
         if coeffs.len() == 0 {
             return Err(NumPyError::invalid_value(
                 "Chebyshev coefficients cannot be empty",
-                "chebyshev",
             ));
         }
 
@@ -79,7 +84,14 @@ where
 
 impl<T> PolynomialBase<T> for Chebyshev<T>
 where
-    T: Float + Num + std::fmt::Debug + 'static,
+    T: Float
+        + Num
+        + std::fmt::Debug
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::MulAssign
+        + std::ops::SubAssign
+        + std::ops::DivAssign,
 {
     fn coeffs(&self) -> &Array1<T> {
         &self.coeffs
@@ -161,7 +173,14 @@ where
 
 fn polynomial_to_chebyshev<T>(poly_coeffs: &Array1<T>) -> Result<Array1<T>, NumPyError>
 where
-    T: Float + Num + std::fmt::Debug + 'static,
+    T: Float
+        + Num
+        + std::fmt::Debug
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::MulAssign
+        + std::ops::SubAssign
+        + std::ops::DivAssign,
 {
     let n = poly_coeffs.len();
     let mut cheb_coeffs = Array1::zeros(n);
@@ -183,7 +202,14 @@ where
 
 fn chebyshev_to_polynomial<T>(cheb_coeffs: &Array1<T>) -> Result<Array1<T>, NumPyError>
 where
-    T: Float + Num + std::fmt::Debug + 'static,
+    T: Float
+        + Num
+        + std::fmt::Debug
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::MulAssign
+        + std::ops::SubAssign
+        + std::ops::DivAssign,
 {
     let n = cheb_coeffs.len();
     let mut poly_coeffs = Array1::zeros(n);
@@ -217,7 +243,14 @@ where
 
 fn chebyshev_derivative_coeffs<T>(coeffs: &Array1<T>, m: usize) -> Result<Array1<T>, NumPyError>
 where
-    T: Float + Num + std::fmt::Debug + 'static,
+    T: Float
+        + Num
+        + std::fmt::Debug
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::MulAssign
+        + std::ops::SubAssign
+        + std::ops::DivAssign,
 {
     if m == 0 {
         return Ok(coeffs.clone());
@@ -244,7 +277,7 @@ where
 
 fn chebyshev_derivative_factor<T>(j: usize, m: usize) -> T
 where
-    T: Float + Num,
+    T: Float + Num + std::ops::MulAssign,
 {
     if m > j {
         return T::zero();
@@ -269,8 +302,10 @@ where
     let n = coeffs.len();
     let mut integ_coeffs = Array1::zeros(n + m);
 
-    for _ in 0..m {
-        integ_coeffs.push(k.unwrap_or(T::zero()));
+    if let Some(kval) = k {
+        for i in 0..m {
+            integ_coeffs[i] = kval;
+        }
     }
 
     for k in 0..n {

@@ -3,6 +3,7 @@ use crate::broadcasting::compute_broadcast_shape;
 use crate::dtype::{Dtype, DtypeKind};
 use crate::error::{NumPyError, Result};
 use std::marker::PhantomData;
+use std::sync::Arc;
 
 impl<T> ArrayView for Array<T> {
     fn dtype(&self) -> &Dtype {
@@ -30,15 +31,24 @@ impl<T> ArrayView for Array<T> {
     }
 
     fn as_ptr(&self) -> *const u8 {
-        // This is unsafe and simplified - assumes T compatible with u8 pointer
-        std::ptr::null()
+        // Get pointer to the underlying data
+        self.data.as_ref().as_slice().as_ptr() as *const u8
     }
 }
 
 impl<T> ArrayViewMut for Array<T> {
     fn as_mut_ptr(&mut self) -> *mut u8 {
-        // This is unsafe and simplified
-        std::ptr::null_mut()
+        // Get mutable pointer to the underlying data
+        // SAFETY: We have &mut self, which guarantees exclusive access to the Array.
+        // Even though the data is in an Arc, the &mut ensures no other references exist
+        // that could modify the data. We use unsafe to bypass Arc's ref counting here.
+        unsafe {
+            let ptr = self.data.as_ref().as_slice().as_ptr() as *mut u8;
+            // The cast from const to mut is safe because:
+            // 1. We have &mut self, guaranteeing exclusive mutable access
+            // 2. The Arc is not shared during ufunc execution (outputs are newly created)
+            ptr
+        }
     }
 }
 
@@ -704,164 +714,164 @@ impl UfuncRegistry {
 
         self.register(Box::new(ComparisonUfunc::new(
             "logical_and",
-            |a: &f64, b: &f64| a != 0.0 && b != 0.0,
+            |a: &f64, b: &f64| *a != 0.0 && *b != 0.0,
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_and",
-            |a: &f32, b: &f32| a != 0.0 && b != 0.0,
+            |a: &f32, b: &f32| *a != 0.0 && *b != 0.0,
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_and",
-            |a: &i64, b: &i64| a != 0 && b != 0,
+            |a: &i64, b: &i64| *a != 0 && *b != 0,
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_and",
-            |a: &i32, b: &i32| a != 0 && b != 0,
+            |a: &i32, b: &i32| *a != 0 && *b != 0,
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_and",
-            |a: &i16, b: &i16| a != 0 && b != 0,
+            |a: &i16, b: &i16| *a != 0 && *b != 0,
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_and",
-            |a: &i8, b: &i8| a != 0 && b != 0,
+            |a: &i8, b: &i8| *a != 0 && *b != 0,
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_and",
-            |a: &u64, b: &u64| a != 0 && b != 0,
+            |a: &u64, b: &u64| *a != 0 && *b != 0,
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_and",
-            |a: &u32, b: &u32| a != 0 && b != 0,
+            |a: &u32, b: &u32| *a != 0 && *b != 0,
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_and",
-            |a: &u16, b: &u16| a != 0 && b != 0,
+            |a: &u16, b: &u16| *a != 0 && *b != 0,
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_and",
-            |a: &u8, b: &u8| a != 0 && b != 0,
+            |a: &u8, b: &u8| *a != 0 && *b != 0,
         )));
 
         self.register(Box::new(ComparisonUfunc::new(
             "logical_or",
-            |a: &f64, b: &f64| a != 0.0 || b != 0.0,
+            |a: &f64, b: &f64| *a != 0.0 || *b != 0.0,
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_or",
-            |a: &f32, b: &f32| a != 0.0 || b != 0.0,
+            |a: &f32, b: &f32| *a != 0.0 || *b != 0.0,
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_or",
-            |a: &i64, b: &i64| a != 0 || b != 0,
+            |a: &i64, b: &i64| *a != 0 || *b != 0,
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_or",
-            |a: &i32, b: &i32| a != 0 || b != 0,
+            |a: &i32, b: &i32| *a != 0 || *b != 0,
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_or",
-            |a: &i16, b: &i16| a != 0 || b != 0,
+            |a: &i16, b: &i16| *a != 0 || *b != 0,
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_or",
-            |a: &i8, b: &i8| a != 0 || b != 0,
+            |a: &i8, b: &i8| *a != 0 || *b != 0,
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_or",
-            |a: &u64, b: &u64| a != 0 || b != 0,
+            |a: &u64, b: &u64| *a != 0 || *b != 0,
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_or",
-            |a: &u32, b: &u32| a != 0 || b != 0,
+            |a: &u32, b: &u32| *a != 0 || *b != 0,
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_or",
-            |a: &u16, b: &u16| a != 0 || b != 0,
+            |a: &u16, b: &u16| *a != 0 || *b != 0,
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_or",
-            |a: &u8, b: &u8| a != 0 || b != 0,
+            |a: &u8, b: &u8| *a != 0 || *b != 0,
         )));
 
         self.register(Box::new(ComparisonUfunc::new(
             "logical_xor",
-            |a: &f64, b: &f64| (a != 0.0) != (b != 0.0),
+            |a: &f64, b: &f64| (*a != 0.0) != (*b != 0.0),
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_xor",
-            |a: &f32, b: &f32| (a != 0.0) != (b != 0.0),
+            |a: &f32, b: &f32| (*a != 0.0) != (*b != 0.0),
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_xor",
-            |a: &i64, b: &i64| (a != 0) != (b != 0),
+            |a: &i64, b: &i64| (*a != 0) != (*b != 0),
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_xor",
-            |a: &i32, b: &i32| (a != 0) != (b != 0),
+            |a: &i32, b: &i32| (*a != 0) != (*b != 0),
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_xor",
-            |a: &i16, b: &i16| (a != 0) != (b != 0),
+            |a: &i16, b: &i16| (*a != 0) != (*b != 0),
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_xor",
-            |a: &i8, b: &i8| (a != 0) != (b != 0),
+            |a: &i8, b: &i8| (*a != 0) != (*b != 0),
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_xor",
-            |a: &u64, b: &u64| (a != 0) != (b != 0),
+            |a: &u64, b: &u64| (*a != 0) != (*b != 0),
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_xor",
-            |a: &u32, b: &u32| (a != 0) != (b != 0),
+            |a: &u32, b: &u32| (*a != 0) != (*b != 0),
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_xor",
-            |a: &u16, b: &u16| (a != 0) != (b != 0),
+            |a: &u16, b: &u16| (*a != 0) != (*b != 0),
         )));
         self.register(Box::new(ComparisonUfunc::new(
             "logical_xor",
-            |a: &u8, b: &u8| (a != 0) != (b != 0),
+            |a: &u8, b: &u8| (*a != 0) != (*b != 0),
         )));
 
         self.register(Box::new(LogicalUnaryUfunc::new(
             "logical_not",
-            |a: &f64| a == 0.0,
+            |a: &f64| *a == 0.0,
         )));
         self.register(Box::new(LogicalUnaryUfunc::new(
             "logical_not",
-            |a: &f32| a == 0.0,
+            |a: &f32| *a == 0.0,
         )));
         self.register(Box::new(LogicalUnaryUfunc::new(
             "logical_not",
-            |a: &i64| a == 0,
+            |a: &i64| *a == 0,
         )));
         self.register(Box::new(LogicalUnaryUfunc::new(
             "logical_not",
-            |a: &i32| a == 0,
+            |a: &i32| *a == 0,
         )));
         self.register(Box::new(LogicalUnaryUfunc::new(
             "logical_not",
-            |a: &i16| a == 0,
+            |a: &i16| *a == 0,
         )));
         self.register(Box::new(LogicalUnaryUfunc::new("logical_not", |a: &i8| {
-            a == 0
+            *a == 0
         })));
         self.register(Box::new(LogicalUnaryUfunc::new(
             "logical_not",
-            |a: &u64| a == 0,
+            |a: &u64| *a == 0,
         )));
         self.register(Box::new(LogicalUnaryUfunc::new(
             "logical_not",
-            |a: &u32| a == 0,
+            |a: &u32| *a == 0,
         )));
         self.register(Box::new(LogicalUnaryUfunc::new(
             "logical_not",
-            |a: &u16| a == 0,
+            |a: &u16| *a == 0,
         )));
         self.register(Box::new(LogicalUnaryUfunc::new("logical_not", |a: &u8| {
-            a == 0
+            *a == 0
         })));
     }
 }

@@ -78,7 +78,27 @@ pub enum DatetimeUnit {
     ns,
     ps,
     fs,
-    As, // Fixed: 'as' -> 'As'
+    As,
+}
+
+impl DatetimeUnit {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            DatetimeUnit::Y => "Y",
+            DatetimeUnit::M => "M",
+            DatetimeUnit::W => "W",
+            DatetimeUnit::D => "D",
+            DatetimeUnit::h => "h",
+            DatetimeUnit::m => "m",
+            DatetimeUnit::s => "s",
+            DatetimeUnit::ms => "ms",
+            DatetimeUnit::us => "us",
+            DatetimeUnit::ns => "ns",
+            DatetimeUnit::ps => "ps",
+            DatetimeUnit::fs => "fs",
+            DatetimeUnit::As => "as",
+        }
+    }
 }
 
 /// Units for timedelta64

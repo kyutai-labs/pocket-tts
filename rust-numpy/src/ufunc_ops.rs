@@ -1,7 +1,6 @@
 use crate::array::Array;
 use crate::broadcasting::{broadcast_arrays, compute_broadcast_shape};
-use crate::comparison_ufuncs::{ComparisonUfunc, ExtremaUfunc, LogicalUnaryUfunc};
-use crate::dtype::DtypeKind;
+
 use crate::error::{NumPyError, Result};
 use crate::ufunc::{get_ufunc, UfuncRegistry};
 use std::sync::Arc;
@@ -182,7 +181,7 @@ impl UfuncEngine {
         F: Fn(T, T) -> T + Send + Sync,
     {
         let input_shape = input.shape();
-        let output_shape = output.shape();
+        let output_shape = output.shape().to_vec();
 
         let reduced_axes: Vec<usize> = axes
             .iter()
@@ -197,7 +196,7 @@ impl UfuncEngine {
             .collect();
 
         for output_idx in 0..output.size() {
-            let output_indices = crate::strides::compute_multi_indices(output_idx, output_shape);
+            let output_indices = crate::strides::compute_multi_indices(output_idx, &output_shape);
 
             let mut result: Option<T> = None;
 
@@ -343,7 +342,7 @@ where
             self.size() as i64
         };
 
-        Array::full(output_shape, count)
+        Ok(Array::full(output_shape, count))
     }
 
     /// Minimum of elements
@@ -386,7 +385,7 @@ where
         let mut result = Array::<f64>::zeros(sum_result.shape().to_vec());
         for i in 0..result.size() {
             if let (Some(sum_val), Some(&cnt)) = (sum_result.get(i), count.get(i)) {
-                result.set(i, (*sum_val).into() / cnt as f64)?;
+                result.set(i, sum_val.clone().into() / cnt as f64)?;
             }
         }
 
@@ -395,7 +394,7 @@ where
 
     pub fn var(&self, axis: Option<&[isize]>, keepdims: bool, _skipna: bool) -> Result<Array<f64>>
     where
-        T: Into<f64> + Clone,
+        T: Into<f64> + Clone + std::ops::Add<Output = T>,
     {
         let mean_val = self.mean(axis, keepdims)?;
 
@@ -405,7 +404,7 @@ where
                 self.get(i),
                 Self::get_mean_for_index(&mean_val, i, self.shape()),
             ) {
-                let diff = (*val).into() - mean_f64;
+                let diff = val.clone().into() - mean_f64;
                 squared_deviations.push(diff * diff);
             }
         }
@@ -418,7 +417,7 @@ where
 
     pub fn std(&self, axis: Option<&[isize]>, keepdims: bool, skipna: bool) -> Result<Array<f64>>
     where
-        T: Into<f64> + Clone,
+        T: Into<f64> + Clone + std::ops::Add<Output = T>,
     {
         let variance = self.var(axis, keepdims, skipna)?;
 
@@ -494,7 +493,7 @@ where
                     return Err(NumPyError::invalid_operation("Cannot reduce all axes"));
                 }
 
-                let mut result = Array::zeros(output_shape);
+                let mut result = Array::zeros(output_shape.clone());
 
                 for output_idx in 0..result.size() {
                     let output_indices =
@@ -568,7 +567,7 @@ where
                     return Err(NumPyError::invalid_operation("Cannot reduce all axes"));
                 }
 
-                let mut result = Array::zeros(output_shape);
+                let mut result = Array::zeros(output_shape.clone());
 
                 for output_idx in 0..result.size() {
                     let output_indices =
@@ -602,7 +601,10 @@ where
         T: Clone + Default + Into<bool>,
     {
         let engine = UfuncEngine::new();
-        engine.execute_reduction("all", self, axis, keepdims, |a, b| a.into() && b.into())
+        let bool_data: Vec<bool> = self.to_vec().into_iter().map(|x| x.into()).collect();
+        let bool_array = Array::from_shape_vec(self.shape().to_vec(), bool_data).unwrap();
+        let engine = UfuncEngine::new();
+        engine.execute_reduction("all", &bool_array, axis, keepdims, |a, b| a && b)
     }
 
     pub fn any(&self, axis: Option<&[isize]>, keepdims: bool) -> Result<Array<bool>>
@@ -610,7 +612,10 @@ where
         T: Clone + Default + Into<bool>,
     {
         let engine = UfuncEngine::new();
-        engine.execute_reduction("any", self, axis, keepdims, |a, b| a.into() || b.into())
+        let bool_data: Vec<bool> = self.to_vec().into_iter().map(|x| x.into()).collect();
+        let bool_array = Array::from_shape_vec(self.shape().to_vec(), bool_data).unwrap();
+        let engine = UfuncEngine::new();
+        engine.execute_reduction("any", &bool_array, axis, keepdims, |a, b| a || b)
     }
 
     pub fn cumsum(&self, axis: Option<isize>) -> Result<Array<T>>
@@ -880,7 +885,7 @@ where
     where
         T: PartialEq + Clone + Default + 'static,
     {
-        let ufunc = get_ufunc("logical_not")
+        let _ufunc = get_ufunc("logical_not")
             .ok_or_else(|| NumPyError::ufunc_error("logical_not", "Function not found"))?;
 
         let output_shape = self.shape().to_vec();
@@ -888,7 +893,7 @@ where
 
         for i in 0..self.size() {
             if let Some(val) = self.get(i) {
-                output.set(i, val == &val)?;
+                output.set(i, val == &T::default())?;
             }
         }
 

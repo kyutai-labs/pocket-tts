@@ -29,7 +29,6 @@ where
         if coeffs.len() == 0 {
             return Err(NumPyError::invalid_value(
                 "Polynomial coefficients cannot be empty",
-                "polynomial",
             ));
         }
 
@@ -172,15 +171,12 @@ where
 {
     fn to_ndarray2(&self) -> Result<Array2<T>, NumPyError> {
         let shape = (self.coeffs.len(), 1);
-        Ok(self.coeffs.clone().into_shape_with_order(shape).unwrap())
+        Ok(self.coeffs.clone().into_shape(shape).unwrap())
     }
 
     fn from_ndarray2(arr: Array2<T>) -> Result<Polynomial<T>, NumPyError> {
         if arr.shape()[1] != 1 {
-            return Err(NumPyError::invalid_value(
-                "Array must have shape (n, 1)",
-                "polynomial",
-            ));
+            return Err(NumPyError::invalid_value("Array must have shape (n, 1)"));
         }
 
         let coeffs = arr.index_axis(Axis(1), 0).to_owned();
@@ -199,7 +195,6 @@ where
     if x.len() <= deg {
         return Err(NumPyError::invalid_value(
             "Number of data points must be greater than polynomial degree",
-            "polynomial",
         ));
     }
 
@@ -231,10 +226,7 @@ where
 {
     let n = a.shape()[0];
     if a.shape() != [n, n] || b.len() != n {
-        return Err(NumPyError::invalid_value(
-            "System must be square",
-            "polynomial",
-        ));
+        return Err(NumPyError::invalid_value("System must be square"));
     }
 
     let mut augmented = Array2::zeros((n, n + 1));
@@ -343,7 +335,6 @@ where
     if n <= 0 {
         return Err(NumPyError::invalid_value(
             "Polynomial must have degree >= 1",
-            "polynomial",
         ));
     }
 
@@ -355,10 +346,7 @@ where
 
     let leading_coeff = coeffs[n];
     if leading_coeff.abs() < T::from(1e-12).unwrap() {
-        return Err(NumPyError::invalid_value(
-            "Leading coefficient is zero",
-            "polynomial",
-        ));
+        return Err(NumPyError::invalid_value("Leading coefficient is zero"));
     }
 
     for i in 0..n {
@@ -412,8 +400,8 @@ where
     };
 
     let two_a = T::from(2).unwrap() * a;
-    let eigenvalue1 = (-b + sqrt_discriminant) / two_a;
-    let eigenvalue2 = (-b - sqrt_discriminant) / two_a;
+    let eigenvalue1 = (Complex::new(-b, T::zero()) + sqrt_discriminant) / two_a;
+    let eigenvalue2 = (Complex::new(-b, T::zero()) - sqrt_discriminant) / two_a;
 
     Ok(Array1::from_vec(vec![eigenvalue1, eigenvalue2]))
 }

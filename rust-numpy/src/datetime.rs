@@ -10,9 +10,9 @@
 use crate::array::Array;
 use crate::dtype::Dtype;
 use crate::error::NumPyError;
-use chrono::{DateTime, Utc};
+use chrono::DateTime;
 use ndarray::Array1;
-use num_traits::{FromPrimitive, Zero};
+use num_traits::{FromPrimitive, ToPrimitive, Zero};
 
 #[derive(Debug, Clone)]
 pub enum DateTimeUnit {
@@ -51,19 +51,22 @@ pub fn datetime_data<T>(dtype: Dtype) -> Result<(String, String, i32), NumPyErro
 where
     T: FromPrimitive + Zero,
 {
-    let (unit_name, unit_code) = match dtype {
-        Dtype::Datetime64(unit) => match unit.as_str() {
-            "Y" => ("Y", "years", 1),
-            "M" => ("M", "months", 1),
-            "W" => ("W", "weeks", 1),
-            "D" => ("D", "days", 1),
-            "h" => ("h", "hours", 3600),
-            "m" => ("m", "minutes", 60),
-            "s" => ("s", "seconds", 1),
-            "ms" => ("ms", "milliseconds", 1),
-            "us" => ("us", "microseconds", 1),
-            "ns" => ("ns", "nanoseconds", 1),
-            _ => return Err(NumPyError::invalid_dtype(format!("{:?}", dtype))),
+    let (unit_name, unit_code, _step) = match dtype {
+        Dtype::Datetime64(ref unit) => {
+            let unit_str = unit.as_str().to_string();
+            match unit_str.as_str() {
+                "Y" => ("Y", "years", 1),
+                "M" => ("M", "months", 1),
+                "W" => ("W", "weeks", 1),
+                "D" => ("D", "days", 1),
+                "h" => ("h", "hours", 3600),
+                "m" => ("m", "minutes", 60),
+                "s" => ("s", "seconds", 1),
+                "ms" => ("ms", "milliseconds", 1),
+                "us" => ("us", "microseconds", 1),
+                "ns" => ("ns", "nanoseconds", 1),
+                _ => return Err(NumPyError::invalid_dtype(format!("{:?}", dtype))),
+            }
         },
         _ => return Err(NumPyError::invalid_dtype(format!("{:?}", dtype))),
     };
@@ -94,7 +97,7 @@ pub fn busday_count<T>(
     out: Option<&mut Array<T>>,
 ) -> Result<Array<T>, NumPyError>
 where
-    T: FromPrimitive + Zero + Copy + std::fmt::Debug + 'static,
+    T: FromPrimitive + ToPrimitive + Zero + Copy + std::fmt::Debug + Default + 'static,
 {
     if begindates.shape() != enddates.shape() {
         return Err(NumPyError::shape_mismatch(
@@ -107,27 +110,23 @@ where
     let calendar = busdaycal.unwrap_or_else(|| {
         BusDayCalendar::new(
             weekmask_array,
-            holidays.map_or(Array1::from_vec(vec![]), |h| h.to_ndarray1().unwrap()),
+            holidays.map_or(Array1::from_vec(vec![]), |h| {
+                Array1::from_iter(h.data().iter().map(|x| x.to_i64().unwrap_or(0)))
+            }),
         )
     });
 
-    let mut result = match out {
-        Some(out_arr) => out_arr.to_owned(),
-        None => Array::from_shape_vec(
-            begindates.shape().to_vec(),
-            vec![T::zero(); begindates.size()],
-        )?,
-    };
+    let mut result_data = Vec::with_capacity(begindates.size());
 
     for i in 0..begindates.size() {
         let begin_date = begindates.get_linear(i).copied().unwrap_or(T::zero());
         let end_date = enddates.get_linear(i).copied().unwrap_or(T::zero());
 
         let count = count_business_days(begin_date, end_date, &calendar)?;
-        result.set_linear(i, T::from_isize(count as isize).unwrap_or(T::zero()));
+        result_data.push(T::from_isize(count as isize).unwrap_or(T::zero()));
     }
 
-    Ok(result)
+    Ok(Array::from_data(result_data, begindates.shape().to_vec()))
 }
 
 pub fn busday_offset<T>(
@@ -140,7 +139,7 @@ pub fn busday_offset<T>(
     out: Option<&mut Array<T>>,
 ) -> Result<Array<T>, NumPyError>
 where
-    T: FromPrimitive + Zero + Copy + std::fmt::Debug + 'static,
+    T: FromPrimitive + ToPrimitive + Zero + Copy + std::fmt::Debug + Default + 'static,
 {
     if dates.shape() != offsets.shape() {
         return Err(NumPyError::shape_mismatch(
@@ -153,7 +152,9 @@ where
     let calendar = busdaycal.unwrap_or_else(|| {
         BusDayCalendar::new(
             weekmask_array,
-            holidays.map_or(Array1::from_vec(vec![]), |h| h.to_ndarray1().unwrap()),
+            holidays.map_or(Array1::from_vec(vec![]), |h| {
+                Array1::from_iter(h.data().iter().map(|x| x.to_i64().unwrap_or(0)))
+            }),
         )
     });
 
@@ -180,13 +181,15 @@ pub fn is_busday<T>(
     busdaycal: Option<BusDayCalendar>,
 ) -> Result<Array<bool>, NumPyError>
 where
-    T: FromPrimitive + Zero + Copy + std::fmt::Debug + 'static,
+    T: FromPrimitive + ToPrimitive + Zero + Copy + std::fmt::Debug + 'static,
 {
     let weekmask_array = parse_weekmask(weekmask)?;
     let calendar = busdaycal.unwrap_or_else(|| {
         BusDayCalendar::new(
             weekmask_array,
-            holidays.map_or(Array1::from_vec(vec![]), |h| h.to_ndarray1().unwrap()),
+            holidays.map_or(Array1::from_vec(vec![]), |h| {
+                Array1::from_iter(h.data().iter().map(|x| x.to_i64().unwrap_or(0)))
+            }),
         )
     });
 
@@ -208,7 +211,7 @@ pub fn datetime_as_string<T>(
     casting: &str,
 ) -> Result<Array<String>, NumPyError>
 where
-    T: FromPrimitive + Zero + Copy + std::fmt::Debug + 'static,
+    T: FromPrimitive + ToPrimitive + Zero + Copy + std::fmt::Debug + 'static,
 {
     let unit_str = unit.unwrap_or("s");
     let timezone_offset = parse_timezone(timezone)?;
@@ -238,7 +241,10 @@ fn parse_weekmask(weekmask: &str) -> Result<[bool; 7], NumPyError> {
     } else {
         let chars: Vec<char> = weekmask.chars().collect();
         if chars.len() != 7 {
-            return Err(NumPyError::value_error("Weekmask must have 7 characters", "datetime"));
+            return Err(NumPyError::value_error(
+                "Weekmask must have 7 characters",
+                "datetime",
+            ));
         }
 
         for (i, c) in chars.iter().enumerate() {
@@ -272,7 +278,7 @@ fn parse_timezone(timezone: &str) -> Result<i64, NumPyError> {
 
 fn count_business_days<T>(begin: T, end: T, calendar: &BusDayCalendar) -> Result<i64, NumPyError>
 where
-    T: FromPrimitive + Copy + std::fmt::Debug,
+    T: FromPrimitive + ToPrimitive + Copy + std::fmt::Debug,
 {
     let begin_i64 = T::to_i64(&begin).unwrap_or(0);
     let end_i64 = T::to_i64(&end).unwrap_or(0);
@@ -301,7 +307,7 @@ fn apply_business_day_offset<T>(
     calendar: &BusDayCalendar,
 ) -> Result<T, NumPyError>
 where
-    T: FromPrimitive + Copy + std::fmt::Debug,
+    T: FromPrimitive + ToPrimitive + Copy + std::fmt::Debug,
 {
     let date_i64 = T::to_i64(&date).unwrap_or(0);
     let offset_i64 = T::to_i64(&offset).unwrap_or(0);
@@ -326,7 +332,7 @@ where
 
 fn check_is_business_day<T>(date: T, calendar: &BusDayCalendar) -> Result<bool, NumPyError>
 where
-    T: FromPrimitive + Copy + std::fmt::Debug,
+    T: FromPrimitive + ToPrimitive + Copy + std::fmt::Debug,
 {
     let date_i64 = T::to_i64(&date).unwrap_or(0);
     Ok(is_business_day_internal(date_i64, calendar))
@@ -355,7 +361,10 @@ fn roll_to_business_day(
     calendar: &BusDayCalendar,
 ) -> Result<i64, NumPyError> {
     match roll {
-        "raise" => Err(NumPyError::value_error("Non-business day encountered with roll='raise'", "datetime")),
+        "raise" => Err(NumPyError::value_error(
+            "Non-business day encountered with roll='raise'",
+            "datetime",
+        )),
         "nat" => Ok(i64::MIN),
         "forward" | "following" => {
             let mut current = timestamp + 86400;
@@ -409,7 +418,7 @@ fn roll_to_business_day(
 
 fn format_datetime<T>(timestamp: T, unit: &str, timezone_offset: i64) -> Result<String, NumPyError>
 where
-    T: FromPrimitive + std::fmt::Debug,
+    T: FromPrimitive + ToPrimitive + std::fmt::Debug,
 {
     let base_timestamp = T::to_i64(&timestamp).unwrap_or(0);
     let multiplier = match unit {
@@ -428,7 +437,7 @@ where
 
     let seconds = base_timestamp * multiplier + timezone_offset;
 
-    let datetime = DateTime::from_timestamp(seconds, Utc);
+    let datetime = DateTime::from_timestamp(seconds, 0);
     match datetime {
         Some(dt) => Ok(dt.format("%Y-%m-%d %H:%M:%S").to_string()),
         None => Ok("Invalid datetime".to_string()),

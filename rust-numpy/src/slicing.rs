@@ -226,11 +226,7 @@ where
     /// Newaxis support (arr[np.newaxis, :])
     pub fn add_newaxis(&self, axis: usize) -> Result<Self> {
         if axis > self.ndim() {
-            return Err(format!(
-                "Axis {} out of bounds for {}-D array",
-                axis,
-                self.ndim()
-            ));
+            return Err(NumPyError::index_error(axis, self.ndim()));
         }
 
         let mut new_shape = self.shape().to_vec();
@@ -250,7 +246,7 @@ where
                     expanded_indices.push(Index::Integer(*i));
                 }
                 Index::Slice(slice) => {
-                    expanded_indices.push(crate::slicing::Index::Slice(*slice));
+                    expanded_indices.push(crate::slicing::Index::Slice(slice.clone()));
                 }
                 Index::Ellipsis => {
                     expanded_indices.push(Index::Ellipsis);
@@ -267,11 +263,14 @@ where
     /// Multi-dimensional indexing (arr[1:3, 5:, ::-1])
     pub fn multidim_index(&self, indices: &[crate::slicing::Index]) -> Result<Self> {
         if indices.len() != self.ndim() {
-            return Err(format!(
-                "Expected {} indices for {}-D array, got {}",
-                self.ndim(),
-                self.ndim(),
-                indices.len()
+            return Err(NumPyError::value_error(
+                format!(
+                    "Expected {} indices for {}-D array, got {}",
+                    self.ndim(),
+                    self.ndim(),
+                    indices.len()
+                ),
+                "multidim_index",
             ));
         }
 
@@ -319,6 +318,40 @@ where
         let linear_idx = compute_linear_index(indices, self.strides());
         self.set(linear_idx, value)
     }
+
+    /// Get element at multi-dimensional indices
+    pub fn get_by_indices(&self, indices: &[usize]) -> Result<&T> {
+        if indices.len() != self.ndim() {
+            return Err(NumPyError::index_error(0, self.ndim()));
+        }
+
+        for (i, &idx) in indices.iter().enumerate() {
+            if idx >= self.shape()[i] {
+                return Err(NumPyError::index_error(idx, self.shape()[i]));
+            }
+        }
+
+        let linear_idx = compute_linear_index(indices, self.strides());
+        self.get(linear_idx)
+            .ok_or_else(|| NumPyError::index_error(linear_idx, self.size()))
+    }
+
+    /// Expand ellipsis in indices
+    pub fn ellipsis_index(&self, _indices: &[Index]) -> Result<Self> {
+        // Stub: raise error
+        Err(NumPyError::not_implemented("ellipsis_index"))
+    }
+
+    /// Calculate length of a slice for a dimension
+    pub fn calculate_slice_length(&self, dim: usize, slice: &Slice) -> usize {
+        slice.len(self.shape()[dim])
+    }
+
+    /// Extract data using multi-dimensional indices
+    pub fn extract_multidim_data(&self, _indices: &[Index], _result: &mut Vec<T>) -> Result<()> {
+        // Stub
+        Err(NumPyError::not_implemented("extract_multidim_data"))
+    }
 }
 
 /// Reshape array to new dimensions
@@ -329,10 +362,13 @@ pub fn reshape<T: Clone + Default + 'static>(
     let total_elements: usize = new_shape.iter().product();
 
     if total_elements != array.size() {
-        return Err(format!(
-            "Cannot reshape array of size {} into shape {:?}",
-            array.size(),
-            new_shape
+        return Err(NumPyError::value_error(
+            format!(
+                "Cannot reshape array of size {} into shape {:?}",
+                array.size(),
+                new_shape
+            ),
+            "reshape",
         ));
     }
 

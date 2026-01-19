@@ -1,6 +1,7 @@
 import copy
 import logging
 import os
+from os.path import exists
 import queue
 import statistics
 import threading
@@ -618,7 +619,8 @@ class TTSModel(nn.Module):
 
     @torch.no_grad
     def get_state_for_audio_prompt(
-        self, audio_conditioning: Path | str | torch.Tensor, truncate: bool = False
+        self, audio_conditioning: Path | str | torch.Tensor, truncate: bool = False,
+        export_path: Path | str | None = None
     ) -> dict:
         """Create model state conditioned on audio prompt for continuation.
 
@@ -628,12 +630,13 @@ class TTSModel(nn.Module):
         enables voice cloning and audio continuation with speaker consistency.
 
         Args:
-            audio_conditioning: Audio prompt to condition on. Can be:
-                - Path: Local file path to audio file
-                - str: URL to download audio file from
+            audio_conditioning: Audio prompt to condition (or .safetensors to load). Can be:
+                - Path: Local file path to audio file (or .safetensors)
+                - str: URL to download audio file (or .safetensors) from
                 - torch.Tensor: Pre-loaded audio tensor with shape [channels, samples]
             truncate: Whether to truncate long audio prompts to 30 seconds.
                 Helps prevent memory issues with very long inputs. Defaults to False.
+            export_path: (optional) file path to export voice embedding to, as a .safetensors
 
         Returns:
             dict: Model state dictionary containing hidden states and positional
@@ -653,7 +656,14 @@ class TTSModel(nn.Module):
             - Processing time is logged for performance monitoring
             - The state preserves speaker characteristics for voice cloning
         """
-        if isinstance(audio_conditioning, str) and audio_conditioning in PREDEFINED_VOICES:
+        if (isinstance(audio_conditioning, (str, Path)) and
+            str(audio_conditioning).endswith('.safetensors')
+        ):
+            if isinstance(audio_conditioning, str):
+                audio_conditioning = download_if_necessary(audio_conditioning)
+            import safetensors.torch
+            prompt = safetensors.torch.load_file(audio_conditioning)['audio_prompt']
+        elif isinstance(audio_conditioning, str) and audio_conditioning in PREDEFINED_VOICES:
             # We get the audio conditioning directly from the safetensors file.
             prompt = load_predefined_voice(audio_conditioning)
         else:
@@ -684,11 +694,13 @@ class TTSModel(nn.Module):
 
             with display_execution_time("Encoding audio prompt"):
                 prompt = self._encode_audio(audio_conditioning.unsqueeze(0).to(self.device))
-                # import safetensors.torch
-                # safetensors.torch.save_file(
-                #     {"audio_prompt": prompt},
-                #     "/projects/huggingface/pocket-tts/embeddings/cosette.safetensors"
-                # )
+                if export_path:
+                    export_path = Path(export_path).with_suffix('.safetensors')
+                    import safetensors.torch
+                    safetensors.torch.save_file(
+                        {"audio_prompt": prompt},
+                        export_path
+                    )
 
         model_state = init_states(self.flow_lm, batch_size=1, sequence_length=1000)
 

@@ -337,9 +337,66 @@ where
     }
 
     /// Expand ellipsis in indices
-    pub fn ellipsis_index(&self, _indices: &[Index]) -> Result<Self> {
-        // Stub: raise error
-        Err(NumPyError::not_implemented("ellipsis_index"))
+    pub fn ellipsis_index(&self, indices: &[Index]) -> Result<Self> {
+        // Count non-ellipsis indices and find ellipsis position
+        let mut ellipsis_pos = None;
+        let mut non_ellipsis_count = 0;
+
+        for (i, idx) in indices.iter().enumerate() {
+            match idx {
+                Index::Ellipsis => {
+                    if ellipsis_pos.is_some() {
+                        return Err(NumPyError::invalid_value(
+                            "Only one ellipsis allowed in index",
+                        ));
+                    }
+                    ellipsis_pos = Some(i);
+                }
+                _ => {
+                    non_ellipsis_count += 1;
+                }
+            }
+        }
+
+        // If no ellipsis, just pass through to multidim_index
+        let ellipsis_pos = match ellipsis_pos {
+            Some(pos) => pos,
+            None => return self.multidim_index(indices),
+        };
+
+        // Calculate how many dimensions the ellipsis expands to
+        let ndim = self.ndim();
+        if non_ellipsis_count > ndim {
+            return Err(NumPyError::value_error(
+                format!(
+                    "Too many indices for array: array is {}-dimensional, but {} were indexed",
+                    ndim, non_ellipsis_count
+                ),
+                "ellipsis_index",
+            ));
+        }
+
+        let ellipsis_dims = ndim - non_ellipsis_count;
+
+        // Build expanded indices
+        let mut expanded = Vec::with_capacity(ndim);
+
+        // Add indices before ellipsis
+        for idx in &indices[..ellipsis_pos] {
+            expanded.push(idx.clone());
+        }
+
+        // Add Full slices for ellipsis expansion
+        for _ in 0..ellipsis_dims {
+            expanded.push(Index::Slice(Slice::Full));
+        }
+
+        // Add indices after ellipsis
+        for idx in &indices[ellipsis_pos + 1..] {
+            expanded.push(idx.clone());
+        }
+
+        self.multidim_index(&expanded)
     }
 
     /// Calculate length of a slice for a dimension
@@ -348,9 +405,111 @@ where
     }
 
     /// Extract data using multi-dimensional indices
-    pub fn extract_multidim_data(&self, _indices: &[Index], _result: &mut Vec<T>) -> Result<()> {
-        // Stub
-        Err(NumPyError::not_implemented("extract_multidim_data"))
+    pub fn extract_multidim_data(&self, indices: &[Index], result: &mut Vec<T>) -> Result<()> {
+        // Convert indices to ranges for each dimension
+        let mut ranges: Vec<Vec<usize>> = Vec::with_capacity(self.ndim());
+
+        for (dim, idx) in indices.iter().enumerate() {
+            let dim_size = self.shape().get(dim).copied().unwrap_or(0);
+
+            match idx {
+                Index::Integer(i) => {
+                    // Normalize negative index
+                    let normalized = if *i < 0 {
+                        (dim_size as isize + *i) as usize
+                    } else {
+                        *i as usize
+                    };
+
+                    if normalized >= dim_size {
+                        return Err(NumPyError::index_error(normalized, dim_size));
+                    }
+
+                    ranges.push(vec![normalized]);
+                }
+                Index::Slice(slice) => {
+                    let (start, stop, step) = slice.to_range(dim_size as isize);
+
+                    // Clamp to valid bounds
+                    let start = start.max(0).min(dim_size as isize) as usize;
+                    let stop = stop.max(0).min(dim_size as isize) as usize;
+
+                    let mut dim_indices = Vec::new();
+
+                    if step > 0 {
+                        let mut i = start;
+                        while i < stop {
+                            dim_indices.push(i);
+                            i += step as usize;
+                        }
+                    } else if step < 0 {
+                        let mut i = start as isize;
+                        while i > stop as isize {
+                            dim_indices.push(i as usize);
+                            i += step;
+                        }
+                    }
+
+                    ranges.push(dim_indices);
+                }
+                Index::Ellipsis => {
+                    // Ellipsis should have been expanded by ellipsis_index
+                    // If we reach here, treat as full slice
+                    ranges.push((0..dim_size).collect());
+                }
+                Index::Boolean(b) => {
+                    // Boolean indexing: if true, include all; if false, include none
+                    if *b {
+                        ranges.push((0..dim_size).collect());
+                    } else {
+                        ranges.push(Vec::new());
+                    }
+                }
+            }
+        }
+
+        // If any dimension has empty indices, result is empty
+        if ranges.iter().any(|r| r.is_empty()) {
+            return Ok(());
+        }
+
+        // Generate all combinations of indices and extract elements
+        let mut current_indices = vec![0usize; ranges.len()];
+        let mut counters = vec![0usize; ranges.len()];
+
+        loop {
+            // Build current multi-dimensional index
+            for (i, counter) in counters.iter().enumerate() {
+                current_indices[i] = ranges[i][*counter];
+            }
+
+            // Compute linear index and extract element
+            let linear_idx = compute_linear_index(&current_indices, self.strides());
+            if let Some(val) = self.get(linear_idx) {
+                result.push(val.clone());
+            }
+
+            // Increment counters (like incrementing a multi-digit number)
+            let mut carry = true;
+            for i in (0..counters.len()).rev() {
+                if carry {
+                    counters[i] += 1;
+                    if counters[i] >= ranges[i].len() {
+                        counters[i] = 0;
+                        // carry continues
+                    } else {
+                        carry = false;
+                    }
+                }
+            }
+
+            // If carry is still true after all dimensions, we're done
+            if carry {
+                break;
+            }
+        }
+
+        Ok(())
     }
 }
 

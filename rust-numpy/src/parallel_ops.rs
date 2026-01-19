@@ -177,17 +177,27 @@ where
 
 /// Fallback sequential operations when Rayon is not available
 #[cfg(not(feature = "rayon"))]
-pub fn parallel_sum<T>(_array: &crate::Array<T>) -> Result<crate::Array<T>, NumPyError>
+pub fn parallel_sum<T>(array: &crate::Array<T>) -> Result<crate::Array<T>, NumPyError>
 where
     T: Clone + Default + std::ops::Add<Output = T> + Send + Sync + 'static,
 {
-    Err(NumPyError::not_implemented(
-        "parallel_sum requires rayon feature",
-    ))
+    let size = array.size();
+    if size == 0 {
+        return Err(NumPyError::invalid_value("Cannot sum empty array"));
+    }
+
+    let mut result = T::default();
+    for i in 0..size {
+        if let Some(val) = array.get(i) {
+            result = result + val.clone();
+        }
+    }
+
+    Ok(crate::Array::from_vec(vec![result]))
 }
 
 #[cfg(not(feature = "rayon"))]
-pub fn parallel_mean<T>(_array: &crate::Array<T>) -> Result<crate::Array<T>, NumPyError>
+pub fn parallel_mean<T>(array: &crate::Array<T>) -> Result<crate::Array<T>, NumPyError>
 where
     T: Clone
         + Default
@@ -198,61 +208,128 @@ where
         + 'static
         + num_traits::NumCast,
 {
-    Err(NumPyError::not_implemented(
-        "parallel_mean requires rayon feature",
-    ))
+    let size = array.size();
+    if size == 0 {
+        return Err(NumPyError::invalid_value(
+            "Cannot compute mean of empty array",
+        ));
+    }
+
+    let mut sum = T::default();
+    for i in 0..size {
+        if let Some(val) = array.get(i) {
+            sum = sum + val.clone();
+        }
+    }
+
+    let count: T = num_traits::cast::NumCast::from(size as i64)
+        .ok_or_else(|| NumPyError::invalid_value("Failed to convert count"))?;
+
+    Ok(crate::Array::from_vec(vec![sum / count]))
 }
 
 #[cfg(not(feature = "rayon"))]
 pub fn parallel_add<T>(
-    _a: &crate::Array<T>,
-    _b: &crate::Array<T>,
+    a: &crate::Array<T>,
+    b: &crate::Array<T>,
 ) -> Result<crate::Array<T>, NumPyError>
 where
     T: Clone + Default + std::ops::Add<Output = T> + Send + Sync + 'static,
 {
-    Err(NumPyError::not_implemented(
-        "parallel_add requires rayon feature",
-    ))
+    let size = a.size();
+    if size != b.size() {
+        return Err(NumPyError::shape_mismatch(
+            a.shape().to_vec(),
+            b.shape().to_vec(),
+        ));
+    }
+
+    let mut result_data = Vec::with_capacity(size);
+    for i in 0..size {
+        if let (Some(a_val), Some(b_val)) = (a.get(i), b.get(i)) {
+            result_data.push(a_val.clone() + b_val.clone());
+        }
+    }
+
+    Ok(crate::Array::from_data(result_data, a.shape().to_vec()))
 }
 
 #[cfg(not(feature = "rayon"))]
 pub fn parallel_sub<T>(
-    _a: &crate::Array<T>,
-    _b: &crate::Array<T>,
+    a: &crate::Array<T>,
+    b: &crate::Array<T>,
 ) -> Result<crate::Array<T>, NumPyError>
 where
     T: Clone + Default + std::ops::Sub<Output = T> + Send + Sync + 'static,
 {
-    Err(NumPyError::not_implemented(
-        "parallel_sub requires rayon feature",
-    ))
+    let size = a.size();
+    if size != b.size() {
+        return Err(NumPyError::shape_mismatch(
+            a.shape().to_vec(),
+            b.shape().to_vec(),
+        ));
+    }
+
+    let mut result_data = Vec::with_capacity(size);
+    for i in 0..size {
+        if let (Some(a_val), Some(b_val)) = (a.get(i), b.get(i)) {
+            result_data.push(a_val.clone() - b_val.clone());
+        }
+    }
+
+    Ok(crate::Array::from_data(result_data, a.shape().to_vec()))
 }
 
 #[cfg(not(feature = "rayon"))]
 pub fn parallel_mul<T>(
-    _a: &crate::Array<T>,
-    _b: &crate::Array<T>,
+    a: &crate::Array<T>,
+    b: &crate::Array<T>,
 ) -> Result<crate::Array<T>, NumPyError>
 where
     T: Clone + Default + std::ops::Mul<Output = T> + Send + Sync + 'static,
 {
-    Err(NumPyError::not_implemented(
-        "parallel_mul requires rayon feature",
-    ))
+    let size = a.size();
+    if size != b.size() {
+        return Err(NumPyError::shape_mismatch(
+            a.shape().to_vec(),
+            b.shape().to_vec(),
+        ));
+    }
+
+    let mut result_data = Vec::with_capacity(size);
+    for i in 0..size {
+        if let (Some(a_val), Some(b_val)) = (a.get(i), b.get(i)) {
+            result_data.push(a_val.clone() * b_val.clone());
+        }
+    }
+
+    Ok(crate::Array::from_data(result_data, a.shape().to_vec()))
 }
 
 #[cfg(not(feature = "rayon"))]
 pub fn parallel_div<T>(
-    _a: &crate::Array<T>,
-    _b: &crate::Array<T>,
+    a: &crate::Array<T>,
+    b: &crate::Array<T>,
 ) -> Result<crate::Array<T>, NumPyError>
 where
     T: Clone + Default + std::ops::Div<Output = T> + Send + Sync + 'static,
 {
-    Err(NumPyError::not_implemented(
-        "parallel_div requires rayon feature",
-    ))
+    let size = a.size();
+    if size != b.size() {
+        return Err(NumPyError::shape_mismatch(
+            a.shape().to_vec(),
+            b.shape().to_vec(),
+        ));
+    }
+
+    let mut result_data = Vec::with_capacity(size);
+    for i in 0..size {
+        if let (Some(a_val), Some(b_val)) = (a.get(i), b.get(i)) {
+            result_data.push(a_val.clone() / b_val.clone());
+        }
+    }
+
+    Ok(crate::Array::from_data(result_data, a.shape().to_vec()))
 }
 
 #[cfg(test)]

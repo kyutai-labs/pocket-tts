@@ -100,7 +100,7 @@ pub fn solve<T: Copy + num_traits::Zero + num_traits::One + Default + Lapack>(
         return Err(NumPyError::invalid_value("a must be a square 2D array"));
     }
 
-    let a_array2 = a.to_ndarray2()?;
+    let _a_array2 = a.to_ndarray2()?;
     let b_array2 = b.to_ndarray2()?;
     let a_inv = inv(a)?;
     let a_inv_arr2 = a_inv.to_ndarray2()?;

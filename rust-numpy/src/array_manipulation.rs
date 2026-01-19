@@ -210,7 +210,7 @@ where
         }
     }
 
-    let memory_manager = MemoryManager::from_vec(data.clone());
+    let _memory_manager = MemoryManager::from_vec(data.clone());
 
     Ok(Array::from_data(data, vec![N, M]))
 }
@@ -384,7 +384,7 @@ pub fn logspace<T>(
     stop: T,
     num: usize,
     endpoint: bool,
-    base: T,
+    _base: T,
     dtype: Option<Dtype>,
 ) -> Result<Array<T>>
 where
@@ -524,7 +524,7 @@ where
     let ndim = arrays.len();
     let mut sizes = Vec::new();
 
-    for (i, arr) in arrays.iter().enumerate() {
+    for (_i, arr) in arrays.iter().enumerate() {
         let size = arr.shape()[0];
         sizes.push(size);
     }
@@ -619,7 +619,7 @@ where
 
     validate_reshape(&a.shape(), newshape)?;
 
-    let strides = if order.to_uppercase() == "F" {
+    let _strides = if order.to_uppercase() == "F" {
         compute_fortran_strides(newshape)
     } else {
         compute_strides(newshape)

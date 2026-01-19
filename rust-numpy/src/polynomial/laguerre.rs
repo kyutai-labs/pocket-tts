@@ -257,7 +257,7 @@ where
     Ok(deriv_coeffs)
 }
 
-fn laguerre_derivative_factor<T>(k: usize, j: usize, m: usize) -> T
+fn laguerre_derivative_factor<T>(k: usize, _j: usize, m: usize) -> T
 where
     T: Float + Num + std::ops::MulAssign,
 {

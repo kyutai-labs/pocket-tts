@@ -168,7 +168,7 @@ where
     let mut index_counter: usize = 0;
 
     // We need to hash elements for the HashMap
-    for (i, elem) in elements.iter().enumerate() {
+    for (_i, elem) in elements.iter().enumerate() {
         // Try to find this element in our unique list
         let mut found = false;
         for (u_idx, u_elem) in unique_values.iter().enumerate() {

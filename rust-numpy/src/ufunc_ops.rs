@@ -620,7 +620,7 @@ where
     where
         T: Clone + Default + Into<bool>,
     {
-        let engine = UfuncEngine::new();
+        let _engine = UfuncEngine::new();
         let bool_data: Vec<bool> = self.to_vec().into_iter().map(|x| x.into()).collect();
         let bool_array = Array::from_shape_vec(self.shape().to_vec(), bool_data).unwrap();
         let engine = UfuncEngine::new();
@@ -631,7 +631,7 @@ where
     where
         T: Clone + Default + Into<bool>,
     {
-        let engine = UfuncEngine::new();
+        let _engine = UfuncEngine::new();
         let bool_data: Vec<bool> = self.to_vec().into_iter().map(|x| x.into()).collect();
         let bool_array = Array::from_shape_vec(self.shape().to_vec(), bool_data).unwrap();
         let engine = UfuncEngine::new();

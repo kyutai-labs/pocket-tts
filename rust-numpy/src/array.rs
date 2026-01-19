@@ -11,12 +11,9 @@ use std::fmt;
 use std::ops::{Index, IndexMut};
 use std::sync::Arc;
 
-use ndarray::ShapeBuilder;
-
 use crate::dtype::Dtype;
 use crate::error::NumPyError;
 use crate::memory::MemoryManager;
-use crate::ufunc::ArrayView;
 
 /// Main array structure
 #[derive(Debug)]
@@ -375,7 +372,7 @@ pub fn compute_strides(shape: &[usize]) -> Vec<isize> {
     let mut stride = 1;
 
     // Compute strides in reverse order
-    for (i, &dim) in shape.iter().rev().enumerate() {
+    for (_i, &dim) in shape.iter().rev().enumerate() {
         strides.push(stride as isize);
         stride *= dim;
     }

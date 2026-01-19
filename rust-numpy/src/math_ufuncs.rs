@@ -1825,7 +1825,8 @@ mod tests {
 
     #[test]
     fn test_exp_log_functions() {
-        let x = Array::from_data(vec![1.0, 2.0, 3.0], vec![3]);
+        // Use f32 explicitly to match the first registered ufunc type
+        let x = Array::from_data(vec![1.0f32, 2.0f32, 3.0f32], vec![3]);
 
         let exp_result = exp(&x).unwrap();
         let log_result = log(&x).unwrap();

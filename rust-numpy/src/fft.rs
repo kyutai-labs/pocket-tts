@@ -49,9 +49,9 @@ pub fn irfftn<T>(
 
 /// Compute the analytic signal using the Hilbert transform.
 pub fn hilbert_with_params<T>(
-    input: &Array<T>,
-    n: Option<usize>,
-    axis: Option<isize>,
+    _input: &Array<T>,
+    _n: Option<usize>,
+    _axis: Option<isize>,
 ) -> Result<Array<Complex64>, NumPyError> {
     // Stub implementation
     Err(NumPyError::not_implemented("hilbert not implemented"))
@@ -59,10 +59,10 @@ pub fn hilbert_with_params<T>(
 
 /// Compute the 1-dimensional FFT.
 pub fn fft_with_params<T>(
-    input: &Array<T>,
-    n: Option<usize>,
-    axis: Option<isize>,
-    norm: Option<&str>,
+    _input: &Array<T>,
+    _n: Option<usize>,
+    _axis: Option<isize>,
+    _norm: Option<&str>,
 ) -> Result<Array<Complex64>, NumPyError> {
     // Stub implementation
     Err(NumPyError::not_implemented("fft not implemented"))

@@ -148,7 +148,7 @@ where
 }
 
 /// Save array to file (NumPy-compatible)
-pub fn save<T>(file: &str, arr: &Array<T>, allow_pickle: bool, fix_imports: bool) -> Result<()>
+pub fn save<T>(file: &str, arr: &Array<T>, allow_pickle: bool, _fix_imports: bool) -> Result<()>
 where
     T: Clone + Default + Pod + 'static,
     T: std::fmt::Display,
@@ -188,7 +188,7 @@ where
 /// Load array from text file with configurable parsing
 pub fn loadtxt<T>(
     fname: &str,
-    dtype: Option<Dtype>,
+    _dtype: Option<Dtype>,
     comments: &str,
     delimiter: &str,
     converters: Option<Vec<fn(&str) -> T>>,
@@ -196,7 +196,7 @@ pub fn loadtxt<T>(
     usecols: Option<&[usize]>,
     unpack: bool,
     ndmin: isize,
-    encoding: &str,
+    _encoding: &str,
     max_rows: Option<usize>,
 ) -> Result<Array<T>>
 where
@@ -553,7 +553,7 @@ where
         let zip_writer = ZipWriter::new(file);
         savez_to_zip(zip_writer, args)
     } else {
-        let mut zip_writer = ZipWriter::new(file);
+        let zip_writer = ZipWriter::new(file);
         savez_to_zip(zip_writer, args)
     }
 }

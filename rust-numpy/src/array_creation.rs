@@ -45,7 +45,7 @@ pub fn arange(start: f32, stop: f32, step: Option<f32>) -> Result<Array<f32>> {
         if stop >= start {
             return Ok(Array::from_vec(vec![]));
         }
-        ((stop - start) / step_val.abs()).ceil() as usize
+        ((start - stop) / step_val.abs()).ceil() as usize
     };
 
     let data: Vec<f32> = (0..num_elements)
@@ -226,7 +226,7 @@ mod tests {
         let data = clipped.data();
         assert_eq!(data[0], 2.0);
         assert_eq!(data[1], 2.0);
-        assert_eq!(data[2], 2.0);
+        assert_eq!(data[2], 3.0); // No max, so 3 stays 3
     }
 
     #[test]
@@ -251,11 +251,11 @@ mod tests {
         let arr = Array::from_vec(input);
         let logged = log(&arr).unwrap();
         let data = logged.data();
-        assert!((data[0] - 0.0f32.ln()).abs() < 1e-6);
+        assert!((data[0] - 0.0).abs() < 1e-6); // log(1.0) = 0.0
         assert!((data[1] - 2.0f32.ln()).abs() < 1e-6);
         assert!((data[2] - 10.0f32.ln()).abs() < 1e-6);
         assert!((data[3] - 0.5f32.ln()).abs() < 1e-6);
-        assert!((data[4] - 1.0).abs() < 1e-6);
+        assert!((data[4] - 1.0).abs() < 1e-6); // log(e) = 1.0
     }
 
     #[test]
@@ -268,6 +268,6 @@ mod tests {
         let v1: f32 = data[1];
         assert!(v0.is_infinite() && v0 < 0.0);
         assert!(v1.is_infinite() && v1 < 0.0);
-        assert!((data[2] - 0.0f32.ln()).abs() < 1e-6);
+        assert!((data[2] - 0.0).abs() < 1e-6); // log(1.0) = 0.0
     }
 }

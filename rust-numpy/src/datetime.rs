@@ -94,7 +94,7 @@ pub fn busday_count<T>(
     weekmask: &str,
     holidays: Option<&Array<T>>,
     busdaycal: Option<BusDayCalendar>,
-    out: Option<&mut Array<T>>,
+    _out: Option<&mut Array<T>>,
 ) -> Result<Array<T>, NumPyError>
 where
     T: FromPrimitive + ToPrimitive + Zero + Copy + std::fmt::Debug + Default + 'static,

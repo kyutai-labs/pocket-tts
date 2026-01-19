@@ -3,7 +3,6 @@ use crate::broadcasting::compute_broadcast_shape;
 use crate::dtype::{Dtype, DtypeKind};
 use crate::error::{NumPyError, Result};
 use std::marker::PhantomData;
-use std::sync::Arc;
 
 impl<T> ArrayView for Array<T> {
     fn dtype(&self) -> &Dtype {
@@ -334,13 +333,19 @@ impl UfuncRegistry {
 
     /// Get ufunc by name (returns first match, deprecated in favor of get_by_dtypes)
     pub fn get(&self, name: &str) -> Option<&dyn Ufunc> {
-        self.ufuncs.get(name).and_then(|ufuncs| ufuncs.first()).map(|uf| uf.as_ref())
+        self.ufuncs
+            .get(name)
+            .and_then(|ufuncs| ufuncs.first())
+            .map(|uf| uf.as_ref())
     }
 
     /// Get ufunc by name and concrete input types - this is the PROPER way to lookup ufuncs
     pub fn get_by_dtypes(&self, name: &str, input_types: &[&'static str]) -> Option<&dyn Ufunc> {
         self.ufuncs.get(name).and_then(|ufuncs| {
-            ufuncs.iter().find(|uf| uf.matches_concrete_types(input_types)).map(|uf| uf.as_ref())
+            ufuncs
+                .iter()
+                .find(|uf| uf.matches_concrete_types(input_types))
+                .map(|uf| uf.as_ref())
         })
     }
 
@@ -925,7 +930,12 @@ impl Default for UfuncRegistry {
 impl std::fmt::Debug for UfuncRegistry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let total_impls: usize = self.ufuncs.values().map(|v| v.len()).sum();
-        write!(f, "UfuncRegistry({} ufunc names, {} implementations)", self.ufuncs.len(), total_impls)
+        write!(
+            f,
+            "UfuncRegistry({} ufunc names, {} implementations)",
+            self.ufuncs.len(),
+            total_impls
+        )
     }
 }
 

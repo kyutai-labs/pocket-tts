@@ -8,7 +8,6 @@ use crate::broadcasting::{broadcast_arrays, compute_broadcast_shape};
 use crate::dtype::DtypeKind;
 use crate::error::{NumPyError, Result};
 use crate::ufunc::{Ufunc, UfuncRegistry};
-use crate::UfuncEngine;
 use std::marker::PhantomData;
 
 /// Bitwise operations trait for integer types
@@ -973,7 +972,7 @@ where
         if let (Some(a), Some(b)) = (arr0.get(i), arr1.get(i)) {
             let a_val = *a != T::default();
             let b_val = *b != T::default();
-            let result = a_val ^ b_val;  // XOR
+            let result = a_val ^ b_val; // XOR
             output.set(i, result)?;
         }
     }

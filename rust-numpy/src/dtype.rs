@@ -320,7 +320,7 @@ impl Dtype {
             "complex32" | "c4" => Ok(Dtype::Complex32 { byteorder: None }),
             "complex64" | "c8" => Ok(Dtype::Complex64 { byteorder: None }),
             "complex128" | "c16" => Ok(Dtype::Complex128 { byteorder: None }),
-            "low" => Ok(Dtype::Bool),
+            "bool" => Ok(Dtype::Bool),
             "str" => Ok(Dtype::String { length: None }),
             "unicode" => Ok(Dtype::Unicode { length: None }),
             "object" => Ok(Dtype::Object),

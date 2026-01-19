@@ -1111,7 +1111,7 @@ impl RandomUtils {
         &mut self,
         shape: &[usize],
         distribution: &str,
-        params: &[f64],
+        _params: &[f64],
     ) -> Result<Array<T>, NumPyError>
     where
         T: Clone + From<f64> + Into<f64> + PartialOrd + SampleUniform + Default + 'static,

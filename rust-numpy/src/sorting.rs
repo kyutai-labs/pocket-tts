@@ -548,12 +548,12 @@ where
             // Compute argmax along each axis and track indices
             // For multiple axes, we need to find the position of maximum
             // when reducing along all specified axes
-            let mut max_indices: Vec<isize> = Vec::new();
-            let mut max_values: Vec<T> = Vec::new();
+            let _max_indices: Vec<isize> = Vec::new();
+            let _max_values: Vec<T> = Vec::new();
 
             // Compute total number of output elements
             let output_size: usize = result_shape.iter().filter(|&&dim| dim == 1).product();
-            let mut result_data: Vec<isize> = Vec::with_capacity(output_size);
+            let _result_data: Vec<isize> = Vec::with_capacity(output_size);
 
             // For each output position, find argmax along specified axes
             let outer_axes: Vec<usize> = result_shape
@@ -2031,8 +2031,10 @@ mod tests {
         let array = Array::from_vec(data);
 
         let indices = argsort(&array, None, "quicksort", "asc").unwrap();
-        let expected = vec![1, 3, 6, 0, 2, 4, 7, 5]; // indices of sorted array
-        assert_eq!(indices.to_vec(), expected);
+        let result = indices.to_vec();
+        // The sort is not stable, so indices 1 and 3 (both have value 1) can appear in either order
+        // Expected possibilities: [1, 3, 6, 0, 2, 4, 7, 5] or [3, 1, 6, 0, 2, 4, 7, 5]
+        assert!(result == vec![1, 3, 6, 0, 2, 4, 7, 5] || result == vec![3, 1, 6, 0, 2, 4, 7, 5]);
     }
 
     #[test]

@@ -162,7 +162,7 @@ where
     let mut b2 = T::zero();
     let mut b1 = T::zero();
 
-    for (i, &coeff) in coeffs.iter().rev().enumerate() {
+    for (_i, &coeff) in coeffs.iter().rev().enumerate() {
         let temp = T::from(2.0).unwrap() * x * b1 - b2 + coeff;
         b2 = b1;
         b1 = temp;

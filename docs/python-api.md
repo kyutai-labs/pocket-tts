@@ -113,7 +113,9 @@ voice_state = model.get_state_for_audio_prompt("hf://kyutai/tts-voices/alba-mack
 voice_state = model.get_state_for_audio_prompt("./my_voice.wav")
 
 # Load state from wav and export to .safetensors file for later use
-voice_state = model.get_state_for_audio_prompt("./my_voice.wav", export_path="./my_voice.safetensors")
+voice_state = model.get_state_for_audio_prompt(
+    "./my_voice.wav", export_path="./my_voice.safetensors"
+)
 
 # Reload state from local .safetensors file (much faster than loading from wav)
 voice_state = model.get_state_for_audio_prompt("./my_voices.safetensors")
@@ -123,8 +125,6 @@ voice_state = model.get_state_for_audio_prompt(
     "https://huggingface.co/kyutai/tts-voices/resolve"
     "/main/expresso/ex01-ex02_default_001_channel1_168s.wav"
 )
-
-
 ```
 
 ##### `generate_audio(model_state, text_to_generate, frames_after_eos=None, copy_state=True)`
@@ -209,7 +209,9 @@ is relatively slow. If you use `my_voice.wav` frequently, leverage `get_state_fo
 
 ```python
 # do this once
-voice_state = model.get_state_for_audio_prompt("./my_voice.wav", export_path="./my_voice.safetensors")
+voice_state = model.get_state_for_audio_prompt(
+    "./my_voice.wav", export_path="./my_voice.safetensors"
+)
 
 # then afterwards, this is much faster
 voice_state = model.get_state_for_audio_prompt("./my_voice.safetensors")
@@ -225,14 +227,14 @@ from os.path import getmtime
 tts_model = TTSModel()
 voice_states = {}
 
-for path in Path('./my_voices').iterdir():
-    if not path.is_file() or path.suffix not in ['.safetensors', '.wav']:
+for path in Path("./my_voices").iterdir():
+    if not path.is_file() or path.suffix not in [".safetensors", ".wav"]:
         continue
     voice = path.stem
     if voice in voices:
         continue
-    sft = path.with_suffix('.safetensors')
-    wav = path.with_suffix('.wav')
+    sft = path.with_suffix(".safetensors")
+    wav = path.with_suffix(".wav")
     if not sft.exists() or wav.exists() and getmtime(wav) > getmtime(sft):
         print(f"Extracting voice {voice}")
         data = tts_model.get_state_for_audio_prompt(wav, truncate=True, export_path=sft)

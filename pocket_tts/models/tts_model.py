@@ -1,7 +1,6 @@
 import copy
 import logging
 import os
-from os.path import exists
 import queue
 import statistics
 import threading
@@ -619,8 +618,10 @@ class TTSModel(nn.Module):
 
     @torch.no_grad
     def get_state_for_audio_prompt(
-        self, audio_conditioning: Path | str | torch.Tensor, truncate: bool = False,
-        export_path: Path | str | None = None
+        self,
+        audio_conditioning: Path | str | torch.Tensor,
+        truncate: bool = False,
+        export_path: Path | str | None = None,
     ) -> dict:
         """Create model state conditioned on audio prompt for continuation.
 
@@ -656,13 +657,14 @@ class TTSModel(nn.Module):
             - Processing time is logged for performance monitoring
             - The state preserves speaker characteristics for voice cloning
         """
-        if (isinstance(audio_conditioning, (str, Path)) and
-            str(audio_conditioning).endswith('.safetensors')
+        if isinstance(audio_conditioning, (str, Path)) and str(audio_conditioning).endswith(
+            ".safetensors"
         ):
             if isinstance(audio_conditioning, str):
                 audio_conditioning = download_if_necessary(audio_conditioning)
             import safetensors.torch
-            prompt = safetensors.torch.load_file(audio_conditioning)['audio_prompt']
+
+            prompt = safetensors.torch.load_file(audio_conditioning)["audio_prompt"]
         elif isinstance(audio_conditioning, str) and audio_conditioning in PREDEFINED_VOICES:
             # We get the audio conditioning directly from the safetensors file.
             prompt = load_predefined_voice(audio_conditioning)
@@ -695,12 +697,10 @@ class TTSModel(nn.Module):
             with display_execution_time("Encoding audio prompt"):
                 prompt = self._encode_audio(audio_conditioning.unsqueeze(0).to(self.device))
                 if export_path:
-                    export_path = Path(export_path).with_suffix('.safetensors')
+                    export_path = Path(export_path).with_suffix(".safetensors")
                     import safetensors.torch
-                    safetensors.torch.save_file(
-                        {"audio_prompt": prompt},
-                        export_path
-                    )
+
+                    safetensors.torch.save_file({"audio_prompt": prompt}, export_path)
 
         model_state = init_states(self.flow_lm, batch_size=1, sequence_length=1000)
 

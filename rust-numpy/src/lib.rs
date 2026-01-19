@@ -44,11 +44,6 @@ pub mod ufunc;
 pub mod ufunc_ops;
 pub mod window;
 
-#[cfg(feature = "std")]
-// Modules system - structure ready for expansion
-#[cfg(feature = "python")]
-pub mod python;
-
 // Re-export key types for convenience
 pub use array::Array;
 pub use array_creation::{arange, array, clip, log, min};

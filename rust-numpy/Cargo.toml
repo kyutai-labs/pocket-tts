@@ -1,0 +1,94 @@
+[package]
+name = "rust-numpy"
+version = "0.1.0"
+edition = "2021"
+authors = ["Pocket-TTS Team"]
+description = "100% pure-Rust NumPy library with full API parity"
+license = "BSD-3-Clause"
+repository = "https://github.com/grantjr1842/pocket-tts"
+keywords = ["numpy", "array", "scientific-computing", "linear-algebra"]
+categories = ["mathematics", "science"]
+
+[[test]]
+name = "reduction_tests"
+path = "tests/reduction_tests.rs"
+
+[[test]]
+name = "basic_tests"
+path = "tests/basic_tests.rs"
+
+[[test]]
+name = "comprehensive_tests"
+path = "tests/comprehensive_tests.rs"
+
+[lib]
+name = "numpy"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Core dependencies
+num-complex = "0.4"
+num-traits = "0.2"
+num-integer = "0.1"
+num-bigint = "0.4"
+num-rational = "0.4"
+ndarray = "0.15"
+ndarray-linalg = "0.16"
+rustfft = "6.1"
+
+# SIMD and parallelization
+stdsimd = { version = "0.1", optional = true }
+rayon = { version = "1.8", optional = true }
+
+
+
+# Random number generation
+rand = "0.8"
+rand_chacha = "0.3"
+rand_distr = "0.4"
+
+# String and datetime support
+chrono = { version = "0.4", optional = true }
+
+# IEEE 754 half-precision floats
+half = "2.4"
+
+# Serialization for testing/serialization
+serde = { version = "1.0", features = ["derive"], optional = true }
+
+# CUDA backend (optional)
+cudarc = { version = "0.11", optional = true }
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+lazy_static = "1.4"
+
+# Utilities
+bytemuck = { version = "1.14", features = ["derive"] }
+byteorder = "1.5"
+hashbrown = "0.14"
+
+# I/O and compression
+memmap2 = "0.9"
+flate2 = "1.0"
+zip = { version = "0.6", default-features = false, features = ["deflate"] }
+csv = "1.3"
+
+# Enhanced binary handling
+encoding_rs = "0.8"
+
+[features]
+default = ["std", "rayon", "datetime"]
+std = []
+serde = ["dep:serde"]
+simd = ["stdsimd"]
+cuda = ["cudarc"]
+metal = []
+wasm = []
+blas = []
+datetime = ["chrono"]
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+tempfile = "3.8"

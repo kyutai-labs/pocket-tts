@@ -35,10 +35,8 @@ This is an ambitious project to recreate NumPy's entire functionality in pure Ru
 - [ ] Random number generation
 
 ### 📋 Planned
-- [ ] C-API bindings
-- [ ] Python integration via PyO3
 - [ ] CUDA backend
-- [ ] Metal backend  
+- [ ] Metal backend
 - [ ] WASM backend
 - [ ] Performance benchmarks
 - [ ] NumPy conformance tests
@@ -48,9 +46,6 @@ This is an ambitious project to recreate NumPy's entire functionality in pure Ru
 ```bash
 # Build library only
 cargo build
-
-# Build with Python bindings
-cargo build --features python
 
 # Build with CUDA support
 cargo build --features cuda
@@ -105,7 +100,6 @@ let eps = constants::float::EPSILON;
 - [ ] SIMD optimizations
 - [ ] GPU backends (CUDA/Metal)
 - [ ] C-API compatibility
-- [ ] Python bindings
 
 ### Phase 5: Ecosystem
 - [ ] Performance benchmarks
@@ -117,9 +111,8 @@ let eps = constants::float::EPSILON;
 
 ### For Users
 - Rust 1.70+
-- Optional: Python 3.8+ for Python bindings
 
-### For Development  
+### For Development
 - Rust toolchain
 - CUDA Toolkit (for CUDA backend)
 - Xcode (for Metal backend on macOS)
@@ -129,8 +122,7 @@ let eps = constants::float::EPSILON;
 This is a massive undertaking that requires:
 1. **Core contributors**: Array operations, memory management, ufuncs
 2. **Mathematical experts**: Linear algebra, FFT, optimization
-3. **Performance engineers**: SIMD, GPU programming, benchmarks  
-4. **Python integration**: C-API, PyO3 bindings, migration tools
+3. **Performance engineers**: SIMD, GPU programming, benchmarks
 
 ## Motivation
 

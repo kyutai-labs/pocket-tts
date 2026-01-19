@@ -35,10 +35,10 @@ pocket-tts serve --host "localhost" --port 8080
 
 ```bash
 # Use different voice
-pocket-tts serve --default-voice "hf://kyutai/tts-voices/jessica-jian/casual.wav"
+pocket-tts serve --voice "hf://kyutai/tts-voices/jessica-jian/casual.wav"
 
 # Use local voice file
-pocket-tts serve --default-voice "./my_voice.wav"
+pocket-tts serve --voice "./my_voice.wav"
 ```
 
 ## Web Interface

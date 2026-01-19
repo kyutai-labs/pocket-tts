@@ -7,7 +7,7 @@ Forget about the hassle of using GPUs and web APIs serving TTS models. With Kyut
 
 Supports Python 3.10, 3.11, 3.12, 3.13 and 3.14. Requires PyTorch 2.5+. Does not require the gpu version of PyTorch.
 
-[🔊 Demo](https://kyutai.org/tts) | 
+[🔊 Demo](https://kyutai.org/pocket-tts) | 
 [🐱‍💻GitHub Repository](https://github.com/kyutai-labs/pocket-tts) | 
 [🤗 Hugging Face Model Card](https://huggingface.co/kyutai/pocket-tts) | 
 [📄 Paper](https://arxiv.org/abs/2509.06926) | 
@@ -28,7 +28,7 @@ Supports Python 3.10, 3.11, 3.12, 3.13 and 3.14. Requires PyTorch 2.5+. Does not
 
 ## Trying it from the website, without installing anything
 
-Navigate to the [Kyutai website](https://kyutai.org/tts) to try it out directly in your browser. You can input text, select different voices, and generate speech without any installation.
+Navigate to the [Kyutai website](https://kyutai.org/pocket-tts) to try it out directly in your browser. You can input text, select different voices, and generate speech without any installation.
 
 ## Trying it with the CLI
 
@@ -122,7 +122,7 @@ You can find development instructions in the [CONTRIBUTING.md](https://github.co
 
 ## Alternative implementations
 
-- [babybirdprd/pocket-tts](https://github.com/babybirdprd/pocket-tts) - Candle version (Rust) with WASM and PyO3 bindings.
+- [babybirdprd/pocket-tts](https://github.com/babybirdprd/pocket-tts) - Candle version (Rust) with WebAssembly and PyO3 bindings. Can run in the browser!
 
 ## Projects using pocket-tts
 

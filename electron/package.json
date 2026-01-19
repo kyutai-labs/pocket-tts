@@ -8,7 +8,9 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "bundle:python": "bash python/bundle-python.sh",
     "build:electron": "npm run build && electron-builder",
+    "build:dist": "npm run bundle:python && npm run build:electron",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit"
   },

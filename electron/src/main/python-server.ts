@@ -68,7 +68,8 @@ export class PythonServer {
     if (this.isDev) {
       return ['run', 'pocket-tts', 'serve', '--port', this.port.toString()];
     }
-    return ['serve', '--port', this.port.toString()];
+    // Note: entry script already adds "serve" command, so just pass options
+    return ['--port', this.port.toString()];
   }
 
   private getWorkingDirectory(): string {
@@ -96,7 +97,7 @@ export class PythonServer {
     });
   }
 
-  private async waitForReady(timeout = 60000): Promise<void> {
+  private async waitForReady(timeout = 30000): Promise<void> {
     const startTime = Date.now();
     const healthUrl = `http://localhost:${this.port}/health`;
 

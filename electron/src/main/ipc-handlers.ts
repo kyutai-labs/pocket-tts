@@ -10,10 +10,19 @@ interface TTSParams {
   savedVoiceId?: string;
 }
 
-export function registerIpcHandlers(pythonServer: PythonServer, voiceManager: { getVoiceFilePath: (id: string) => string | null }) {
+export function registerIpcHandlers(
+  getPythonServer: () => PythonServer | null,
+  voiceManager: { getVoiceFilePath: (id: string) => string | null }
+) {
   ipcMain.handle('tts:generate', async (event: IpcMainInvokeEvent, params: TTSParams) => {
     const { text, voiceUrl, voiceFile, savedVoiceId } = params;
     const sender = event.sender;
+
+    const pythonServer = getPythonServer();
+    if (!pythonServer || !pythonServer.port) {
+      sender.send('tts:error', 'TTS server is not running. Please restart the app or check the Python server.');
+      return;
+    }
 
     try {
       const formData = new FormData();

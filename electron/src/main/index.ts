@@ -8,7 +8,7 @@ let mainWindow: BrowserWindow | null = null;
 let pythonServer: PythonServer | null = null;
 
 function isDev(): boolean {
-  return process.env.NODE_ENV !== 'production' || !app.isPackaged;
+  return !app.isPackaged;
 }
 
 async function createWindow() {
@@ -28,10 +28,20 @@ async function createWindow() {
 
   if (isDev()) {
     mainWindow.loadURL('http://localhost:5173');
-    mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+    const htmlPath = path.join(__dirname, '../renderer/index.html');
+    console.log('Loading HTML from:', htmlPath);
+    console.log('__dirname:', __dirname);
+    mainWindow.loadFile(htmlPath);
   }
+
+  // Always open DevTools for debugging (remove in production)
+  mainWindow.webContents.openDevTools();
+
+  // Log any load failures
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error('Failed to load:', errorCode, errorDescription);
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -50,14 +60,25 @@ async function startPythonServer() {
 }
 
 app.whenReady().then(async () => {
+  registerVoiceHandlers();
+
+  // Create window first so user sees the app
+  await createWindow();
+
+  // Register IPC handlers with getter to access current server state
+  registerIpcHandlers(() => pythonServer, getVoiceManager());
+
   try {
-    registerVoiceHandlers();
     await startPythonServer();
-    registerIpcHandlers(pythonServer!, getVoiceManager());
-    await createWindow();
+    console.log('Python server started successfully');
   } catch (error) {
-    console.error('Failed to initialize app:', error);
-    app.quit();
+    console.error('Failed to start Python server:', error);
+    // Show error in the window after it's ready
+    mainWindow?.webContents.once('did-finish-load', () => {
+      mainWindow?.webContents.executeJavaScript(
+        `console.error('TTS server failed to start'); alert('Failed to start TTS server: ${String(error).replace(/'/g, "\\'")}\\n\\nMake sure the Python server is bundled or run in dev mode.')`
+      );
+    });
   }
 
   app.on('activate', () => {

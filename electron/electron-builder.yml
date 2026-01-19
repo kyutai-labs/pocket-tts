@@ -7,7 +7,7 @@ directories:
   buildResources: resources
 
 files:
-  - dist/**/*
+  - out/**/*
   - package.json
 
 extraResources:
@@ -21,9 +21,7 @@ mac:
   target:
     - dmg
     - zip
-  hardenedRuntime: true
-  entitlements: build/entitlements.mac.plist
-  entitlementsInherit: build/entitlements.mac.plist
+  identity: null  # Disable signing for local development
 
 win:
   target:

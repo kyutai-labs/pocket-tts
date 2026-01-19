@@ -66,6 +66,10 @@ pub trait Ufunc: Send + Sync {
     /// Get supported input types
     fn supported_dtypes(&self) -> &[DtypeKind];
 
+    /// Get the concrete type signature for this ufunc implementation
+    /// Returns a unique identifier for the types this ufunc handles
+    fn type_signature(&self) -> String;
+
     /// Execute ufunc on inputs
     fn execute(
         &self,
@@ -79,6 +83,9 @@ pub trait Ufunc: Send + Sync {
             .iter()
             .all(|dt| self.supported_dtypes().contains(&dt.kind()))
     }
+
+    /// Check if this ufunc implementation matches the given concrete types
+    fn matches_concrete_types(&self, input_types: &[&'static str]) -> bool;
 }
 
 /// Trait for viewing array data
@@ -162,6 +169,14 @@ where
             DtypeKind::Float,
             DtypeKind::Complex,
         ]
+    }
+
+    fn type_signature(&self) -> String {
+        format!("{}({})", self.name, std::any::type_name::<T>())
+    }
+
+    fn matches_concrete_types(&self, input_types: &[&'static str]) -> bool {
+        input_types.len() == 2 && input_types.iter().all(|&t| t == std::any::type_name::<T>())
     }
 
     fn execute(
@@ -252,6 +267,14 @@ where
         ]
     }
 
+    fn type_signature(&self) -> String {
+        format!("{}({})", self.name, std::any::type_name::<T>())
+    }
+
+    fn matches_concrete_types(&self, input_types: &[&'static str]) -> bool {
+        input_types.len() == 1 && input_types[0] == std::any::type_name::<T>()
+    }
+
     fn execute(
         &self,
         inputs: &[&dyn ArrayView],
@@ -281,9 +304,11 @@ where
     }
 }
 
-/// Ufunc registry for looking up functions by name
+/// Ufunc registry for looking up functions by name and type
+/// This registry stores multiple ufunc implementations per name, keyed by their concrete types
 pub struct UfuncRegistry {
-    ufuncs: std::collections::HashMap<String, Box<dyn Ufunc>>,
+    /// Map from ufunc name to a list of implementations for different types
+    ufuncs: std::collections::HashMap<String, Vec<Box<dyn Ufunc>>>,
 }
 
 impl UfuncRegistry {
@@ -301,19 +326,34 @@ impl UfuncRegistry {
         registry
     }
 
-    /// Register a ufunc
+    /// Register a ufunc - stores ALL implementations, not just the last one
     pub fn register(&mut self, ufunc: Box<dyn Ufunc>) {
-        self.ufuncs.insert(ufunc.name().to_string(), ufunc);
+        let name = ufunc.name().to_string();
+        self.ufuncs.entry(name).or_insert_with(Vec::new).push(ufunc);
     }
 
-    /// Get ufunc by name
+    /// Get ufunc by name (returns first match, deprecated in favor of get_by_dtypes)
     pub fn get(&self, name: &str) -> Option<&dyn Ufunc> {
-        self.ufuncs.get(name).map(|uf| uf.as_ref())
+        self.ufuncs.get(name).and_then(|ufuncs| ufuncs.first()).map(|uf| uf.as_ref())
     }
 
-    /// List all registered ufuncs
+    /// Get ufunc by name and concrete input types - this is the PROPER way to lookup ufuncs
+    pub fn get_by_dtypes(&self, name: &str, input_types: &[&'static str]) -> Option<&dyn Ufunc> {
+        self.ufuncs.get(name).and_then(|ufuncs| {
+            ufuncs.iter().find(|uf| uf.matches_concrete_types(input_types)).map(|uf| uf.as_ref())
+        })
+    }
+
+    /// List all registered ufunc names
     pub fn list(&self) -> Vec<&str> {
         self.ufuncs.keys().map(|s| s.as_str()).collect()
+    }
+
+    /// Get all implementations for a given ufunc name
+    pub fn get_all(&self, name: &str) -> Vec<&dyn Ufunc> {
+        self.ufuncs.get(name).map_or_else(Vec::new, |ufuncs| {
+            ufuncs.iter().map(|uf| uf.as_ref()).collect()
+        })
     }
 
     /// Register basic mathematical ufuncs
@@ -884,7 +924,8 @@ impl Default for UfuncRegistry {
 
 impl std::fmt::Debug for UfuncRegistry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "UfuncRegistry({} ufuncs)", self.ufuncs.len())
+        let total_impls: usize = self.ufuncs.values().map(|v| v.len()).sum();
+        write!(f, "UfuncRegistry({} ufunc names, {} implementations)", self.ufuncs.len(), total_impls)
     }
 }
 

@@ -37,7 +37,7 @@ mod tests {
         let b = array![3, 2, 1, 4, 3];
         let result = a.less_equal(&b).unwrap();
         assert_eq!(result.shape(), &[5]);
-        assert_eq!(result.to_vec(), vec![true, true, false, true, true]);
+        assert_eq!(result.to_vec(), vec![true, true, false, true, false]);
     }
 
     #[test]
@@ -97,14 +97,14 @@ mod tests {
         let a: Array<i32> = array![1, 0, 3, 0];
         let b: Array<i32> = array![1, 1, 0, 0];
         let result = a.logical_xor(&b).unwrap();
-        assert_eq!(result.to_vec(), vec![false, false, false, false]);
+        assert_eq!(result.to_vec(), vec![false, true, true, false]);
     }
 
     #[test]
     fn test_logical_not_basic() {
         let a: Array<i32> = array![0, 1, 2, 0];
         let result = a.logical_not().unwrap();
-        assert_eq!(result.to_vec(), vec![true, false, true, true]);
+        assert_eq!(result.to_vec(), vec![true, false, false, true]);
     }
 
     #[test]
@@ -113,7 +113,7 @@ mod tests {
         let b: Array<i32> = array![1];
         let result = a.greater(&b).unwrap();
         assert_eq!(result.shape(), &[2, 2]);
-        assert_eq!(result.to_vec(), vec![true, true, false, false]);
+        assert_eq!(result.to_vec(), vec![false, true, true, true]);
     }
 
     #[test]
@@ -121,7 +121,7 @@ mod tests {
         let a = array![-5, -3, -1];
         let b = array![-2, -4, 0];
         let result = a.greater(&b).unwrap();
-        assert_eq!(result.to_vec(), vec![true, false, false]);
+        assert_eq!(result.to_vec(), vec![false, true, false]);
     }
 
     #[test]

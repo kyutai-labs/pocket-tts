@@ -115,6 +115,14 @@ where
         &[DtypeKind::Float, DtypeKind::Complex]
     }
 
+    fn type_signature(&self) -> String {
+        format!("{}({})", self.name, std::any::type_name::<T>())
+    }
+
+    fn matches_concrete_types(&self, input_types: &[&'static str]) -> bool {
+        input_types.len() == 1 && input_types[0] == std::any::type_name::<T>()
+    }
+
     fn execute(
         &self,
         inputs: &[&dyn crate::ufunc::ArrayView],
@@ -189,6 +197,14 @@ where
 
     fn supported_dtypes(&self) -> &[DtypeKind] {
         &[DtypeKind::Float, DtypeKind::Complex]
+    }
+
+    fn type_signature(&self) -> String {
+        format!("{}({})", self.name, std::any::type_name::<T>())
+    }
+
+    fn matches_concrete_types(&self, input_types: &[&'static str]) -> bool {
+        input_types.len() == 2 && input_types.iter().all(|&t| t == std::any::type_name::<T>())
     }
 
     fn execute(
@@ -275,6 +291,14 @@ where
 
     fn supported_dtypes(&self) -> &[DtypeKind] {
         &[DtypeKind::Float, DtypeKind::Complex]
+    }
+
+    fn type_signature(&self) -> String {
+        format!("{}({})", self.name, std::any::type_name::<T>())
+    }
+
+    fn matches_concrete_types(&self, input_types: &[&'static str]) -> bool {
+        input_types.len() == 1 && input_types[0] == std::any::type_name::<T>()
     }
 
     fn execute(

@@ -5,6 +5,11 @@ use crate::error::{NumPyError, Result};
 use crate::ufunc::{get_ufunc, UfuncRegistry};
 use std::sync::Arc;
 
+/// Get the static type name for a given array type
+fn get_type_name<T>() -> &'static str {
+    std::any::type_name::<T>()
+}
+
 /// Ufunc execution engine
 #[allow(dead_code)]
 pub struct UfuncEngine {
@@ -29,8 +34,13 @@ impl UfuncEngine {
     where
         T: Clone + Default + 'static,
     {
-        let ufunc = get_ufunc(ufunc_name)
-            .ok_or_else(|| NumPyError::ufunc_error(ufunc_name, "Function not found"))?;
+        // Use type-based dispatch to get the correct ufunc implementation
+        let type_name = get_type_name::<T>();
+        let ufunc = self.registry.get_by_dtypes(ufunc_name, &[type_name, type_name])
+            .ok_or_else(|| NumPyError::ufunc_error(
+                ufunc_name,
+                format!("Function not found for type {}", type_name)
+            ))?;
 
         // Check if ufunc supports the dtype
         if !ufunc.supports_dtypes(&[a.dtype(), b.dtype()]) {
@@ -70,8 +80,13 @@ impl UfuncEngine {
     where
         T: Clone + Default + 'static,
     {
-        let ufunc = get_ufunc(ufunc_name)
-            .ok_or_else(|| NumPyError::ufunc_error(ufunc_name, "Function not found"))?;
+        // Use type-based dispatch to get the correct ufunc implementation
+        let type_name = get_type_name::<T>();
+        let ufunc = self.registry.get_by_dtypes(ufunc_name, &[type_name])
+            .ok_or_else(|| NumPyError::ufunc_error(
+                ufunc_name,
+                format!("Function not found for type {}", type_name)
+            ))?;
 
         if !ufunc.supports_dtypes(&[a.dtype()]) {
             return Err(NumPyError::ufunc_error(
@@ -99,8 +114,13 @@ impl UfuncEngine {
     where
         T: Clone + Default + 'static,
     {
-        let ufunc = get_ufunc(ufunc_name)
-            .ok_or_else(|| NumPyError::ufunc_error(ufunc_name, "Function not found"))?;
+        // Use type-based dispatch to get the correct ufunc implementation
+        let type_name = get_type_name::<T>();
+        let ufunc = self.registry.get_by_dtypes(ufunc_name, &[type_name, type_name])
+            .ok_or_else(|| NumPyError::ufunc_error(
+                ufunc_name,
+                format!("Function not found for type {}", type_name)
+            ))?;
 
         if !ufunc.supports_dtypes(&[a.dtype(), b.dtype()]) {
             return Err(NumPyError::ufunc_error(

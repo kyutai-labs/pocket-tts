@@ -1,0 +1,33 @@
+export interface TTSParams {
+  text: string;
+  voiceUrl?: string;
+  voiceFile?: ArrayBuffer;
+  savedVoiceId?: string;
+}
+
+export interface SavedVoice {
+  id: string;
+  name: string;
+  description: string;
+  filePath: string;
+  createdAt: string;
+}
+
+export interface ElectronAPI {
+  getServerPort: () => Promise<number>;
+  generateTTS: (params: TTSParams) => Promise<void>;
+  onTTSChunk: (callback: (chunk: ArrayBuffer) => void) => void;
+  onTTSComplete: (callback: () => void) => void;
+  onTTSError: (callback: (error: string) => void) => void;
+  removeAllListeners: () => void;
+  // Voice management
+  saveVoice: (params: { name: string; description: string; audioData: ArrayBuffer }) => Promise<SavedVoice>;
+  getSavedVoices: () => Promise<SavedVoice[]>;
+  deleteVoice: (id: string) => Promise<void>;
+}
+
+declare global {
+  interface Window {
+    electronAPI: ElectronAPI;
+  }
+}

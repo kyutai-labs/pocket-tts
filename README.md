@@ -76,6 +76,38 @@ Navigate to `http://localhost:8000` to try the web interface, it's faster than t
 
 You can check out the [serve documentation](https://github.com/kyutai-labs/pocket-tts/tree/main/docs/serve.md) for more details and examples.
 
+## Desktop App (Electron)
+
+A native desktop application is available in the `electron/` folder. It provides a polished GUI with:
+- Dark theme interface
+- Drag-and-drop audio upload for voice cloning
+- Microphone recording for voice samples
+- Voice selector with 8 predefined voices
+- Real-time streaming audio playback
+- Download generated audio
+
+### Running the Desktop App
+
+```bash
+cd electron
+npm install
+npm run dev
+```
+
+**Note:** If you encounter issues with Electron not loading properly, ensure the `ELECTRON_RUN_AS_NODE` environment variable is not set:
+```bash
+unset ELECTRON_RUN_AS_NODE
+```
+
+### Building for Distribution
+
+```bash
+cd electron
+npm run build:electron
+```
+
+This creates platform-specific installers in the `electron/release/` folder.
+
 ## Using it as a Python library
 
 You can try out the Python library on Colab [here](https://colab.research.google.com/github/kyutai-labs/pocket-tts/blob/main/docs/pocket-tts-example.ipynb).

@@ -40,7 +40,9 @@ from pocket_tts.utils.utils import (
 )
 from pocket_tts.utils.weights_loading import get_flow_lm_state_dict, get_mimi_state_dict
 
-torch.set_num_threads(1)
+# Use all available CPU cores by default, or set POCKET_TTS_NUM_THREADS to override
+_num_threads = int(os.environ.get("POCKET_TTS_NUM_THREADS", os.cpu_count() or 1))
+torch.set_num_threads(_num_threads)
 logger = logging.getLogger(__name__)
 
 

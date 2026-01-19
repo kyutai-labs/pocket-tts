@@ -1,0 +1,263 @@
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { ReferenceAudio } from './components/ReferenceAudio';
+import { VoiceSelector, SavedVoice } from './components/VoiceSelector';
+import { TextInput } from './components/TextInput';
+import { SynthesizeButton } from './components/SynthesizeButton';
+import { AudioPlayer } from './components/AudioPlayer';
+import { StatusIndicator } from './components/StatusIndicator';
+import { SaveVoiceModal } from './components/SaveVoiceModal';
+import { StreamingWavPlayer } from './lib/streaming-wav-player';
+import './types/electron.d.ts';
+
+export type GenerationStatus = 'idle' | 'generating' | 'streaming' | 'complete' | 'error';
+
+interface GenerationState {
+  status: GenerationStatus;
+  timeToFirstAudio: number | null;
+  totalTime: number | null;
+  error: string | null;
+}
+
+export default function App() {
+  const [text, setText] = useState(
+    "Hello world. I am Kyutai's Pocket TTS. I'm fast enough to run on small CPUs. I hope you'll like me."
+  );
+  const [selectedVoice, setSelectedVoice] = useState('alba');
+  const [customAudioFile, setCustomAudioFile] = useState<File | null>(null);
+  const [generationState, setGenerationState] = useState<GenerationState>({
+    status: 'idle',
+    timeToFirstAudio: null,
+    totalTime: null,
+    error: null,
+  });
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [savedVoices, setSavedVoices] = useState<SavedVoice[]>([]);
+  const [showSaveVoiceModal, setShowSaveVoiceModal] = useState(false);
+
+  const playerRef = useRef<StreamingWavPlayer | null>(null);
+  const startTimeRef = useRef<number>(0);
+
+  // Load saved voices on startup
+  useEffect(() => {
+    window.electronAPI?.getSavedVoices().then(setSavedVoices);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      window.electronAPI?.removeAllListeners();
+      playerRef.current?.stop();
+    };
+  }, []);
+
+  const handleGenerate = useCallback(async () => {
+    if (!text.trim()) return;
+
+    // Reset state
+    setGenerationState({
+      status: 'generating',
+      timeToFirstAudio: null,
+      totalTime: null,
+      error: null,
+    });
+    setAudioBlob(null);
+    playerRef.current?.stop();
+
+    startTimeRef.current = performance.now();
+
+    // Set up streaming player
+    playerRef.current = new StreamingWavPlayer({
+      onFirstAudio: () => {
+        const timeToFirst = (performance.now() - startTimeRef.current) / 1000;
+        setGenerationState((prev) => ({
+          ...prev,
+          status: 'streaming',
+          timeToFirstAudio: timeToFirst,
+        }));
+      },
+      onComplete: () => {
+        const totalTime = (performance.now() - startTimeRef.current) / 1000;
+        setGenerationState((prev) => ({
+          ...prev,
+          status: 'complete',
+          totalTime,
+        }));
+        if (playerRef.current) {
+          setAudioBlob(playerRef.current.getAudioBlob());
+        }
+      },
+      onError: (error) => {
+        setGenerationState((prev) => ({
+          ...prev,
+          status: 'error',
+          error: error.message,
+        }));
+      },
+    });
+
+    // Set up IPC listeners
+    window.electronAPI.removeAllListeners();
+
+    window.electronAPI.onTTSChunk((chunk) => {
+      playerRef.current?.addChunk(new Uint8Array(chunk));
+    });
+
+    window.electronAPI.onTTSComplete(() => {
+      playerRef.current?.flushRemaining();
+    });
+
+    window.electronAPI.onTTSError((error) => {
+      setGenerationState((prev) => ({
+        ...prev,
+        status: 'error',
+        error,
+      }));
+    });
+
+    // Prepare TTS parameters
+    let voiceFile: ArrayBuffer | undefined;
+    let voiceUrl: string | undefined;
+    let savedVoiceId: string | undefined;
+
+    if (customAudioFile) {
+      voiceFile = await customAudioFile.arrayBuffer();
+    } else if (selectedVoice.startsWith('saved:')) {
+      savedVoiceId = selectedVoice.replace('saved:', '');
+    } else if (selectedVoice !== 'custom') {
+      voiceUrl = selectedVoice;
+    }
+
+    // Start generation
+    try {
+      await window.electronAPI.generateTTS({
+        text,
+        voiceUrl,
+        voiceFile,
+        savedVoiceId,
+      });
+    } catch (error) {
+      setGenerationState((prev) => ({
+        ...prev,
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }));
+    }
+  }, [text, selectedVoice, customAudioFile]);
+
+  const handleVoiceChange = useCallback((voice: string) => {
+    setSelectedVoice(voice);
+    if (voice !== 'custom' && !voice.startsWith('saved:')) {
+      setCustomAudioFile(null);
+    }
+  }, []);
+
+  const handleCustomAudio = useCallback((file: File | null) => {
+    setCustomAudioFile(file);
+    if (file) {
+      setSelectedVoice('custom');
+      // Show modal to optionally save the voice
+      setShowSaveVoiceModal(true);
+    }
+  }, []);
+
+  const handleSaveVoice = useCallback(async (name: string, description: string) => {
+    if (!customAudioFile) return;
+
+    const audioData = await customAudioFile.arrayBuffer();
+    const savedVoice = await window.electronAPI.saveVoice({
+      name,
+      description,
+      audioData,
+    });
+
+    setSavedVoices((prev) => [...prev, savedVoice]);
+    setSelectedVoice(`saved:${savedVoice.id}`);
+    setCustomAudioFile(null);
+  }, [customAudioFile]);
+
+  const handleDeleteSavedVoice = useCallback(async (id: string) => {
+    await window.electronAPI.deleteVoice(id);
+    setSavedVoices((prev) => prev.filter((v) => v.id !== id));
+    setSelectedVoice('alba');
+  }, []);
+
+  const isGenerating = generationState.status === 'generating' || generationState.status === 'streaming';
+
+  return (
+    <div className="min-h-screen bg-bg-primary">
+      {/* Drag region for macOS */}
+      <div className="h-8 drag-region" />
+
+      <div className="max-w-2xl mx-auto px-6 pb-8">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <h1 className="text-2xl font-bold text-text-primary">Pocket TTS</h1>
+          <p className="text-sm text-text-secondary mt-1">
+            High-quality text-to-speech that runs on your CPU
+          </p>
+        </div>
+
+        {/* Reference Audio Section */}
+        <div className="mb-6">
+          <ReferenceAudio
+            onFileSelect={handleCustomAudio}
+            selectedFile={customAudioFile}
+            disabled={isGenerating}
+          />
+        </div>
+
+        {/* Voice Selector */}
+        <div className="mb-6">
+          <VoiceSelector
+            selectedVoice={selectedVoice}
+            onVoiceChange={handleVoiceChange}
+            hasCustomAudio={!!customAudioFile}
+            disabled={isGenerating}
+            savedVoices={savedVoices}
+            onDeleteSavedVoice={handleDeleteSavedVoice}
+          />
+        </div>
+
+        {/* Text Input */}
+        <div className="mb-6">
+          <TextInput
+            value={text}
+            onChange={setText}
+            disabled={isGenerating}
+          />
+        </div>
+
+        {/* Synthesize Button */}
+        <div className="mb-6">
+          <SynthesizeButton
+            onClick={handleGenerate}
+            isGenerating={isGenerating}
+            disabled={!text.trim()}
+          />
+        </div>
+
+        {/* Status Indicator */}
+        <StatusIndicator
+          status={generationState.status}
+          timeToFirstAudio={generationState.timeToFirstAudio}
+          totalTime={generationState.totalTime}
+          error={generationState.error}
+        />
+
+        {/* Audio Player */}
+        {audioBlob && (
+          <div className="mt-6">
+            <AudioPlayer audioBlob={audioBlob} />
+          </div>
+        )}
+      </div>
+
+      {/* Save Voice Modal */}
+      <SaveVoiceModal
+        isOpen={showSaveVoiceModal}
+        onClose={() => setShowSaveVoiceModal(false)}
+        onSave={handleSaveVoice}
+        fileName={customAudioFile?.name ?? 'Unknown'}
+      />
+    </div>
+  );
+}

@@ -1,0 +1,41 @@
+appId: com.kyutai.pocket-tts
+productName: Pocket TTS
+copyright: Copyright (c) 2024 Kyutai
+
+directories:
+  output: release
+  buildResources: resources
+
+files:
+  - dist/**/*
+  - package.json
+
+extraResources:
+  - from: python/dist/pocket-tts-server
+    to: pocket-tts-server
+    filter:
+      - "**/*"
+
+mac:
+  category: public.app-category.productivity
+  target:
+    - dmg
+    - zip
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+
+win:
+  target:
+    - nsis
+    - portable
+
+linux:
+  target:
+    - AppImage
+    - deb
+  category: AudioVideo
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

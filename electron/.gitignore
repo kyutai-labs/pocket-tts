@@ -1,0 +1,10 @@
+node_modules/
+dist/
+out/
+release/
+python/.venv/
+python/dist/
+python/build/
+python/*.spec
+*.log
+.DS_Store

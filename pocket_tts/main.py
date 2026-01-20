@@ -236,7 +236,7 @@ def generate(
         )
         tts_model.to(device)
 
-        model_state_for_voice = tts_model.get_state_for_audio_prompt(voice, truncate=True)
+        model_state_for_voice = tts_model.get_state_for_audio_prompt(voice)
         # Stream audio generation directly to file or stdout
         audio_chunks = tts_model.generate_audio_stream(
             model_state=model_state_for_voice,

@@ -22,7 +22,7 @@ candle-core = "0.9.1"
 candle-nn = "0.9.1"
 candle-transformers = "0.9.1"
 safetensors = "0.5.2"
-hf-hub = { version = "0.4.3", default-features = false, features = ["native-tls", "tokio", "ureq"] }
+hf-hub = { version = "0.4.3", default-features = false, features = ["native-tls", "tokio"] }
 anyhow = "1.0"
 thiserror = "2.0"
 hound = "3.5"

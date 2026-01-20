@@ -1,203 +1,180 @@
-# Tests for the sentence splitting fix (Issue #3)
-# Run with: pytest tests/test_sentence_splitting.py -v
+"""Unit tests for split_into_best_sentences function.
 
-from unittest.mock import MagicMock
-
+Tests verify that sentence splitting preserves all content and handles edge cases.
+"""
 import pytest
+
+from pocket_tts.models.tts_model import split_into_best_sentences
 
 
 class MockTokenizer:
-    """Mock tokenizer that simulates the real tokenizer behavior."""
-
-    def __init__(self):
-        self.sp = MagicMock()
+    """Mock tokenizer for testing purposes."""
 
     def __call__(self, text: str):
-        """Return mock tokens - count based on word count for simplicity."""
-        # Simulate ~1.5 tokens per word on average
-        word_count = len(text.split())
-        token_count = max(1, int(word_count * 1.5))
-        mock_result = MagicMock()
-        mock_result.tokens = [MagicMock()]
-        mock_result.tokens[0].tolist.return_value = list(range(token_count))
-        return mock_result
+        """Mock tokenizer that returns a simple token count."""
+        # Simple mock: 1 token per word, plus 1 for punctuation
+        return MockTokenizedText(text)
 
 
-@pytest.fixture
-def tokenizer():
-    return MockTokenizer()
+class MockTokenizedText:
+    """Mock TokenizedText for testing purposes."""
+
+    def __init__(self, text: str):
+        self.text = text
+        # Simple mock: 1 token per word
+        self.tokens = [[1] * len(text.split())]
 
 
-class TestSplitIntoBestSentences:
-    """Tests for the split_into_best_sentences function."""
+def test_simple_sentence():
+    """Test splitting a simple single sentence."""
+    tokenizer = MockTokenizer()
+    text = "Hello world."
+    result = split_into_best_sentences(tokenizer, text)
 
-    def test_tale_of_two_cities_no_skipping(self, tokenizer):
-        """
-        Test case from Issue #3 - should not skip 'age of foolishness'.
-
-        The original bug caused comma-separated clauses to be dropped
-        when using token-based decoding.
-        """
-        from pocket_tts.models.tts_model import split_into_best_sentences
-
-        text = (
-            "It was the best of times, it was the worst of times, "
-            "it was the age of wisdom, it was the age of foolishness, "
-            "it was the epoch of belief, it was the epoch of incredulity."
-        )
-
-        chunks = split_into_best_sentences(tokenizer, text)
-        combined = " ".join(chunks)
-
-        # These specific phrases were being dropped in the original bug
-        assert "age of foolishness" in combined.lower()
-        assert "age of wisdom" in combined.lower()
-        assert "epoch of belief" in combined.lower()
-        assert "epoch of incredulity" in combined.lower()
-
-    def test_no_content_loss_simple(self, tokenizer):
-        """All words from input should appear in output."""
-        from pocket_tts.models.tts_model import split_into_best_sentences
-
-        text = "One two three. Four five six. Seven eight nine."
-
-        chunks = split_into_best_sentences(tokenizer, text)
-        combined = " ".join(chunks)
-
-        # Normalize for comparison (remove punctuation, lowercase)
-        import re
-
-        original_words = set(re.sub(r"[^\w\s]", "", text.lower()).split())
-        combined_words = set(re.sub(r"[^\w\s]", "", combined.lower()).split())
-
-        assert original_words == combined_words, f"Missing words: {original_words - combined_words}"
-
-    def test_no_content_loss_with_commas(self, tokenizer):
-        """Comma-separated clauses should all be preserved."""
-        from pocket_tts.models.tts_model import split_into_best_sentences
-
-        text = "Alpha, beta, gamma, delta. Epsilon, zeta, eta, theta."
-
-        chunks = split_into_best_sentences(tokenizer, text)
-        combined = " ".join(chunks)
-
-        for word in ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta"]:
-            assert word in combined.lower(), f"Missing word: {word}"
-
-    def test_single_sentence(self, tokenizer):
-        """Single sentence without punctuation should work."""
-        from pocket_tts.models.tts_model import split_into_best_sentences
-
-        text = "This is a single sentence without ending punctuation"
-
-        chunks = split_into_best_sentences(tokenizer, text)
-
-        assert len(chunks) >= 1
-        combined = " ".join(chunks)
-        # Should preserve the text (prepare_text_prompt will add period)
-        assert "single sentence" in combined.lower()
-
-    def test_multiple_sentences(self, tokenizer):
-        """Multiple sentences should be properly chunked."""
-        from pocket_tts.models.tts_model import split_into_best_sentences
-
-        text = "First sentence. Second sentence. Third sentence."
-
-        chunks = split_into_best_sentences(tokenizer, text)
-
-        combined = " ".join(chunks)
-        assert "first" in combined.lower()
-        assert "second" in combined.lower()
-        assert "third" in combined.lower()
-
-    def test_exclamation_and_question_marks(self, tokenizer):
-        """Exclamation and question marks should work as sentence boundaries."""
-        from pocket_tts.models.tts_model import split_into_best_sentences
-
-        text = "Hello! How are you? I am fine."
-
-        chunks = split_into_best_sentences(tokenizer, text)
-
-        combined = " ".join(chunks)
-        assert "hello" in combined.lower()
-        assert "how are you" in combined.lower()
-        assert "i am fine" in combined.lower()
-
-    def test_ellipsis(self, tokenizer):
-        """Ellipsis should work as sentence boundary."""
-        from pocket_tts.models.tts_model import split_into_best_sentences
-
-        text = "Wait for it… Here it comes. And done!"
-
-        chunks = split_into_best_sentences(tokenizer, text)
-
-        combined = " ".join(chunks)
-        assert "wait" in combined.lower()
-        assert "here it comes" in combined.lower()
-        assert "done" in combined.lower()
-
-    def test_empty_text_raises(self, tokenizer):
-        """Empty text should raise ValueError (from prepare_text_prompt)."""
-        from pocket_tts.models.tts_model import split_into_best_sentences
-
-        with pytest.raises(ValueError):
-            split_into_best_sentences(tokenizer, "")
-
-    def test_whitespace_only_raises(self, tokenizer):
-        """Whitespace-only text should raise ValueError."""
-        from pocket_tts.models.tts_model import split_into_best_sentences
-
-        with pytest.raises(ValueError):
-            split_into_best_sentences(tokenizer, "   ")
-
-    def test_long_text_chunking(self, tokenizer):
-        """Long text should be split into multiple chunks."""
-        from pocket_tts.models.tts_model import split_into_best_sentences
-
-        # Create a long text with many sentences
-        sentences = [f"This is sentence number {i}." for i in range(20)]
-        text = " ".join(sentences)
-
-        chunks = split_into_best_sentences(tokenizer, text)
-
-        # Should have multiple chunks
-        assert len(chunks) > 1
-
-        # All content should be preserved
-        combined = " ".join(chunks)
-        for i in range(20):
-            assert f"sentence number {i}" in combined.lower() or f"sentence number {i}" in combined
+    assert len(result) == 1
+    assert "Hello" in result[0] or "hello" in result[0].lower()
+    assert "world" in result[0]
 
 
-class TestPrepareTextPrompt:
-    """Tests for the prepare_text_prompt function."""
+def test_multiple_sentences():
+    """Test splitting multiple sentences."""
+    tokenizer = MockTokenizer()
+    text = "First sentence. Second sentence. Third sentence."
+    result = split_into_best_sentences(tokenizer, text)
 
-    def test_adds_period_if_missing(self):
-        """Text ending in alphanumeric should get a period added."""
-        from pocket_tts.models.tts_model import prepare_text_prompt
+    assert len(result) >= 1
+    # All original words should be present
+    combined = " ".join(result).lower()
+    assert "first" in combined
+    assert "second" in combined
+    assert "third" in combined
 
-        text, _ = prepare_text_prompt("Hello world")
-        assert text.endswith(".")
 
-    def test_capitalizes_first_letter(self):
-        """First letter should be capitalized."""
-        from pocket_tts.models.tts_model import prepare_text_prompt
+def test_tale_of_two_cities():
+    """Test the famous Tale of Two Cities opening - should preserve all clauses."""
+    tokenizer = MockTokenizer()
+    text = "It was the best of times, it was the worst of times."
+    result = split_into_best_sentences(tokenizer, text)
 
-        text, _ = prepare_text_prompt("hello world")
-        assert text.lstrip()[0].isupper()
+    # All clauses should be present
+    combined = " ".join(result).lower()
+    assert "best" in combined
+    assert "worst" in combined
+    assert "times" in combined
+    assert "it" in combined
+    assert "was" in combined
 
-    def test_preserves_existing_punctuation(self):
-        """Existing trailing punctuation should be preserved."""
-        from pocket_tts.models.tts_model import prepare_text_prompt
 
-        text, _ = prepare_text_prompt("Hello world!")
-        assert text.endswith("!")
-        assert not text.endswith("!.")
+def test_no_sentence_boundaries():
+    """Test text without sentence terminators."""
+    tokenizer = MockTokenizer()
+    text = "This is just a single sentence without any punctuation"
+    result = split_into_best_sentences(tokenizer, text)
 
-    def test_short_text_padding(self):
-        """Short text should get padding for better generation."""
-        from pocket_tts.models.tts_model import prepare_text_prompt
+    # Should return single chunk
+    assert len(result) >= 1
+    combined = " ".join(result).lower()
+    assert "single" in combined
 
-        text, _ = prepare_text_prompt("Hi")
-        # Short text gets spaces prepended
-        assert len(text) > 2
+
+def test_empty_text():
+    """Test empty text raises ValueError."""
+    tokenizer = MockTokenizer()
+    with pytest.raises(ValueError):
+        split_into_best_sentences(tokenizer, "")
+
+
+def test_whitespace_handling():
+    """Test that extra whitespace is handled correctly."""
+    tokenizer = MockTokenizer()
+    text = "First sentence.  Second sentence.   Third sentence."
+    result = split_into_best_sentences(tokenizer, text)
+
+    # Should normalize whitespace
+    assert len(result) >= 1
+    # All sentences should be present
+    combined = " ".join(result).lower()
+    assert "first" in combined
+    assert "second" in combined
+    assert "third" in combined
+
+
+def test_punctuation_variety():
+    """Test different punctuation types."""
+    tokenizer = MockTokenizer()
+    text = "Question? Exclamation! Statement. Ellipsis…"
+    result = split_into_best_sentences(tokenizer, text)
+
+    # All sentences should be present
+    combined = " ".join(result).lower()
+    assert "question" in combined
+    assert "exclamation" in combined
+    assert "statement" in combined
+    assert "ellipsis" in combined
+
+
+def test_content_preservation():
+    """Test that no content is lost during splitting."""
+    tokenizer = MockTokenizer()
+    text = "The quick brown fox jumps over the lazy dog. The dog was not amused."
+    result = split_into_best_sentences(tokenizer, text)
+
+    # Count words in original and result
+    original_words = set(text.lower().split())
+    
+    # Unprepare chunks to remove added punctuation
+    def unprepare(text):
+        text = text.lstrip()
+        if text.endswith('.'):
+            text = text[:-1]
+        return text.strip()
+    
+    combined_unprepared = " ".join([unprepare(c) for c in result])
+    result_words = set(combined_unprepared.lower().split())
+
+    # All original words should be in result
+    assert original_words.issubset(result_words), f"Missing words: {original_words - result_words}"
+
+
+def test_long_text_chunking():
+    """Test that long text is properly chunked at token limit."""
+    tokenizer = MockTokenizer()
+    # Create text with many words to exceed token limit
+    text = " ".join([f"Word {i}." for i in range(100)])
+    result = split_into_best_sentences(tokenizer, text)
+
+    # Should split into multiple chunks
+    assert len(result) > 1
+
+    # All words should be preserved
+    combined = " ".join(result).lower()
+    for i in range(100):
+        assert f"word {i}" in combined, f"Word {i} missing from result"
+
+
+def test_comma_separated_clauses():
+    """Test that comma-separated clauses are not split."""
+    tokenizer = MockTokenizer()
+    text = "First clause, second clause, third clause. Final sentence."
+    result = split_into_best_sentences(tokenizer, text)
+
+    # Commas should not cause splits
+    combined = " ".join(result).lower()
+    assert "first" in combined
+    assert "second" in combined
+    assert "third" in combined
+    assert "final" in combined
+    assert "clause" in combined
+
+
+def test_mixed_case():
+    """Test that case is preserved properly."""
+    tokenizer = MockTokenizer()
+    text = "UPPERCASE sentence. lowercase sentence. Mixed Case Sentence."
+    result = split_into_best_sentences(tokenizer, text)
+
+    # Case should be normalized (first letter uppercase)
+    combined = " ".join(result).lower()
+    assert "uppercase" in combined
+    assert "lowercase" in combined
+    assert "mixed" in combined

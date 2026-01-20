@@ -3,7 +3,7 @@
 use super::{Polynomial, PolynomialBase};
 use crate::error::NumPyError;
 use ndarray::Array1;
-use num_traits::{Float, Num, One, Zero};
+use num_traits::{Float, Num};
 
 /// Chebyshev polynomials of the first kind
 #[derive(Debug, Clone)]
@@ -25,7 +25,7 @@ where
         + std::ops::DivAssign,
 {
     pub fn new(coeffs: &Array1<T>) -> Result<Self, NumPyError> {
-        if coeffs.len() == 0 {
+        if coeffs.is_empty() {
             return Err(NumPyError::invalid_value(
                 "Chebyshev coefficients cannot be empty",
             ));
@@ -155,14 +155,14 @@ fn chebyshev_eval_recursive<T>(coeffs: &Array1<T>, x: T) -> T
 where
     T: Float + Num + std::fmt::Debug,
 {
-    if coeffs.len() == 0 {
+    if coeffs.is_empty() {
         return T::zero();
     }
 
     let mut b2 = T::zero();
     let mut b1 = T::zero();
 
-    for (_i, &coeff) in coeffs.iter().rev().enumerate() {
+    for &coeff in coeffs.iter().rev() {
         let temp = T::from(2.0).unwrap() * x * b1 - b2 + coeff;
         b2 = b1;
         b1 = temp;

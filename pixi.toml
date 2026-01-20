@@ -8,6 +8,7 @@ platforms = ["linux-64"]
 [dependencies]
 python = "3.10.*"
 scipy = ">=1.15.2,<2"
+openblas = ">=0.3.31,<0.4"
 
 [pypi-dependencies]
 pocket-tts = { path = ".", editable = true }

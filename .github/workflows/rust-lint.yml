@@ -1,0 +1,49 @@
+name: Rust Lint & Format
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'rust-numpy/**'
+      - '.github/workflows/rust-lint.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'rust-numpy/**'
+      - '.github/workflows/rust-lint.yml'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust-numpy
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust-numpy/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust-numpy/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Clippy lints
+        run: cargo clippy --workspace -- -D warnings

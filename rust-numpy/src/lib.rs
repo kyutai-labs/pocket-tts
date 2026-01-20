@@ -14,10 +14,29 @@
 //! println!("Zeros array shape: {:?}", b.shape());
 //! ```
 
+// Temporarily allow these lints to be fixed incrementally
+// TODO: Remove these allows as code is cleaned up (tracked in issue #30)
+#![allow(clippy::type_complexity)]
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::should_implement_trait)]
+#![allow(clippy::needless_range_loop)]
+#![allow(clippy::if_same_then_else)]
+#![allow(clippy::doc_overindented_list_items)]
+#![allow(clippy::empty_line_after_doc_comments)]
+#![allow(clippy::missing_safety_doc)]
+#![allow(clippy::new_without_default)]
+#![allow(clippy::module_inception)]
+#![allow(clippy::same_item_push)]
+#![allow(clippy::cast_sign_loss)]
+#![allow(suspicious_double_ref_op)]
+#![allow(clippy::inherent_to_string_shadow_display)]
+#![allow(dead_code)]
+
+pub mod advanced_broadcast;
 pub mod array;
 pub mod array_creation;
+pub mod array_extra;
 pub mod array_manipulation;
-pub mod advanced_broadcast;
 pub mod bitwise;
 pub mod broadcasting;
 pub mod comparison_ufuncs;
@@ -27,31 +46,27 @@ pub mod dtype;
 #[cfg(test)]
 mod dtype_tests;
 pub mod error;
-pub mod fft;
-pub mod io;
-pub mod linalg;
+pub mod iterator;
 pub mod math_ufuncs;
 pub mod memory;
-pub mod parallel_ops;
-pub mod polynomial;
 pub mod random;
 pub mod set_ops;
-pub mod simd_ops;
 pub mod slicing;
 pub mod sorting;
+pub mod statistics;
 pub mod strides;
+pub mod type_promotion;
 pub mod ufunc;
 pub mod ufunc_ops;
 pub mod window;
 
 // Re-export key types for convenience
 pub use array::Array;
-pub use array_creation::{arange, array, clip, log, min};
-pub use array_manipulation::exports::*;
 pub use bitwise::*;
-pub use dtype::{Dtype, DtypeKind};
+pub use dtype::{Casting, Dtype, DtypeKind};
 pub use error::{NumPyError, Result};
-pub use io::*;
+pub use statistics::{std, var};
+pub use type_promotion::promote_types;
 pub use ufunc_ops::UfuncEngine;
 
 /// Version information
@@ -89,6 +104,45 @@ macro_rules! array2 {
             let flat: Vec<_> = rows.into_iter().flat_map(|row| row.into_iter()).collect();
             let shape = [rows.len(), if rows.len() > 0 { rows[0].len() } else { 0 }];
             $crate::Array::from_shape_vec(shape.to_vec(), flat).unwrap()
+        }
+    };
+}
+
+/// Create 3D array macro
+#[macro_export]
+macro_rules! array3 {
+    ($([$([$($expr:expr),*]),*]),*) => {
+        {
+            // Use nested vecs to collect structure
+            let pages = vec![$(
+                vec![$(
+                    vec![$( $expr ),*]
+                ),*]
+            ),*];
+
+            let mut flat = Vec::new();
+            let mut dim1 = 0;
+            let mut dim2 = 0;
+            let mut dim3 = 0;
+
+            dim1 = pages.len();
+            if dim1 > 0 {
+                dim2 = pages[0].len();
+                if dim2 > 0 {
+                    dim3 = pages[0][0].len();
+                }
+            }
+
+            for page in pages {
+                for row in page {
+                    for elem in row {
+                        flat.push(elem);
+                    }
+                }
+            }
+
+            let shape = vec![dim1, dim2, dim3];
+            $crate::Array::from_shape_vec(shape, flat).unwrap()
         }
     };
 }

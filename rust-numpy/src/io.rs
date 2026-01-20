@@ -19,7 +19,7 @@ use std::io::{BufRead, BufReader, BufWriter, Read, Seek, Write};
 use std::path::Path;
 
 use bytemuck::{cast_slice, Pod};
-use byteorder::{ByteOrder as _, LittleEndian, ReadBytesExt, WriteBytesExt};
+use byteorder::{ByteOrder as _, LittleEndian, WriteBytesExt};
 use zip::{ZipArchive, ZipWriter};
 
 use crate::array::Array;
@@ -294,13 +294,13 @@ where
         final_shape
     };
 
-    Ok(Array::from_shape_vec(shape, data)?)
+    Array::from_shape_vec(shape, data)
 }
 
 /// Save array to text file with formatting
 pub fn savetxt<T>(
     fname: &str,
-    X: &Array<T>,
+    x: &Array<T>,
     fmt: &str,
     delimiter: &str,
     newline: &str,
@@ -330,8 +330,8 @@ where
         writer.write_all(newline.as_bytes())?;
     }
 
-    let shape = X.shape();
-    let data = X.to_vec();
+    let shape = x.shape();
+    let data = x.to_vec();
 
     match shape.len() {
         0 => {
@@ -438,7 +438,7 @@ where
     let data_bytes = &buffer[offset_usize..end_offset];
 
     let typed_data: &[T] = cast_slice(data_bytes);
-    let data: Vec<T> = typed_data.iter().cloned().collect();
+    let data: Vec<T> = typed_data.to_vec();
 
     Ok(Array::from_vec(data))
 }
@@ -694,9 +694,9 @@ where
 
     let data_bytes = &buffer[data_start..data_end];
     let typed_data: &[T] = bytemuck::cast_slice(data_bytes);
-    let data: Vec<T> = typed_data.iter().cloned().collect();
+    let data: Vec<T> = typed_data.to_vec();
 
-    Ok(Array::from_shape_vec(shape, data)?)
+    Array::from_shape_vec(shape, data)
 }
 
 fn load_npz_single<T>(
@@ -711,13 +711,13 @@ where
     let file = File::open(file)
         .map_err(|e| NumPyError::io_error(format!("Failed to open file: {}", e)))?;
     let reader = BufReader::new(file);
-    let mut archive = ZipArchive::new(reader)
-        .map_err(|e| NumPyError::file_format_error("npz", &e.to_string()))?;
+    let mut archive =
+        ZipArchive::new(reader).map_err(|e| NumPyError::file_format_error("npz", e.to_string()))?;
 
     for i in 0..archive.len() {
         let mut zip_file = archive
             .by_index(i)
-            .map_err(|e| NumPyError::file_format_error("npz", &e.to_string()))?;
+            .map_err(|e| NumPyError::file_format_error("npz", e.to_string()))?;
         let filename = zip_file.name();
 
         if filename.ends_with(".npy") {
@@ -782,9 +782,9 @@ where
 
     let data_bytes = &buffer[data_start..data_end];
     let typed_data: &[T] = bytemuck::cast_slice(data_bytes);
-    let data: Vec<T> = typed_data.iter().cloned().collect();
+    let data: Vec<T> = typed_data.to_vec();
 
-    Ok(Array::from_shape_vec(shape, data)?)
+    Array::from_shape_vec(shape, data)
 }
 
 fn parse_npy_shape(header: &str) -> Result<Vec<usize>> {

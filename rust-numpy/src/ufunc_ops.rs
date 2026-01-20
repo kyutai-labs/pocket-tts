@@ -2,7 +2,7 @@ use crate::array::Array;
 use crate::broadcasting::{broadcast_arrays, compute_broadcast_shape};
 
 use crate::error::{NumPyError, Result};
-use crate::ufunc::{get_ufunc, UfuncRegistry};
+use crate::ufunc::{get_ufunc_typed, UfuncRegistry};
 use std::sync::Arc;
 
 /// Get the static type name for a given array type
@@ -36,11 +36,15 @@ impl UfuncEngine {
     {
         // Use type-based dispatch to get the correct ufunc implementation
         let type_name = get_type_name::<T>();
-        let ufunc = self.registry.get_by_dtypes(ufunc_name, &[type_name, type_name])
-            .ok_or_else(|| NumPyError::ufunc_error(
-                ufunc_name,
-                format!("Function not found for type {}", type_name)
-            ))?;
+        let ufunc = self
+            .registry
+            .get_by_dtypes(ufunc_name, &[type_name, type_name])
+            .ok_or_else(|| {
+                NumPyError::ufunc_error(
+                    ufunc_name,
+                    format!("Function not found for type {}", type_name),
+                )
+            })?;
 
         // Check if ufunc supports the dtype
         if !ufunc.supports_dtypes(&[a.dtype(), b.dtype()]) {
@@ -82,11 +86,15 @@ impl UfuncEngine {
     {
         // Use type-based dispatch to get the correct ufunc implementation
         let type_name = get_type_name::<T>();
-        let ufunc = self.registry.get_by_dtypes(ufunc_name, &[type_name])
-            .ok_or_else(|| NumPyError::ufunc_error(
-                ufunc_name,
-                format!("Function not found for type {}", type_name)
-            ))?;
+        let ufunc = self
+            .registry
+            .get_by_dtypes(ufunc_name, &[type_name])
+            .ok_or_else(|| {
+                NumPyError::ufunc_error(
+                    ufunc_name,
+                    format!("Function not found for type {}", type_name),
+                )
+            })?;
 
         if !ufunc.supports_dtypes(&[a.dtype()]) {
             return Err(NumPyError::ufunc_error(
@@ -116,11 +124,15 @@ impl UfuncEngine {
     {
         // Use type-based dispatch to get the correct ufunc implementation
         let type_name = get_type_name::<T>();
-        let ufunc = self.registry.get_by_dtypes(ufunc_name, &[type_name, type_name])
-            .ok_or_else(|| NumPyError::ufunc_error(
-                ufunc_name,
-                format!("Function not found for type {}", type_name)
-            ))?;
+        let ufunc = self
+            .registry
+            .get_by_dtypes(ufunc_name, &[type_name, type_name])
+            .ok_or_else(|| {
+                NumPyError::ufunc_error(
+                    ufunc_name,
+                    format!("Function not found for type {}", type_name),
+                )
+            })?;
 
         if !ufunc.supports_dtypes(&[a.dtype(), b.dtype()]) {
             return Err(NumPyError::ufunc_error(
@@ -172,17 +184,15 @@ impl UfuncEngine {
 
         if let Some(reduction_axes) = axis {
             self.reduce_along_axes(array, &mut output, reduction_axes, &operation)?;
-        } else {
-            if let Some(initial) = array.get(0) {
-                let mut result = initial.clone();
-                for i in 1..array.size() {
-                    if let Some(element) = array.get(i) {
-                        result = operation(result, element.clone());
-                    }
+        } else if let Some(initial) = array.get(0) {
+            let mut result = initial.clone();
+            for i in 1..array.size() {
+                if let Some(element) = array.get(i) {
+                    result = operation(result, element.clone());
                 }
-                if output.size() == 1 {
-                    output.set(0, result)?;
-                }
+            }
+            if output.size() == 1 {
+                output.set(0, result)?;
             }
         }
 
@@ -747,12 +757,12 @@ where
                 let axis_size = self.shape()[ax];
 
                 for outer in 0..stride_before {
-                    for pos in 0..axis_size {
+                    for inner in 0..stride_after {
                         let mut running = T::default();
-                        for inner in 0..stride_after {
+                        for pos in 0..axis_size {
                             let idx = outer * axis_size * stride_after + pos * stride_after + inner;
                             if let Some(val) = self.get(idx) {
-                                if inner == 0 && pos == 0 {
+                                if pos == 0 {
                                     running = val.clone();
                                 } else {
                                     running = running * val.clone();
@@ -905,7 +915,7 @@ where
     where
         T: PartialEq + Clone + Default + 'static,
     {
-        let _ufunc = get_ufunc("logical_not")
+        let _ufunc = get_ufunc_typed::<T>("logical_not")
             .ok_or_else(|| NumPyError::ufunc_error("logical_not", "Function not found"))?;
 
         let output_shape = self.shape().to_vec();

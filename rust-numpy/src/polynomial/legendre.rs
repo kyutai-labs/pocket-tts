@@ -3,7 +3,7 @@
 use super::{Polynomial, PolynomialBase};
 use crate::error::NumPyError;
 use ndarray::Array1;
-use num_traits::{Float, Num, One, Zero};
+use num_traits::{Float, Num};
 
 /// Legendre polynomials
 #[derive(Debug, Clone)]
@@ -25,7 +25,7 @@ where
         + std::ops::DivAssign,
 {
     pub fn new(coeffs: &Array1<T>) -> Result<Self, NumPyError> {
-        if coeffs.len() == 0 {
+        if coeffs.is_empty() {
             return Err(NumPyError::invalid_value(
                 "Legendre coefficients cannot be empty",
             ));
@@ -143,7 +143,7 @@ where
         + std::ops::SubAssign
         + std::ops::DivAssign,
 {
-    if coeffs.len() == 0 {
+    if coeffs.is_empty() {
         return T::zero();
     }
 

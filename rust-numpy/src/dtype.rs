@@ -155,7 +155,7 @@ pub struct StructField {
 }
 
 /// Kind of dtype for type checking and promotion
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DtypeKind {
     Integer,
     Unsigned,
@@ -290,6 +290,8 @@ impl Dtype {
             Dtype::Float32 { byteorder: None }
         } else if type_id == TypeId::of::<f64>() {
             Dtype::Float64 { byteorder: None }
+        } else if type_id == TypeId::of::<half::f16>() {
+            Dtype::Float16 { byteorder: None }
         } else if type_id == TypeId::of::<bool>() {
             Dtype::Bool
         } else if type_id == TypeId::of::<String>() {
@@ -396,25 +398,92 @@ impl Dtype {
             _ => "unknown".to_string(),
         }
     }
+}
 
-    /// Check if dtype can be safely cast to another dtype
+/// Casting rules for type conversion
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Casting {
+    No,       // distinct types are not allowed
+    Equiv,    // allow byteorder changes
+    Safe,     // only allow casts that preserve values
+    SameKind, // allow safe casts or casts within same kind (e.g. f64->f32)
+    Unsafe,   // allow any cast
+}
+
+impl Dtype {
+    /// Check if dtype can be cast to another dtype according to casting rule
+    pub fn can_cast(&self, other: &Dtype, casting: Casting) -> bool {
+        if self == other {
+            return true;
+        }
+
+        match casting {
+            Casting::No => false, // explicitly equal check handled above
+            Casting::Equiv => {
+                // Ignore byteorder equality check?
+                // For now, simple implementation:
+                self.kind() == other.kind() && self.itemsize() == other.itemsize()
+            }
+            Casting::Safe => self.can_cast_to(other),
+            Casting::SameKind => {
+                // Safe OR Same Kind (allow downcast within kind)
+                if self.can_cast_to(other) {
+                    return true;
+                }
+
+                let sk = self.kind();
+                let ok = other.kind();
+
+                // Allow float->float (f64->f32), int->int (i64->i32), complex->complex
+                match (sk, ok) {
+                    (DtypeKind::Integer, DtypeKind::Integer) => true,
+                    (DtypeKind::Unsigned, DtypeKind::Unsigned) => true,
+                    (DtypeKind::Float, DtypeKind::Float) => true,
+                    (DtypeKind::Complex, DtypeKind::Complex) => true,
+                    (DtypeKind::Integer, DtypeKind::Float) => true, // NumPy allows int->float as "same kind"? Actually "safe" allows int->float depending on precision.
+                    // same_kind usually means "kind" is broader.
+                    // NumPy: same_kind for int->float is True?
+                    // Let's stick to strict SameKind definition: Safe OR (kind == kind)
+                    _ => sk == ok,
+                }
+            }
+            Casting::Unsafe => true,
+        }
+    }
+
+    /// Check if dtype can be safely cast to another dtype (Rule 'Safe')
     pub fn can_cast_to(&self, other: &Dtype) -> bool {
         use DtypeKind::*;
         let self_kind = self.kind();
         let other_kind = other.kind();
 
         match (self_kind, other_kind) {
-            (Integer, Integer) | (Unsigned, Integer) => self.itemsize() <= other.itemsize(),
+            (Integer, Integer) => self.itemsize() <= other.itemsize(),
+            (Unsigned, Integer) => self.itemsize() < other.itemsize(), // u8 cannot fit in i8 safely (255 > 127)
             (Integer, Unsigned) => false,
             (Float, Float) => self.itemsize() <= other.itemsize(),
             (Complex, Complex) => self.itemsize() <= other.itemsize(),
             (Integer | Unsigned | Float, Complex) => true,
+            // NumPy allows int -> float (safe) if float mantissa is large enough.
+            // Here we approximate: i32 -> f64 (safe), i64 -> f32 (not safe), i16 -> f32 (safe)
+            (Integer | Unsigned, Float) => {
+                // heuristic: float itemsize >= int itemsize (roughly)
+                // actually: f32 (24 bit mantissa) > i16 (15 bit). i32 (31 bit) > f32 (unsafe).
+                // f64 (53 bit) > i32. i64 > f64 (unsafe usually).
+                if other.itemsize() >= 8 {
+                    return true;
+                } // f64 holds i32 safely
+                if other.itemsize() >= 4 && self.itemsize() <= 2 {
+                    return true;
+                } // f32 holds i16
+                false
+            }
             (Complex, Float) => false,
             (Bool, _) => true,
             (_, Bool) => false,
             (String, String) => true,
             (Datetime, Datetime) => true,
-            (Object, _) | (_, Object) => true,
+            (Object, Object) => true,
             _ => false,
         }
     }

@@ -352,7 +352,7 @@ where
         return Err(NumPyError::invalid_value("n must be non-negative"));
     }
     let p_f64 = p.into();
-    if p_f64 < 0.0 || p_f64 > 1.0 {
+    if !(0.0..=1.0).contains(&p_f64) {
         return Err(NumPyError::value_error("p must be in [0, 1]", "binomial"));
     }
 
@@ -362,8 +362,8 @@ where
 
     DEFAULT_RNG.with(|rng| {
         let mut rng = rng.borrow_mut();
-        let dist = Binomial::new(n as u64, p_f64)
-            .map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
+        let dist =
+            Binomial::new(n as u64, p_f64).map_err(|e| NumPyError::invalid_value(e.to_string()))?;
 
         for _ in 0..total_size {
             let sample = dist.sample(&mut rng.rng) as f64;
@@ -402,10 +402,10 @@ where
 
     DEFAULT_RNG.with(|rng| {
         let mut rng = rng.borrow_mut();
-        let dist = Poisson::new(lam_f64).map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
+        let dist = Poisson::new(lam_f64).map_err(|e| NumPyError::invalid_value(e.to_string()))?;
 
         for _ in 0..total_size {
-            let sample = dist.sample(&mut rng.rng) as f64;
+            let sample = dist.sample(&mut rng.rng);
             data.push(T::from(sample));
         }
         Ok::<(), NumPyError>(())
@@ -442,7 +442,7 @@ where
     DEFAULT_RNG.with(|rng| {
         let mut rng = rng.borrow_mut();
         let dist =
-            Exp::new(1.0 / scale_f64).map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
+            Exp::new(1.0 / scale_f64).map_err(|e| NumPyError::invalid_value(e.to_string()))?;
 
         for _ in 0..total_size {
             let sample = dist.sample(&mut rng.rng);
@@ -488,7 +488,7 @@ where
     DEFAULT_RNG.with(|rng| {
         let mut rng = rng.borrow_mut();
         let dist = Gamma::new(shape_f64, scale_f64)
-            .map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
+            .map_err(|e| NumPyError::invalid_value(e.to_string()))?;
 
         for _ in 0..total_size {
             let sample = dist.sample(&mut rng.rng);
@@ -533,8 +533,7 @@ where
 
     DEFAULT_RNG.with(|rng| {
         let mut rng = rng.borrow_mut();
-        let dist =
-            Beta::new(a_f64, b_f64).map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
+        let dist = Beta::new(a_f64, b_f64).map_err(|e| NumPyError::invalid_value(e.to_string()))?;
 
         for _ in 0..total_size {
             let sample = dist.sample(&mut rng.rng);
@@ -576,8 +575,7 @@ where
 
     DEFAULT_RNG.with(|rng| {
         let mut rng = rng.borrow_mut();
-        let dist =
-            ChiSquared::new(df_f64).map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
+        let dist = ChiSquared::new(df_f64).map_err(|e| NumPyError::invalid_value(e.to_string()))?;
 
         for _ in 0..total_size {
             let sample = dist.sample(&mut rng.rng);
@@ -620,7 +618,7 @@ where
     DEFAULT_RNG.with(|rng| {
         let mut rng = rng.borrow_mut();
         let dist = Gumbel::new(loc_f64, scale_f64)
-            .map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
+            .map_err(|e| NumPyError::invalid_value(e.to_string()))?;
 
         for _ in 0..total_size {
             let sample = dist.sample(&mut rng.rng);
@@ -705,7 +703,7 @@ where
     DEFAULT_RNG.with(|rng| {
         let mut rng = rng.borrow_mut();
         let dist = LogNormal::new(mean_f64, sigma_f64)
-            .map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
+            .map_err(|e| NumPyError::invalid_value(e.to_string()))?;
 
         for _ in 0..total_size {
             let sample = dist.sample(&mut rng.rng);
@@ -789,7 +787,7 @@ where
 
                     let adjusted_p = p / remaining_prob;
                     let dist = Binomial::new(remaining, adjusted_p)
-                        .map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
+                        .map_err(|e| NumPyError::invalid_value(e.to_string()))?;
 
                     results[i] = dist.sample(&mut rng.rng);
                     remaining -= results[i];
@@ -854,7 +852,7 @@ where
             // Generate gamma samples for each alpha parameter
             for &a in &alpha_f64 {
                 let dist =
-                    Gamma::new(a, 1.0).map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
+                    Gamma::new(a, 1.0).map_err(|e| NumPyError::invalid_value(e.to_string()))?;
                 let sample = dist.sample(&mut rng.rng);
                 samples.push(sample);
                 sum += sample;
@@ -872,7 +870,6 @@ where
 }
 
 /// Legacy functions for NumPy compatibility
-
 /// Generate random floats in the half-open interval [0.0, 1.0)
 ///
 /// Legacy function equivalent to numpy.random.rand
@@ -918,7 +915,7 @@ where
 
     DEFAULT_RNG.with(|rng| {
         let mut rng = rng.borrow_mut();
-        let dist = Normal::new(0.0, 1.0).map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
+        let dist = Normal::new(0.0, 1.0).map_err(|e| NumPyError::invalid_value(e.to_string()))?;
 
         for _ in 0..total_size {
             let sample = dist.sample(&mut rng.rng);
@@ -993,7 +990,7 @@ impl RandomDist {
             let mut rng = rng.borrow_mut();
             let scale_f64: f64 = scale.clone().into();
             let dist =
-                Exp::new(1.0 / scale_f64).map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
+                Exp::new(1.0 / scale_f64).map_err(|e| NumPyError::invalid_value(e.to_string()))?;
             for _ in 0..size {
                 let sample = dist.sample(&mut rng.rng);
                 data.push(T::from(sample * scale_f64));
@@ -1016,9 +1013,9 @@ impl RandomDist {
         DEFAULT_RNG.with(|rng| {
             let mut rng = rng.borrow_mut();
             let dist =
-                Poisson::new(lambda_f64).map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
+                Poisson::new(lambda_f64).map_err(|e| NumPyError::invalid_value(e.to_string()))?;
             for _ in 0..size {
-                let sample = dist.sample(&mut rng.rng) as f64;
+                let sample = dist.sample(&mut rng.rng);
                 data.push(T::from(sample));
             }
             Ok::<(), NumPyError>(())
@@ -1040,7 +1037,7 @@ impl RandomDist {
         DEFAULT_RNG.with(|rng| {
             let mut rng = rng.borrow_mut();
             let dist = Binomial::new(n_f64 as u64, p_f64)
-                .map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
+                .map_err(|e| NumPyError::invalid_value(e.to_string()))?;
             for _ in 0..size {
                 let sample = dist.sample(&mut rng.rng) as f64;
                 data.push(T::from(sample));
@@ -1064,7 +1061,7 @@ impl RandomDist {
         DEFAULT_RNG.with(|rng| {
             let mut rng = rng.borrow_mut();
             let dist = Gamma::new(shape_f64, scale_f64)
-                .map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
+                .map_err(|e| NumPyError::invalid_value(e.to_string()))?;
             for _ in 0..size {
                 let sample = dist.sample(&mut rng.rng);
                 data.push(T::from(sample));
@@ -1090,7 +1087,7 @@ impl RandomDist {
         DEFAULT_RNG.with(|rng| {
             let mut rng = rng.borrow_mut();
             let dist = rand_distr::Beta::new(alpha_f64, beta_f64)
-                .map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
+                .map_err(|e| NumPyError::invalid_value(e.to_string()))?;
             for _ in 0..size {
                 let sample = dist.sample(&mut rng.rng);
                 data.push(T::from(sample));

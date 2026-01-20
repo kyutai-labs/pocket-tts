@@ -67,7 +67,7 @@ where
                 "ns" => ("ns", "nanoseconds", 1),
                 _ => return Err(NumPyError::invalid_dtype(format!("{:?}", dtype))),
             }
-        },
+        }
         _ => return Err(NumPyError::invalid_dtype(format!("{:?}", dtype))),
     };
 
@@ -263,8 +263,7 @@ fn parse_timezone(timezone: &str) -> Result<i64, NumPyError> {
         "MST" => Ok(-25200),
         "PST" => Ok(-28800),
         _ => {
-            if timezone.starts_with("UTC") {
-                let offset_str = &timezone[3..];
+            if let Some(offset_str) = timezone.strip_prefix("UTC") {
                 match offset_str.parse::<i64>() {
                     Ok(offset) => Ok(offset * 3600),
                     Err(_) => Err(NumPyError::value_error("Invalid UTC offset", "datetime")),

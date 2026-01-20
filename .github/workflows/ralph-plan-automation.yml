@@ -1,0 +1,223 @@
+name: Ralph Plan Automation
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "sync = create issues/branches; merge = auto-merge completed branch"
+        required: true
+        default: sync
+        type: choice
+        options:
+          - sync
+          - merge
+      plan_path:
+        description: "Path to the Ralph implementation plan"
+        required: false
+        default: ralph/IMPLEMENTATION_PLAN.md
+      base_branch:
+        description: "Base branch for plan sync and merges"
+        required: false
+        default: main
+      merge_branch:
+        description: "Branch to merge when mode=merge (defaults to the current ref)"
+        required: false
+  push:
+    branches:
+      - main
+      - "ralph/**"
+    paths:
+      - ralph/IMPLEMENTATION_PLAN.md
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  sync-plan:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.mode == 'sync') ||
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      PLAN_PATH: ${{ inputs.plan_path || 'ralph/IMPLEMENTATION_PLAN.md' }}
+      BASE_BRANCH: ${{ inputs.base_branch || 'main' }}
+      TASKS_JSON: /tmp/ralph_tasks.json
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Parse plan tasks
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import sys
+
+          plan_path = os.environ["PLAN_PATH"]
+          tasks_json = os.environ["TASKS_JSON"]
+
+          if not os.path.exists(plan_path):
+            print(f"Plan not found: {plan_path}", file=sys.stderr)
+            sys.exit(1)
+
+          tasks = []
+          for line in open(plan_path, "r", encoding="utf-8"):
+            match = re.match(r"\s*-\s*\[( |x|X)\]\s*(.+)", line)
+            if not match:
+              continue
+            status = "done" if match.group(1).lower() == "x" else "todo"
+            title = match.group(2).strip()
+            slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:50]
+            tasks.append({"status": status, "title": title, "slug": slug})
+
+          with open(tasks_json, "w", encoding="utf-8") as handle:
+            json.dump(tasks, handle)
+
+          print(f"Parsed {len(tasks)} tasks")
+          PY
+
+      - name: Create issues and branches
+        run: |
+          if [ ! -s "${TASKS_JSON}" ]; then
+            echo "No tasks found in plan.";
+            exit 0;
+          fi
+
+          jq -c '.[] | select(.status == "todo")' "${TASKS_JSON}" | while read -r task; do
+            title=$(jq -r '.title' <<<"${task}")
+            slug=$(jq -r '.slug' <<<"${task}")
+
+            issue_number=$(gh api -X GET search/issues \
+              -f q="repo:${GITHUB_REPOSITORY} type:issue in:title \"${title}\"" \
+              --jq '.items[0].number')
+
+            if [ -z "${issue_number}" ] || [ "${issue_number}" = "null" ]; then
+              issue_number=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/issues" \
+                -f title="${title}" \
+                -f body="Created from ${PLAN_PATH}." \
+                --jq '.number')
+            fi
+
+            branch="ralph/${issue_number}-${slug}"
+
+            if ! git ls-remote --heads origin "${branch}" | grep -q "${branch}"; then
+              git fetch origin "${BASE_BRANCH}"
+              git branch "${branch}" "origin/${BASE_BRANCH}"
+              git push origin "${branch}"
+            fi
+          done
+
+  auto-merge:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.mode == 'merge') ||
+      startsWith(github.ref, 'refs/heads/ralph/')
+    runs-on: ubuntu-latest
+    env:
+      PLAN_PATH: ${{ inputs.plan_path || 'ralph/IMPLEMENTATION_PLAN.md' }}
+      BASE_BRANCH: ${{ inputs.base_branch || 'main' }}
+      MERGE_BRANCH: ${{ inputs.merge_branch || github.ref_name }}
+      TASKS_JSON: /tmp/ralph_tasks.json
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Parse plan tasks
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import sys
+
+          plan_path = os.environ["PLAN_PATH"]
+          tasks_json = os.environ["TASKS_JSON"]
+
+          if not os.path.exists(plan_path):
+            print(f"Plan not found: {plan_path}", file=sys.stderr)
+            sys.exit(1)
+
+          tasks = []
+          for line in open(plan_path, "r", encoding="utf-8"):
+            match = re.match(r"\s*-\s*\[( |x|X)\]\s*(.+)", line)
+            if not match:
+              continue
+            status = "done" if match.group(1).lower() == "x" else "todo"
+            title = match.group(2).strip()
+            slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:50]
+            tasks.append({"status": status, "title": title, "slug": slug})
+
+          with open(tasks_json, "w", encoding="utf-8") as handle:
+            json.dump(tasks, handle)
+
+          print(f"Parsed {len(tasks)} tasks")
+          PY
+
+      - name: Check plan completion
+        id: plan
+        run: |
+          pending=$(jq '[.[] | select(.status == "todo")] | length' "${TASKS_JSON}")
+          if [ "${pending}" -gt 0 ]; then
+            echo "Pending tasks remain: ${pending}"
+            echo "all_done=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "all_done=true" >> "$GITHUB_OUTPUT"
+
+      - name: Mark plan complete
+        if: steps.plan.outputs.all_done == 'true'
+        run: |
+          python - <<'PY'
+          import os
+
+          plan_path = os.environ["PLAN_PATH"]
+          marker = "- [x] All tasks completed."
+
+          with open(plan_path, "r", encoding="utf-8") as handle:
+            content = handle.read().rstrip()
+
+          if marker not in content:
+            content = f"{content}\n\n{marker}\n"
+            with open(plan_path, "w", encoding="utf-8") as handle:
+              handle.write(content)
+          PY
+
+          if ! git diff --quiet; then
+            git add "${PLAN_PATH}"
+            git commit -m "chore: mark ralph plan complete"
+            git push origin "${MERGE_BRANCH}"
+          fi
+
+      - name: Create and merge PR
+        if: steps.plan.outputs.all_done == 'true'
+        run: |
+          pr_number=$(gh pr list --head "${MERGE_BRANCH}" --base "${BASE_BRANCH}" \
+            --json number --jq '.[0].number')
+
+          if [ -z "${pr_number}" ] || [ "${pr_number}" = "null" ]; then
+            gh pr create \
+              --title "Ralph: ${MERGE_BRANCH}" \
+              --body "Auto-generated PR for completed plan tasks." \
+              --base "${BASE_BRANCH}" \
+              --head "${MERGE_BRANCH}"
+            pr_number=$(gh pr list --head "${MERGE_BRANCH}" --base "${BASE_BRANCH}" \
+              --json number --jq '.[0].number')
+          fi
+
+          gh pr merge "${pr_number}" --squash --auto --delete-branch

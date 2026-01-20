@@ -1,4 +1,4 @@
-import numpy as np
+from pocket_tts.numpy_rs import prod
 import torch.nn as nn
 
 from .conv import StreamingConv1d, StreamingConvTranspose1d
@@ -63,7 +63,7 @@ class SEANetEncoder(nn.Module):
         self.ratios = list(reversed(ratios))
         del ratios
         self.n_residual_layers = n_residual_layers
-        self.hop_length = int(np.prod(self.ratios))
+        self.hop_length = int(prod(self.ratios))
         self.n_blocks = len(self.ratios) + 2  # first and last conv + residual blocks
 
         mult = 1
@@ -135,7 +135,7 @@ class SEANetDecoder(nn.Module):
         self.ratios = ratios
         del ratios
         self.n_residual_layers = n_residual_layers
-        self.hop_length = int(np.prod(self.ratios))
+        self.hop_length = int(prod(self.ratios))
         self.n_blocks = len(self.ratios) + 2  # first and last conv + residual blocks
         mult = int(2 ** len(self.ratios))
         model = nn.ModuleList(

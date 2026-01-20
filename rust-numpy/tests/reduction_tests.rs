@@ -254,7 +254,7 @@ mod tests {
     fn test_sum_floating_point() {
         let arr = array![1.5, 2.5, 3.5];
         let sum = arr.sum(None, false).unwrap();
-        assert!((*sum.get(0).unwrap() - 7.5).abs() < 1e-10);
+        assert!((*sum.get(0).unwrap() - 7.5_f64).abs() < 1e-10);
     }
 
     #[test]
@@ -268,7 +268,7 @@ mod tests {
     fn test_reduction_multiple_axes() {
         let arr = array3![[[1, 2], [3, 4]], [[5, 6], [7, 8]]];
 
-        let sum_both_axes = arr.sum(Some(&[0, 1]), false).unwrap();
+        let sum_both_axes = arr.sum(Some(&[0, 1, 2]), false).unwrap();
         assert_eq!(sum_both_axes.size(), 1);
         assert_eq!(*sum_both_axes.get(0).unwrap(), 36);
     }

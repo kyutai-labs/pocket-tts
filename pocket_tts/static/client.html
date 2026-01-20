@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pocket TTS WebSocket Client</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; background: #111; color: #eee; }
+        .container { background: #222; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        h1 { margin-top: 0; color: #fff; }
+        .control-group { margin-bottom: 1.5rem; }
+        label { display: block; margin-bottom: 0.5rem; color: #aaa; }
+        textarea, input, select { width: 100%; padding: 0.75rem; background: #333; border: 1px solid #444; color: #fff; border-radius: 4px; font-size: 1rem; }
+        button { background: #3b82f6; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 4px; font-size: 1rem; cursor: pointer; transition: background 0.2s; }
+        button:hover { background: #2563eb; }
+        button:disabled { background: #555; cursor: not-allowed; }
+        .status { margin-top: 1rem; color: #888; font-size: 0.9rem; }
+        .log { margin-top: 2rem; background: #000; padding: 1rem; border-radius: 4px; font-family: monospace; height: 200px; overflow-y: auto; font-size: 0.85rem; color: #0f0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Pocket TTS Stream</h1>
+
+        <div class="control-group">
+            <label for="text">Text to Speak</label>
+            <textarea id="text" rows="3">Hello world. I am streaming from Pocket TTS over WebSockets!</textarea>
+        </div>
+
+        <div class="control-group">
+            <label for="voice">Voice (Name or URL)</label>
+            <input type="text" id="voice" value="failed_republican_caucus_goer">
+        </div>
+
+        <button id="playBtn">Generate & Play</button>
+
+        <div class="status" id="status">Status: Disconnected</div>
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        const playBtn = document.getElementById('playBtn');
+        const statusEl = document.getElementById('status');
+        const logEl = document.getElementById('log');
+
+        let ws = null;
+        let audioCtx = null;
+        let nextStartTime = 0;
+
+        function log(msg) {
+            const div = document.createElement('div');
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            logEl.appendChild(div);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        async function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                await audioCtx.resume();
+            }
+            nextStartTime = audioCtx.currentTime;
+        }
+
+        function connect() {
+            if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+
+            ws = new WebSocket('ws://localhost:8765');
+
+            ws.onopen = () => {
+                statusEl.textContent = 'Status: Connected';
+                playBtn.disabled = false;
+                log('Connected to WebSocket server');
+            };
+
+            ws.onclose = () => {
+                statusEl.textContent = 'Status: Disconnected';
+                playBtn.disabled = true;
+                log('Disconnected');
+                setTimeout(connect, 2000); // Reconnect
+            };
+
+            ws.onerror = (e) => {
+                statusEl.textContent = 'Status: Error';
+                log('WebSocket error');
+            };
+
+            ws.onmessage = async (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+
+                    if (msg.type === 'error') {
+                        log('Error: ' + msg.message);
+                    } else if (msg.type === 'done') {
+                        log(`Done. Total chunks: ${msg.total_chunks}`);
+                        playBtn.disabled = false;
+                    } else if (msg.type === 'audio') {
+                        handleAudioChunk(msg);
+                    }
+                } catch (e) {
+                    log('Error parsing message: ' + e);
+                }
+            };
+        }
+
+        function base64ToArrayBuffer(base64) {
+            const binaryString = window.atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        function handleAudioChunk(msg) {
+            const rawData = base64ToArrayBuffer(msg.data);
+            let pcmData;
+
+            if (msg.format === 'wav') {
+                // Strip 44-byte header for WAV (simplistic)
+                pcmData = new Int16Array(rawData.slice(44));
+            } else {
+                pcmData = new Int16Array(rawData);
+            }
+
+            // Convert Int16 to Float32
+            const float32Data = new Float32Array(pcmData.length);
+            for (let i = 0; i < pcmData.length; i++) {
+                // Normalize to [-1.0, 1.0]
+                float32Data[i] = pcmData[i] / 32768.0;
+            }
+
+            // Schedule playback
+            playFloat32Data(float32Data, msg.sample_rate);
+        }
+
+        function playFloat32Data(data, sampleRate) {
+            if (!audioCtx) return;
+
+            const buffer = audioCtx.createBuffer(1, data.length, sampleRate);
+            buffer.getChannelData(0).set(data);
+
+            const source = audioCtx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioCtx.destination);
+
+            // Schedule seamlessly
+            const startTime = Math.max(audioCtx.currentTime, nextStartTime);
+            source.start(startTime);
+            nextStartTime = startTime + buffer.duration;
+        }
+
+        playBtn.addEventListener('click', async () => {
+            await initAudio();
+            playBtn.disabled = true;
+            nextStartTime = audioCtx.currentTime; // Reset timing for new utterance
+
+            const text = document.getElementById('text').value;
+            const voice = document.getElementById('voice').value;
+
+            log(`Sending: "${text}"`);
+            ws.send(JSON.stringify({ text, voice }));
+        });
+
+        // Initialize
+        connect();
+    </script>
+</body>
+</html>

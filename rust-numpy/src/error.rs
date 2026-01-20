@@ -269,13 +269,3 @@ impl From<std::io::Error> for NumPyError {
 //         Self::MemoryError { size: 0 }
 //     }
 // }
-
-#[cfg(feature = "blas")]
-impl From<openblas_src::Error> for NumPyError {
-    fn from(err: openblas_src::Error) -> Self {
-        Self::BackendError {
-            backend: "OpenBLAS".to_string(),
-            message: err.to_string(),
-        }
-    }
-}

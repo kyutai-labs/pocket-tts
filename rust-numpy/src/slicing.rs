@@ -51,12 +51,12 @@ where
         }
 
         let linear_idx = compute_linear_index(self, array.strides());
-        if let Some(element) = array.get(linear_idx) {
+        if let Some(element) = array.get_storage_at(linear_idx) {
             let mut result = Array::zeros(vec![1]);
             result.set(0, element.clone())?;
             Ok(result)
         } else {
-            Err(NumPyError::index_error(linear_idx, array.size()))
+            Err(NumPyError::index_error(linear_idx as usize, array.size()))
         }
     }
 
@@ -105,26 +105,54 @@ impl Slice {
             Slice::Range(start, stop) => {
                 let start = if *start < 0 { len + *start } else { *start };
                 let stop = if *stop < 0 { len + *stop } else { *stop };
+                // Clamp to bounds
+                let start = start.max(0).min(len);
+                let stop = stop.max(0).min(len);
                 (start, stop, 1)
             }
             Slice::RangeStep(start, stop, step) => {
                 let start = if *start < 0 { len + *start } else { *start };
                 let stop = if *stop < 0 { len + *stop } else { *stop };
-                (start, stop, *step)
+
+                // For negative step, bounds are different
+                if *step < 0 {
+                    // Clamp start to [0, len-1], stop to [-1, len-1]
+                    let start = start.min(len - 1).max(-1);
+                    let stop = stop.min(len - 1).max(-1);
+                    (start, stop, *step)
+                } else {
+                    let start = start.max(0).min(len);
+                    let stop = stop.max(0).min(len);
+                    (start, stop, *step)
+                }
             }
             Slice::Index(idx) => {
                 let idx = if *idx < 0 { len + *idx } else { *idx };
-                (idx, idx + 1, 1)
+                if idx < 0 || idx >= len {
+                    // Should result in empty or error? For to_range we just return it.
+                    // But logical slice for single index is 1 element.
+                    (idx, idx + 1, 1)
+                } else {
+                    (idx, idx + 1, 1)
+                }
             }
             Slice::From(start) => {
                 let start = if *start < 0 { len + *start } else { *start };
+                let start = start.max(0).min(len);
                 (start, len, 1)
             }
             Slice::To(stop) => {
                 let stop = if *stop < 0 { len + *stop } else { *stop };
+                let stop = stop.max(0).min(len);
                 (0, stop, 1)
             }
-            Slice::Step(step) => (0, len, *step),
+            Slice::Step(step) => {
+                if *step < 0 {
+                    (len - 1, -1, *step)
+                } else {
+                    (0, len, *step)
+                }
+            }
         }
     }
 
@@ -134,18 +162,20 @@ impl Slice {
         let (start, stop, step) = self.to_range(len);
 
         if step == 0 {
-            return 0;
+            return 0; // Should be error but return 0 length
         }
 
-        let actual_start = start.max(0).min(len);
-        let actual_stop = stop.max(0).min(len);
-
-        if (step > 0 && actual_start >= actual_stop) || (step < 0 && actual_start <= actual_stop) {
-            return 0;
+        if step > 0 {
+            if start >= stop {
+                return 0;
+            }
+            (stop - start).unsigned_abs().div_ceil(step.unsigned_abs())
+        } else {
+            if start <= stop {
+                return 0;
+            }
+            (start - stop).unsigned_abs().div_ceil(step.unsigned_abs())
         }
-
-        ((actual_stop - actual_start).abs() as usize + step.abs() as usize - 1)
-            / step.abs() as usize
     }
 }
 
@@ -200,27 +230,50 @@ impl<T> Array<T>
 where
     T: Clone + Default + 'static,
 {
-    /// Get array slice using slice syntax
+    /// Get array slice as a view (shares data)
     pub fn slice(&self, multi_slice: &MultiSlice) -> Result<Array<T>> {
-        let result_shape = multi_slice.result_shape(self.shape());
-        let _ranges = multi_slice.to_ranges(self.shape());
+        let ndim = self.ndim();
+        let mut new_shape = Vec::with_capacity(ndim);
+        let mut new_strides = Vec::with_capacity(ndim);
+        let mut new_offset = self.offset;
 
-        // This is a very simplified implementation
-        // Real implementation would need complex slicing logic
-        let result = Array::zeros(result_shape);
-
-        // Copy sliced data
-        for i in 0..result.size() {
-            if i < self.size() {
-                if let Some(_src_element) = self.get(i) {
-                    // This is placeholder - real implementation would calculate source indices
-                    // Set element in result - need proper indexing
-                    break; // Simplified for now
-                }
-            }
+        // Pad slices with Full if fewer slices than dimensions
+        let mut extended_slices = multi_slice.slices.clone();
+        while extended_slices.len() < ndim {
+            extended_slices.push(crate::slicing::Slice::Full);
         }
 
-        Ok(result)
+        for (i, slice) in extended_slices.iter().enumerate() {
+            if i >= ndim {
+                break; // Ignore extra slices
+            }
+
+            let dim_len = self.shape[i];
+            let stride = self.strides[i];
+
+            // Calculate range for this dimension
+            let (start, _stop, step) = slice.to_range(dim_len as isize);
+
+            // Calculate new offset contribution
+            // For both positive and negative step, start is the first element accessed.
+            new_offset = (new_offset as isize + start * stride) as usize;
+
+            // Calculate new stride
+            let new_stride = stride * step;
+            new_strides.push(new_stride);
+
+            // Calculate new shape
+            let new_dim_len = slice.len(dim_len);
+            new_shape.push(new_dim_len);
+        }
+
+        Ok(Array {
+            data: self.data.clone(),
+            shape: new_shape,
+            strides: new_strides,
+            dtype: self.dtype.clone(),
+            offset: new_offset,
+        })
     }
 
     /// Newaxis support (arr[np.newaxis, :])
@@ -316,7 +369,7 @@ where
         }
 
         let linear_idx = compute_linear_index(indices, self.strides());
-        self.set(linear_idx, value)
+        self.set_storage_at(linear_idx, value)
     }
 
     /// Get element at multi-dimensional indices
@@ -332,8 +385,8 @@ where
         }
 
         let linear_idx = compute_linear_index(indices, self.strides());
-        self.get(linear_idx)
-            .ok_or_else(|| NumPyError::index_error(linear_idx, self.size()))
+        self.get_storage_at(linear_idx)
+            .ok_or_else(|| NumPyError::index_error(linear_idx as usize, self.size()))
     }
 
     /// Expand ellipsis in indices
@@ -485,7 +538,7 @@ where
 
             // Compute linear index and extract element
             let linear_idx = compute_linear_index(&current_indices, self.strides());
-            if let Some(val) = self.get(linear_idx) {
+            if let Some(val) = self.get_storage_at(linear_idx) {
                 result.push(val.clone());
             }
 
@@ -594,23 +647,32 @@ impl<'a, T> Iterator for ArrayIterMut<'a, T> {
 /// Convenience macros for slicing
 #[macro_export]
 macro_rules! s {
+    // s!(:) -> Full
     (:) => {
         $crate::slicing::Slice::Full
-    (start:end:step) => {
-        $crate::slicing::Slice::RangeStep(start, end, step)
     };
-    (..end) => {
-        $crate::slicing::Slice::To(end)
+    // s!(start..end) -> Range
+    ($start:tt .. $end:tt) => {
+        $crate::slicing::Slice::Range(($start) as isize, ($end) as isize)
     };
-    (start..) => {
-        $crate::slicing::Slice::From(start)
+    // s!(start..end..step) -> RangeStep
+    ($start:tt .. $end:tt .. $($step:tt)+) => {
+        $crate::slicing::Slice::RangeStep(
+            ($start) as isize,
+            ($end) as isize,
+            ($($step)+) as isize,
+        )
     };
-    (start..end) => {
-        $crate::slicing::Slice::Range(start, end)
+    // s!(..end) -> To
+    (.. $end:tt) => {
+        $crate::slicing::Slice::To(($end) as isize)
     };
-    (start..end..step) => {
-        $crate::slicing::Slice::RangeStep(start, end, step)
+    // s!(start..) -> From
+    ($start:tt ..) => {
+        $crate::slicing::Slice::From(($start) as isize)
     };
-
-}
+    // s!(::step) -> Step
+    (:: $step:expr) => {
+        $crate::slicing::Slice::Step($step as isize)
+    };
 }

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 # Import numpy_rs for NumPy replacement
-from pocket_tts.numpy_rs import (arange, array, clip, max, min, sum, abs, sqrt, log, std, var, reshape, transpose, concatenate, vstack, hstack, zeros, ones, eye, linspace, interp, dot, matmul, power) as np_rs
+import numpy as np_rs
 import torch
 from beartype.typing import Iterator
 

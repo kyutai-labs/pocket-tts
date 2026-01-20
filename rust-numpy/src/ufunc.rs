@@ -4,13 +4,13 @@ use crate::dtype::{Dtype, DtypeKind};
 use crate::error::{NumPyError, Result};
 use std::marker::PhantomData;
 
-impl<T> ArrayView for Array<T> {
+impl<T: 'static> ArrayView for Array<T> {
     fn dtype(&self) -> &Dtype {
         self.dtype()
     }
 
     fn shape(&self) -> &[usize] {
-        self.shape()
+        &self.shape
     }
 
     fn strides(&self) -> &[isize] {
@@ -33,21 +33,29 @@ impl<T> ArrayView for Array<T> {
         // Get pointer to the underlying data
         self.data.as_ref().as_slice().as_ptr() as *const u8
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
-impl<T> ArrayViewMut for Array<T> {
+impl<T: 'static> ArrayViewMut for Array<T> {
     fn as_mut_ptr(&mut self) -> *mut u8 {
         // Get mutable pointer to the underlying data
         // SAFETY: We have &mut self, which guarantees exclusive access to the Array.
         // Even though the data is in an Arc, the &mut ensures no other references exist
         // that could modify the data. We use unsafe to bypass Arc's ref counting here.
-        unsafe {
+        {
             let ptr = self.data.as_ref().as_slice().as_ptr() as *mut u8;
             // The cast from const to mut is safe because:
             // 1. We have &mut self, guaranteeing exclusive mutable access
             // 2. The Arc is not shared during ufunc execution (outputs are newly created)
             ptr
         }
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
     }
 }
 
@@ -85,6 +93,9 @@ pub trait Ufunc: Send + Sync {
 
     /// Check if this ufunc implementation matches the given concrete types
     fn matches_concrete_types(&self, input_types: &[&'static str]) -> bool;
+
+    /// Get the specific input dtypes this ufunc accepts
+    fn input_dtypes(&self) -> Vec<Dtype>;
 }
 
 /// Trait for viewing array data
@@ -109,12 +120,18 @@ pub trait ArrayView {
 
     /// Get raw data pointer
     fn as_ptr(&self) -> *const u8;
+
+    /// Downcast to Any
+    fn as_any(&self) -> &dyn std::any::Any;
 }
 
 /// Trait for mutable array data
 pub trait ArrayViewMut: ArrayView {
     /// Get mutable raw data pointer
     fn as_mut_ptr(&mut self) -> *mut u8;
+
+    /// Downcast to Any (mutable)
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 }
 
 /// Binary operation ufunc
@@ -176,6 +193,14 @@ where
 
     fn matches_concrete_types(&self, input_types: &[&'static str]) -> bool {
         input_types.len() == 2 && input_types.iter().all(|&t| t == std::any::type_name::<T>())
+    }
+
+    fn input_dtypes(&self) -> Vec<Dtype> {
+        println!(
+            "  (MathBinaryUfunc for {}) input_dtypes called",
+            std::any::type_name::<T>()
+        );
+        vec![Dtype::from_type::<T>(), Dtype::from_type::<T>()]
     }
 
     fn execute(
@@ -274,6 +299,10 @@ where
         input_types.len() == 1 && input_types[0] == std::any::type_name::<T>()
     }
 
+    fn input_dtypes(&self) -> Vec<Dtype> {
+        vec![Dtype::from_type::<T>()]
+    }
+
     fn execute(
         &self,
         inputs: &[&dyn ArrayView],
@@ -328,7 +357,8 @@ impl UfuncRegistry {
     /// Register a ufunc - stores ALL implementations, not just the last one
     pub fn register(&mut self, ufunc: Box<dyn Ufunc>) {
         let name = ufunc.name().to_string();
-        self.ufuncs.entry(name).or_insert_with(Vec::new).push(ufunc);
+
+        self.ufuncs.entry(name).or_default().push(ufunc);
     }
 
     /// Get ufunc by name (returns first match, deprecated in favor of get_by_dtypes)
@@ -347,6 +377,41 @@ impl UfuncRegistry {
                 .find(|uf| uf.matches_concrete_types(input_types))
                 .map(|uf| uf.as_ref())
         })
+    }
+
+    /// Resolve ufunc by name and input dtypes, allowing for casting
+    /// Returns the matched ufunc and the specific dtypes it expects (so caller knows what to cast to)
+    pub fn resolve_ufunc(
+        &self,
+        name: &str,
+        input_dtypes: &[Dtype],
+        casting: crate::dtype::Casting,
+    ) -> Option<(&dyn Ufunc, Vec<Dtype>)> {
+        if let Some(candidates) = self.ufuncs.get(name) {
+            // Find first candidate where all inputs can be cast safely
+            // TODO: Implement better "common type" promotion logic if multiple match (e.g. smallest safe type)
+            // For now, linear search is acceptable as we register types in a reasonable order?
+            // Actually, we usually register f64, f32, i64...
+            // If we have i32 inputs, and i64 is registered, it triggers cast.
+
+            for ufunc in candidates {
+                let target_dtypes = ufunc.input_dtypes();
+
+                if target_dtypes.len() != input_dtypes.len() {
+                    continue;
+                }
+
+                let all_castable = input_dtypes
+                    .iter()
+                    .zip(target_dtypes.iter())
+                    .all(|(in_dt, target_dt)| in_dt.can_cast(target_dt, casting));
+
+                if all_castable {
+                    return Some((ufunc.as_ref(), target_dtypes));
+                }
+            }
+        }
+        None
     }
 
     /// List all registered ufunc names
@@ -947,6 +1012,19 @@ lazy_static::lazy_static! {
 /// Get ufunc by name
 pub fn get_ufunc(name: &str) -> Option<&'static dyn Ufunc> {
     UFUNC_REGISTRY.get(name)
+}
+
+/// Get ufunc by name and input type
+pub fn get_ufunc_typed<T: 'static>(name: &str) -> Option<&'static dyn Ufunc> {
+    UFUNC_REGISTRY.get_by_dtypes(name, &[std::any::type_name::<T>()])
+}
+
+/// Get binary ufunc by name and input type
+pub fn get_ufunc_typed_binary<T: 'static>(name: &str) -> Option<&'static dyn Ufunc> {
+    UFUNC_REGISTRY.get_by_dtypes(
+        name,
+        &[std::any::type_name::<T>(), std::any::type_name::<T>()],
+    )
 }
 
 /// List all available ufuncs

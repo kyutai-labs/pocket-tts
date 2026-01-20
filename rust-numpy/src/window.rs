@@ -6,30 +6,31 @@
 // copied, modified, or distributed except according to those terms.
 
 //! Window functions for signal processing
+//! Note: The `m` parameter corresponds to NumPy's `M` parameter
 
 use crate::error::NumPyError;
 use ndarray::Array1;
 use num_traits::{Float, Zero};
 
-pub fn bartlett<T>(M: usize) -> Result<Array1<T>, NumPyError>
+pub fn bartlett<T>(m: usize) -> Result<Array1<T>, NumPyError>
 where
     T: Float + std::fmt::Debug + 'static,
 {
-    if M == 0 {
+    if m == 0 {
         return Err(NumPyError::value_error(
-            "Window length M must be positive",
+            "Window length m must be positive",
             "window",
         ));
     }
 
-    let mut window = Array1::zeros(M);
+    let mut window = Array1::zeros(m);
 
-    for n in 0..M {
-        let value = if M == 1 {
+    for n in 0..m {
+        let value = if m == 1 {
             T::one()
         } else {
             let n_float = T::from(n).unwrap();
-            let m_float = T::from(M - 1).unwrap();
+            let m_float = T::from(m - 1).unwrap();
             T::from(2.0).unwrap() * n_float / m_float - T::one()
         };
         window[n] = T::one() - value.abs();
@@ -38,25 +39,25 @@ where
     Ok(window)
 }
 
-pub fn blackman<T>(M: usize) -> Result<Array1<T>, NumPyError>
+pub fn blackman<T>(m: usize) -> Result<Array1<T>, NumPyError>
 where
     T: Float + std::fmt::Debug + 'static,
 {
-    if M == 0 {
+    if m == 0 {
         return Err(NumPyError::value_error(
-            "Window length M must be positive",
+            "Window length m must be positive",
             "window",
         ));
     }
 
-    let mut window = Array1::zeros(M);
+    let mut window = Array1::zeros(m);
     let two_pi = T::from(2.0 * std::f64::consts::PI).unwrap();
     let four_pi = T::from(4.0 * std::f64::consts::PI).unwrap();
     let _six_pi = T::from(6.0 * std::f64::consts::PI).unwrap();
 
-    for n in 0..M {
+    for n in 0..m {
         let n_float = T::from(n).unwrap();
-        let m_float = T::from(M - 1).unwrap();
+        let m_float = T::from(m - 1).unwrap();
 
         let term1 = T::from(0.42).unwrap();
         let term2 = T::from(0.5).unwrap() * (two_pi * n_float / m_float).cos();
@@ -68,23 +69,23 @@ where
     Ok(window)
 }
 
-pub fn hamming<T>(M: usize) -> Result<Array1<T>, NumPyError>
+pub fn hamming<T>(m: usize) -> Result<Array1<T>, NumPyError>
 where
     T: Float + std::fmt::Debug + 'static,
 {
-    if M == 0 {
+    if m == 0 {
         return Err(NumPyError::value_error(
-            "Window length M must be positive",
+            "Window length m must be positive",
             "window",
         ));
     }
 
-    let mut window = Array1::zeros(M);
+    let mut window = Array1::zeros(m);
     let two_pi = T::from(2.0 * std::f64::consts::PI).unwrap();
 
-    for n in 0..M {
+    for n in 0..m {
         let n_float = T::from(n).unwrap();
-        let m_float = T::from(M - 1).unwrap();
+        let m_float = T::from(m - 1).unwrap();
 
         let alpha = T::from(0.54).unwrap();
         let beta = T::from(0.46).unwrap();
@@ -95,23 +96,23 @@ where
     Ok(window)
 }
 
-pub fn hanning<T>(M: usize) -> Result<Array1<T>, NumPyError>
+pub fn hanning<T>(m: usize) -> Result<Array1<T>, NumPyError>
 where
     T: Float + std::fmt::Debug + 'static,
 {
-    if M == 0 {
+    if m == 0 {
         return Err(NumPyError::value_error(
-            "Window length M must be positive",
+            "Window length m must be positive",
             "window",
         ));
     }
 
-    let mut window = Array1::zeros(M);
+    let mut window = Array1::zeros(m);
     let two_pi = T::from(2.0 * std::f64::consts::PI).unwrap();
 
-    for n in 0..M {
+    for n in 0..m {
         let n_float = T::from(n).unwrap();
-        let m_float = T::from(M - 1).unwrap();
+        let m_float = T::from(m - 1).unwrap();
 
         window[n] = T::from(0.5).unwrap() * (T::one() - (two_pi * n_float / m_float).cos());
     }
@@ -119,23 +120,23 @@ where
     Ok(window)
 }
 
-pub fn kaiser<T>(M: usize, beta: T) -> Result<Array1<T>, NumPyError>
+pub fn kaiser<T>(m: usize, beta: T) -> Result<Array1<T>, NumPyError>
 where
     T: Float + std::fmt::Debug + std::ops::AddAssign + std::ops::MulAssign + 'static,
 {
-    if M == 0 {
+    if m == 0 {
         return Err(NumPyError::value_error(
-            "Window length M must be positive",
+            "Window length m must be positive",
             "window",
         ));
     }
 
-    let mut window = Array1::zeros(M);
+    let mut window = Array1::zeros(m);
     let i0_beta = bessel_i0(beta);
 
-    for n in 0..M {
+    for n in 0..m {
         let n_float = T::from(n).unwrap();
-        let m_float = T::from(M - 1).unwrap();
+        let m_float = T::from(m - 1).unwrap();
 
         let alpha = m_float / T::from(2.0).unwrap();
         let arg = beta * (T::one() - ((n_float - alpha) / alpha).powi(2)).sqrt();
@@ -151,13 +152,13 @@ where
     Ok(window)
 }
 
-pub fn gaussian<T>(M: usize, std: T) -> Result<Array1<T>, NumPyError>
+pub fn gaussian<T>(m: usize, std: T) -> Result<Array1<T>, NumPyError>
 where
     T: Float + std::fmt::Debug + 'static,
 {
-    if M == 0 {
+    if m == 0 {
         return Err(NumPyError::value_error(
-            "Window length M must be positive",
+            "Window length m must be positive",
             "window",
         ));
     }
@@ -169,10 +170,10 @@ where
         ));
     }
 
-    let mut window = Array1::zeros(M);
-    let m_float = T::from(M - 1).unwrap();
+    let mut window = Array1::zeros(m);
+    let m_float = T::from(m - 1).unwrap();
 
-    for n in 0..M {
+    for n in 0..m {
         let n_float = T::from(n).unwrap();
         let x =
             (n_float - m_float / T::from(2.0).unwrap()) / (std * m_float / T::from(2.0).unwrap());
@@ -182,13 +183,13 @@ where
     Ok(window)
 }
 
-pub fn general_gaussian<T>(M: usize, std: T, exponent: T) -> Result<Array1<T>, NumPyError>
+pub fn general_gaussian<T>(m: usize, std: T, exponent: T) -> Result<Array1<T>, NumPyError>
 where
     T: Float + std::fmt::Debug + 'static,
 {
-    if M == 0 {
+    if m == 0 {
         return Err(NumPyError::value_error(
-            "Window length M must be positive",
+            "Window length m must be positive",
             "window",
         ));
     }
@@ -207,10 +208,10 @@ where
         ));
     }
 
-    let mut window = Array1::zeros(M);
-    let m_float = T::from(M - 1).unwrap();
+    let mut window = Array1::zeros(m);
+    let m_float = T::from(m - 1).unwrap();
 
-    for n in 0..M {
+    for n in 0..m {
         let n_float = T::from(n).unwrap();
         let x =
             (n_float - m_float / T::from(2.0).unwrap()) / (std * m_float / T::from(2.0).unwrap());
@@ -220,38 +221,38 @@ where
     Ok(window)
 }
 
-pub fn boxcar<T>(M: usize) -> Result<Array1<T>, NumPyError>
+pub fn boxcar<T>(m: usize) -> Result<Array1<T>, NumPyError>
 where
     T: Float + Zero + std::fmt::Debug + 'static,
 {
-    if M == 0 {
+    if m == 0 {
         return Err(NumPyError::value_error(
-            "Window length M must be positive",
+            "Window length m must be positive",
             "window",
         ));
     }
 
-    Ok(Array1::from_elem(M, T::one()))
+    Ok(Array1::from_elem(m, T::one()))
 }
 
-pub fn triang<T>(M: usize) -> Result<Array1<T>, NumPyError>
+pub fn triang<T>(m: usize) -> Result<Array1<T>, NumPyError>
 where
     T: Float + std::fmt::Debug + 'static,
 {
-    if M == 0 {
+    if m == 0 {
         return Err(NumPyError::value_error(
-            "Window length M must be positive",
+            "Window length m must be positive",
             "window",
         ));
     }
 
-    let mut window = Array1::zeros(M);
+    let mut window = Array1::zeros(m);
 
-    for n in 0..M {
+    for n in 0..m {
         let n_float = T::from(n).unwrap();
-        let m_float = T::from(M - 1).unwrap();
+        let m_float = T::from(m - 1).unwrap();
 
-        window[n] = if M % 2 == 1 {
+        window[n] = if m % 2 == 1 {
             T::one()
                 - (T::from(2.0).unwrap() * (n_float - m_float / T::from(2.0).unwrap())).abs()
                     / m_float
@@ -267,22 +268,22 @@ where
     Ok(window)
 }
 
-pub fn parzen<T>(M: usize) -> Result<Array1<T>, NumPyError>
+pub fn parzen<T>(m: usize) -> Result<Array1<T>, NumPyError>
 where
     T: Float + std::fmt::Debug + 'static,
 {
-    if M == 0 {
+    if m == 0 {
         return Err(NumPyError::value_error(
-            "Window length M must be positive",
+            "Window length m must be positive",
             "window",
         ));
     }
 
-    let mut window = Array1::zeros(M);
-    let m_float = T::from(M).unwrap();
+    let mut window = Array1::zeros(m);
+    let m_float = T::from(m).unwrap();
     let half_m = m_float / T::from(2.0).unwrap();
 
-    for n in 0..M {
+    for n in 0..m {
         let n_float = T::from(n).unwrap();
         let x = (n_float - half_m + T::from(0.5).unwrap()) / half_m;
         let abs_x = x.abs();
@@ -299,21 +300,21 @@ where
     Ok(window)
 }
 
-pub fn bohman<T>(M: usize) -> Result<Array1<T>, NumPyError>
+pub fn bohman<T>(m: usize) -> Result<Array1<T>, NumPyError>
 where
     T: Float + std::fmt::Debug + 'static,
 {
-    if M == 0 {
+    if m == 0 {
         return Err(NumPyError::value_error(
-            "Window length M must be positive",
+            "Window length m must be positive",
             "window",
         ));
     }
 
-    let mut window = Array1::zeros(M);
-    let m_float = T::from(M).unwrap();
+    let mut window = Array1::zeros(m);
+    let m_float = T::from(m).unwrap();
 
-    for n in 0..M {
+    for n in 0..m {
         let n_float = T::from(n).unwrap();
         let x = T::from(2.0).unwrap() * n_float / m_float - T::one();
         let abs_x = x.abs();
@@ -332,25 +333,25 @@ where
     Ok(window)
 }
 
-pub fn blackmanharris<T>(M: usize) -> Result<Array1<T>, NumPyError>
+pub fn blackmanharris<T>(m: usize) -> Result<Array1<T>, NumPyError>
 where
     T: Float + std::fmt::Debug + 'static,
 {
-    if M == 0 {
+    if m == 0 {
         return Err(NumPyError::value_error(
-            "Window length M must be positive",
+            "Window length m must be positive",
             "window",
         ));
     }
 
-    let mut window = Array1::zeros(M);
+    let mut window = Array1::zeros(m);
     let two_pi = T::from(2.0 * std::f64::consts::PI).unwrap();
     let four_pi = T::from(4.0 * std::f64::consts::PI).unwrap();
     let six_pi = T::from(6.0 * std::f64::consts::PI).unwrap();
 
-    for n in 0..M {
+    for n in 0..m {
         let n_float = T::from(n).unwrap();
-        let m_float = T::from(M - 1).unwrap();
+        let m_float = T::from(m - 1).unwrap();
 
         let term1 = T::from(0.35875).unwrap();
         let term2 = T::from(0.48829).unwrap() * (two_pi * n_float / m_float).cos();
@@ -363,26 +364,26 @@ where
     Ok(window)
 }
 
-pub fn flattop<T>(M: usize) -> Result<Array1<T>, NumPyError>
+pub fn flattop<T>(m: usize) -> Result<Array1<T>, NumPyError>
 where
     T: Float + std::fmt::Debug + 'static,
 {
-    if M == 0 {
+    if m == 0 {
         return Err(NumPyError::value_error(
-            "Window length M must be positive",
+            "Window length m must be positive",
             "window",
         ));
     }
 
-    let mut window = Array1::zeros(M);
+    let mut window = Array1::zeros(m);
     let two_pi = T::from(2.0 * std::f64::consts::PI).unwrap();
     let four_pi = T::from(4.0 * std::f64::consts::PI).unwrap();
     let six_pi = T::from(6.0 * std::f64::consts::PI).unwrap();
     let eight_pi = T::from(8.0 * std::f64::consts::PI).unwrap();
 
-    for n in 0..M {
+    for n in 0..m {
         let n_float = T::from(n).unwrap();
-        let m_float = T::from(M - 1).unwrap();
+        let m_float = T::from(m - 1).unwrap();
 
         let term1 = T::from(0.21557895).unwrap();
         let term2 = T::from(0.41663158).unwrap() * (two_pi * n_float / m_float).cos();
@@ -396,30 +397,30 @@ where
     Ok(window)
 }
 
-pub fn dpss<T>(M: usize, nw: isize, k: isize) -> Result<Array1<T>, NumPyError>
+pub fn dpss<T>(m: usize, nw: isize, k: isize) -> Result<Array1<T>, NumPyError>
 where
     T: Float + std::fmt::Debug + 'static,
 {
-    if M == 0 {
+    if m == 0 {
         return Err(NumPyError::value_error(
-            "Window length M must be positive",
+            "Window length m must be positive",
             "window",
         ));
     }
 
-    if k < 0 || k >= nw.min((M / 2) as isize) {
+    if k < 0 || k >= nw.min((m / 2) as isize) {
         return Err(NumPyError::value_error(
-            "k must be in range [0, min(nw, M/2))",
+            "k must be in range [0, min(nw, m/2))",
             "window",
         ));
     }
 
     let nw_float = T::from(nw as f64).unwrap();
-    let mut window = Array1::zeros(M);
+    let mut window = Array1::zeros(m);
 
-    for n in 0..M {
+    for n in 0..m {
         let n_float = T::from(n).unwrap();
-        let m_float = T::from(M).unwrap();
+        let m_float = T::from(m).unwrap();
 
         let x = T::from(std::f64::consts::PI).unwrap()
             * nw_float
@@ -432,13 +433,13 @@ where
     Ok(window)
 }
 
-pub fn chebwin<T>(M: usize, attenuation: T) -> Result<Array1<T>, NumPyError>
+pub fn chebwin<T>(m: usize, attenuation: T) -> Result<Array1<T>, NumPyError>
 where
     T: Float + std::fmt::Debug + 'static,
 {
-    if M == 0 {
+    if m == 0 {
         return Err(NumPyError::value_error(
-            "Window length M must be positive",
+            "Window length m must be positive",
             "window",
         ));
     }
@@ -450,19 +451,19 @@ where
         ));
     }
 
-    let mut window = Array1::zeros(M);
+    let mut window = Array1::zeros(m);
     let beta = cosh_inverse(
         T::from(10.0)
             .unwrap()
             .powf(attenuation / T::from(20.0).unwrap()),
     );
 
-    for n in 0..M {
+    for n in 0..m {
         let n_float = T::from(n).unwrap();
-        let m_float = T::from(M - 1).unwrap();
+        let m_float = T::from(m - 1).unwrap();
 
         let x = beta * (T::from(2.0).unwrap() * n_float / m_float - T::one()).cosh();
-        let cheb_poly = chebyshev_polynomial(x, M);
+        let cheb_poly = chebyshev_polynomial(x, m);
 
         window[n] = cheb_poly / beta;
     }

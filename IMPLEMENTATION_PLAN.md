@@ -1,0 +1,43 @@
+# Implementation Plan
+
+Generated from GitHub Issues via Ralph Playbook Initialization.
+
+- [ ] #2 [Med] Running the model in the browser
+- [ ] #9 [Med] Feature: Full NumPy API parity in pure Rust
+- [ ] #17 [Med] [rust-numpy] Implement tensor operations with axes support
+- [ ] #18 [Med] [rust-numpy] Implement nuclear and L-p norms in linalg::norm
+- [ ] #19 [Med] [rust-numpy] Implement sorting functions: argpartition and partition with array kth
+- [ ] #20 [Med] [rust-numpy] Implement set operations in set_ops.rs
+- [ ] #25 [Med] [rust-numpy] Verify and implement bitwise operations
+- [ ] #26 [Med] [rust-numpy] Complete Dtype system (intp, uintp, IEEE 754 f16)
+- [ ] #30 [Med] [ci] Workspace lint/format enforcement (fmt + clippy -D warnings)
+- [ ] #33 [Med] [core] Slicing-as-view (ranges + step; support negative step)
+- [ ] #34 [Med] [core] Broadcast layout (stride=0 where dim=1)
+- [ ] #35 [Med] [core] Minimal correct N-D iterator offsets (no coalescing yet)
+- [ ] #36 [Med] [dtype] Numeric promotion rules (explicit table) for Add/Sub/Mul/TrueDiv/Comparison/Bitwise
+- [ ] #37 [Med] [dtype] Casting policy skeleton (Safe/SameKind/Unsafe)
+- [ ] #38 [Med] [ufunc] UFunc registry + kernel lookup by signature
+- [ ] #39 [Med] [ufunc][kernels] Minimal execution engine (contiguous baseline) for binary ufunc
+- [ ] #40 [Med] [ufunc][core][kernels] Broadcast-aware binary exec path (elementwise add)
+- [ ] #41 [Med] [api] Public Array facade + add() wired end-to-end
+- [ ] #42 [Med] [kernels][ufunc][api] Add mul ufunc (mirror add) + tests
+- [ ] #43 [Med] [ufunc][kernels][api] Global sum reduction for f64
+- [ ] #44 [Med] [ufunc][api] sum(axis=..., keepdims=...): single axis first
+- [ ] #45 [Med] [performance][core][ufunc] Dimension coalescing into fewer contiguous runs
+- [ ] #46 [Med] [performance][kernels] SIMD kernels (feature-gated) + runtime dispatch
+- [ ] #47 [Med] [performance] Threading policy for safe kernels (no overlap/alias hazards)
+- [ ] #48 [Med] [rust-numpy] Phase 1: FFT Module Implementation
+- [ ] #49 [Med] [rust-numpy] Phase 2: Advanced Array Methods
+- [ ] #50 [Med] [rust-numpy] Phase 3: NaN-Aware Statistics
+- [ ] #51 [Med] [rust-numpy] Phase 4: Advanced Indexing & Slicing
+- [ ] #52 [Med] [rust-numpy] Phase 5: Missing Utility Ufuncs
+- [ ] #53 [Med] [rust-numpy] Phase 6: Polynomial Module Comparison
+- [ ] #54 [Med] [rust-numpy] Phase 7: Test Coverage Expansion
+- [ ] #55 [Med] [rust-numpy] C-ABI Integration & Python Shim
+- [ ] #56 [Med] [rust-numpy] Implement Eigen-decomposition
+- [ ] #57 [Med] [rust-numpy] Implement QR Decomposition
+- [ ] #58 [Med] [rust-numpy] Implement SVD (Singular Value Decomposition)
+- [ ] #59 [Med] [rust-numpy] Implement Multi-dimensional Dot Products
+- [ ] #60 [Med] [rust-numpy] Implement Least Squares Solver
+- [ ] #61 [Med] [rust-numpy] Complete Unique Implementation
+- [ ] #62 [Med] Identify Gaps

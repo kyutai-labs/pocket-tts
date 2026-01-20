@@ -306,7 +306,7 @@ pub mod alignment {
 
     /// Check if pointer is aligned
     pub fn is_aligned<T>(ptr: *const T, alignment: usize) -> bool {
-        (ptr as usize) % alignment == 0
+        (ptr as usize).is_multiple_of(alignment)
     }
 
     /// Allocate aligned memory

@@ -25,14 +25,16 @@ pub struct Array<T> {
     pub offset: usize,
 }
 
-/// Array creation and manipulation methods
+// Methods requiring bounds (constructors, etc.)
 impl<T> Array<T>
 where
     T: Clone + Default + 'static,
 {
+    /// Create array from data
     pub fn from_data(data: Vec<T>, shape: Vec<usize>) -> Self {
-        let strides = compute_strides(&shape);
+        let strides = crate::strides::compute_strides(&shape);
         let memory_manager = Arc::new(MemoryManager::from_vec(data));
+
         Self {
             data: memory_manager,
             shape,
@@ -41,8 +43,61 @@ where
             offset: 0,
         }
     }
+
+    /// Create 2D array from matrix
+    pub fn from_array2(array2: ndarray::Array2<T>) -> Self
+    where
+        T: 'static,
+    {
+        let shape = array2.shape().to_vec();
+        let strides = crate::strides::compute_strides(&shape);
+        let memory_manager = Arc::new(MemoryManager::from_vec(array2.into_raw_vec()));
+        Self {
+            data: memory_manager,
+            shape,
+            strides,
+            dtype: Dtype::from_type::<T>(),
+            offset: 0,
+        }
+    }
+
+    /// Matrix multiplication
+    pub fn dot(&self, other: &Array<T>) -> Result<Array<T>, NumPyError>
+    where
+        T: Clone + Default + ndarray::LinalgScalar + 'static,
+    {
+        let a = self.to_ndarray2()?;
+        let b = other.to_ndarray2()?;
+        let res = a.dot(&b);
+        Ok(Array::from_array2(res))
+    }
+
+    /// Broadcast array to new shape
+    pub fn broadcast_to(&self, shape: &[usize]) -> Result<Self, NumPyError> {
+        crate::broadcasting::broadcast_to(self, shape)
+    }
+    /// Reshape array
+    pub fn reshape(&self, new_shape: &[usize]) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + 'static,
+    {
+        crate::slicing::reshape(self, new_shape.to_vec())
+    }
+
+    /// Create array from shape and vector
+    pub fn from_shape_vec(shape: Vec<usize>, data: Vec<T>) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + 'static,
+    {
+        let size: usize = shape.iter().product();
+        if data.len() != size {
+            return Err(NumPyError::shape_mismatch(vec![size], vec![data.len()]));
+        }
+        Ok(Self::from_data(data, shape))
+    }
 }
 
+// Methods NOT requiring bounds (accessors, iterators)
 impl<T> Array<T> {
     /// Get array shape
     pub fn shape(&self) -> &[usize] {
@@ -75,17 +130,8 @@ impl<T> Array<T> {
     }
 
     /// Get iterator over array elements
-    pub fn iter(&self) -> std::slice::Iter<'_, T> {
-        self.data.as_slice().iter()
-    }
-    ///
-    /// Note: Returns a Vec by copying the array data.
-    /// For non-consuming access, use as_slice() instead to avoid allocation.
-    pub fn to_vec(&self) -> Vec<T>
-    where
-        T: Clone,
-    {
-        self.data.as_ref().as_vec().to_vec()
+    pub fn iter(&self) -> crate::iterator::ArrayIter<'_, T> {
+        crate::iterator::ArrayIter::new(self)
     }
 
     /// Get array data as slice
@@ -98,18 +144,84 @@ impl<T> Array<T> {
         self.as_slice()
     }
 
-    /// Get element at linear index
-    pub fn get_linear(&self, index: usize) -> Option<&T> {
-        self.as_slice().get(index)
-    }
-
     /// Set element at linear index
     pub fn set_linear(&mut self, index: usize, value: T) {
+        if index >= self.size() {
+            return;
+        }
+
+        let real_index = if self.is_c_contiguous() {
+            self.offset + index
+        } else {
+            let indices = crate::strides::compute_multi_indices(index, &self.shape);
+            let relative_offset = crate::strides::compute_linear_index(&indices, &self.strides);
+            self.offset.wrapping_add(relative_offset as usize)
+        };
+
         if let Some(data) = Arc::get_mut(&mut self.data) {
-            if let Some(elem) = data.get_mut(index) {
+            if let Some(elem) = data.get_mut(real_index) {
                 *elem = value;
             }
         }
+    }
+
+    /// Set element at linear index with Result
+    pub fn set(&mut self, index: usize, value: T) -> Result<(), NumPyError> {
+        if index >= self.size() {
+            return Err(NumPyError::index_error(index, self.size()));
+        }
+        self.set_linear(index, value);
+        Ok(())
+    }
+
+    /// Set element at relative storage offset (internal use)
+    pub fn set_storage_at(&mut self, relative_offset: isize, value: T) -> Result<(), NumPyError> {
+        let real_index = self.offset.wrapping_add(relative_offset as usize);
+
+        if let Some(data) = Arc::get_mut(&mut self.data) {
+            if let Some(elem) = data.get_mut(real_index) {
+                *elem = value;
+                Ok(())
+            } else {
+                Err(NumPyError::index_error(real_index, self.data.len()))
+            }
+        } else {
+            // CoW not implemented for generic types yet
+            Err(NumPyError::invalid_operation(
+                "Cannot mutate shared array data (CoW pending)",
+            ))
+        }
+    }
+
+    /// Convert array to Vec
+    ///
+    /// Returns a new Vec containing the array elements in logical order.
+    /// This respects views and strides.
+    pub fn to_vec(&self) -> Vec<T>
+    where
+        T: Clone,
+    {
+        self.iter().cloned().collect()
+    }
+
+    /// Get element at linear index
+    pub fn get_linear(&self, index: usize) -> Option<&T> {
+        if index >= self.size() {
+            return None;
+        }
+
+        // Fast path for C-contiguous arrays (default layout)
+        if self.is_c_contiguous() {
+            return self.data.get(self.offset + index);
+        }
+
+        // General path for strided arrays / views
+        // This is slow (O(N)) per element, but correct for all layouts
+        let indices = crate::strides::compute_multi_indices(index, &self.shape);
+        let relative_offset = crate::strides::compute_linear_index(&indices, &self.strides);
+        let real_index = self.offset.wrapping_add(relative_offset as usize);
+
+        self.data.get(real_index)
     }
 
     /// Get element at linear index (alias for get_linear)
@@ -117,44 +229,10 @@ impl<T> Array<T> {
         self.get_linear(index)
     }
 
-    /// Set element at linear index with Result
-    pub fn set(&mut self, index: usize, value: T) -> Result<(), NumPyError> {
-        if index >= self.size() {
-            return Err(NumPyError::IndexError {
-                index,
-                size: self.size(),
-            });
-        }
-        self.set_linear(index, value);
-        Ok(())
-    }
-
-    /// Create 2D array from matrix
-    pub fn from_array2(array2: ndarray::Array2<T>) -> Self
-    where
-        T: 'static,
-    {
-        let shape = array2.shape().to_vec();
-        let strides = compute_strides(&shape);
-        let memory_manager = Arc::new(MemoryManager::from_vec(array2.into_raw_vec()));
-        Self {
-            data: memory_manager,
-            shape,
-            strides,
-            dtype: Dtype::from_type::<T>(),
-            offset: 0,
-        }
-    }
-
-    /// Matrix multiplication
-    pub fn dot(&self, other: &Array<T>) -> Result<Array<T>, NumPyError>
-    where
-        T: Clone + Default + ndarray::LinalgScalar + 'static,
-    {
-        let a = self.to_ndarray2()?;
-        let b = other.to_ndarray2()?;
-        let res = a.dot(&b);
-        Ok(Array::from_array2(res))
+    /// Get element at relative storage offset (internal use)
+    pub fn get_storage_at(&self, relative_offset: isize) -> Option<&T> {
+        let real_index = self.offset.wrapping_add(relative_offset as usize);
+        self.data.get(real_index)
     }
 
     /// Convert to ndarray 2D matrix
@@ -174,12 +252,12 @@ impl<T> Array<T> {
         // Create ndarray2 with proper shape
 
         let array2 = ndarray::Array2::from_shape_vec((rows, cols), data.to_vec())
-            .map_err(|e| NumPyError::invalid_operation(&e.to_string()))?;
+            .map_err(|e| NumPyError::invalid_operation(e.to_string()))?;
 
         Ok(array2)
     }
 
-    /// Transpose array
+    /// Transpose array (copies data - for view-based transpose use transpose_view)
     pub fn transpose(&self) -> Self
     where
         T: Clone,
@@ -192,9 +270,9 @@ impl<T> Array<T> {
         let (rows, cols) = (self.shape()[0], self.shape()[1]);
         let mut transposed_data = Vec::with_capacity(self.size());
 
-        for i in 0..rows {
-            for j in 0..cols {
-                transposed_data.push(self.get_linear(i * cols + j).unwrap().clone());
+        for i in 0..cols {
+            for j in 0..rows {
+                transposed_data.push(self.get_linear(j * cols + i).unwrap().clone());
             }
         }
 
@@ -211,19 +289,64 @@ impl<T> Array<T> {
         }
     }
 
-    /// Broadcast array to new shape
-    pub fn broadcast_to(&self, shape: &[usize]) -> Result<Self, NumPyError>
-    where
-        T: Clone + Default + 'static,
-    {
-        crate::broadcasting::broadcast_to(self, shape)
+    /// Transpose array as a view (no copy) by permuting strides
+    ///
+    /// # Arguments
+    /// * `axes` - Optional permutation of axes. If None, reverses all axes.
+    ///
+    /// # Returns
+    /// A new array that shares the same data but with permuted shape and strides.
+    pub fn transpose_view(&self, axes: Option<&[usize]>) -> Result<Self, NumPyError> {
+        let ndim = self.ndim();
+
+        // Determine the permutation
+        let perm: Vec<usize> = if let Some(axes) = axes {
+            if axes.len() != ndim {
+                return Err(NumPyError::invalid_operation(format!(
+                    "axes must have {} elements, got {}",
+                    ndim,
+                    axes.len()
+                )));
+            }
+            // Validate axes
+            let mut seen = vec![false; ndim];
+            for &axis in axes {
+                if axis >= ndim {
+                    return Err(NumPyError::invalid_operation(format!(
+                        "axis {} out of bounds for {}-dimensional array",
+                        axis, ndim
+                    )));
+                }
+                if seen[axis] {
+                    return Err(NumPyError::invalid_operation("repeated axis in transpose"));
+                }
+                seen[axis] = true;
+            }
+            axes.to_vec()
+        } else {
+            // Default: reverse all axes
+            (0..ndim).rev().collect()
+        };
+
+        // Permute shape and strides
+        let new_shape: Vec<usize> = perm.iter().map(|&i| self.shape[i]).collect();
+        let new_strides: Vec<isize> = perm.iter().map(|&i| self.strides[i]).collect();
+
+        Ok(Self {
+            data: self.data.clone(),
+            shape: new_shape,
+            strides: new_strides,
+            dtype: self.dtype.clone(),
+            offset: self.offset,
+        })
     }
-    /// Reshape array
-    pub fn reshape(&self, new_shape: &[usize]) -> Result<Self, NumPyError>
+
+    /// Transpose array (alias for transpose)
+    pub fn t(&self) -> Self
     where
-        T: Clone + Default + 'static,
+        T: Clone,
     {
-        crate::slicing::reshape(self, new_shape.to_vec())
+        self.transpose()
     }
 
     /// Check if array is C-contiguous
@@ -238,17 +361,21 @@ impl<T> Array<T> {
         true
     }
 
-    /// Create array from shape and vector
-    /// Create array from shape and vector
-    pub fn from_shape_vec(shape: Vec<usize>, data: Vec<T>) -> Result<Self, NumPyError>
-    where
-        T: Clone + Default + 'static,
-    {
-        let size: usize = shape.iter().product();
-        if data.len() != size {
-            return Err(NumPyError::shape_mismatch(vec![size], vec![data.len()]));
+    /// Check if array is Fortran-contiguous (column-major)
+    pub fn is_f_contiguous(&self) -> bool {
+        let mut expected_stride = 1isize;
+        for (i, &dim) in self.shape.iter().enumerate() {
+            if self.strides[i] != expected_stride {
+                return false;
+            }
+            expected_stride *= dim as isize;
         }
-        Ok(Self::from_data(data, shape))
+        true
+    }
+
+    /// Check if array is contiguous (either C or F)
+    pub fn is_contiguous(&self) -> bool {
+        self.is_c_contiguous() || self.is_f_contiguous()
     }
 }
 
@@ -372,7 +499,7 @@ pub fn compute_strides(shape: &[usize]) -> Vec<isize> {
     let mut stride = 1;
 
     // Compute strides in reverse order
-    for (_i, &dim) in shape.iter().rev().enumerate() {
+    for &dim in shape.iter().rev() {
         strides.push(stride as isize);
         stride *= dim;
     }

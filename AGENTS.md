@@ -1,136 +1,73 @@
-# AGENTS.md
+# PROJECT KNOWLEDGE BASE
 
-This file provides guidance to AI agents when working with code in this repository.
+**Generated:** 2026-01-19T10:25:08Z
+**Commit:** 98a7b5b
+**Branch:** main
 
-## Project Overview
+## OVERVIEW
+CPU-based text-to-speech (TTS) system using a flow-based language model (FlowLM) and neural audio codec (Mimi). Built with Python (PyTorch) and high-performance Rust components.
 
-pocket-tts is a CPU-based text-to-speech (TTS) model. The project uses a flow-based language model architecture with a neural audio codec (Mimi) for efficient speech synthesis.
+## STRUCTURE
+```
+.
+├── pocket_tts/          # Main TTS package (Python)
+├── rust-numpy/          # Pure-Rust NumPy replacement library
+├── training/            # Training extensions and Rust audio processing
+└── tests/               # API, CLI, and integration tests
+```
 
-**Key Architecture Components:**
-- **FlowLMModel**: Transformer-based flow language model that generates latent representations from text using Lagrangian Self Distillation (LSD)
-- **MimiModel**: Neural audio codec (from the `moshi` package) that compresses/decompresses audio to/from latent representations
-- **Conditioners**: Text processing via SentencePiece tokenizer and lookup table embeddings
-- **Streaming Architecture**: The entire pipeline supports streaming generation via stateful modules
-- **Web API**: FastAPI-based server for HTTP API access with web interface
+## WHERE TO LOOK
+| Task | Location | Notes |
+|------|----------|-------|
+| Core TTS Logic | `pocket_tts/models/tts_model.py` | Orchestration, streaming, EOS detection |
+| CLI / Web API | `pocket_tts/main.py` | Typer CLI and FastAPI server |
+| Audio Processing | `pocket_tts/data/` | Python I/O; Rust optimized in `rust_audio.py` |
+| Numerical Ops | `rust-numpy/` | High-performance Rust numerical algorithms |
+| Configs | `pocket_tts/utils/config.py` | Pydantic-based hierarchical settings |
 
-## Common Commands
+## CODE MAP
+| Symbol | Type | Location | Role |
+|--------|------|----------|------|
+| `TTSModel` | Class | `pocket_tts/models/tts_model.py` | Primary public API and orchestrator |
+| `FlowLMModel` | Class | `pocket_tts/models/flow_lm.py` | Transformer-based flow generator |
+| `MimiModel` | Class | `pocket_tts/models/mimi.py` | Neural audio codec |
+| `Array` | Struct | `rust-numpy/src/array.rs` | Core Rust numerical container |
+| `cli_app` | Variable | `pocket_tts/main.py` | Main CLI entry point |
 
-### Setup and Development
+## CONVENTIONS
+- **Absolute Imports**: Relative imports are strictly banned by Ruff.
+- **Pure Safe Rust**: 100% safe Rust only (`no unsafe`); no external Rust crates in `rust-numpy`.
+- **Streaming-First**: All model components must support stateful streaming (`StatefulModule`).
+- **NumPy Parity**: Rust numerical implementations must match NumPy 100%.
+
+## ANTI-PATTERNS (THIS PROJECT)
+- **PyTorch 2.4.0**: NEVER use; produces incorrect audio. Requires 2.5+.
+- **Unsafe Rust**: Avoid `unsafe` unless absolutely required for FFI.
+- **GPU Usage**: Small model optimized for CPU; GPU provides no speedup.
+- **Concurrent Requests**: The model is NOT thread-safe; use separate instances for concurrency.
+
+## COMMANDS
 ```bash
-# Install pre-commit hooks
-uvx pre-commit install
+# Setup
+uv run pocket-tts --help
 
-# Run tests (3 parallel workers)
+# Generate Audio
+uv run pocket-tts generate "Hello" --voice alba --output out.wav
+
+# Run Server
+uv run pocket-tts serve --port 8080
+
+# Tests
 uv run pytest -n 3 -v
-
-# Run a single test
-uv run pytest tests/test_python_api.py -v
-
-# Run CLI locally (editable install)
-uv run pocket-tts generate
-uv run pocket-tts serve
 ```
 
-### Linting and Formatting
-Pre-commit handles this automatically, but you can run manually:
-```bash
-# Ruff will run automatically on commit via pre-commit
-# Includes: ruff-check, ruff-format (with --fix), and import sorting
-```
+## NOTES
+- **EOS Detection**: Generation continues for `frames_after_eos` after EOS is detected.
+- **Voice Caching**: Prompt states are cached via LRU.
+- **Dual Package Managers**: `pyproject.toml` (uv) and `pixi.toml` are used.
 
-### Building (No Build Step)
-This is a pure Python package with Rust extensions in `training/rust_exts/audio_ds/` for training-time audio processing. The main package does not require building.
-
-## Code Structure
-
-### Main Package (`pocket_tts/`)
-
-**Entry Points:**
-- `main.py`: CLI implementation with Typer (commands: `generate`, `serve`, and web interface)
-- `__init__.py`: Public API exports only `TTSModel`
-- `__main__.py`: Python module entry point
-- `default_parameters.py`: Default configuration values for generation parameters
-- `static/`: Web interface files (HTML for server UI)
-
-**Core Models (`models/`):**
-- `tts_model.py`: Main `TTSModel` class - orchestrates the entire TTS pipeline
-  - `load_model()`: Downloads weights from HuggingFace and initializes models
-  - `get_state_for_audio_prompt()`: Encodes audio prompt (voice) into model state
-  - `generate_audio_stream()`: Streaming generation that yields audio chunks
-  - Uses LRU cache for voice prompts to avoid reprocessing
-- `flow_lm.py`: `FlowLMModel` - transformer that generates latent audio codes from text
-
-**Modules (`modules/`):**
-- `transformer.py`: `StreamingTransformer` and `StreamingMultiheadAttention` with RoPE embeddings
-- `stateful_module.py`: Base class for streaming support (maintains KV cache and state)
-- `rope.py`: Rotary Position Embeddings
-- `mlp.py`: `SimpleMLPAdaLN` (AdaLN-conditioned MLP for flow prediction)
-- `conv.py`: Convolution utilities
-- `seanet.py`: SEANet encoder/decoder (copied from moshi)
-
-**Conditioners (`conditioners/`):**
-- `text.py`: `LUTConditioner` - SentencePiece tokenizer + embedding lookup table for text
-
-**Data (`data/`):**
-- `audio.py`: Audio I/O utilities (reading, writing WAV, streaming)
-- `audio_utils.py`: Audio processing (resampling, conversion)
-
-**Utils (`utils/`):**
-- `config.py`: Pydantic config models for FlowLM and Mimi
-- `utils.py`: HuggingFace downloads, timing utilities
-
-**Configuration (`config/`):**
-- `b6369a24.yaml`: Model configuration (transformer dims, layers, vocab size, etc.)
-
-### Testing (`tests/`)
-- `test_python_api.py`: Tests for public Python API
-- `test_cli_generate.py`: Tests for CLI generate command
-- `test_documentation_examples.py`: Ensures docs examples work
-
-## Development Workflow
-
-### Key Patterns
-
-1. **Streaming Generation**: The model generates audio frame-by-frame (12.5 Hz frame rate, 80ms per frame). All modules inherit from `StatefulModule` to maintain internal state.
-
-2. **Voice Cloning**: Audio prompts are encoded via Mimi encoder to create "voice state" (latent representations + speaker embeddings). This state is cached via `lru_cache` on `_cached_get_state_for_audio_prompt()`.
-
-3. **Flow Matching**: Uses Lagrangian Self Distillation (LSD) with configurable decode steps. Fewer steps = faster but lower quality.
-
-4. **EOS Detection**: Model predicts end-of-speech via an EOS head. Generation continues for `frames_after_eos` frames after EOS is detected.
-
-5. **Config-Driven**: Model architecture is defined in YAML configs. Weights are loaded from HuggingFace Hub via `safetensors`.
-
-### Important Implementation Details
-
-- **Thread Safety**: The code is NOT thread-safe. Server mode does not support concurrent requests.
-- **Batching**: Batch size is always 1. No batching support currently.
-- **Device**: Defaults to CPU. GPU does not provide speedup for this small model.
-- **Torch Threads**: `torch.set_num_threads(1)` in `tts_model.py` for optimal CPU performance
-- **dtype**: Models use float32 by default (configurable in YAML)
-- **Beartype**: Runtime type checking is enabled via beartype claw in `__init__.py`
-
-### Adding Features
-
-When adding features, be aware of:
-- The streaming architecture: any changes to model forward passes need to maintain state correctly
-- The config system: new model parameters must be added to config classes in `utils/config.py`
-- The public API: only `TTSModel` is exported; keep implementation details internal
-- Ruff formatting: line length 100, LF line endings, skip magic trailing comma
-
-### Model Weights
-
-Weights are downloaded from HuggingFace Hub on first use:
-- Model weights: `hf://kyutai/pocket-tts/tts_b6369a24.safetensors`
-- Tokenizer: `hf://kyutai/pocket-tts/tokenizer.model`
-- Voice prompts: `hf://kyutai/tts-voices/<speaker>/<style>.wav`
-
-The `download_if_necessary()` utility handles `hf://` URLs and caches locally.
-
-## Common Gotchas
-
-1. **PyTorch Version**: Requires PyTorch 2.5+. Version 2.4.0 produces incorrect audio.
-2. **Python Version**: Supports Python 3.10 through 3.14 (>= 3.10,<3.15).
-3. **uv Python Preference**: Set to "only-managed" in pyproject.toml because system Python may lack headers.
-4. **CPU-Only PyTorch**: Uses PyTorch CPU index from `download.pytorch.org/whl/cpu` in uv config.
-5. **Web Dependencies**: FastAPI and Uvicorn are included for server functionality.
+## DEVELOPMENT WORKFLOW
+1. **Streaming Generation**: Model generates audio frame-by-frame (12.5 Hz). Modules maintain state via `StatefulModule`.
+2. **Voice Cloning**: Audio encoded via Mimi to create "voice state", cached via `lru_cache`.
+3. **Flow Matching**: Uses Lagrangian Self Distillation (LSD) with configurable decode steps.
+4. **Beartype**: Runtime type checking enabled via beartype claw in `__init__.py`.

@@ -192,12 +192,12 @@ metrics = compute_audio_metrics(audio)
 
 The Rust extensions provide significant speedups for resampling operations:
 
-| Operation     | Python | Rust   | Speedup      |
-| ------------- | ------ | ------ | ------------ |
+| Operation     | Python | Rust   | Speedup     |
+|---------------|--------|--------|-------------|
 | Resample (4s) | 3.38ms | 0.33ms | **10.3x** ⚡ |
 | Resample (1s) | 0.33ms | 0.05ms | **6.2x** ⚡  |
-| Normalize     | 0.03ms | 0.13ms | 0.3x         |
-| Apply Gain    | 0.00ms | 0.02ms | 0.2x         |
+| Normalize     | 0.03ms | 0.13ms | 0.3x        |
+| Apply Gain    | 0.00ms | 0.02ms | 0.2x        |
 
 **Key Findings:**
 
@@ -224,6 +224,25 @@ notably because we use a batch size of 1 and a very small model.
 We accept contributions! Feel free to open issues or pull requests on GitHub.
 
 You can find development instructions in the [CONTRIBUTING.md](https://github.com/kyutai-labs/pocket-tts/tree/main/CONTRIBUTING.md) file. You'll also find there how to have an editable install of the package for local development.
+
+## Ralph loop (planning + building)
+
+We keep Ralph loop assets under `ralph/` to support deterministic, task-by-task automation.
+
+1. Add specs in `ralph/specs/*.md` (one JTBD topic per file).
+2. Make the loop executable: `chmod +x ralph/loop.sh`.
+3. Planning (gap analysis only): `./ralph/loop.sh plan` (optional max iterations: `./ralph/loop.sh plan 2`).
+4. Scoped planning: `./ralph/loop.sh plan-work "short work description"` (optional max iterations: `./ralph/loop.sh plan-work "..." 2`).
+5. Building: `./ralph/loop.sh` (optional max iterations: `./ralph/loop.sh 5`).
+
+Safety/backpressure:
+- Tests are defined in `ralph/AGENTS.md`.
+- Use `RALPH_DANGEROUS=1` only in a sandbox.
+- Optional: `RALPH_MODEL=opus` (or `sonnet` for faster build loops).
+- Optional: `RALPH_PUSH=1` to push after each iteration.
+
+GitHub automation:
+- `.github/workflows/ralph-plan-automation.yml` can sync plan tasks into issues/branches and auto-merge when all tasks are complete.
 
 ## Prohibited use
 

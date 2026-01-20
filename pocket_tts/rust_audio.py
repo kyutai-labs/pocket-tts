@@ -1,10 +1,11 @@
 """Python bindings for Rust audio processing extensions."""
 
-import numpy as np
 import ctypes
+import warnings
 from pathlib import Path
 from typing import Optional, Tuple
-import warnings
+
+import numpy as np
 
 
 class RustAudioProcessor:
@@ -120,6 +121,10 @@ class RustAudioProcessor:
         # free_audio_buffer
         self._lib.free_audio_buffer.argtypes = [ctypes.POINTER(ctypes.c_float), ctypes.c_size_t]
         self._lib.free_audio_buffer.restype = None
+
+        # log10_vec
+        self._lib.log10_vec.argtypes = [ctypes.POINTER(ctypes.c_float), ctypes.c_size_t]
+        self._lib.log10_vec.restype = ctypes.POINTER(ctypes.c_float)
 
         # compute_rms
         self._lib.compute_rms.argtypes = [ctypes.POINTER(ctypes.c_float), ctypes.c_size_t]
@@ -388,9 +393,26 @@ def compute_audio_metrics(samples: np.ndarray) -> dict:
         Dictionary with RMS, peak, and other metrics
     """
     processor = get_rust_processor()
-    return {
-        "rms": processor.compute_rms(samples),
-        "peak": processor.compute_peak(samples),
-        "dynamic_range_db": 20
-        * np.log10(processor.compute_peak(samples) / max(processor.compute_rms(samples), 1e-10)),
-    }
+    rms = processor.compute_rms(samples)
+    peak = processor.compute_peak(samples)
+    dynamic_range_db = 20 * np.log10(peak / max(rms, 1e-10))
+    return {"rms": rms, "peak": peak, "dynamic_range_db": dynamic_range_db}
+
+
+# def log10_array(samples: np.ndarray) -> np.ndarray:
+#     """Compute base-10 logarithm element-wise using Rust if available.
+#
+#     Args:
+#         samples: Input audio samples
+#
+#     Returns:
+#         Array with log10 of each element
+#     """
+#     if self._lib is None:
+#         return np.log10(samples)
+#
+#     c_array, size = self._to_c_array(samples)
+#     result_ptr = self._lib.log10_vec(c_array, size)
+#     result = self._from_c_array(result_ptr, size)
+#     self._lib.free_audio_buffer(result_ptr, size)
+#     return result

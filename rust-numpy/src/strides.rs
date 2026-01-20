@@ -64,11 +64,11 @@ pub fn is_contiguous(shape: &[usize], strides: &[isize]) -> bool {
 }
 
 /// Compute linear index from multi-dimensional indices
-pub fn compute_linear_index(indices: &[usize], strides: &[isize]) -> usize {
+pub fn compute_linear_index(indices: &[usize], strides: &[isize]) -> isize {
     indices
         .iter()
         .zip(strides.iter())
-        .map(|(i, s)| i * *s as usize)
+        .map(|(i, s)| *i as isize * *s)
         .sum()
 }
 
@@ -82,7 +82,6 @@ pub fn compute_multi_indices(linear_index: usize, shape: &[usize]) -> Vec<usize>
         remaining /= dim_size;
     }
 
-    indices.reverse();
     indices
 }
 
@@ -149,18 +148,18 @@ pub fn compute_broadcast_strides(
     let broadcast_len = broadcast_shape.len();
     let mut result = vec![0; broadcast_len];
 
-    for i in 0..broadcast_len {
+    for (i, item) in result.iter_mut().enumerate().take(broadcast_len) {
         if i >= broadcast_len - orig_len {
             let orig_idx = i - (broadcast_len - orig_len);
             let orig_dim = original_shape[orig_idx];
 
             if orig_dim == 1 {
-                result[i] = 0; // Broadcast dimension
+                *item = 0; // Broadcast dimension
             } else {
-                result[i] = original_strides[orig_idx];
+                *item = original_strides[orig_idx];
             }
         } else {
-            result[i] = 0; // New dimension being broadcast
+            *item = 0; // New dimension being broadcast
         }
     }
 

@@ -366,45 +366,70 @@ unsafe fn simd_sqrt_f64_sse(values: &[f64]) -> Vec<f64> {
 }
 
 /// Scalar fallback for architectures without SIMD support
-#[cfg(any(not(feature = "simd"), not(target_arch = "x86_64"), not(target_arch = "aarch64")))]
+#[cfg(any(
+    not(feature = "simd"),
+    not(target_arch = "x86_64"),
+    not(target_arch = "aarch64")
+))]
 pub fn simd_sin_f64(values: &[f64]) -> Vec<f64> {
     values.iter().copied().map(|x| x.sin()).collect()
 }
 
-#[cfg(any(not(feature = "simd"), not(target_arch = "x86_64"), not(target_arch = "aarch64")))]
+#[cfg(any(
+    not(feature = "simd"),
+    not(target_arch = "x86_64"),
+    not(target_arch = "aarch64")
+))]
 pub fn simd_cos_f64(values: &[f64]) -> Vec<f64> {
     values.iter().copied().map(|x| x.cos()).collect()
 }
 
-#[cfg(any(not(feature = "simd"), not(target_arch = "x86_64"), not(target_arch = "aarch64")))]
+#[cfg(any(
+    not(feature = "simd"),
+    not(target_arch = "x86_64"),
+    not(target_arch = "aarch64")
+))]
 pub fn simd_exp_f64(values: &[f64]) -> Vec<f64> {
     values.iter().copied().map(|x| x.exp()).collect()
 }
 
-#[cfg(any(not(feature = "simd"), not(target_arch = "x86_64"), not(target_arch = "aarch64")))]
+#[cfg(any(
+    not(feature = "simd"),
+    not(target_arch = "x86_64"),
+    not(target_arch = "aarch64")
+))]
 pub fn simd_log_f64(values: &[f64]) -> Vec<f64> {
     values.iter().copied().map(|x| x.ln()).collect()
 }
 
-#[cfg(any(not(feature = "simd"), not(target_arch = "x86_64"), not(target_arch = "aarch64")))]
+#[cfg(any(
+    not(feature = "simd"),
+    not(target_arch = "x86_64"),
+    not(target_arch = "aarch64")
+))]
 pub fn simd_sqrt_f64(values: &[f64]) -> Vec<f64> {
     values.iter().copied().map(|x| x.sqrt()).collect()
 }
 
 /// Benchmark helper to compare SIMD vs scalar performance
 #[cfg(feature = "simd")]
-pub fn benchmark_simd_vs_scalar<T>(name: &str, scalar_fn: impl Fn(&[T]) -> Vec<T>, simd_fn: impl Fn(&[T]) -> Vec<T>)
-where
+pub fn benchmark_simd_vs_scalar<T>(
+    name: &str,
+    scalar_fn: impl Fn(&[T]) -> Vec<T>,
+    simd_fn: impl Fn(&[T]) -> Vec<T>,
+) where
     T: Copy + std::fmt::Debug,
 {
     use std::time::Instant;
 
-    let test_data: Vec<T> = (0..10000).map(|i| {
-        match std::any::TypeId::of::<T>() {
-            std::any::TypeId::of::<f64>() => unsafe { std::mem::transmute_copy::<i64, f64>(i as i64) },
+    let test_data: Vec<T> = (0..10000)
+        .map(|i| match std::any::TypeId::of::<T>() {
+            std::any::TypeId::of::<f64>() => unsafe {
+                std::mem::transmute_copy::<i64, f64>(i as i64)
+            },
             _ => unsafe { std::mem::transmute_copy::<i32, T>(i as i32) },
-        }
-    }).collect();
+        })
+        .collect();
 
     let start = Instant::now();
     let _scalar_result = scalar_fn(&test_data);
@@ -417,7 +442,10 @@ where
     println!("Benchmark: {}", name);
     println!("  Scalar: {:?}", scalar_time);
     println!("  SIMD:   {:?}", simd_time);
-    println!("  Speedup: {:.2}x", scalar_time.as_secs_f64() / simd_time.as_secs_f64());
+    println!(
+        "  Speedup: {:.2}x",
+        scalar_time.as_secs_f64() / simd_time.as_secs_f64()
+    );
 }
 
 #[cfg(test)]
@@ -426,7 +454,11 @@ mod tests {
 
     #[test]
     fn test_simd_sin() {
-        let input = vec![0.0f64, std::f64::consts::PI / 4.0, std::f64::consts::PI / 2.0];
+        let input = vec![
+            0.0f64,
+            std::f64::consts::PI / 4.0,
+            std::f64::consts::PI / 2.0,
+        ];
         let result = simd_sin_f64(&input);
 
         assert_eq!(result.len(), input.len());

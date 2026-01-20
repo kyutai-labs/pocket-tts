@@ -44,7 +44,7 @@ mod tests {
     #[test]
     fn test_array_reshape() {
         let arr = array![1, 2, 3, 4];
-        let reshaped = arr.reshape(vec![2, 2]).unwrap();
+        let reshaped = arr.reshape(&[2, 2]).unwrap();
         assert_eq!(reshaped.shape(), &[2, 2]);
         assert_eq!(reshaped.size(), 4);
     }
@@ -150,5 +150,39 @@ mod tests {
         // For now, just test basic functionality
         assert_eq!(a.size(), 3);
         assert_eq!(b.size(), 3);
+    }
+
+    #[test]
+    fn test_unique_basic() {
+        let arr = array![3, 1, 2, 1, 3];
+        let result = numpy::set_ops::unique(&arr, false, false, false, None).unwrap();
+        assert_eq!(result.values.to_vec(), vec![1, 2, 3]);
+        assert!(result.indices.is_none());
+        assert!(result.inverse.is_none());
+        assert!(result.counts.is_none());
+    }
+
+    #[test]
+    fn test_unique_indices_inverse_counts() {
+        let arr = array![3, 1, 2, 1, 3];
+        let result = numpy::set_ops::unique(&arr, true, true, true, None).unwrap();
+
+        assert_eq!(result.values.to_vec(), vec![1, 2, 3]);
+        assert_eq!(result.indices.unwrap().to_vec(), vec![1, 2, 0]);
+        assert_eq!(result.inverse.unwrap().to_vec(), vec![2, 0, 1, 0, 2]);
+        assert_eq!(result.counts.unwrap().to_vec(), vec![2, 1, 2]);
+    }
+
+    #[test]
+    fn test_unique_axis_rows() {
+        let data = vec![1, 2, 1, 2, 3, 4];
+        let arr = Array::from_shape_vec(vec![3, 2], data).unwrap();
+
+        let result = numpy::set_ops::unique(&arr, true, true, true, Some(&[0])).unwrap();
+        assert_eq!(result.values.shape(), &[2, 2]);
+        assert_eq!(result.values.to_vec(), vec![1, 2, 3, 4]);
+        assert_eq!(result.indices.unwrap().to_vec(), vec![0, 2]);
+        assert_eq!(result.inverse.unwrap().to_vec(), vec![0, 0, 1]);
+        assert_eq!(result.counts.unwrap().to_vec(), vec![2, 1]);
     }
 }

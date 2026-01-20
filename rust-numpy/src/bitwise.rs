@@ -5,7 +5,7 @@
 
 use crate::array::Array;
 use crate::broadcasting::{broadcast_arrays, compute_broadcast_shape};
-use crate::dtype::DtypeKind;
+use crate::dtype::{Dtype, DtypeKind};
 use crate::error::{NumPyError, Result};
 use crate::ufunc::{Ufunc, UfuncRegistry};
 use std::marker::PhantomData;
@@ -174,6 +174,10 @@ where
         input_types.len() == 2 && input_types.iter().all(|&t| t == std::any::type_name::<T>())
     }
 
+    fn input_dtypes(&self) -> Vec<Dtype> {
+        vec![Dtype::from_type::<T>(), Dtype::from_type::<T>()]
+    }
+
     fn execute(
         &self,
         inputs: &[&dyn crate::ufunc::ArrayView],
@@ -282,6 +286,10 @@ where
 
     fn matches_concrete_types(&self, input_types: &[&'static str]) -> bool {
         input_types.len() == 1 && input_types[0] == std::any::type_name::<T>()
+    }
+
+    fn input_dtypes(&self) -> Vec<Dtype> {
+        vec![Dtype::from_type::<T>()]
     }
 
     fn execute(
@@ -457,6 +465,10 @@ where
         input_types.len() == 2 && input_types.iter().all(|&t| t == std::any::type_name::<T>())
     }
 
+    fn input_dtypes(&self) -> Vec<Dtype> {
+        vec![Dtype::from_type::<T>(), Dtype::from_type::<T>()]
+    }
+
     fn execute(
         &self,
         inputs: &[&dyn crate::ufunc::ArrayView],
@@ -588,6 +600,10 @@ where
         input_types.len() == 2 && input_types.iter().all(|&t| t == std::any::type_name::<T>())
     }
 
+    fn input_dtypes(&self) -> Vec<Dtype> {
+        vec![Dtype::from_type::<T>(), Dtype::from_type::<T>()]
+    }
+
     fn execute(
         &self,
         inputs: &[&dyn crate::ufunc::ArrayView],
@@ -604,9 +620,24 @@ where
             ));
         }
 
-        let input0 = unsafe { &*(inputs[0] as *const _ as *const Array<T>) };
-        let input1 = unsafe { &*(inputs[1] as *const _ as *const Array<T>) };
-        let output = unsafe { &mut *(outputs[0] as *mut _ as *mut Array<bool>) };
+        let input0 = inputs[0]
+            .as_any()
+            .downcast_ref::<Array<T>>()
+            .ok_or_else(|| {
+                NumPyError::ufunc_error(self.name(), "Type mismatch for input 0".to_string())
+            })?;
+        let input1 = inputs[1]
+            .as_any()
+            .downcast_ref::<Array<T>>()
+            .ok_or_else(|| {
+                NumPyError::ufunc_error(self.name(), "Type mismatch for input 1".to_string())
+            })?;
+        let output = outputs[0]
+            .as_any_mut()
+            .downcast_mut::<Array<bool>>()
+            .ok_or_else(|| {
+                NumPyError::ufunc_error(self.name(), "Type mismatch for output".to_string())
+            })?;
 
         let shape0 = input0.shape();
         let shape1 = input1.shape();
@@ -644,10 +675,10 @@ where
 ///
 /// # Example
 /// ```rust
-/// use rust_numpy::*;
+/// use numpy::*;
 /// let a = array![5, 3, 7];  // 101, 011, 111
 /// let b = array![2, 6, 1];  // 010, 110, 001
-/// let result = bitwise_and(&a, &b)?;  // [1, 2, 1] -> 001, 010, 001
+/// let result = bitwise_and(&a, &b).unwrap();  // [1, 2, 1] -> 001, 010, 001
 /// ```
 pub fn bitwise_and<T>(x1: &Array<T>, x2: &Array<T>) -> Result<Array<T>>
 where

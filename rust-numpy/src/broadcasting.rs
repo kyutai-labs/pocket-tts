@@ -35,10 +35,7 @@ where
 }
 
 /// Broadcast single array to target shape
-pub fn broadcast_to<T>(array: &Array<T>, shape: &[usize]) -> Result<Array<T>>
-where
-    T: Clone + Default + 'static,
-{
+pub fn broadcast_to<T>(array: &Array<T>, shape: &[usize]) -> Result<Array<T>> {
     let current_shape = array.shape();
 
     if current_shape == shape {
@@ -53,13 +50,17 @@ where
         ));
     }
 
-    // Create output array with broadcasted shape
-    let mut output = Array::zeros(shape.to_vec());
+    // Compute new strides
+    let new_strides = compute_broadcasted_strides(current_shape, array.strides(), shape);
 
-    // Copy data with broadcasting
-    broadcast_copy(array, &mut output)?;
-
-    Ok(output)
+    // Create new array sharing the same data
+    Ok(Array {
+        data: array.data.clone(),
+        shape: shape.to_vec(),
+        strides: new_strides,
+        dtype: array.dtype.clone(),
+        offset: array.offset,
+    })
 }
 
 /// Check if shapes are compatible for broadcasting
@@ -87,140 +88,6 @@ pub fn are_shapes_compatible(shape1: &[usize], shape2: &[usize]) -> bool {
     }
 
     true
-}
-
-/// Copy data with broadcasting
-fn broadcast_copy<T>(src: &Array<T>, dst: &mut Array<T>) -> Result<()>
-where
-    T: Clone + Default + 'static,
-{
-    let src_shape = src.shape();
-    let dst_shape = dst.shape();
-
-    if src_shape.is_empty() {
-        // Scalar broadcasting - use Copy trait to avoid cloning
-        if let Some(scalar) = src.get(0) {
-            for i in 0..dst.size() {
-                dst.set(i, scalar.clone())?;
-            }
-        }
-        return Ok(());
-    }
-
-    if src_shape == dst_shape {
-        // Simple copy
-        return copy_array(src, dst);
-    }
-
-    // General broadcasting case
-    broadcast_general(src, dst)
-}
-
-/// Simple array copy
-fn copy_array<T>(src: &Array<T>, dst: &mut Array<T>) -> Result<()>
-where
-    T: Clone + Default + 'static,
-{
-    if src.size() != dst.size() {
-        return Err(NumPyError::shape_mismatch(
-            src.shape().to_vec(),
-            dst.shape().to_vec(),
-        ));
-    }
-
-    for i in 0..src.size() {
-        if let Some(element) = src.get(i) {
-            dst.set(i, element.clone())?;
-        }
-    }
-
-    Ok(())
-}
-
-/// General broadcasting implementation
-fn broadcast_general<T>(src: &Array<T>, dst: &mut Array<T>) -> Result<()>
-where
-    T: Clone + Default + 'static,
-{
-    let src_shape = src.shape();
-    let dst_shape = dst.shape().to_vec();
-
-    // Iterate over destination array
-    let mut dst_indices = vec![0; dst_shape.len()];
-
-    for flat_idx in 0..dst.size() {
-        // Compute source indices for this destination index
-        let src_indices = compute_source_indices(&dst_indices, src_shape, &dst_shape);
-
-        // Copy element from source
-        if let Some(element) = get_element_by_indices(src, &src_indices) {
-            // Set element in destination
-            dst.set(flat_idx, element.clone())?;
-        }
-
-        // Increment destination indices
-        increment_indices(&mut dst_indices, &dst_shape);
-    }
-
-    Ok(())
-}
-
-/// Compute source indices for destination index
-fn compute_source_indices(
-    dst_indices: &[usize],
-    src_shape: &[usize],
-    dst_shape: &[usize],
-) -> Vec<usize> {
-    let mut src_indices = Vec::with_capacity(src_shape.len());
-
-    for (i, &src_dim) in src_shape.iter().enumerate() {
-        if src_dim == 1 {
-            src_indices.push(0); // Broadcast dimension
-        } else {
-            let dst_dim_idx = dst_shape.len() - src_shape.len() + i;
-            src_indices.push(dst_indices[dst_dim_idx]);
-        }
-    }
-
-    src_indices
-}
-
-/// Get element by multi-dimensional indices
-fn get_element_by_indices<'a, T>(array: &'a Array<T>, indices: &[usize]) -> Option<&'a T> {
-    if indices.len() != array.ndim() {
-        return None;
-    }
-
-    // Compute linear index from indices
-    let mut linear_idx = 0;
-    let strides = array.strides();
-
-    for (i, &index) in indices.iter().enumerate() {
-        if i < strides.len() {
-            linear_idx += index * strides[i] as usize;
-        }
-    }
-
-    array.get(linear_idx)
-}
-
-/// Increment multi-dimensional indices
-fn increment_indices(indices: &mut [usize], shape: &[usize]) {
-    if indices.is_empty() {
-        return;
-    }
-
-    let mut i = indices.len() - 1;
-
-    // Increment last dimension
-    indices[i] += 1;
-
-    // Handle carry-over
-    while i > 0 && indices[i] >= shape[i] {
-        indices[i] = 0;
-        i -= 1;
-        indices[i] += 1;
-    }
 }
 
 /// Compute broadcasted strides for an array
@@ -263,18 +130,44 @@ pub fn broadcast_shape_for_reduce(shape: &[usize], axis: &[isize], keepdims: boo
 
     let mut result = shape.to_vec();
 
-    for &ax in axis {
-        let ax = if ax < 0 {
-            ax + shape.len() as isize
-        } else {
-            ax
-        } as usize;
-
-        if ax < result.len() {
-            if keepdims {
-                result[ax] = 1;
+    // Convert negative axes and standardise
+    let mut normalized_axes: Vec<usize> = axis
+        .iter()
+        .map(|&ax| {
+            if ax < 0 {
+                (ax + shape.len() as isize) as usize
             } else {
-                result.remove(ax);
+                ax as usize
+            }
+        })
+        .collect();
+
+    // Sort descending to remove correctly
+    normalized_axes.sort_by(|a, b| b.cmp(a));
+    normalized_axes.dedup();
+
+    for ax in normalized_axes {
+        if ax < result.len() || keepdims {
+            // For keepdims, we use original index if checking shape len?
+            // Wait, result.len() == shape.len() if keepdims=true.
+            // If keepdims=false, result shrinks.
+            // If we sort descending, we remove highest indices first.
+
+            if keepdims {
+                if ax < result.len() {
+                    result[ax] = 1;
+                }
+            } else {
+                // If we remove, we must ensure ax is valid in CURRENT result?
+                // If we sort descending, ax is valid because lower indices haven't changed.
+                // But wait, ax refers to ORIGINAL shape index.
+                // If we remove ax=2 (from [0,1,2]). Result [0,1].
+                // Then remove ax=1. In Result [0,1], index 1 corresponds to original 1.
+                // Yes, because 2 (>1) was removed.
+                // So sorting descending works.
+                if ax < result.len() {
+                    result.remove(ax);
+                }
             }
         }
     }

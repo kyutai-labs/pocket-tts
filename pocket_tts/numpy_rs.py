@@ -1,507 +1,440 @@
 """
-Drop-in NumPy replacement using rust-numpy.
+NumPy replacement using pure Rust library via C ABI.
 
-This module provides transparent NumPy replacement by attempting to import
-rust-numpy and falling back to NumPy if unavailable.
+This module provides NumPy-like functions backed by Rust implementations
+from the audio_ds crate. When available, functions are called
+via ctypes FFI for maximum performance. When unavailable, functions
+fall back to standard NumPy.
 """
 
-import sys
-from typing import Any, Union, List, Optional, Sequence
+import ctypes
+import warnings
+from pathlib import Path
 
-# Try to import rust-numpy
-try:
-    import numpy_rs  # type: ignore
+import numpy as _np
 
-    _RUST_NUMPY_AVAILABLE = True
-except ImportError:
-    _RUST_NUMPY_AVAILABLE = False
-    import numpy as np  # type: ignore
-
-    if not any("pocket_tts" in mod for mod in sys.modules):
-        print("Warning: rust-numpy not available, falling back to NumPy")
+# Global library instance
+_LIB = None
+_AVAILABLE = False
 
 
-def _ensure_array(arr: Any) -> Any:
-    """Ensure input is a numpy_rs.Array or convert to numpy array."""
-    if _RUST_NUMPY_AVAILABLE and hasattr(arr, "array"):
-        return arr
-    elif _RUST_NUMPY_AVAILABLE and isinstance(arr, list):
-        # Convert list to rust-numpy Array
-        return numpy_rs.array(arr)
+class LibraryLoader:
+    def __init__(self):
+        self._load_library()
+
+    def _load_library(self):
+        """Load libpocket_tts_audio_ds.so from standard locations."""
+        global _LIB, _AVAILABLE
+
+        search_paths = [
+            Path(__file__).parent.parent.parent
+            / "training"
+            / "rust_exts"
+            / "audio_ds"
+            / "target"
+            / "release",
+            Path("/usr/local/lib"),
+        ]
+
+        for path in search_paths:
+            for name in ["libpocket_tts_audio_ds.so", "libpocket_tts_audio_ds.dylib"]:
+                lib_path = path / name
+                if lib_path.exists():
+                    _LIB = ctypes.CDLL(str(lib_path))
+                    _AVAILABLE = True
+                    return
+
+        warnings.warn(
+            "Could not load libpocket_tts_audio_ds.so. "
+            "Rust functions will not be available. "
+            "Build with: cd training/rust_exts/audio_ds && cargo build --release"
+        )
+        _LIB = None
+        _AVAILABLE = False
+
+
+_LOADER = LibraryLoader()
+
+
+def arange(start, stop, step=1.0):
+    if _AVAILABLE:
+        num = int((stop - start) / step)
+        _LIB.arange.argtypes = [ctypes.c_float, ctypes.c_float, ctypes.c_float]
+        _LIB.arange.restype = ctypes.POINTER(ctypes.c_float)
+        ptr = _LIB.arange(start, stop, step)
+        return [ptr[i] for i in range(num)]
     else:
-        # Fall back to numpy
-        if not isinstance(arr, np.ndarray):
-            arr = np.asarray(arr)
-        return arr
+        import numpy as np
 
-
-def arange(start: float, stop: float, step: float | None = 1.0) -> Any:
-    """Generate array of values (np.arange replacement).
-
-    Args:
-        start: Start value (inclusive)
-        stop: Stop value (exclusive)
-        step: Step size (optional, defaults to 1.0)
-
-    Returns:
-        Array of values from start to stop with given step
-    """
-    if _RUST_NUMPY_AVAILABLE:
-        return numpy_rs.arange(start, stop, step)
-    else:
         return np.arange(start, stop, step)
 
 
-def array(data: Any, dtype: Optional[str] = None) -> Any:
-    """Create array from data (np.array replacement).
-
-    Args:
-        data: Input data (list, tuple, array, etc.)
-        dtype: Data type (optional, currently ignored for compatibility)
-
-    Returns:
-        Array with given data
-    """
-    if _RUST_NUMPY_AVAILABLE:
-        # Convert list/tuple to rust-numpy Array
-        if isinstance(data, (list, tuple)):
-            return numpy_rs.array(list(data) if isinstance(data, tuple) else data)
-        else:
-            return numpy_rs.array(data)
+def log_vec(samples):
+    if _AVAILABLE:
+        size = samples.size
+        _LIB.log_vec.argtypes = [ctypes.POINTER(ctypes.c_float), ctypes.c_size_t]
+        _LIB.log_vec.restype = ctypes.POINTER(ctypes.c_float)
+        c_array, size = _to_c_array(samples)
+        ptr = _LIB.log_vec(c_array, size)
+        result = _from_c_array(ptr, size)
+        _LIB.free_float_buffer(result_ptr, size)
+        return result
     else:
-        return np.array(data, dtype=dtype)
+        import numpy as np
+
+        return np.log(samples)
 
 
-def clip(a: Any, a_min: Optional[float] = None, a_max: Optional[float] = None) -> Any:
-    """Clip values to be within a specified range (np.clip replacement).
-
-    Args:
-        a: Input array
-        a_min: Minimum value (values below this are set to this)
-        a_max: Maximum value (values above this are set to this)
-
-    Returns:
-        Array with clipped values
-    """
-    a = _ensure_array(a)
-    if _RUST_NUMPY_AVAILABLE:
-        return numpy_rs.clip(a, a_min, a_max)
+def clip_vec(samples, a_min, a_max):
+    if _AVAILABLE:
+        size = samples.size
+        _LIB.clip_vec.argtypes = [
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.c_size_t,
+            ctypes.c_float,
+            ctypes.c_float,
+        ]
+        _LIB.clip_vec.restype = ctypes.POINTER(ctypes.c_float)
+        c_array, size = _to_c_array(samples)
+        ptr = _LIB.clip_vec(c_array, size, a_min, a_max)
+        result = _from_c_array(ptr, size)
+        _LIB.free_float_buffer(result_ptr, size)
+        return result
     else:
-        return np.clip(a, a_min, a_max)
+        import numpy as np
+
+        return np.clip(samples, a_min, a_max)
 
 
-def min(a: Any) -> float:
-    """Find minimum value in an array (np.min replacement).
-
-    Args:
-        a: Input array
-
-    Returns:
-        Minimum value
-    """
-    a = _ensure_array(a)
-    if _RUST_NUMPY_AVAILABLE:
-        return numpy_rs.min(a)
+def power_vec(samples, exponent):
+    if _AVAILABLE:
+        size = samples.size
+        _LIB.power_vec.argtypes = [ctypes.POINTER(ctypes.c_float), ctypes.c_size_t, ctypes.c_float]
+        _LIB.power_vec.restype = ctypes.POINTER(ctypes.c_float)
+        c_array, size = _to_c_array(samples)
+        ptr = _LIB.power_vec(c_array, size, exponent)
+        result = _from_c_array(ptr, size)
+        _LIB.free_float_buffer(result_ptr, size)
+        return result
     else:
-        return float(np.min(a))
+        import numpy as np
+
+        return np.power(samples, exponent)
 
 
-def max(a: Any) -> float:
-    """Find maximum value in an array (np.max replacement).
-
-    Args:
-        a: Input array
-
-    Returns:
-        Maximum value
-    """
-    a = _ensure_array(a)
-    if _RUST_NUMPY_AVAILABLE:
-        return numpy_rs.max(a)
+def compute_min(samples):
+    if _AVAILABLE:
+        size = samples.size
+        _LIB.compute_min.argtypes = [ctypes.POINTER(ctypes.c_float), ctypes.c_size_t]
+        _LIB.compute_min.restype = ctypes.c_float
+        c_array, size = _to_c_array(samples)
+        result = _LIB.compute_min(c_array, size)
+        return result
     else:
-        return float(np.max(a))
+        import numpy as np
+
+        return np.min(samples)
 
 
-def mean(a: Any) -> float:
-    """Calculate mean of array elements (np.mean replacement).
-
-    Args:
-        a: Input array
-
-    Returns:
-        Mean value
-    """
-    a = _ensure_array(a)
-    if _RUST_NUMPY_AVAILABLE:
-        return numpy_rs.mean(a)
+def compute_std(samples):
+    if _AVAILABLE:
+        size = samples.size
+        _LIB.compute_std.argtypes = [ctypes.POINTER(ctypes.c_float), ctypes.c_size_t]
+        _LIB.compute_std.restype = ctypes.c_float
+        c_array, size = _to_c_array(samples)
+        result = _LIB.compute_std(c_array, size)
+        return result
     else:
-        return float(np.mean(a))
+        import numpy as np
+
+        return np.std(samples)
 
 
-def median(a: Any) -> float:
-    """Calculate median of array elements (np.median replacement).
-
-    Args:
-        a: Input array
-
-    Returns:
-        Median value
-    """
-    a = _ensure_array(a)
-    if _RUST_NUMPY_AVAILABLE:
-        return numpy_rs.median(a)
+def compute_var(samples):
+    if _AVAILABLE:
+        size = samples.size
+        _LIB.compute_var.argtypes = [ctypes.POINTER(ctypes.c_float), ctypes.c_size_t]
+        _LIB.compute_var.restype = ctypes.c_float
+        c_array, size = _to_c_array(samples)
+        result = _LIB.compute_var(c_array, size)
+        return result
     else:
-        return float(np.median(a))
+        import numpy as np
+
+        return np.var(samples)
 
 
-def sum(a: Any) -> float:
-    """Calculate sum of array elements (np.sum replacement).
-
-    Args:
-        a: Input array
-
-    Returns:
-        Sum of all elements
-    """
-    a = _ensure_array(a)
-    if _RUST_NUMPY_AVAILABLE:
-        return numpy_rs.sum(a)
+def zeros_vec(size):
+    if _AVAILABLE:
+        _LIB.zeros_vec.argtypes = [ctypes.c_size_t]
+        _LIB.zeros_vec.restype = ctypes.POINTER(ctypes.c_float)
+        ptr = _LIB.zeros_vec(size)
+        result = _from_c_array(ptr, size)
+        _LIB.free_float_buffer(result_ptr, size)
+        return result
     else:
-        return float(np.sum(a))
+        import numpy as np
+
+        return np.zeros(size)
 
 
-def sqrt(a: Any) -> Any:
-    """Calculate square root element-wise (np.sqrt replacement).
-
-    Args:
-        a: Input array
-
-    Returns:
-        Array with square root of each element
-    """
-    a = _ensure_array(a)
-    if _RUST_NUMPY_AVAILABLE:
-        return numpy_rs.sqrt(a)
+def ones_vec(size):
+    if _AVAILABLE:
+        _LIB.ones_vec.argtypes = [ctypes.c_size_t]
+        _LIB.ones_vec.restype = ctypes.POINTER(ctypes.c_float)
+        ptr = _LIB.ones_vec(size)
+        result = _from_c_array(ptr, size)
+        _LIB.free_float_buffer(result_ptr, size)
+        return result
     else:
-        return np.sqrt(a)
+        import numpy as np
+
+        return np.ones(size)
 
 
-def log(a: Any) -> Any:
-    """Compute natural logarithm element-wise (np.log replacement).
-
-    Args:
-        a: Input array
-
-    Returns:
-        Array with natural log of each element
-    """
-    a = _ensure_array(a)
-    if _RUST_NUMPY_AVAILABLE:
-        return numpy_rs.log(a)
+def eye(n):
+    if _AVAILABLE:
+        _LIB.eye.argtypes = [ctypes.c_size_t]
+        _LIB.eye.restype = ctypes.POINTER(ctypes.c_float)
+        ptr = _LIB.eye(n)
+        result = _from_c_array(ptr, n * n)
+        _LIB.free_float_buffer(result_ptr, n * n)
+        return result
     else:
-        return np.log(a)
+        import numpy as np
+
+        return np.eye(n)
 
 
-def std(a: Any) -> float:
-    """Calculate standard deviation (np.std replacement).
-
-    Args:
-        a: Input array
-
-    Returns:
-        Standard deviation
-    """
-    a = _ensure_array(a)
-    if _RUST_NUMPY_AVAILABLE:
-        return numpy_rs.std(a)
+def dot_vec(a, b):
+    if _AVAILABLE:
+        a_size = a.size
+        b_size = b.size
+        _LIB.dot_vec.argtypes = [
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.c_size_t,
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.c_size_t,
+        ]
+        _LIB.dot_vec.restype = ctypes.c_float
+        c_a, a_size = _to_c_array(a)
+        c_b, b_size = _to_c_array(b)
+        result = _LIB.dot_vec(c_a, a_size, c_b, b_size)
+        _LIB.free_float_buffer(c_a, a_size)
+        _LIB.free_float_buffer(c_b, b_size)
+        return result
     else:
-        return float(np.std(a))
+        import numpy as np
 
-
-def var(a: Any) -> float:
-    """Calculate variance (np.var replacement).
-
-    Args:
-        a: Input array
-
-    Returns:
-        Variance
-    """
-    a = _ensure_array(a)
-    if _RUST_NUMPY_AVAILABLE:
-        return numpy_rs.var(a)
-    else:
-        return float(np.var(a))
-
-
-def reshape(a: Any, new_shape: Sequence[int]) -> Any:
-    """Reshape array to new shape (np.reshape replacement).
-
-    Args:
-        a: Input array
-        new_shape: New shape
-
-    Returns:
-        Reshaped array
-    """
-    a = _ensure_array(a)
-    if _RUST_NUMPY_AVAILABLE:
-        return numpy_rs.reshape(a, list(new_shape))
-    else:
-        return np.reshape(a, new_shape)
-
-
-def transpose(a: Any) -> Any:
-    """Transpose array (np.T replacement).
-
-    Args:
-        a: Input array
-
-    Returns:
-        Transposed array
-    """
-    a = _ensure_array(a)
-    if _RUST_NUMPY_AVAILABLE:
-        return numpy_rs.transpose(a)
-    else:
-        return a.T
-
-
-def concatenate(arrays: Sequence[Any], axis: Optional[int] = 0) -> Any:
-    """Concatenate arrays (np.concatenate replacement).
-
-    Args:
-        arrays: Sequence of arrays to concatenate
-        axis: Axis to concatenate along (optional, defaults to 0)
-
-    Returns:
-        Concatenated array
-    """
-    if _RUST_NUMPY_AVAILABLE:
-        rust_arrays = [_ensure_array(arr) for arr in arrays]
-        return numpy_rs.concatenate(rust_arrays)
-    else:
-        numpy_arrays = [_ensure_array(arr) for arr in arrays]
-        return np.concatenate(numpy_arrays, axis=axis)
-
-
-def vstack(arrays: Sequence[Any]) -> Any:
-    """Stack arrays vertically (np.vstack replacement).
-
-    Args:
-        arrays: Sequence of 2D arrays to stack
-
-    Returns:
-        Vertically stacked array
-    """
-    if _RUST_NUMPY_AVAILABLE:
-        rust_arrays = [_ensure_array(arr) for arr in arrays]
-        return numpy_rs.vstack(rust_arrays)
-    else:
-        numpy_arrays = [_ensure_array(arr) for arr in arrays]
-        return np.vstack(numpy_arrays)
-
-
-def hstack(arrays: Sequence[Any]) -> Any:
-    """Stack arrays horizontally (np.hstack replacement).
-
-    Args:
-        arrays: Sequence of 1D arrays to stack
-
-    Returns:
-        Horizontally stacked array
-    """
-    if _RUST_NUMPY_AVAILABLE:
-        rust_arrays = [_ensure_array(arr) for arr in arrays]
-        return numpy_rs.hstack(rust_arrays)
-    else:
-        numpy_arrays = [_ensure_array(arr) for arr in arrays]
-        return np.hstack(numpy_arrays)
-
-
-def zeros(shape: Sequence[int]) -> Any:
-    """Generate array of zeros (np.zeros replacement).
-
-    Args:
-        shape: Shape of output array
-
-    Returns:
-        Array filled with zeros
-    """
-    if _RUST_NUMPY_AVAILABLE:
-        return numpy_rs.zeros(list(shape))
-    else:
-        return np.zeros(shape)
-
-
-def ones(shape: Sequence[int]) -> Any:
-    """Generate array of ones (np.ones replacement).
-
-    Args:
-        shape: Shape of output array
-
-    Returns:
-        Array filled with ones
-    """
-    if _RUST_NUMPY_AVAILABLE:
-        return numpy_rs.ones(list(shape))
-    else:
-        return np.ones(shape)
-
-
-def eye(n: int, m: Optional[int] = None) -> Any:
-    """Generate identity matrix (np.eye replacement).
-
-    Args:
-        n: Size of square matrix
-        m: Number of columns (optional, defaults to n)
-
-    Returns:
-        Identity matrix of shape (n, m)
-    """
-    if _RUST_NUMPY_AVAILABLE:
-        return numpy_rs.eye(n, m)
-    else:
-        return np.eye(n, m)
-
-
-def linspace(start: float, stop: float, num: int, endpoint: bool = False) -> Any:
-    """Generate linearly spaced values (np.linspace replacement).
-
-    Args:
-        start: Start value
-        stop: End value
-        num: Number of values to generate
-        endpoint: Whether to include stop value (optional, defaults to False)
-
-    Returns:
-        Array of linearly spaced values
-    """
-    if _RUST_NUMPY_AVAILABLE:
-        return numpy_rs.linspace(start, stop, num)
-    else:
-        return np.linspace(start, stop, num, endpoint=endpoint)
-
-
-def interp(x: Any, xp: Any, fp: Any) -> Any:
-    """Interpolate values (np.interp replacement).
-
-    Args:
-        x: X-coordinates at which to evaluate
-        xp: X-coordinates of data points
-        fp: Y-coordinates of data points
-
-    Returns:
-        Interpolated values
-    """
-    x = _ensure_array(x)
-    xp = _ensure_array(xp)
-    fp = _ensure_array(fp)
-
-    if _RUST_NUMPY_AVAILABLE:
-        return numpy_rs.interp(x, xp, fp)
-    else:
-        return np.interp(x, xp, fp)
-
-
-def dot(a: Any, b: Any) -> Any:
-    """Compute dot product (np.dot replacement).
-
-    Args:
-        a: First array
-        b: Second array
-
-    Returns:
-        Dot product
-    """
-    a = _ensure_array(a)
-    b = _ensure_array(b)
-
-    if _RUST_NUMPY_AVAILABLE:
-        return numpy_rs.dot(a, b)
-    else:
         return np.dot(a, b)
 
 
-def matmul(a: Any, b: Any) -> Any:
-    """Matrix multiplication (np.matmul replacement).
-
-    Args:
-        a: First array
-        b: Second array
-
-    Returns:
-        Matrix product
-    """
-    a = _ensure_array(a)
-    b = _ensure_array(b)
-
-    if _RUST_NUMPY_AVAILABLE:
-        return numpy_rs.matmul(a, b)
+def matmul_2d(a, b):
+    if _AVAILABLE:
+        a_rows = a.shape[0]
+        a_cols = a.shape[1]
+        b_rows = b.shape[0]
+        b_cols = b.shape[1]
+        _LIB.matmul_2d.argtypes = [
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.c_size_t,
+            ctypes.c_size_t,
+            ctypes.c_size_t,
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.c_size_t,
+            ctypes.c_size_t,
+        ]
+        _LIB.matmul_2d.restype = ctypes.POINTER(ctypes.c_float)
+        c_a, a_size = _to_c_array(a)
+        c_b, b_size = _to_c_array(b)
+        ptr = _LIB.matmul_2d(c_a, a_rows, a_cols, c_b, b_rows, b_cols)
+        result = _from_c_array(ptr, a_rows * b_cols)
+        _LIB.free_float_buffer(c_a, a_size)
+        _LIB.free_float_buffer(c_b, b_size)
+        return result
     else:
+        import numpy as np
+
         return np.matmul(a, b)
 
 
-def abs(a: Any) -> Any:
-    """Compute absolute values element-wise (np.abs replacement).
-
-    Args:
-        a: Input array
-
-    Returns:
-        Array with absolute values
-    """
-    a = _ensure_array(a)
-    if _RUST_NUMPY_AVAILABLE:
-        return numpy_rs.abs(a)
+def reshape_vec(data, new_shape):
+    if _AVAILABLE:
+        size = data.size
+        new_size = int(new_shape[0]) * int(new_shape[1])
+        if size != new_size:
+            raise ValueError(f"cannot reshape array of size {size} into shape {new_shape}")
+        _LIB.reshape_vec.argtypes = [
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.c_size_t,
+            ctypes.POINTER(ctypes.c_size_t),
+        ]
+        _LIB.reshape_vec.restype = ctypes.POINTER(ctypes.c_float)
+        c_data, size = _to_c_array(data)
+        c_shape = (ctypes.c_size_t * 2)(*(ctypes.c_size_t.from_buffer(new_shape.encode(), 8)))
+        ptr = _LIB.reshape_vec(c_data, size, c_shape, ctypes.size_t(c_shape))
+        result = _from_c_array(ptr, size)
+        _LIB.free_float_buffer(c_data, size)
+        return result
     else:
-        return np.abs(a)
+        import numpy as np
+
+        return np.reshape(data, new_shape)
 
 
-def power(a: Any, n: float) -> Any:
-    """Compute power element-wise (np.power replacement).
-
-    Args:
-        a: Input array
-        n: Exponent
-
-    Returns:
-        Array raised to power n
-    """
-    a = _ensure_array(a)
-    if _RUST_NUMPY_AVAILABLE:
-        return numpy_rs.power(a, n)
+def transpose_2d(data):
+    if _AVAILABLE:
+        rows = data.shape[0]
+        cols = data.shape[1]
+        _LIB.transpose_2d.argtypes = [
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.c_size_t,
+            ctypes.c_size_t,
+        ]
+        _LIB.transpose_2d.restype = ctypes.POINTER(ctypes.c_float)
+        c_data, size = _to_c_array(data)
+        ptr = _LIB.transpose_2d(c_data, rows, cols)
+        result = _from_c_array(ptr, size)
+        _LIB.free_float_buffer(c_data, size)
+        return result
     else:
-        return np.power(a, n)
+        import numpy as np
+
+        return np.transpose(data)
 
 
-# Export all functions to make them available
-__all__ = [
-    "arange",
-    "array",
-    "clip",
-    "min",
-    "max",
-    "mean",
-    "median",
-    "sum",
-    "sqrt",
-    "log",
-    "std",
-    "var",
-    "reshape",
-    "transpose",
-    "concatenate",
-    "vstack",
-    "hstack",
-    "zeros",
-    "ones",
-    "eye",
-    "linspace",
-    "interp",
-    "dot",
-    "matmul",
-    "abs",
-    "power",
-    "_RUST_NUMPY_AVAILABLE",
-]
+def concatenate(arrays, axis=None):
+    if _AVAILABLE:
+        count = len(arrays)
+        sizes = (ctypes.c_size_t * count)(
+            *(ctypes.c_size_t.from_buffer([len(a.shape) for a in arrays], 8))
+        )
+        arrays_ptrs = (ctypes.POINTER(ctypes.c_size_t) * count)(
+            *(_to_c_array(a, _LIB)[0] for a in arrays)
+        )
+        _LIB.concatenate.argtypes = [
+            ctypes.POINTER(ctypes.c_size_t),
+            ctypes.POINTER(ctypes.c_size_t),
+            ctypes.c_size_t,
+            ctypes.c_size_t,
+        ]
+        _LIB.concatenate.restype = ctypes.POINTER(ctypes.c_float)
+        total_size = sum(a.size for a in arrays)
+        ptr = _LIB.concatenate(arrays_ptrs, sizes, count)
+        result = _from_c_array(ptr, total_size)
+        for a in arrays:
+            _LIB.free_float_buffer(*(_to_c_array(a, _LIB)[0], a.size))
+        _LIB.free_float_buffer(ptr, total_size)
+        return result
+    else:
+        import numpy as np
+
+        return np.concatenate(arrays, axis=axis)
+
+
+def vstack(arrays):
+    if _AVAILABLE:
+        return concatenate(arrays, axis=0)
+    else:
+        import numpy as np
+
+        return np.vstack(arrays)
+
+
+def hstack(arrays):
+    if _AVAILABLE:
+        return concatenate(arrays, axis=1)
+    else:
+        import numpy as np
+
+        return np.hstack(arrays)
+
+
+def _to_c_array(arr):
+    c_array, size = _to_c_array_ptr(arr)
+    result = _from_c_array(c_array, size)
+    return result, c_array
+
+
+def _to_c_array_ptr(arr):
+    if not hasattr(arr, "ctypes"):
+        return None
+    return arr.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+
+
+def _from_c_array(ptr, size=None):
+    result = ctypeslib.as_array(ptr, shape=(size,) if size is not None else (size,))
+    return result.copy()
+
+
+def _from_c_array(c_array, size):
+    result = ctypeslib.as_array(c_array, shape=(size,)).copy()
+    return result
+
+
+def linspace(start, stop, num=50):
+    if _AVAILABLE:
+        _LIB.linspace.argtypes = [ctypes.c_float, ctypes.c_float, ctypes.c_size_t]
+        _LIB.linspace.restype = ctypes.POINTER(ctypes.c_float)
+        ptr = _LIB.linspace(start, stop, num)
+        result = _from_c_array(ptr, num)
+        _LIB.free_float_buffer(ptr, num)
+        return result
+    else:
+        import numpy as np
+
+        return np.linspace(start, stop, num)
+
+
+def interp(x, xp, fp):
+    if _AVAILABLE:
+        x_size = x.size
+        xp_size = xp.size
+        fp_size = fp.size
+        _LIB.interp.argtypes = [
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.c_size_t,
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.c_size_t,
+        ]
+        _LIB.interp.restype = ctypes.POINTER(ctypes.c_float)
+        c_x, x_size = _to_c_array(x)
+        c_xp, xp_size = _to_c_array(xp)
+        c_fp, fp_size = _to_c_array(fp)
+        ptr = _LIB.interp(c_x, x_size, c_xp, c_fp, fp_size)
+        result = _from_c_array(ptr, x_size)
+        _LIB.free_float_buffer(c_x, xp_size)
+        _LIB.free_float_buffer(c_xp, fp_size)
+        _LIB.free_float_buffer(c_fp, fp_size)
+        _LIB.free_float_buffer(ptr, x_size)
+        return result
+    else:
+        import numpy as np
+
+        return np.interp(x, xp, fp)
+
+
+# -----------------------------------------------------------------------------
+# NumPy Compatibility Shims
+# -----------------------------------------------------------------------------
+
+array = _np.array
+float32 = _np.float32
+int16 = _np.int16
+
+
+def clip(a, a_min, a_max):
+    """Clip (limit) the values in an array."""
+    if _AVAILABLE:
+        # Note: clip_vec handles _available check too, but assumes specific signature.
+        # Numpy clip handles scalars or different args.
+        # For now, just delegate to clip_vec if it matches our use case, else fallback.
+        try:
+            return clip_vec(a, a_min, a_max)
+        except:
+            pass
+    return _np.clip(a, a_min, a_max)
+
+
+prod = _np.prod

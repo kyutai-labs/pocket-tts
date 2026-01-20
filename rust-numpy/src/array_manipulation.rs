@@ -83,14 +83,14 @@ pub fn empty_like<T>(prototype: &Array<T>) -> Result<Array<T>>
 where
     T: Clone + Default + 'static,
 {
-    let size = compute_size(&prototype.shape());
+    let size = compute_size(prototype.shape());
     let data = Vec::with_capacity(size);
     let memory_manager = MemoryManager::from_vec(data);
 
     Ok(Array {
         data: std::sync::Arc::new(memory_manager),
         shape: prototype.shape().to_vec(),
-        strides: compute_strides(&prototype.shape()),
+        strides: compute_strides(prototype.shape()),
         dtype: prototype.dtype().clone(),
         offset: 0,
     })
@@ -107,14 +107,14 @@ pub fn ones_like<T>(prototype: &Array<T>) -> Result<Array<T>>
 where
     T: Clone + Default + One + 'static,
 {
-    let size = compute_size(&prototype.shape());
+    let size = compute_size(prototype.shape());
     let data = vec![T::one(); size];
     let memory_manager = MemoryManager::from_vec(data);
 
     Ok(Array {
         data: std::sync::Arc::new(memory_manager),
         shape: prototype.shape().to_vec(),
-        strides: compute_strides(&prototype.shape()),
+        strides: compute_strides(prototype.shape()),
         dtype: prototype.dtype().clone(),
         offset: 0,
     })
@@ -131,14 +131,14 @@ pub fn zeros_like<T>(prototype: &Array<T>) -> Result<Array<T>>
 where
     T: Clone + Default + Zero + 'static,
 {
-    let size = compute_size(&prototype.shape());
+    let size = compute_size(prototype.shape());
     let data = vec![T::zero(); size];
     let memory_manager = MemoryManager::from_vec(data);
 
     Ok(Array {
         data: std::sync::Arc::new(memory_manager),
         shape: prototype.shape().to_vec(),
-        strides: compute_strides(&prototype.shape()),
+        strides: compute_strides(prototype.shape()),
         dtype: prototype.dtype().clone(),
         offset: 0,
     })
@@ -156,14 +156,14 @@ pub fn full_like<T>(prototype: &Array<T>, fill_value: T) -> Result<Array<T>>
 where
     T: Clone + Default + 'static,
 {
-    let size = compute_size(&prototype.shape());
+    let size = compute_size(prototype.shape());
     let data = vec![fill_value; size];
     let memory_manager = MemoryManager::from_vec(data);
 
     Ok(Array {
         data: std::sync::Arc::new(memory_manager),
         shape: prototype.shape().to_vec(),
-        strides: compute_strides(&prototype.shape()),
+        strides: compute_strides(prototype.shape()),
         dtype: prototype.dtype().clone(),
         offset: 0,
     })
@@ -180,39 +180,39 @@ where
 /// # Returns
 /// 2-D array with specified diagonal of ones
 pub fn eye<T>(
-    N: usize,
-    M: Option<usize>,
+    n: usize,
+    m: Option<usize>,
     k: Option<isize>,
     dtype: Option<Dtype>,
 ) -> Result<Array<T>>
 where
     T: Clone + Default + Zero + One + 'static,
 {
-    let M = M.unwrap_or(N);
+    let m = m.unwrap_or(n);
     let k = k.unwrap_or(0);
 
-    if N == 0 || M == 0 {
+    if n == 0 || m == 0 {
         return Ok(Array {
             data: std::sync::Arc::new(MemoryManager::from_vec(vec![])),
-            shape: vec![N, M],
-            strides: compute_strides(&[N, M]),
+            shape: vec![n, m],
+            strides: compute_strides(&[n, m]),
             dtype: dtype.unwrap_or(Dtype::Float64 { byteorder: None }),
             offset: 0,
         });
     }
 
-    let mut data = vec![T::zero(); N * M];
+    let mut data = vec![T::zero(); n * m];
 
-    for i in 0..N {
+    for i in 0..n {
         let j = (i as isize + k) as usize;
-        if j < M {
-            data[i * M + j] = T::one();
+        if j < m {
+            data[i * m + j] = T::one();
         }
     }
 
     let _memory_manager = MemoryManager::from_vec(data.clone());
 
-    Ok(Array::from_data(data, vec![N, M]))
+    Ok(Array::from_data(data, vec![n, m]))
 }
 
 /// Create the identity array
@@ -331,11 +331,7 @@ where
     }
 
     if num == 1 {
-        let data = vec![if endpoint {
-            stop.clone()
-        } else {
-            start.clone()
-        }];
+        let data = vec![if endpoint { stop } else { start }];
         let memory_manager = MemoryManager::from_vec(data);
 
         return Ok(Array {
@@ -348,11 +344,11 @@ where
     }
 
     let div = if endpoint { num - 1 } else { num };
-    let step = (stop.clone() - start.clone()) / T::from(div).unwrap();
+    let step = (stop - start) / T::from(div).unwrap();
 
     let mut data = Vec::with_capacity(num);
     for i in 0..num {
-        let value = start.clone() + step.clone() * T::from(i).unwrap();
+        let value = start + step * T::from(i).unwrap();
         data.push(value);
     }
 
@@ -453,11 +449,7 @@ where
     }
 
     if num == 1 {
-        let data = vec![if endpoint {
-            stop.clone()
-        } else {
-            start.clone()
-        }];
+        let data = vec![if endpoint { stop } else { start }];
         let memory_manager = MemoryManager::from_vec(data);
 
         return Ok(Array {
@@ -471,11 +463,11 @@ where
 
     let div = if endpoint { num - 1 } else { num };
     let exponent = T::one() / T::from(div).unwrap();
-    let ratio = (stop.clone() / start.clone()).powf(exponent);
+    let ratio = (stop / start).powf(exponent);
 
     let mut data = Vec::with_capacity(num);
     for i in 0..num {
-        let value = start.clone() * ratio.clone().powf(T::from(i).unwrap());
+        let value = start * ratio.powf(T::from(i).unwrap());
         data.push(value);
     }
 
@@ -524,7 +516,7 @@ where
     let ndim = arrays.len();
     let mut sizes = Vec::new();
 
-    for (_i, arr) in arrays.iter().enumerate() {
+    for arr in arrays.iter() {
         let size = arr.shape()[0];
         sizes.push(size);
     }
@@ -617,7 +609,7 @@ where
         ));
     }
 
-    validate_reshape(&a.shape(), newshape)?;
+    validate_reshape(a.shape(), newshape)?;
 
     let _strides = if order.to_uppercase() == "F" {
         compute_fortran_strides(newshape)
@@ -646,7 +638,7 @@ where
         ));
     }
 
-    let size = compute_size(&a.shape());
+    let size = compute_size(a.shape());
 
     let data = a.to_vec();
     let memory_manager = MemoryManager::from_vec(data);

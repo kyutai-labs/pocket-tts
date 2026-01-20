@@ -11,7 +11,7 @@ use super::PolynomialBase;
 use crate::error::NumPyError;
 use ndarray::{Array1, Array2, Axis};
 use num_complex::Complex;
-use num_traits::{Float, Num, One, Zero};
+use num_traits::{Float, Num};
 
 /// Standard polynomial in power basis
 #[derive(Debug, Clone)]
@@ -26,7 +26,7 @@ where
     T: Float + Num + std::fmt::Debug + 'static,
 {
     pub fn new(coeffs: &Array1<T>) -> Result<Self, NumPyError> {
-        if coeffs.len() == 0 {
+        if coeffs.is_empty() {
             return Err(NumPyError::invalid_value(
                 "Polynomial coefficients cannot be empty",
             ));
@@ -332,7 +332,7 @@ where
     let coeffs = p.coeffs();
     let n = coeffs.len() - 1;
 
-    if n <= 0 {
+    if n == 0 {
         return Err(NumPyError::invalid_value(
             "Polynomial must have degree >= 1",
         ));

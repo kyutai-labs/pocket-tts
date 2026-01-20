@@ -38,17 +38,17 @@ jobs:
             assets/*.wav
             assets/*.safetensors
           body: |
-            ## Pocket TTS v0.2.3 (CI & Test Stability)
+            ## Pocket TTS v0.2.4 (Release Infrastructure Fix)
             
-            This release includes critical fixes for CI tests and server reliability.
+            This release fixes an issue where web assets were missing from the crate package during publish.
             
             ### Key Changes
+            - Explicitly included `web/dist` in `pocket-tts-cli` package
+            - Synchronized all crate versions to 0.2.4
             - Fixed `server_tests.rs` static asset routing failure
-            - Fixed `StreamingMultiheadAttention` to handle large prefill batches (voice cloning fix)
+            - Fixed `StreamingMultiheadAttention` for voice cloning prefill
             - Restored numerical parity with reference Python implementation
-            - Decoupled quantization from CLI voice cloning
             - Added web-based UI for live testing
-            - Fixed CI/CD pipelines for cross-platform stability
             
             > [!IMPORTANT]
             > Large model weights are downloaded automatically on first run via Hugging Face.

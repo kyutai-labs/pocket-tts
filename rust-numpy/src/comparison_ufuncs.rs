@@ -1,9 +1,7 @@
 use crate::array::Array;
 use crate::broadcasting::{broadcast_arrays, compute_broadcast_shape};
-
 use crate::dtype::{Dtype, DtypeKind};
 use crate::error::{NumPyError, Result};
-// use crate::error::{NumPyError, Result}; // Removed duplicate
 use crate::ufunc::Ufunc;
 use std::marker::PhantomData;
 
@@ -85,24 +83,9 @@ where
             ));
         }
 
-        let input0 = inputs[0]
-            .as_any()
-            .downcast_ref::<Array<T>>()
-            .ok_or_else(|| {
-                NumPyError::ufunc_error(self.name(), "Type mismatch for input 0".to_string())
-            })?;
-        let input1 = inputs[1]
-            .as_any()
-            .downcast_ref::<Array<T>>()
-            .ok_or_else(|| {
-                NumPyError::ufunc_error(self.name(), "Type mismatch for input 1".to_string())
-            })?;
-        let output = outputs[0]
-            .as_any_mut()
-            .downcast_mut::<Array<bool>>()
-            .ok_or_else(|| {
-                NumPyError::ufunc_error(self.name(), "Type mismatch for output".to_string())
-            })?;
+        let input0 = unsafe { &*(inputs[0] as *const _ as *const Array<T>) };
+        let input1 = unsafe { &*(inputs[1] as *const _ as *const Array<T>) };
+        let output = unsafe { &mut *(outputs[0] as *mut _ as *mut Array<bool>) };
 
         let shape0 = input0.shape();
         let shape1 = input1.shape();
@@ -202,18 +185,8 @@ where
             ));
         }
 
-        let input = inputs[0]
-            .as_any()
-            .downcast_ref::<Array<T>>()
-            .ok_or_else(|| {
-                NumPyError::ufunc_error(self.name(), "Type mismatch for input".to_string())
-            })?;
-        let output = outputs[0]
-            .as_any_mut()
-            .downcast_mut::<Array<bool>>()
-            .ok_or_else(|| {
-                NumPyError::ufunc_error(self.name(), "Type mismatch for output".to_string())
-            })?;
+        let input = unsafe { &*(inputs[0] as *const _ as *const Array<T>) };
+        let output = unsafe { &mut *(outputs[0] as *mut _ as *mut Array<bool>) };
 
         for i in 0..input.size() {
             if let Some(a) = input.get(i) {
@@ -304,24 +277,9 @@ where
             ));
         }
 
-        let input0 = inputs[0]
-            .as_any()
-            .downcast_ref::<Array<T>>()
-            .ok_or_else(|| {
-                NumPyError::ufunc_error(self.name(), "Type mismatch for input 0".to_string())
-            })?;
-        let input1 = inputs[1]
-            .as_any()
-            .downcast_ref::<Array<T>>()
-            .ok_or_else(|| {
-                NumPyError::ufunc_error(self.name(), "Type mismatch for input 1".to_string())
-            })?;
-        let output = outputs[0]
-            .as_any_mut()
-            .downcast_mut::<Array<T>>()
-            .ok_or_else(|| {
-                NumPyError::ufunc_error(self.name(), "Type mismatch for output".to_string())
-            })?;
+        let input0 = unsafe { &*(inputs[0] as *const _ as *const Array<T>) };
+        let input1 = unsafe { &*(inputs[1] as *const _ as *const Array<T>) };
+        let output = unsafe { &mut *(outputs[0] as *mut _ as *mut Array<T>) };
 
         let shape0 = input0.shape();
         let shape1 = input1.shape();

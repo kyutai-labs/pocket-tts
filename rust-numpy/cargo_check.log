@@ -1,0 +1,102 @@
+    Checking rust-numpy v0.1.0 (/home/grant/github/pocket-tts/rust-numpy)
+error[E0761]: file for module `linalg` found at both "src/linalg.rs" and "src/linalg/mod.rs"
+  --> src/lib.rs:50:1
+   |
+50 | pub mod linalg;
+   | ^^^^^^^^^^^^^^^
+   |
+   = help: delete or rename one of them to remove the ambiguity
+
+error: expected `;`, found `}`
+  --> src/random.rs:46:38
+   |
+46 |         T: Clone + Default + 'static,
+   |                                      ^ help: add `;` here
+47 | }
+   | - unexpected token
+
+error[E0432]: unresolved import `dtype::Casting`
+  --> src/lib.rs:67:17
+   |
+67 | pub use dtype::{Casting, Dtype, DtypeKind};
+   |                 ^^^^^^^ no `Casting` in `dtype`
+
+error[E0412]: cannot find type `Casting` in module `crate::dtype`
+   --> src/ufunc.rs:388:32
+    |
+388 |         casting: crate::dtype::Casting,
+    |                                ^^^^^^^ not found in `crate::dtype`
+
+warning: unused import: `compute_broadcast_shape`
+ --> src/advanced_broadcast.rs:7:41
+  |
+7 | use crate::broadcasting::{broadcast_to, compute_broadcast_shape};
+  |                                         ^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `ArrayD` and `IxDyn`
+  --> src/array.rs:14:15
+   |
+14 | use ndarray::{ArrayD, IxDyn, ShapeBuilder};
+   |               ^^^^^^  ^^^^^
+
+warning: unused import: `DtypeKind`
+ --> src/array_creation.rs:4:27
+  |
+4 | use crate::dtype::{Dtype, DtypeKind};
+  |                           ^^^^^^^^^
+
+warning: unused import: `Dtype`
+ --> src/bitwise.rs:8:20
+  |
+8 | use crate::dtype::{Dtype, DtypeKind};
+  |                    ^^^^^
+
+warning: unused import: `get_ufunc`
+  --> src/bitwise.rs:10:20
+   |
+10 | use crate::ufunc::{get_ufunc, Ufunc, UfuncRegistry};
+   |                    ^^^^^^^^^
+
+warning: unused import: `crate::dtype::Dtype`
+ --> src/comparison_ufuncs.rs:3:5
+  |
+3 | use crate::dtype::Dtype;
+  |     ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `get_ufunc`
+ --> src/comparison_ufuncs.rs:7:20
+  |
+7 | use crate::ufunc::{get_ufunc, Ufunc};
+  |                    ^^^^^^^^^
+
+warning: unused doc comment
+   --> src/random.rs:180:1
+    |
+180 | /// Thread-local random generator instance
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ rustdoc does not generate documentation for macro invocations
+    |
+    = help: to document an item produced by a macro, the macro must produce the documentation as part of its expansion
+    = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `Dirichlet`, `StandardNormal`, and `Uniform`
+  --> src/random.rs:21:33
+   |
+21 |     Beta, Binomial, ChiSquared, Dirichlet, Exp, Gamma, Gumbel, LogNormal, Normal, Poisson,
+   |                                 ^^^^^^^^^
+22 |     StandardNormal, Uniform,
+   |     ^^^^^^^^^^^^^^  ^^^^^^^
+
+warning: unused import: `std::collections::hash_map::DefaultHasher`
+  --> src/set_ops.rs:24:5
+   |
+24 | use std::collections::hash_map::DefaultHasher;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::array::Array`
+    --> src/random.rs:1128:9
+     |
+1128 |     use crate::array::Array;
+     |         ^^^^^^^^^^^^^^^^^^^
+

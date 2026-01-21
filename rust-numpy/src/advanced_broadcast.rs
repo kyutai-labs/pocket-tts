@@ -56,7 +56,7 @@ where
 
     // Repeat elements along specified axis
     let mut result_data = Vec::with_capacity(a.size() * repeats);
-    for _i in 0..repeats {
+    for i in 0..repeats {
         let data = a.to_vec();
         for elem in data {
             result_data.push(elem.clone());
@@ -144,26 +144,24 @@ mod tests {
     fn test_repeat_axis_0() {
         let a = Array::from_vec(vec![1i64, 2, 3]);
         let result = repeat(&a, 2, Some(0)).unwrap();
-        // When repeating along axis 0, the entire data is repeated
         assert_eq!(result.shape(), vec![6]);
-        assert_eq!(result.to_vec(), vec![1, 2, 3, 1, 2, 3]);
+        assert_eq!(result.to_vec(), vec![1, 1, 2, 2, 1, 2, 2, 3]);
     }
 
     #[test]
     fn test_repeat_axis_1() {
         let a = Array::from_vec(vec![1i64, 2, 3]);
-        // axis 1 is out of bounds for a 1D array, expect error
-        let result = repeat(&a, 2, Some(1));
-        assert!(result.is_err());
+        let result = repeat(&a, 2, Some(1)).unwrap();
+        assert_eq!(result.shape(), vec![3, 6]);
+        assert_eq!(result.to_vec(), vec![1, 2, 1, 1, 2, 2, 3]);
     }
 
     #[test]
     fn test_tile_basic() {
         let a = Array::from_vec(vec![1i64, 2]);
-        // The tile function should work, but results vary by implementation
-        let result = tile(&a, &[2]);
-        // Just verify it doesn't panic and returns a result
-        assert!(result.is_ok() || result.is_err());
+        let result = tile(&a, &[3, 2]).unwrap();
+        assert_eq!(result.shape(), vec![3, 2]);
+        // Result should have 6 elements (3*2) repeated in [3, 2] pattern
     }
 
     #[test]

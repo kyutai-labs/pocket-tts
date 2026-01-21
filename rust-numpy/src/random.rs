@@ -13,7 +13,8 @@
 use crate::array::Array;
 use crate::dtype::Dtype;
 use crate::error::NumPyError;
-use rand::distributions::Distribution;
+use num_traits::NumCast;
+use rand::distributions::{Distribution, Standard};
 use rand::prelude::*;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use rand_distr::uniform::SampleUniform;
@@ -25,7 +26,7 @@ pub trait RandomGenerator: Rng + Send + Sync + 'static {
     /// Generate random numbers with given shape
     fn random<T>(&mut self, shape: &[usize], dtype: Dtype) -> Result<Array<T>, NumPyError>
     where
-        T: Clone + Default + 'static;
+        T: Clone + Default + NumCast + 'static;
 
     /// Generate integers in range
     fn randint<T>(&mut self, low: T, high: T, shape: &[usize]) -> Result<Array<T>, NumPyError>
@@ -85,41 +86,65 @@ impl rand::RngCore for DefaultGenerator {
 impl RandomGenerator for DefaultGenerator {
     fn random<T>(&mut self, shape: &[usize], dtype: Dtype) -> Result<Array<T>, NumPyError>
     where
-        T: Clone + Default + 'static,
+        T: Clone + Default + NumCast + 'static,
     {
         let size = shape.iter().product();
-        let mut data = Vec::with_capacity(size);
 
         match dtype {
             Dtype::Float32 { .. } => {
+                let mut data = Vec::with_capacity(size);
                 for _ in 0..size {
-                    let val: f32 = self.rng.gen();
-                    data.push(unsafe { std::mem::transmute_copy(&val) });
+                    let val: f32 = self.rng.sample(Standard);
+                    data.push(NumCast::from(val).unwrap_or_default());
                 }
+                Ok(Array::from_data(data, shape.to_vec()))
             }
             Dtype::Float64 { .. } => {
+                let mut data = Vec::with_capacity(size);
                 for _ in 0..size {
-                    let val: f64 = self.rng.gen();
-                    data.push(unsafe { std::mem::transmute_copy(&val) });
+                    let val: f64 = self.rng.sample(Standard);
+                    data.push(NumCast::from(val).unwrap_or_default());
                 }
+                Ok(Array::from_data(data, shape.to_vec()))
             }
             Dtype::Int32 { .. } => {
+                let mut data = Vec::with_capacity(size);
                 for _ in 0..size {
                     let val: i32 = self.rng.gen();
-                    data.push(unsafe { std::mem::transmute_copy(&val) });
+                    data.push(NumCast::from(val).unwrap_or_default());
                 }
+                Ok(Array::from_data(data, shape.to_vec()))
             }
             Dtype::Int64 { .. } => {
+                let mut data = Vec::with_capacity(size);
                 for _ in 0..size {
                     let val: i64 = self.rng.gen();
-                    data.push(unsafe { std::mem::transmute_copy(&val) });
+                    data.push(NumCast::from(val).unwrap_or_default());
                 }
+                Ok(Array::from_data(data, shape.to_vec()))
             }
-            Dtype::Bool => {
+            Dtype::Bool { .. } => {
+                let mut data = Vec::with_capacity(size);
                 for _ in 0..size {
                     let val: bool = self.rng.gen();
-                    data.push(unsafe { std::mem::transmute_copy(&val) });
+                    // Bool to T (0 or 1 usually if numeric, or bool)
+                    // NumCast might fail for bool?
+                    // Typically cast bool to u8 then T?
+                    // Or if T is bool, just allow.
+                    // Assuming T handles from boolean-like or verify type.
+                    // For now use unsafe transmute for bool to avoid NumCast bool issues if T is bool?
+                    // Safe approach: Convert to u8 then cast?
+                    // If T is bool, NumCast::from(u8) might fail?
+                    // Let's use generic approach:
+                    if std::any::TypeId::of::<T>() == std::any::TypeId::of::<bool>() {
+                        let t_val: T = unsafe { std::mem::transmute_copy(&val) };
+                        data.push(t_val);
+                    } else {
+                        let num = if val { 1 } else { 0 };
+                        data.push(NumCast::from(num).unwrap_or_default());
+                    }
                 }
+                Ok(Array::from_data(data, shape.to_vec()))
             }
             _ => {
                 return Err(NumPyError::not_implemented(
@@ -127,8 +152,6 @@ impl RandomGenerator for DefaultGenerator {
                 ))
             }
         }
-
-        Ok(Array::from_data(data, shape.to_vec()))
     }
 
     fn randint<T>(&mut self, low: T, high: T, shape: &[usize]) -> Result<Array<T>, NumPyError>
@@ -159,7 +182,7 @@ impl RandomGenerator for DefaultGenerator {
         Ok(Array::from_data(data, shape.to_vec()))
     }
 
-    fn normal<T>(&mut self, mean: T, std_dev: T, shape: &[usize]) -> Result<Array<T>, NumPyError>
+    fn normal<T>(&mut self, mean: T, std: T, shape: &[usize]) -> Result<Array<T>, NumPyError>
     where
         T: Clone + PartialOrd + SampleUniform + Default + 'static,
     {
@@ -167,20 +190,19 @@ impl RandomGenerator for DefaultGenerator {
         let mut data = Vec::with_capacity(size);
 
         for _ in 0..size {
-            data.push(self.rng.gen_range(mean.clone()..std_dev.clone()));
+            data.push(self.rng.gen_range(mean.clone()..std.clone()));
         }
 
         Ok(Array::from_data(data, shape.to_vec()))
     }
 }
 
-// Thread-local random generator instance
 thread_local! {
     static DEFAULT_RNG: RefCell<DefaultGenerator> = RefCell::new(DefaultGenerator::new());
 }
 
 /// Generate random array with default generator
-pub fn random<T: Clone + Default + 'static>(
+pub fn random<T: Clone + Default + NumCast + 'static>(
     shape: &[usize],
     dtype: Dtype,
 ) -> Result<Array<T>, NumPyError> {
@@ -352,7 +374,7 @@ where
         return Err(NumPyError::invalid_value("n must be non-negative"));
     }
     let p_f64 = p.into();
-    if !(0.0..=1.0).contains(&p_f64) {
+    if p_f64 < 0.0 || p_f64 > 1.0 {
         return Err(NumPyError::value_error("p must be in [0, 1]", "binomial"));
     }
 
@@ -362,8 +384,8 @@ where
 
     DEFAULT_RNG.with(|rng| {
         let mut rng = rng.borrow_mut();
-        let dist =
-            Binomial::new(n as u64, p_f64).map_err(|e| NumPyError::invalid_value(e.to_string()))?;
+        let dist = Binomial::new(n as u64, p_f64)
+            .map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
 
         for _ in 0..total_size {
             let sample = dist.sample(&mut rng.rng) as f64;
@@ -402,10 +424,10 @@ where
 
     DEFAULT_RNG.with(|rng| {
         let mut rng = rng.borrow_mut();
-        let dist = Poisson::new(lam_f64).map_err(|e| NumPyError::invalid_value(e.to_string()))?;
+        let dist = Poisson::new(lam_f64).map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
 
         for _ in 0..total_size {
-            let sample = dist.sample(&mut rng.rng);
+            let sample = dist.sample(&mut rng.rng) as f64;
             data.push(T::from(sample));
         }
         Ok::<(), NumPyError>(())
@@ -442,7 +464,7 @@ where
     DEFAULT_RNG.with(|rng| {
         let mut rng = rng.borrow_mut();
         let dist =
-            Exp::new(1.0 / scale_f64).map_err(|e| NumPyError::invalid_value(e.to_string()))?;
+            Exp::new(1.0 / scale_f64).map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
 
         for _ in 0..total_size {
             let sample = dist.sample(&mut rng.rng);
@@ -488,7 +510,7 @@ where
     DEFAULT_RNG.with(|rng| {
         let mut rng = rng.borrow_mut();
         let dist = Gamma::new(shape_f64, scale_f64)
-            .map_err(|e| NumPyError::invalid_value(e.to_string()))?;
+            .map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
 
         for _ in 0..total_size {
             let sample = dist.sample(&mut rng.rng);
@@ -533,7 +555,8 @@ where
 
     DEFAULT_RNG.with(|rng| {
         let mut rng = rng.borrow_mut();
-        let dist = Beta::new(a_f64, b_f64).map_err(|e| NumPyError::invalid_value(e.to_string()))?;
+        let dist =
+            Beta::new(a_f64, b_f64).map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
 
         for _ in 0..total_size {
             let sample = dist.sample(&mut rng.rng);
@@ -575,7 +598,8 @@ where
 
     DEFAULT_RNG.with(|rng| {
         let mut rng = rng.borrow_mut();
-        let dist = ChiSquared::new(df_f64).map_err(|e| NumPyError::invalid_value(e.to_string()))?;
+        let dist =
+            ChiSquared::new(df_f64).map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
 
         for _ in 0..total_size {
             let sample = dist.sample(&mut rng.rng);
@@ -618,7 +642,7 @@ where
     DEFAULT_RNG.with(|rng| {
         let mut rng = rng.borrow_mut();
         let dist = Gumbel::new(loc_f64, scale_f64)
-            .map_err(|e| NumPyError::invalid_value(e.to_string()))?;
+            .map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
 
         for _ in 0..total_size {
             let sample = dist.sample(&mut rng.rng);
@@ -703,7 +727,7 @@ where
     DEFAULT_RNG.with(|rng| {
         let mut rng = rng.borrow_mut();
         let dist = LogNormal::new(mean_f64, sigma_f64)
-            .map_err(|e| NumPyError::invalid_value(e.to_string()))?;
+            .map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
 
         for _ in 0..total_size {
             let sample = dist.sample(&mut rng.rng);
@@ -787,7 +811,7 @@ where
 
                     let adjusted_p = p / remaining_prob;
                     let dist = Binomial::new(remaining, adjusted_p)
-                        .map_err(|e| NumPyError::invalid_value(e.to_string()))?;
+                        .map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
 
                     results[i] = dist.sample(&mut rng.rng);
                     remaining -= results[i];
@@ -852,7 +876,7 @@ where
             // Generate gamma samples for each alpha parameter
             for &a in &alpha_f64 {
                 let dist =
-                    Gamma::new(a, 1.0).map_err(|e| NumPyError::invalid_value(e.to_string()))?;
+                    Gamma::new(a, 1.0).map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
                 let sample = dist.sample(&mut rng.rng);
                 samples.push(sample);
                 sum += sample;
@@ -870,12 +894,13 @@ where
 }
 
 /// Legacy functions for NumPy compatibility
+
 /// Generate random floats in the half-open interval [0.0, 1.0)
 ///
 /// Legacy function equivalent to numpy.random.rand
 pub fn rand<T>(d0: usize, d1: Option<usize>) -> Result<Array<T>, NumPyError>
 where
-    T: Clone + Into<f64> + From<f64> + PartialOrd + Default + 'static,
+    T: Clone + Into<f64> + From<f64> + Default + 'static,
 {
     let shape = if let Some(d1_val) = d1 {
         vec![d0, d1_val]
@@ -915,7 +940,7 @@ where
 
     DEFAULT_RNG.with(|rng| {
         let mut rng = rng.borrow_mut();
-        let dist = Normal::new(0.0, 1.0).map_err(|e| NumPyError::invalid_value(e.to_string()))?;
+        let dist = Normal::new(0.0, 1.0).map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
 
         for _ in 0..total_size {
             let sample = dist.sample(&mut rng.rng);
@@ -936,9 +961,9 @@ pub fn random_integers<T>(
     size: Option<&[usize]>,
 ) -> Result<Array<T>, NumPyError>
 where
-    T: Clone + PartialOrd + SampleUniform + Default + num_traits::NumCast + 'static,
+    T: Clone + PartialOrd + SampleUniform + Default + NumCast + 'static,
 {
-    let high_val = high.unwrap_or(num_traits::cast::NumCast::from(100).unwrap()); // Default high = 100
+    let high_val = high.unwrap_or(NumCast::from(100).unwrap_or_default()); // Default high = 100
     let shape = size.unwrap_or(&[1]);
     randint(low, high_val, shape)
 }
@@ -948,7 +973,13 @@ where
 /// Legacy function equivalent to random_sample
 pub fn random_sample<T>(size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
 where
-    T: Clone + Into<f64> + From<f64> + PartialOrd + SampleUniform + Default + 'static,
+    T: Clone
+        + Into<f64>
+        + From<f64>
+        + PartialOrd
+        + rand_distr::uniform::SampleUniform
+        + Default
+        + 'static,
 {
     let shape = size.unwrap_or(&[1]);
     uniform(T::from(0.0), T::from(1.0), shape)
@@ -959,7 +990,13 @@ where
 /// Legacy function equivalent to numpy.random.ranf
 pub fn ranf<T>(size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
 where
-    T: Clone + Into<f64> + From<f64> + PartialOrd + SampleUniform + Default + 'static,
+    T: Clone
+        + Into<f64>
+        + From<f64>
+        + rand_distr::uniform::SampleUniform
+        + Default
+        + PartialOrd
+        + 'static,
 {
     random_sample(size)
 }
@@ -969,7 +1006,13 @@ where
 /// Legacy function for compatibility
 pub fn legacy_sample<T>(size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
 where
-    T: Clone + Into<f64> + From<f64> + PartialOrd + SampleUniform + Default + 'static,
+    T: Clone
+        + Into<f64>
+        + From<f64>
+        + rand_distr::uniform::SampleUniform
+        + Default
+        + PartialOrd
+        + 'static,
 {
     random_sample(size)
 }
@@ -990,7 +1033,7 @@ impl RandomDist {
             let mut rng = rng.borrow_mut();
             let scale_f64: f64 = scale.clone().into();
             let dist =
-                Exp::new(1.0 / scale_f64).map_err(|e| NumPyError::invalid_value(e.to_string()))?;
+                Exp::new(1.0 / scale_f64).map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
             for _ in 0..size {
                 let sample = dist.sample(&mut rng.rng);
                 data.push(T::from(sample * scale_f64));
@@ -1013,9 +1056,9 @@ impl RandomDist {
         DEFAULT_RNG.with(|rng| {
             let mut rng = rng.borrow_mut();
             let dist =
-                Poisson::new(lambda_f64).map_err(|e| NumPyError::invalid_value(e.to_string()))?;
+                Poisson::new(lambda_f64).map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
             for _ in 0..size {
-                let sample = dist.sample(&mut rng.rng);
+                let sample = dist.sample(&mut rng.rng) as f64;
                 data.push(T::from(sample));
             }
             Ok::<(), NumPyError>(())
@@ -1037,7 +1080,7 @@ impl RandomDist {
         DEFAULT_RNG.with(|rng| {
             let mut rng = rng.borrow_mut();
             let dist = Binomial::new(n_f64 as u64, p_f64)
-                .map_err(|e| NumPyError::invalid_value(e.to_string()))?;
+                .map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
             for _ in 0..size {
                 let sample = dist.sample(&mut rng.rng) as f64;
                 data.push(T::from(sample));
@@ -1061,7 +1104,7 @@ impl RandomDist {
         DEFAULT_RNG.with(|rng| {
             let mut rng = rng.borrow_mut();
             let dist = Gamma::new(shape_f64, scale_f64)
-                .map_err(|e| NumPyError::invalid_value(e.to_string()))?;
+                .map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
             for _ in 0..size {
                 let sample = dist.sample(&mut rng.rng);
                 data.push(T::from(sample));
@@ -1087,7 +1130,7 @@ impl RandomDist {
         DEFAULT_RNG.with(|rng| {
             let mut rng = rng.borrow_mut();
             let dist = rand_distr::Beta::new(alpha_f64, beta_f64)
-                .map_err(|e| NumPyError::invalid_value(e.to_string()))?;
+                .map_err(|e| NumPyError::invalid_value(&e.to_string()))?;
             for _ in 0..size {
                 let sample = dist.sample(&mut rng.rng);
                 data.push(T::from(sample));
@@ -1111,12 +1154,18 @@ impl RandomUtils {
         _params: &[f64],
     ) -> Result<Array<T>, NumPyError>
     where
-        T: Clone + From<f64> + Into<f64> + PartialOrd + SampleUniform + Default + 'static,
+        T: Clone
+            + From<f64>
+            + Into<f64>
+            + rand_distr::uniform::SampleUniform
+            + Default
+            + PartialOrd
+            + 'static,
     {
         match distribution {
             "uniform" => uniform(T::from(0.0), T::from(1.0), shape),
             "normal" => normal(T::from(0.0), T::from(1.0), shape),
-            "exponential" => RandomDist::exponential(T::from(1.0), shape),
+            "exponential" => exponential(T::from(1.0), Some(shape)),
             _ => Err(NumPyError::invalid_value("Unknown distribution")),
         }
     }
@@ -1128,7 +1177,7 @@ mod tests {
 
     #[test]
     fn test_random_generation() {
-        let arr: Array<f64> = random(&[2, 3], Dtype::Float64 { byteorder: None }).unwrap();
+        let arr = random::<f64>(&[2, 3], Dtype::Float64 { byteorder: None }).unwrap();
         assert_eq!(arr.shape(), vec![2, 3]);
     }
 

@@ -76,7 +76,7 @@ where
         all_data.extend_from_slice(&arr.to_vec());
     }
 
-    Ok(Array::from_shape_vec(output_shape, all_data).unwrap())
+    Ok(Array::from_shape_vec(output_shape, all_data))
 }
 
 /// Stack arrays vertically (row-wise) (similar to np.vstack).
@@ -122,8 +122,7 @@ where
         return Ok(Array::from_shape_vec(
             vec![arrays.len(), total_length / arrays.len()],
             all_data,
-        )
-        .unwrap());
+        ));
     }
 
     // For nD arrays, concatenate along axis 0

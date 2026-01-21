@@ -2,13 +2,8 @@ use crate::array::Array;
 use crate::broadcasting::{broadcast_arrays, compute_broadcast_shape};
 
 use crate::error::{NumPyError, Result};
-use crate::ufunc::{get_ufunc_typed, UfuncRegistry};
+use crate::ufunc::{get_ufunc, UfuncRegistry};
 use std::sync::Arc;
-
-/// Get the static type name for a given array type
-fn get_type_name<T>() -> &'static str {
-    std::any::type_name::<T>()
-}
 
 /// Ufunc execution engine
 #[allow(dead_code)]
@@ -34,17 +29,8 @@ impl UfuncEngine {
     where
         T: Clone + Default + 'static,
     {
-        // Use type-based dispatch to get the correct ufunc implementation
-        let type_name = get_type_name::<T>();
-        let ufunc = self
-            .registry
-            .get_by_dtypes(ufunc_name, &[type_name, type_name])
-            .ok_or_else(|| {
-                NumPyError::ufunc_error(
-                    ufunc_name,
-                    format!("Function not found for type {}", type_name),
-                )
-            })?;
+        let ufunc = get_ufunc(ufunc_name)
+            .ok_or_else(|| NumPyError::ufunc_error(ufunc_name, "Function not found"))?;
 
         // Check if ufunc supports the dtype
         if !ufunc.supports_dtypes(&[a.dtype(), b.dtype()]) {
@@ -84,17 +70,8 @@ impl UfuncEngine {
     where
         T: Clone + Default + 'static,
     {
-        // Use type-based dispatch to get the correct ufunc implementation
-        let type_name = get_type_name::<T>();
-        let ufunc = self
-            .registry
-            .get_by_dtypes(ufunc_name, &[type_name])
-            .ok_or_else(|| {
-                NumPyError::ufunc_error(
-                    ufunc_name,
-                    format!("Function not found for type {}", type_name),
-                )
-            })?;
+        let ufunc = get_ufunc(ufunc_name)
+            .ok_or_else(|| NumPyError::ufunc_error(ufunc_name, "Function not found"))?;
 
         if !ufunc.supports_dtypes(&[a.dtype()]) {
             return Err(NumPyError::ufunc_error(
@@ -122,17 +99,8 @@ impl UfuncEngine {
     where
         T: Clone + Default + 'static,
     {
-        // Use type-based dispatch to get the correct ufunc implementation
-        let type_name = get_type_name::<T>();
-        let ufunc = self
-            .registry
-            .get_by_dtypes(ufunc_name, &[type_name, type_name])
-            .ok_or_else(|| {
-                NumPyError::ufunc_error(
-                    ufunc_name,
-                    format!("Function not found for type {}", type_name),
-                )
-            })?;
+        let ufunc = get_ufunc(ufunc_name)
+            .ok_or_else(|| NumPyError::ufunc_error(ufunc_name, "Function not found"))?;
 
         if !ufunc.supports_dtypes(&[a.dtype(), b.dtype()]) {
             return Err(NumPyError::ufunc_error(
@@ -184,15 +152,17 @@ impl UfuncEngine {
 
         if let Some(reduction_axes) = axis {
             self.reduce_along_axes(array, &mut output, reduction_axes, &operation)?;
-        } else if let Some(initial) = array.get(0) {
-            let mut result = initial.clone();
-            for i in 1..array.size() {
-                if let Some(element) = array.get(i) {
-                    result = operation(result, element.clone());
+        } else {
+            if let Some(initial) = array.get(0) {
+                let mut result = initial.clone();
+                for i in 1..array.size() {
+                    if let Some(element) = array.get(i) {
+                        result = operation(result, element.clone());
+                    }
                 }
-            }
-            if output.size() == 1 {
-                output.set(0, result)?;
+                if output.size() == 1 {
+                    output.set(0, result)?;
+                }
             }
         }
 
@@ -439,8 +409,7 @@ where
             }
         }
 
-        let dev_array = Array::from_shape_vec(self.shape().to_vec(), squared_deviations)
-            .unwrap_or_else(|_| Array::zeros(self.shape().to_vec()));
+        let dev_array = Array::from_shape_vec(self.shape().to_vec(), squared_deviations);
 
         dev_array.mean(axis, keepdims)
     }
@@ -626,26 +595,48 @@ where
         }
     }
 
-    pub fn all(&self, axis: Option<&[isize]>, keepdims: bool) -> Result<Array<bool>>
+    pub fn all(&self, axis: Option<&[isize]>, _keepdims: bool) -> Result<Array<bool>>
     where
         T: Clone + Default + Into<bool>,
     {
-        let _engine = UfuncEngine::new();
-        let bool_data: Vec<bool> = self.to_vec().into_iter().map(|x| x.into()).collect();
-        let bool_array = Array::from_shape_vec(self.shape().to_vec(), bool_data).unwrap();
-        let engine = UfuncEngine::new();
-        engine.execute_reduction("all", &bool_array, axis, keepdims, |a, b| a && b)
+        match axis {
+            None => {
+                // Return true if all elements are truthy
+                let result = (0..self.size())
+                    .all(|i| self.get(i).map(|v| v.clone().into()).unwrap_or(false));
+                Ok(Array::from_scalar(result, vec![]))
+            }
+            Some(_) => Err(NumPyError::not_implemented("all() with axis parameter")),
+        }
     }
 
-    pub fn any(&self, axis: Option<&[isize]>, keepdims: bool) -> Result<Array<bool>>
+    pub fn map<U, F>(&self, f: F) -> Array<U>
+    where
+        U: Clone + Default + 'static,
+        F: Fn(&T) -> U,
+    {
+        let mut new_data = Vec::with_capacity(self.size());
+        for i in 0..self.size() {
+            if let Some(val) = self.get(i) {
+                new_data.push(f(val));
+            }
+        }
+        Array::from_data(new_data, self.shape().to_vec())
+    }
+
+    pub fn any(&self, axis: Option<&[isize]>, _keepdims: bool) -> Result<Array<bool>>
     where
         T: Clone + Default + Into<bool>,
     {
-        let _engine = UfuncEngine::new();
-        let bool_data: Vec<bool> = self.to_vec().into_iter().map(|x| x.into()).collect();
-        let bool_array = Array::from_shape_vec(self.shape().to_vec(), bool_data).unwrap();
-        let engine = UfuncEngine::new();
-        engine.execute_reduction("any", &bool_array, axis, keepdims, |a, b| a || b)
+        match axis {
+            None => {
+                // Return true if any element is truthy
+                let result = (0..self.size())
+                    .any(|i| self.get(i).map(|v| v.clone().into()).unwrap_or(false));
+                Ok(Array::from_scalar(result, vec![]))
+            }
+            Some(_) => Err(NumPyError::not_implemented("any() with axis parameter")),
+        }
     }
 
     pub fn cumsum(&self, axis: Option<isize>) -> Result<Array<T>>
@@ -757,12 +748,12 @@ where
                 let axis_size = self.shape()[ax];
 
                 for outer in 0..stride_before {
-                    for inner in 0..stride_after {
+                    for pos in 0..axis_size {
                         let mut running = T::default();
-                        for pos in 0..axis_size {
+                        for inner in 0..stride_after {
                             let idx = outer * axis_size * stride_after + pos * stride_after + inner;
                             if let Some(val) = self.get(idx) {
-                                if pos == 0 {
+                                if inner == 0 && pos == 0 {
                                     running = val.clone();
                                 } else {
                                     running = running * val.clone();
@@ -915,7 +906,7 @@ where
     where
         T: PartialEq + Clone + Default + 'static,
     {
-        let _ufunc = get_ufunc_typed::<T>("logical_not")
+        let _ufunc = get_ufunc("logical_not")
             .ok_or_else(|| NumPyError::ufunc_error("logical_not", "Function not found"))?;
 
         let output_shape = self.shape().to_vec();
@@ -923,7 +914,7 @@ where
 
         for i in 0..self.size() {
             if let Some(val) = self.get(i) {
-                output.set(i, val == &T::default())?;
+                output.set(i, val == val)?;
             }
         }
 

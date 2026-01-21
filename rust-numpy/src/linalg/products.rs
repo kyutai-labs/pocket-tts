@@ -226,7 +226,7 @@ where
 
             // Get diagonal element
             let linear_idx = crate::strides::compute_linear_index(&a_indices, a.strides());
-            if let Some(val) = a.get_storage_at(linear_idx as isize) {
+            if let Some(val) = a.get(linear_idx as usize) {
                 output_data.push(val.clone());
             }
         }

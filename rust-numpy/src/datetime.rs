@@ -52,22 +52,19 @@ where
     T: FromPrimitive + Zero,
 {
     let (unit_name, unit_code, _step) = match dtype {
-        Dtype::Datetime64(ref unit) => {
-            let unit_str = unit.as_str().to_string();
-            match unit_str.as_str() {
-                "Y" => ("Y", "years", 1),
-                "M" => ("M", "months", 1),
-                "W" => ("W", "weeks", 1),
-                "D" => ("D", "days", 1),
-                "h" => ("h", "hours", 3600),
-                "m" => ("m", "minutes", 60),
-                "s" => ("s", "seconds", 1),
-                "ms" => ("ms", "milliseconds", 1),
-                "us" => ("us", "microseconds", 1),
-                "ns" => ("ns", "nanoseconds", 1),
-                _ => return Err(NumPyError::invalid_dtype(format!("{:?}", dtype))),
-            }
-        }
+        Dtype::Datetime64(ref unit) => match unit.as_str() {
+            "Y" => ("Y", "years", 1),
+            "M" => ("M", "months", 1),
+            "W" => ("W", "weeks", 1),
+            "D" => ("D", "days", 1),
+            "h" => ("h", "hours", 3600),
+            "m" => ("m", "minutes", 60),
+            "s" => ("s", "seconds", 1),
+            "ms" => ("ms", "milliseconds", 1),
+            "us" => ("us", "microseconds", 1),
+            "ns" => ("ns", "nanoseconds", 1),
+            _ => return Err(NumPyError::invalid_dtype(format!("{:?}", dtype))),
+        },
         _ => return Err(NumPyError::invalid_dtype(format!("{:?}", dtype))),
     };
 
@@ -160,7 +157,7 @@ where
 
     let mut result = match out {
         Some(out_arr) => out_arr.to_owned(),
-        None => Array::from_shape_vec(dates.shape().to_vec(), vec![T::zero(); dates.size()])?,
+        None => Array::from_shape_vec(dates.shape().to_vec(), vec![T::zero(); dates.size()]),
     };
 
     for i in 0..dates.size() {
@@ -193,7 +190,7 @@ where
         )
     });
 
-    let mut result = Array::from_shape_vec(dates.shape().to_vec(), vec![false; dates.size()])?;
+    let mut result = Array::from_shape_vec(dates.shape().to_vec(), vec![false; dates.size()]);
 
     for i in 0..dates.size() {
         let date = dates.get_linear(i).copied().unwrap_or(T::zero());
@@ -220,7 +217,7 @@ where
         return Err(NumPyError::value_error("Invalid casting mode", "datetime"));
     }
 
-    let mut result = Array::from_shape_vec(arr.shape().to_vec(), vec![String::new(); arr.size()])?;
+    let mut result = Array::from_shape_vec(arr.shape().to_vec(), vec![String::new(); arr.size()]);
 
     for i in 0..arr.size() {
         let timestamp = arr.get_linear(i).copied().unwrap_or(T::zero());
@@ -263,7 +260,8 @@ fn parse_timezone(timezone: &str) -> Result<i64, NumPyError> {
         "MST" => Ok(-25200),
         "PST" => Ok(-28800),
         _ => {
-            if let Some(offset_str) = timezone.strip_prefix("UTC") {
+            if timezone.starts_with("UTC") {
+                let offset_str = &timezone[3..];
                 match offset_str.parse::<i64>() {
                     Ok(offset) => Ok(offset * 3600),
                     Err(_) => Err(NumPyError::value_error("Invalid UTC offset", "datetime")),

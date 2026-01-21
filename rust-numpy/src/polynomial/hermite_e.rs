@@ -2,8 +2,9 @@
 
 use super::{Polynomial, PolynomialBase};
 use crate::error::NumPyError;
-use ndarray::Array1;
-use num_traits::{Float, Num};
+use ndarray::{Array1, Array2};
+use num_complex::Complex;
+use num_traits::{Float, Num, One, Zero};
 
 /// HermiteE polynomials (probabilist's version)
 #[derive(Debug, Clone)]
@@ -15,17 +16,10 @@ pub struct HermiteE<T> {
 
 impl<T> HermiteE<T>
 where
-    T: Float
-        + Num
-        + std::fmt::Debug
-        + 'static
-        + std::ops::AddAssign
-        + std::ops::MulAssign
-        + std::ops::SubAssign
-        + std::ops::DivAssign,
+    T: Float + Num + std::fmt::Debug + 'static,
 {
     pub fn new(coeffs: &Array1<T>) -> Result<Self, NumPyError> {
-        if coeffs.is_empty() {
+        if coeffs.len() == 0 {
             return Err(NumPyError::invalid_value(
                 "HermiteE coefficients cannot be empty",
             ));
@@ -75,14 +69,7 @@ where
 
 impl<T> PolynomialBase<T> for HermiteE<T>
 where
-    T: Float
-        + Num
-        + std::fmt::Debug
-        + 'static
-        + std::ops::AddAssign
-        + std::ops::MulAssign
-        + std::ops::SubAssign
-        + std::ops::DivAssign,
+    T: Float + Num + std::fmt::Debug + 'static,
 {
     fn coeffs(&self) -> &Array1<T> {
         &self.coeffs
@@ -142,15 +129,9 @@ where
 
 fn hermite_e_eval_recursive<T>(coeffs: &Array1<T>, x: T) -> T
 where
-    T: Float
-        + Num
-        + std::fmt::Debug
-        + std::ops::AddAssign
-        + std::ops::MulAssign
-        + std::ops::SubAssign
-        + std::ops::DivAssign,
+    T: Float + Num + std::fmt::Debug,
 {
-    if coeffs.is_empty() {
+    if coeffs.len() == 0 {
         return T::zero();
     }
 
@@ -174,14 +155,7 @@ where
 
 fn polynomial_to_hermite_e<T>(poly_coeffs: &Array1<T>) -> Result<Array1<T>, NumPyError>
 where
-    T: Float
-        + Num
-        + std::fmt::Debug
-        + 'static
-        + std::ops::AddAssign
-        + std::ops::MulAssign
-        + std::ops::SubAssign
-        + std::ops::DivAssign,
+    T: Float + Num + std::fmt::Debug + 'static,
 {
     let n = poly_coeffs.len();
     let mut herme_coeffs = Array1::zeros(n);
@@ -205,14 +179,7 @@ where
 
 fn hermite_e_to_polynomial<T>(herme_coeffs: &Array1<T>) -> Result<Array1<T>, NumPyError>
 where
-    T: Float
-        + Num
-        + std::fmt::Debug
-        + 'static
-        + std::ops::AddAssign
-        + std::ops::MulAssign
-        + std::ops::SubAssign
-        + std::ops::DivAssign,
+    T: Float + Num + std::fmt::Debug + 'static,
 {
     let n = herme_coeffs.len();
     let mut poly_coeffs = Array1::zeros(n);
@@ -235,14 +202,7 @@ where
 
 fn hermite_to_hermite_e<T>(herm_coeffs: &Array1<T>) -> Result<Array1<T>, NumPyError>
 where
-    T: Float
-        + Num
-        + std::fmt::Debug
-        + 'static
-        + std::ops::AddAssign
-        + std::ops::MulAssign
-        + std::ops::SubAssign
-        + std::ops::DivAssign,
+    T: Float + Num + std::fmt::Debug + 'static,
 {
     let n = herm_coeffs.len();
     let mut herme_coeffs = Array1::zeros(n);
@@ -258,14 +218,7 @@ where
 
 fn hermite_e_derivative_coeffs<T>(coeffs: &Array1<T>, m: usize) -> Result<Array1<T>, NumPyError>
 where
-    T: Float
-        + Num
-        + std::fmt::Debug
-        + 'static
-        + std::ops::AddAssign
-        + std::ops::MulAssign
-        + std::ops::SubAssign
-        + std::ops::DivAssign,
+    T: Float + Num + std::fmt::Debug + 'static,
 {
     if m == 0 {
         return Ok(coeffs.clone());
@@ -292,7 +245,7 @@ where
 
 fn hermite_e_derivative_factor<T>(j: usize, m: usize) -> T
 where
-    T: Float + Num + std::ops::MulAssign,
+    T: Float + Num,
 {
     if m > j {
         return T::zero();
@@ -312,14 +265,7 @@ fn hermite_e_integral_coeffs<T>(
     k: Option<T>,
 ) -> Result<Array1<T>, NumPyError>
 where
-    T: Float
-        + Num
-        + std::fmt::Debug
-        + 'static
-        + std::ops::AddAssign
-        + std::ops::MulAssign
-        + std::ops::SubAssign
-        + std::ops::DivAssign,
+    T: Float + Num + std::fmt::Debug + 'static,
 {
     let n = coeffs.len();
     let mut integ_coeffs = Array1::zeros(n + m);

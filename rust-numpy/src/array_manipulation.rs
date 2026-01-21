@@ -83,14 +83,14 @@ pub fn empty_like<T>(prototype: &Array<T>) -> Result<Array<T>>
 where
     T: Clone + Default + 'static,
 {
-    let size = compute_size(prototype.shape());
+    let size = compute_size(&prototype.shape());
     let data = Vec::with_capacity(size);
     let memory_manager = MemoryManager::from_vec(data);
 
     Ok(Array {
         data: std::sync::Arc::new(memory_manager),
         shape: prototype.shape().to_vec(),
-        strides: compute_strides(prototype.shape()),
+        strides: compute_strides(&prototype.shape()),
         dtype: prototype.dtype().clone(),
         offset: 0,
     })
@@ -107,14 +107,14 @@ pub fn ones_like<T>(prototype: &Array<T>) -> Result<Array<T>>
 where
     T: Clone + Default + One + 'static,
 {
-    let size = compute_size(prototype.shape());
+    let size = compute_size(&prototype.shape());
     let data = vec![T::one(); size];
     let memory_manager = MemoryManager::from_vec(data);
 
     Ok(Array {
         data: std::sync::Arc::new(memory_manager),
         shape: prototype.shape().to_vec(),
-        strides: compute_strides(prototype.shape()),
+        strides: compute_strides(&prototype.shape()),
         dtype: prototype.dtype().clone(),
         offset: 0,
     })
@@ -131,14 +131,14 @@ pub fn zeros_like<T>(prototype: &Array<T>) -> Result<Array<T>>
 where
     T: Clone + Default + Zero + 'static,
 {
-    let size = compute_size(prototype.shape());
+    let size = compute_size(&prototype.shape());
     let data = vec![T::zero(); size];
     let memory_manager = MemoryManager::from_vec(data);
 
     Ok(Array {
         data: std::sync::Arc::new(memory_manager),
         shape: prototype.shape().to_vec(),
-        strides: compute_strides(prototype.shape()),
+        strides: compute_strides(&prototype.shape()),
         dtype: prototype.dtype().clone(),
         offset: 0,
     })
@@ -156,14 +156,14 @@ pub fn full_like<T>(prototype: &Array<T>, fill_value: T) -> Result<Array<T>>
 where
     T: Clone + Default + 'static,
 {
-    let size = compute_size(prototype.shape());
+    let size = compute_size(&prototype.shape());
     let data = vec![fill_value; size];
     let memory_manager = MemoryManager::from_vec(data);
 
     Ok(Array {
         data: std::sync::Arc::new(memory_manager),
         shape: prototype.shape().to_vec(),
-        strides: compute_strides(prototype.shape()),
+        strides: compute_strides(&prototype.shape()),
         dtype: prototype.dtype().clone(),
         offset: 0,
     })
@@ -180,39 +180,39 @@ where
 /// # Returns
 /// 2-D array with specified diagonal of ones
 pub fn eye<T>(
-    n: usize,
-    m: Option<usize>,
+    N: usize,
+    M: Option<usize>,
     k: Option<isize>,
     dtype: Option<Dtype>,
 ) -> Result<Array<T>>
 where
     T: Clone + Default + Zero + One + 'static,
 {
-    let m = m.unwrap_or(n);
+    let M = M.unwrap_or(N);
     let k = k.unwrap_or(0);
 
-    if n == 0 || m == 0 {
+    if N == 0 || M == 0 {
         return Ok(Array {
             data: std::sync::Arc::new(MemoryManager::from_vec(vec![])),
-            shape: vec![n, m],
-            strides: compute_strides(&[n, m]),
+            shape: vec![N, M],
+            strides: compute_strides(&[N, M]),
             dtype: dtype.unwrap_or(Dtype::Float64 { byteorder: None }),
             offset: 0,
         });
     }
 
-    let mut data = vec![T::zero(); n * m];
+    let mut data = vec![T::zero(); N * M];
 
-    for i in 0..n {
+    for i in 0..N {
         let j = (i as isize + k) as usize;
-        if j < m {
-            data[i * m + j] = T::one();
+        if j < M {
+            data[i * M + j] = T::one();
         }
     }
 
-    let _memory_manager = MemoryManager::from_vec(data.clone());
+    let memory_manager = MemoryManager::from_vec(data.clone());
 
-    Ok(Array::from_data(data, vec![n, m]))
+    Ok(Array::from_data(data, vec![N, M]))
 }
 
 /// Create the identity array
@@ -331,7 +331,11 @@ where
     }
 
     if num == 1 {
-        let data = vec![if endpoint { stop } else { start }];
+        let data = vec![if endpoint {
+            stop.clone()
+        } else {
+            start.clone()
+        }];
         let memory_manager = MemoryManager::from_vec(data);
 
         return Ok(Array {
@@ -344,11 +348,11 @@ where
     }
 
     let div = if endpoint { num - 1 } else { num };
-    let step = (stop - start) / T::from(div).unwrap();
+    let step = (stop.clone() - start.clone()) / T::from(div).unwrap();
 
     let mut data = Vec::with_capacity(num);
     for i in 0..num {
-        let value = start + step * T::from(i).unwrap();
+        let value = start.clone() + step.clone() * T::from(i).unwrap();
         data.push(value);
     }
 
@@ -380,7 +384,7 @@ pub fn logspace<T>(
     stop: T,
     num: usize,
     endpoint: bool,
-    _base: T,
+    base: T,
     dtype: Option<Dtype>,
 ) -> Result<Array<T>>
 where
@@ -449,7 +453,11 @@ where
     }
 
     if num == 1 {
-        let data = vec![if endpoint { stop } else { start }];
+        let data = vec![if endpoint {
+            stop.clone()
+        } else {
+            start.clone()
+        }];
         let memory_manager = MemoryManager::from_vec(data);
 
         return Ok(Array {
@@ -463,11 +471,11 @@ where
 
     let div = if endpoint { num - 1 } else { num };
     let exponent = T::one() / T::from(div).unwrap();
-    let ratio = (stop / start).powf(exponent);
+    let ratio = (stop.clone() / start.clone()).powf(exponent);
 
     let mut data = Vec::with_capacity(num);
     for i in 0..num {
-        let value = start * ratio.powf(T::from(i).unwrap());
+        let value = start.clone() * ratio.clone().powf(T::from(i).unwrap());
         data.push(value);
     }
 
@@ -516,7 +524,7 @@ where
     let ndim = arrays.len();
     let mut sizes = Vec::new();
 
-    for arr in arrays.iter() {
+    for (i, arr) in arrays.iter().enumerate() {
         let size = arr.shape()[0];
         sizes.push(size);
     }
@@ -609,9 +617,9 @@ where
         ));
     }
 
-    validate_reshape(a.shape(), newshape)?;
+    validate_reshape(&a.shape(), newshape)?;
 
-    let _strides = if order.to_uppercase() == "F" {
+    let strides = if order.to_uppercase() == "F" {
         compute_fortran_strides(newshape)
     } else {
         compute_strides(newshape)
@@ -638,7 +646,7 @@ where
         ));
     }
 
-    let size = compute_size(a.shape());
+    let size = compute_size(&a.shape());
 
     let data = a.to_vec();
     let memory_manager = MemoryManager::from_vec(data);

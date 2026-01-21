@@ -51,7 +51,7 @@ where
         }
 
         let linear_idx = compute_linear_index(self, array.strides());
-        if let Some(element) = array.get_storage_at(linear_idx) {
+        if let Some(element) = array.get(linear_idx as usize) {
             let mut result = Array::zeros(vec![1]);
             result.set(0, element.clone())?;
             Ok(result)
@@ -105,52 +105,30 @@ impl Slice {
             Slice::Range(start, stop) => {
                 let start = if *start < 0 { len + *start } else { *start };
                 let stop = if *stop < 0 { len + *stop } else { *stop };
-                // Clamp to bounds
-                let start = start.max(0).min(len);
-                let stop = stop.max(0).min(len);
                 (start, stop, 1)
             }
             Slice::RangeStep(start, stop, step) => {
                 let start = if *start < 0 { len + *start } else { *start };
                 let stop = if *stop < 0 { len + *stop } else { *stop };
-
-                // For negative step, bounds are different
-                if *step < 0 {
-                    // Clamp start to [0, len-1], stop to [-1, len-1]
-                    let start = start.min(len - 1).max(-1);
-                    let stop = stop.min(len - 1).max(-1);
-                    (start, stop, *step)
-                } else {
-                    let start = start.max(0).min(len);
-                    let stop = stop.max(0).min(len);
-                    (start, stop, *step)
-                }
+                (start, stop, *step)
             }
             Slice::Index(idx) => {
                 let idx = if *idx < 0 { len + *idx } else { *idx };
-                if idx < 0 || idx >= len {
-                    // Should result in empty or error? For to_range we just return it.
-                    // But logical slice for single index is 1 element.
-                    (idx, idx + 1, 1)
-                } else {
-                    (idx, idx + 1, 1)
-                }
+                (idx, idx + 1, 1)
             }
             Slice::From(start) => {
                 let start = if *start < 0 { len + *start } else { *start };
-                let start = start.max(0).min(len);
                 (start, len, 1)
             }
             Slice::To(stop) => {
                 let stop = if *stop < 0 { len + *stop } else { *stop };
-                let stop = stop.max(0).min(len);
                 (0, stop, 1)
             }
             Slice::Step(step) => {
-                if *step < 0 {
-                    (len - 1, -1, *step)
-                } else {
+                if *step > 0 {
                     (0, len, *step)
+                } else {
+                    (len - 1, -1, *step)
                 }
             }
         }
@@ -162,20 +140,18 @@ impl Slice {
         let (start, stop, step) = self.to_range(len);
 
         if step == 0 {
-            return 0; // Should be error but return 0 length
+            return 0;
         }
 
-        if step > 0 {
-            if start >= stop {
-                return 0;
-            }
-            (stop - start).unsigned_abs().div_ceil(step.unsigned_abs())
-        } else {
-            if start <= stop {
-                return 0;
-            }
-            (start - stop).unsigned_abs().div_ceil(step.unsigned_abs())
+        let actual_start = start.max(0).min(len);
+        let actual_stop = stop.max(0).min(len);
+
+        if (step > 0 && actual_start >= actual_stop) || (step < 0 && actual_start <= actual_stop) {
+            return 0;
         }
+
+        ((actual_stop - actual_start).abs() as usize + step.abs() as usize - 1)
+            / step.abs() as usize
     }
 }
 
@@ -230,41 +206,56 @@ impl<T> Array<T>
 where
     T: Clone + Default + 'static,
 {
-    /// Get array slice as a view (shares data)
+    /// Get array slice using slice syntax
     pub fn slice(&self, multi_slice: &MultiSlice) -> Result<Array<T>> {
-        let ndim = self.ndim();
-        let mut new_shape = Vec::with_capacity(ndim);
-        let mut new_strides = Vec::with_capacity(ndim);
-        let mut new_offset = self.offset;
-
-        // Pad slices with Full if fewer slices than dimensions
-        let mut extended_slices = multi_slice.slices.clone();
-        while extended_slices.len() < ndim {
-            extended_slices.push(crate::slicing::Slice::Full);
+        if self.ndim() < multi_slice.slices.len() {
+            // Handle too many indices? For now assume valid or fewer (broadcasting/newaxis not handled here fully)
         }
 
-        for (i, slice) in extended_slices.iter().enumerate() {
-            if i >= ndim {
-                break; // Ignore extra slices
-            }
+        let ranges = multi_slice.to_ranges(self.shape());
+        let mut new_shape = Vec::with_capacity(ranges.len());
+        let mut new_strides = Vec::with_capacity(ranges.len());
+        let mut new_offset = self.offset;
 
-            let dim_len = self.shape[i];
-            let stride = self.strides[i];
+        for (i, (start, stop, step)) in ranges.iter().enumerate() {
+            let dim_len = self.shape[i] as isize;
+            let current_stride = self.strides[i];
 
-            // Calculate range for this dimension
-            let (start, _stop, step) = slice.to_range(dim_len as isize);
+            // Calculate number of elements
+            let (count, actual_start) = if *step > 0 {
+                let start = (*start).clamp(0, dim_len);
+                let stop = (*stop).clamp(0, dim_len);
+                let count = if start < stop {
+                    (stop - start + step - 1) / step
+                } else {
+                    0
+                };
+                (count, start)
+            } else {
+                // Negative step
+                // start is inclusive, stop is exclusive (downwards)
+                // e.g. 5, 4, 3, 2, 1, 0. stop at -1.
+                // Bounds: start <= len-1, stop >= -1.
+                let start = (*start).min(dim_len - 1).max(-1);
+                let stop = (*stop).min(dim_len - 1).max(-1); // allows -1
 
-            // Calculate new offset contribution
-            // For both positive and negative step, start is the first element accessed.
-            new_offset = (new_offset as isize + start * stride) as usize;
+                let count = if start > stop {
+                    (start - stop + -step - 1) / -step
+                } else {
+                    0
+                };
+                (count, start)
+            };
 
-            // Calculate new stride
-            let new_stride = stride * step;
-            new_strides.push(new_stride);
+            new_shape.push(count as usize);
+            new_strides.push(current_stride * step);
+            new_offset = (new_offset as isize + actual_start * current_stride) as usize;
+        }
 
-            // Calculate new shape
-            let new_dim_len = slice.len(dim_len);
-            new_shape.push(new_dim_len);
+        // Handle any remaining dimensions (if fewer slices provided)
+        for i in ranges.len()..self.ndim() {
+            new_shape.push(self.shape[i]);
+            new_strides.push(self.strides[i]);
         }
 
         Ok(Array {
@@ -279,7 +270,11 @@ where
     /// Newaxis support (arr[np.newaxis, :])
     pub fn add_newaxis(&self, axis: usize) -> Result<Self> {
         if axis > self.ndim() {
-            return Err(NumPyError::index_error(axis, self.ndim()));
+            return Err(NumPyError::invalid_operation(format!(
+                "Axis {} out of bounds for {}-D array",
+                axis,
+                self.ndim()
+            )));
         }
 
         let mut new_shape = self.shape().to_vec();
@@ -316,15 +311,12 @@ where
     /// Multi-dimensional indexing (arr[1:3, 5:, ::-1])
     pub fn multidim_index(&self, indices: &[crate::slicing::Index]) -> Result<Self> {
         if indices.len() != self.ndim() {
-            return Err(NumPyError::value_error(
-                format!(
-                    "Expected {} indices for {}-D array, got {}",
-                    self.ndim(),
-                    self.ndim(),
-                    indices.len()
-                ),
-                "multidim_index",
-            ));
+            return Err(NumPyError::invalid_operation(format!(
+                "Expected {} indices for {}-D array, got {}",
+                self.ndim(),
+                self.ndim(),
+                indices.len()
+            )));
         }
 
         let mut result_data = Vec::new();
@@ -369,7 +361,7 @@ where
         }
 
         let linear_idx = compute_linear_index(indices, self.strides());
-        self.set_storage_at(linear_idx, value)
+        self.set(linear_idx as usize, value)
     }
 
     /// Get element at multi-dimensional indices
@@ -385,71 +377,14 @@ where
         }
 
         let linear_idx = compute_linear_index(indices, self.strides());
-        self.get_storage_at(linear_idx)
+        self.get(linear_idx as usize)
             .ok_or_else(|| NumPyError::index_error(linear_idx as usize, self.size()))
     }
 
     /// Expand ellipsis in indices
-    pub fn ellipsis_index(&self, indices: &[Index]) -> Result<Self> {
-        // Count non-ellipsis indices and find ellipsis position
-        let mut ellipsis_pos = None;
-        let mut non_ellipsis_count = 0;
-
-        for (i, idx) in indices.iter().enumerate() {
-            match idx {
-                Index::Ellipsis => {
-                    if ellipsis_pos.is_some() {
-                        return Err(NumPyError::invalid_value(
-                            "Only one ellipsis allowed in index",
-                        ));
-                    }
-                    ellipsis_pos = Some(i);
-                }
-                _ => {
-                    non_ellipsis_count += 1;
-                }
-            }
-        }
-
-        // If no ellipsis, just pass through to multidim_index
-        let ellipsis_pos = match ellipsis_pos {
-            Some(pos) => pos,
-            None => return self.multidim_index(indices),
-        };
-
-        // Calculate how many dimensions the ellipsis expands to
-        let ndim = self.ndim();
-        if non_ellipsis_count > ndim {
-            return Err(NumPyError::value_error(
-                format!(
-                    "Too many indices for array: array is {}-dimensional, but {} were indexed",
-                    ndim, non_ellipsis_count
-                ),
-                "ellipsis_index",
-            ));
-        }
-
-        let ellipsis_dims = ndim - non_ellipsis_count;
-
-        // Build expanded indices
-        let mut expanded = Vec::with_capacity(ndim);
-
-        // Add indices before ellipsis
-        for idx in &indices[..ellipsis_pos] {
-            expanded.push(idx.clone());
-        }
-
-        // Add Full slices for ellipsis expansion
-        for _ in 0..ellipsis_dims {
-            expanded.push(Index::Slice(Slice::Full));
-        }
-
-        // Add indices after ellipsis
-        for idx in &indices[ellipsis_pos + 1..] {
-            expanded.push(idx.clone());
-        }
-
-        self.multidim_index(&expanded)
+    pub fn ellipsis_index(&self, _indices: &[Index]) -> Result<Self> {
+        // Stub: raise error
+        Err(NumPyError::not_implemented("ellipsis_index"))
     }
 
     /// Calculate length of a slice for a dimension
@@ -458,111 +393,9 @@ where
     }
 
     /// Extract data using multi-dimensional indices
-    pub fn extract_multidim_data(&self, indices: &[Index], result: &mut Vec<T>) -> Result<()> {
-        // Convert indices to ranges for each dimension
-        let mut ranges: Vec<Vec<usize>> = Vec::with_capacity(self.ndim());
-
-        for (dim, idx) in indices.iter().enumerate() {
-            let dim_size = self.shape().get(dim).copied().unwrap_or(0);
-
-            match idx {
-                Index::Integer(i) => {
-                    // Normalize negative index
-                    let normalized = if *i < 0 {
-                        (dim_size as isize + *i) as usize
-                    } else {
-                        *i as usize
-                    };
-
-                    if normalized >= dim_size {
-                        return Err(NumPyError::index_error(normalized, dim_size));
-                    }
-
-                    ranges.push(vec![normalized]);
-                }
-                Index::Slice(slice) => {
-                    let (start, stop, step) = slice.to_range(dim_size as isize);
-
-                    // Clamp to valid bounds
-                    let start = start.max(0).min(dim_size as isize) as usize;
-                    let stop = stop.max(0).min(dim_size as isize) as usize;
-
-                    let mut dim_indices = Vec::new();
-
-                    if step > 0 {
-                        let mut i = start;
-                        while i < stop {
-                            dim_indices.push(i);
-                            i += step as usize;
-                        }
-                    } else if step < 0 {
-                        let mut i = start as isize;
-                        while i > stop as isize {
-                            dim_indices.push(i as usize);
-                            i += step;
-                        }
-                    }
-
-                    ranges.push(dim_indices);
-                }
-                Index::Ellipsis => {
-                    // Ellipsis should have been expanded by ellipsis_index
-                    // If we reach here, treat as full slice
-                    ranges.push((0..dim_size).collect());
-                }
-                Index::Boolean(b) => {
-                    // Boolean indexing: if true, include all; if false, include none
-                    if *b {
-                        ranges.push((0..dim_size).collect());
-                    } else {
-                        ranges.push(Vec::new());
-                    }
-                }
-            }
-        }
-
-        // If any dimension has empty indices, result is empty
-        if ranges.iter().any(|r| r.is_empty()) {
-            return Ok(());
-        }
-
-        // Generate all combinations of indices and extract elements
-        let mut current_indices = vec![0usize; ranges.len()];
-        let mut counters = vec![0usize; ranges.len()];
-
-        loop {
-            // Build current multi-dimensional index
-            for (i, counter) in counters.iter().enumerate() {
-                current_indices[i] = ranges[i][*counter];
-            }
-
-            // Compute linear index and extract element
-            let linear_idx = compute_linear_index(&current_indices, self.strides());
-            if let Some(val) = self.get_storage_at(linear_idx) {
-                result.push(val.clone());
-            }
-
-            // Increment counters (like incrementing a multi-digit number)
-            let mut carry = true;
-            for i in (0..counters.len()).rev() {
-                if carry {
-                    counters[i] += 1;
-                    if counters[i] >= ranges[i].len() {
-                        counters[i] = 0;
-                        // carry continues
-                    } else {
-                        carry = false;
-                    }
-                }
-            }
-
-            // If carry is still true after all dimensions, we're done
-            if carry {
-                break;
-            }
-        }
-
-        Ok(())
+    pub fn extract_multidim_data(&self, _indices: &[Index], _result: &mut Vec<T>) -> Result<()> {
+        // Stub
+        Err(NumPyError::not_implemented("extract_multidim_data"))
     }
 }
 
@@ -574,14 +407,11 @@ pub fn reshape<T: Clone + Default + 'static>(
     let total_elements: usize = new_shape.iter().product();
 
     if total_elements != array.size() {
-        return Err(NumPyError::value_error(
-            format!(
-                "Cannot reshape array of size {} into shape {:?}",
-                array.size(),
-                new_shape
-            ),
-            "reshape",
-        ));
+        return Err(NumPyError::invalid_value(format!(
+            "Cannot reshape array of size {} into shape {:?}",
+            array.size(),
+            new_shape
+        )));
     }
 
     let mut new_data = Vec::with_capacity(total_elements);
@@ -647,32 +477,23 @@ impl<'a, T> Iterator for ArrayIterMut<'a, T> {
 /// Convenience macros for slicing
 #[macro_export]
 macro_rules! s {
-    // s!(:) -> Full
     (:) => {
         $crate::slicing::Slice::Full
+    (start:end:step) => {
+        $crate::slicing::Slice::RangeStep(start, end, step)
     };
-    // s!(start..end) -> Range
-    ($start:tt .. $end:tt) => {
-        $crate::slicing::Slice::Range(($start) as isize, ($end) as isize)
+    (..end) => {
+        $crate::slicing::Slice::To(end)
     };
-    // s!(start..end..step) -> RangeStep
-    ($start:tt .. $end:tt .. $($step:tt)+) => {
-        $crate::slicing::Slice::RangeStep(
-            ($start) as isize,
-            ($end) as isize,
-            ($($step)+) as isize,
-        )
+    (start..) => {
+        $crate::slicing::Slice::From(start)
     };
-    // s!(..end) -> To
-    (.. $end:tt) => {
-        $crate::slicing::Slice::To(($end) as isize)
+    (start..end) => {
+        $crate::slicing::Slice::Range(start, end)
     };
-    // s!(start..) -> From
-    ($start:tt ..) => {
-        $crate::slicing::Slice::From(($start) as isize)
+    (start..end..step) => {
+        $crate::slicing::Slice::RangeStep(start, end, step)
     };
-    // s!(::step) -> Step
-    (:: $step:expr) => {
-        $crate::slicing::Slice::Step($step as isize)
-    };
+
+}
 }

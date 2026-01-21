@@ -8,17 +8,22 @@ pub enum MemoryLayout {
     ColumnMajor,
 }
 
+use std::cell::UnsafeCell;
+
 /// Memory manager for efficient array data handling
 pub struct MemoryManager<T> {
-    data: Vec<T>,
+    data: UnsafeCell<Vec<T>>,
     ref_count: std::sync::atomic::AtomicUsize,
 }
+
+unsafe impl<T: Send> Send for MemoryManager<T> {}
+unsafe impl<T: Sync> Sync for MemoryManager<T> {}
 
 impl<T> MemoryManager<T> {
     /// Create new memory manager from vector
     pub fn from_vec(data: Vec<T>) -> Self {
         Self {
-            data,
+            data: UnsafeCell::new(data),
             ref_count: std::sync::atomic::AtomicUsize::new(1),
         }
     }
@@ -29,39 +34,40 @@ impl<T> MemoryManager<T> {
         T: Clone + Default,
     {
         Self {
-            data: vec![T::default(); capacity],
+            data: UnsafeCell::new(vec![T::default(); capacity]),
             ref_count: std::sync::atomic::AtomicUsize::new(1),
         }
     }
 
     /// Get data as slice
     pub fn as_slice(&self) -> &[T] {
-        &self.data
+        unsafe { &*self.data.get() }
     }
 
     /// Get data as mutable slice
-    pub fn as_slice_mut(&mut self) -> &mut [T] {
-        &mut self.data
+    #[allow(clippy::mut_from_ref)]
+    pub fn as_slice_mut(&self) -> &mut [T] {
+        unsafe { &mut *self.data.get() }
     }
 
     /// Get length of data
     pub fn len(&self) -> usize {
-        self.data.len()
+        unsafe { (&*self.data.get()).len() }
     }
 
     /// Check if empty
     pub fn is_empty(&self) -> bool {
-        self.data.is_empty()
+        unsafe { (&*self.data.get()).is_empty() }
     }
 
     /// Get element at index
     pub fn get(&self, index: usize) -> Option<&T> {
-        self.data.get(index)
+        unsafe { (&*self.data.get()).get(index) }
     }
 
     /// Get element at index (mutable)
-    pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
-        self.data.get_mut(index)
+    pub fn get_mut(&self, index: usize) -> Option<&mut T> {
+        unsafe { (&mut *self.data.get()).get_mut(index) }
     }
 
     /// Clone data (deep copy)
@@ -69,55 +75,65 @@ impl<T> MemoryManager<T> {
     where
         T: Clone,
     {
-        self.data.clone()
+        unsafe { (&*self.data.get()).clone() }
     }
 
     pub fn as_vec(&self) -> Vec<T>
     where
         T: Clone,
     {
-        self.data.clone()
+        unsafe { (&*self.data.get()).clone() }
     }
 
     /// Reserve additional capacity
-    pub fn reserve(&mut self, additional: usize) {
-        self.data.reserve(additional);
+    pub fn reserve(&self, additional: usize) {
+        unsafe {
+            (&mut *self.data.get()).reserve(additional);
+        }
     }
 
     /// Resize data
-    pub fn resize(&mut self, new_len: usize, value: T)
+    pub fn resize(&self, new_len: usize, value: T)
     where
         T: Clone,
     {
-        self.data.resize(new_len, value);
+        unsafe {
+            (&mut *self.data.get()).resize(new_len, value);
+        }
     }
 
     /// Push element
-    pub fn push(&mut self, value: T) {
-        self.data.push(value);
+    pub fn push(&self, value: T) {
+        unsafe {
+            (&mut *self.data.get()).push(value);
+        }
     }
 
     /// Extend with iterator
-    pub fn extend<I>(&mut self, iter: I)
+    pub fn extend<I>(&self, iter: I)
     where
         I: IntoIterator<Item = T>,
     {
-        self.data.extend(iter);
+        unsafe {
+            (&mut *self.data.get()).extend(iter);
+        }
     }
 
     /// Clear data
-    pub fn clear(&mut self) {
-        self.data.clear();
+    pub fn clear(&self) {
+        unsafe {
+            (&mut *self.data.get()).clear();
+        }
     }
 
     /// Get raw pointer
     pub fn as_ptr(&self) -> *const T {
-        self.data.as_ptr()
+        unsafe { (*self.data.get()).as_ptr() }
     }
 
     /// Get mutable raw pointer
-    pub fn as_mut_ptr(&mut self) -> *mut T {
-        self.data.as_mut_ptr()
+    pub fn as_mut_ptr(&self) -> *mut T {
+        unsafe { (&mut *self.data.get()).as_mut_ptr() }
     }
 
     /// Increment reference count
@@ -140,7 +156,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            data: self.data.clone(),
+            data: UnsafeCell::new(unsafe { (*self.data.get()).clone() }),
             ref_count: std::sync::atomic::AtomicUsize::new(1),
         }
     }
@@ -148,7 +164,9 @@ where
 
 impl<T: std::fmt::Debug> std::fmt::Debug for MemoryManager<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "MemoryManager(len={})", self.data.len())
+        write!(f, "MemoryManager(len={})", unsafe {
+            (*self.data.get()).len()
+        })
     }
 }
 

@@ -244,4 +244,63 @@ mod tests {
         let s = dtype.to_string();
         assert_eq!(s, "complex64", "Complex64 string representation incorrect");
     }
+
+    #[test]
+    fn test_can_cast_safe() {
+        use crate::dtype::Casting;
+
+        // int32 -> int64 (Safe)
+        let i32_dtype = Dtype::Int32 { byteorder: None };
+        let i64_dtype = Dtype::Int64 { byteorder: None };
+        assert!(i32_dtype.can_cast(&i64_dtype, Casting::Safe));
+
+        // int64 -> int32 (Not Safe)
+        assert!(!i64_dtype.can_cast(&i32_dtype, Casting::Safe));
+
+        // float32 -> float64 (Safe)
+        let f32_dtype = Dtype::Float32 { byteorder: None };
+        let f64_dtype = Dtype::Float64 { byteorder: None };
+        assert!(f32_dtype.can_cast(&f64_dtype, Casting::Safe));
+
+        // float64 -> float32 (Not Safe)
+        assert!(!f64_dtype.can_cast(&f32_dtype, Casting::Safe));
+
+        // int -> float (Safe)
+        assert!(i32_dtype.can_cast(&f64_dtype, Casting::Safe));
+    }
+
+    #[test]
+    fn test_can_cast_same_kind() {
+        use crate::dtype::Casting;
+
+        // float64 -> float32 (SameKind, not Safe)
+        let f32_dtype = Dtype::Float32 { byteorder: None };
+        let f64_dtype = Dtype::Float64 { byteorder: None };
+
+        assert!(f64_dtype.can_cast(&f32_dtype, Casting::SameKind));
+        assert!(!f64_dtype.can_cast(&f32_dtype, Casting::Safe));
+
+        // int64 -> int32 (SameKind)
+        let i32_dtype = Dtype::Int32 { byteorder: None };
+        let i64_dtype = Dtype::Int64 { byteorder: None };
+        assert!(i64_dtype.can_cast(&i32_dtype, Casting::SameKind));
+
+        // int -> float (Safe -> SameKind)
+        assert!(i32_dtype.can_cast(&f64_dtype, Casting::SameKind));
+
+        // float -> int (Not SameKind, different kinds)
+        assert!(!f64_dtype.can_cast(&i64_dtype, Casting::SameKind));
+    }
+
+    #[test]
+    fn test_can_cast_unsafe() {
+        use crate::dtype::Casting;
+
+        let f64_dtype = Dtype::Float64 { byteorder: None };
+        let i64_dtype = Dtype::Int64 { byteorder: None };
+
+        // float -> int (Unsafe)
+        assert!(f64_dtype.can_cast(&i64_dtype, Casting::Unsafe));
+        assert!(f64_dtype.can_cast(&i64_dtype, Casting::Equiv));
+    }
 }

@@ -32,7 +32,7 @@ impl<'a, T> Iterator for ArrayIter<'a, T> {
         // Get element at current offset
         // We trust our offset calculation is correct and within bounds of the storage
         // relative to array.offset
-        let item = self.array.get_storage_at(self.current_offset);
+        let item = self.array.get(self.current_offset as usize);
 
         // Advance counters
         self.remaining -= 1;

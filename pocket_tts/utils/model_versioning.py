@@ -16,7 +16,6 @@ from typing import Any, ClassVar
 import safetensors
 import torch
 
-
 logger = __import__("logging").getLogger(__name__)
 
 

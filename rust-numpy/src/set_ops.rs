@@ -434,6 +434,58 @@ where
     Ok(Array::from_vec(result))
 }
 
+/// Calculates element in test_elements, broadcasting over element only.
+///
+/// Returns a boolean array of the same shape as `element` that is True where an element
+/// of `element` is in `test_elements` and False otherwise.
+///
+/// # Arguments
+///
+/// * `element` - Input array
+/// * `test_elements` - The values against which to test each value of `element`
+/// * `assume_unique` - If True, the input arrays are both assumed to be unique
+/// * `invert` - If True, the values in the returned array are inverted
+///
+/// # Examples
+///
+/// ```rust
+/// use rust_numpy::set_ops::isin;
+/// let element = array2![[1, 2], [3, 4]];
+/// let test_elements = array![1, 3];
+/// let result = isin(&element, &test_elements, false, false).unwrap();
+/// // result == [[true, false], [true, false]]
+/// ```
+pub fn isin<T>(
+    element: &Array<T>,
+    test_elements: &Array<T>,
+    assume_unique: bool,
+    invert: bool,
+) -> Result<Array<bool>>
+where
+    T: SetElement + Clone + Default + 'static,
+{
+    // Flatten element array to 1D
+    let flattened_element = Array::from_vec(element.to_vec());
+
+    // Flatten test_elements array to 1D
+    let flattened_test = Array::from_vec(test_elements.to_vec());
+
+    // Call in1d
+    let mut result = in1d(&flattened_element, &flattened_test, assume_unique)?;
+
+    // Handle invert
+    if invert {
+        let mut inverted_data = Vec::with_capacity(result.size());
+        for i in 0..result.size() {
+            inverted_data.push(!result.get_linear(i).unwrap());
+        }
+        result = Array::from_vec(inverted_data);
+    }
+
+    // Reshape back to original shape
+    result.reshape(element.shape())
+}
+
 /// Advanced set operations for multi-dimensional arrays
 pub struct SetOps;
 
@@ -457,5 +509,5 @@ impl SetOps {
 }
 
 pub mod exports {
-    pub use super::{in1d, unique, SetElement, SetOps, UniqueResult};
+    pub use super::{in1d, isin, unique, SetElement, SetOps, UniqueResult};
 }

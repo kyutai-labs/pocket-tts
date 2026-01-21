@@ -52,7 +52,7 @@ mod tests {
     #[test]
     fn test_array_transpose() {
         let arr = array2![[1, 2], [3, 4]];
-        let transposed = arr.t();
+        let transposed = arr.transpose();
         assert_eq!(transposed.shape(), &[2, 2]);
         assert_eq!(transposed.size(), 4);
     }
@@ -176,7 +176,7 @@ mod tests {
     #[test]
     fn test_unique_axis_rows() {
         let data = vec![1, 2, 1, 2, 3, 4];
-        let arr = Array::from_shape_vec(vec![3, 2], data).unwrap();
+        let arr = Array::from_shape_vec(vec![3, 2], data);
 
         let result = numpy::set_ops::unique(&arr, true, true, true, Some(&[0])).unwrap();
         assert_eq!(result.values.shape(), &[2, 2]);

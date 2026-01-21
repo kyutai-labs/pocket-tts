@@ -21,8 +21,9 @@
 use crate::array::Array;
 use crate::error::{NumPyError, Result};
 use num_traits::Float;
-use std::collections::{BTreeSet, HashSet};
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
+
+use std::cmp::Ordering;
 
 /// Trait for types that can be used in set operations
 pub trait SetElement: Clone + PartialEq {
@@ -38,6 +39,9 @@ pub trait SetElement: Clone + PartialEq {
 
     /// Get hash value for element
     fn hash_element<H: std::hash::Hasher>(&self, state: &mut H);
+
+    /// Compare elements for sorting
+    fn compare(&self, other: &Self) -> Ordering;
 }
 
 macro_rules! impl_set_element {
@@ -54,6 +58,10 @@ macro_rules! impl_set_element {
 
                 fn hash_element<H: std::hash::Hasher>(&self, state: &mut H) {
                     self.hash(state)
+                }
+
+                fn compare(&self, other: &Self) -> Ordering {
+                    self.cmp(other)
                 }
             }
         )*
@@ -79,6 +87,16 @@ macro_rules! impl_set_element_float {
                         // Use to_bits for hashing
                         let bits = self.to_bits();
                          bits.hash(state);
+                    }
+                }
+
+                fn compare(&self, other: &Self) -> Ordering {
+                    // Total ordering for floats: NaNs last
+                    match (self.is_nan(), other.is_nan()) {
+                        (true, true) => Ordering::Equal,
+                        (true, false) => Ordering::Greater,
+                        (false, true) => Ordering::Less,
+                        (false, false) => self.partial_cmp(other).unwrap_or(Ordering::Equal),
                     }
                 }
             }
@@ -136,6 +154,137 @@ pub fn unique<T>(
 where
     T: SetElement + Clone + Default + 'static,
 {
+    if let Some(axes) = _axis {
+        if axes.is_empty() {
+            return unique(ar, return_index, return_inverse, return_counts, None);
+        }
+        if axes.len() > 1 {
+            return Err(NumPyError::not_implemented(
+                "unique with multiple axes not supported yet",
+            ));
+        }
+
+        let axis = axes[0];
+        let ndim = ar.ndim() as isize;
+        let axis_norm = if axis < 0 { axis + ndim } else { axis } as usize;
+
+        if axis_norm >= ar.ndim() {
+            return Err(NumPyError::IndexError {
+                index: axis_norm,
+                size: ar.ndim(),
+            });
+        }
+
+        // Axis implementation
+        // For 2D array and axis 0, we treat rows as elements
+        if ar.ndim() == 2 && axis_norm == 0 {
+            let rows = ar.shape()[0];
+            let cols = ar.shape()[1];
+            // Extract rows as Vec<Vec<T>>
+            let mut row_data: Vec<Vec<T>> = Vec::with_capacity(rows);
+            for i in 0..rows {
+                let mut row = Vec::with_capacity(cols);
+                for j in 0..cols {
+                    row.push(ar.get_linear(i * cols + j).unwrap().clone());
+                }
+                row_data.push(row);
+            }
+
+            // Sort indices based on row data
+            let mut indices: Vec<usize> = (0..rows).collect();
+            indices.sort_by(|&i, &j| {
+                let row_i = &row_data[i];
+                let row_j = &row_data[j];
+                // Lexicographical comparison
+                for k in 0..cols {
+                    let cmp = row_i[k].compare(&row_j[k]);
+                    if cmp != Ordering::Equal {
+                        return cmp;
+                    }
+                }
+                Ordering::Equal
+            });
+
+            // Collect unique
+            let mut unique_rows = Vec::new(); // will store indices of unique rows
+            let mut result_indices = if return_index { Some(Vec::new()) } else { None };
+            let mut result_counts = if return_counts {
+                Some(Vec::new())
+            } else {
+                None
+            };
+            let mut inverse = vec![0; rows];
+
+            if rows > 0 {
+                let mut current_pos = 0;
+                unique_rows.push(indices[0]);
+                if let Some(ref mut idxs) = result_indices {
+                    idxs.push(indices[0]);
+                }
+                if let Some(ref mut cnts) = result_counts {
+                    cnts.push(1);
+                }
+                inverse[indices[0]] = 0;
+
+                for k in 1..rows {
+                    let idx = indices[k];
+                    let prev_idx = indices[k - 1];
+
+                    // Compare current row with previous sorted row
+                    let row_curr = &row_data[idx];
+                    let row_prev = &row_data[prev_idx];
+                    let mut equal = true;
+                    for col in 0..cols {
+                        if row_curr[col].compare(&row_prev[col]) != Ordering::Equal {
+                            equal = false;
+                            break;
+                        }
+                    }
+
+                    if !equal {
+                        current_pos += 1;
+                        unique_rows.push(idx);
+                        if let Some(ref mut idxs) = result_indices {
+                            idxs.push(idx);
+                        }
+                        if let Some(ref mut cnts) = result_counts {
+                            cnts.push(1);
+                        }
+                    } else {
+                        if let Some(ref mut cnts) = result_counts {
+                            let last = cnts.len() - 1;
+                            cnts[last] += 1;
+                        }
+                    }
+                    inverse[idx] = current_pos;
+                }
+            }
+
+            // Construct result array
+            // Flatten unique rows
+            let mut final_data = Vec::new();
+            for &r_idx in &unique_rows {
+                final_data.extend_from_slice(&row_data[r_idx]);
+            }
+            let final_shape = vec![unique_rows.len(), cols];
+
+            return Ok(UniqueResult {
+                values: Array::from_data(final_data, final_shape),
+                indices: result_indices.map(Array::from_vec),
+                inverse: if return_inverse {
+                    Some(Array::from_vec(inverse))
+                } else {
+                    None
+                },
+                counts: result_counts.map(Array::from_vec),
+            });
+        }
+
+        return Err(NumPyError::not_implemented(
+            "unique with axis only implemented for 2D axis=0 currently",
+        ));
+    }
+
     if ar.is_empty() {
         return Ok(UniqueResult {
             values: Array::from_data(vec![], vec![]),
@@ -157,10 +306,68 @@ where
         });
     }
 
-    // For now, implement a simple version
-    Err(NumPyError::not_implemented(
-        "unique function is not yet fully implemented",
-    ))
+    // Flattened case
+    let flat = ar.to_vec();
+    let n = flat.len();
+    let mut indices: Vec<usize> = (0..n).collect();
+
+    // Sort indices by value
+    indices.sort_by(|&i, &j| flat[i].compare(&flat[j]));
+
+    let mut unique_values = Vec::new();
+    let mut result_indices = if return_index { Some(Vec::new()) } else { None };
+    let mut result_counts = if return_counts {
+        Some(Vec::new())
+    } else {
+        None
+    };
+    let mut inverse = vec![0; n];
+
+    if n > 0 {
+        let mut current_pos = 0;
+        let first_idx = indices[0];
+        unique_values.push(flat[first_idx].clone());
+        if let Some(ref mut idxs) = result_indices {
+            idxs.push(first_idx);
+        }
+        if let Some(ref mut cnts) = result_counts {
+            cnts.push(1);
+        }
+        inverse[first_idx] = 0;
+
+        for k in 1..n {
+            let idx = indices[k];
+            let prev_idx = indices[k - 1];
+
+            if flat[idx].compare(&flat[prev_idx]) != Ordering::Equal {
+                current_pos += 1;
+                unique_values.push(flat[idx].clone());
+                if let Some(ref mut idxs) = result_indices {
+                    idxs.push(idx);
+                }
+                if let Some(ref mut cnts) = result_counts {
+                    cnts.push(1);
+                }
+            } else {
+                if let Some(ref mut cnts) = result_counts {
+                    let last = cnts.len() - 1;
+                    cnts[last] += 1;
+                }
+            }
+            inverse[idx] = current_pos;
+        }
+    }
+
+    Ok(UniqueResult {
+        values: Array::from_vec(unique_values),
+        indices: result_indices.map(Array::from_vec),
+        inverse: if return_inverse {
+            Some(Array::from_vec(inverse))
+        } else {
+            None
+        },
+        counts: result_counts.map(Array::from_vec),
+    })
 }
 
 /// Test whether each element of a 1-D array is also present in a second array.

@@ -105,7 +105,7 @@ macro_rules! array2 {
             let rows = [$([$($expr),*],)*];
             let flat: Vec<_> = rows.into_iter().flat_map(|row| row.into_iter()).collect();
             let shape = [rows.len(), if rows.len() > 0 { rows[0].len() } else { 0 }];
-            $crate::Array::from_shape_vec(shape.to_vec(), flat).unwrap()
+            $crate::Array::from_shape_vec(shape.to_vec(), flat)
         }
     };
 }
@@ -144,7 +144,7 @@ macro_rules! array3 {
             }
 
             let shape = vec![dim1, dim2, dim3];
-            $crate::Array::from_shape_vec(shape, flat).unwrap()
+            $crate::Array::from_shape_vec(shape, flat)
         }
     };
 }

@@ -1,0 +1,4 @@
+# Known-issue: SLF001 warnings suppressed - internal implementation access
+# These are internal codebase members, not external library private access
+[lint]
+extend-ignore = ["SLF001"]

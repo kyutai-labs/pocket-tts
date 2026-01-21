@@ -185,6 +185,19 @@ pub fn fftfreq(n: usize, d: f64) -> Vec<f64> {
     results
 }
 
+/// Return the Real Discrete Fourier Transform sample frequencies.
+pub fn rfftfreq(n: usize, d: f64) -> Vec<f64> {
+    let val = 1.0 / (n as f64 * d);
+    let n_out = n / 2 + 1;
+    let mut results = vec![0.0; n_out];
+
+    for i in 0..n_out {
+        results[i] = i as f64 * val;
+    }
+
+    results
+}
+
 fn normalize_axis(axis: isize, ndim: usize) -> Result<usize> {
     if axis < 0 {
         let ax = axis + ndim as isize;

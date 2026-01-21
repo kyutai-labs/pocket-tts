@@ -83,7 +83,13 @@ class TTSModel(nn.Module):
 
     @classmethod
     def _from_pydantic_config_with_weights(
-        cls, config: Config, temp, lsd_decode_steps, noise_clamp: float | None, eos_threshold
+        cls,
+        config: Config,
+        temp,
+        lsd_decode_steps,
+        noise_clamp: float | None,
+        eos_threshold,
+        model_path: Path | str | None = None,
     ) -> Self:
         tts_model = cls._from_pydantic_config(
             config, temp, lsd_decode_steps, noise_clamp, eos_threshold
@@ -98,7 +104,7 @@ class TTSModel(nn.Module):
                 )
             logger.info(f"Loading FlowLM weights from {config.flow_lm.weights_path}")
             state_dict_flowlm = get_flow_lm_state_dict(
-                download_if_necessary(config.flow_lm.weights_path)
+                download_if_necessary(config.flow_lm.weights_path, model_path)
             )
             tts_model.flow_lm.load_state_dict(state_dict_flowlm, strict=True)
 
@@ -134,7 +140,9 @@ class TTSModel(nn.Module):
                     "If you specify mimi.weights_path you should specify flow_lm.weights_path"
                 )
             logger.info(f"Loading Mimi weights from {config.mimi.weights_path}")
-            mimi_state = get_mimi_state_dict(download_if_necessary(config.mimi.weights_path))
+            mimi_state = get_mimi_state_dict(
+                download_if_necessary(config.mimi.weights_path, model_path)
+            )
             tts_model.mimi.load_state_dict(mimi_state, strict=True)
 
         tts_model.mimi.eval()
@@ -146,10 +154,12 @@ class TTSModel(nn.Module):
         if config.weights_path is not None:
             logger.info(f"Loading TTSModel weights from {config.weights_path}")
             try:
-                weights_file = download_if_necessary(config.weights_path)
+                weights_file = download_if_necessary(config.weights_path, model_path)
             except Exception:
                 tts_model.has_voice_cloning = False
-                weights_file = download_if_necessary(config.weights_path_without_voice_cloning)
+                weights_file = download_if_necessary(
+                    config.weights_path_without_voice_cloning, model_path
+                )
 
             state_dict = safetensors.torch.load_file(weights_file)
             tts_model.load_state_dict(state_dict, strict=True)
@@ -169,6 +179,7 @@ class TTSModel(nn.Module):
         lsd_decode_steps: int = DEFAULT_LSD_DECODE_STEPS,
         noise_clamp: float | int | None = DEFAULT_NOISE_CLAMP,
         eos_threshold: float = DEFAULT_EOS_THRESHOLD,
+        model_path: Path | str | None = None,
     ) -> Self:
         """Load a pre-trained TTS model with specified configuration.
 
@@ -187,6 +198,9 @@ class TTSModel(nn.Module):
                 is applied. Helps prevent extreme values in generation.
             eos_threshold: Threshold for end-of-sequence detection. Higher values
                 make the model more likely to continue generating.
+            model_path: Optional local directory path to search for model files before
+                downloading from Hugging Face. Supports both flat structure (all files
+                in one directory) and mirrored HF structure (repo_id/filename paths).
 
         Returns:
             TTSModel: Fully initialized model with loaded weights on cpu, ready for
@@ -199,7 +213,7 @@ class TTSModel(nn.Module):
         """
         config = load_config(Path(__file__).parents[1] / f"config/{variant}.yaml")
         tts_model = TTSModel._from_pydantic_config_with_weights(
-            config, temp, lsd_decode_steps, noise_clamp, eos_threshold
+            config, temp, lsd_decode_steps, noise_clamp, eos_threshold, model_path
         )
         return tts_model
 

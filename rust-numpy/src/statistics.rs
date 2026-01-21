@@ -1,97 +1,68 @@
 use crate::array::Array;
+use crate::broadcasting::broadcast_shape_for_reduce;
 use crate::error::NumPyError;
+use crate::strides::compute_multi_indices;
 use std::cmp::Ordering;
+use std::f64;
 
 pub fn median<T>(
     a: &Array<T>,
-    _axis: Option<&[isize]>,
+    axis: Option<&[isize]>,
     _out: Option<&mut Array<T>>,
     _overwrite_input: bool,
-    _keepdims: bool,
+    keepdims: bool,
 ) -> Result<Array<T>, NumPyError>
 where
     T: Clone + Default + PartialOrd + AsF64 + FromF64 + 'static,
 {
-    if a.is_empty() {
-        return Err(NumPyError::invalid_value(
-            "Cannot compute median of empty array",
-        ));
-    }
+    let q = Array::from_vec(vec![T::from_f64(50.0)]);
+    percentile_internal(a, &q, axis, keepdims, "linear", 100.0, false)
+}
 
-    let data = a.to_vec();
-    let mut sorted = data.clone();
-    sorted.sort_by(|a, b| {
-        a.as_f64()
-            .unwrap_or(0.0)
-            .partial_cmp(&b.as_f64().unwrap_or(0.0))
-            .unwrap_or(Ordering::Equal)
-    });
-
-    let n = sorted.len();
-    let mid = n / 2;
-
-    let median_value = if n.is_multiple_of(2) {
-        (sorted[mid - 1].as_f64().unwrap_or(0.0) + sorted[mid].as_f64().unwrap_or(0.0)) / 2.0
-    } else {
-        sorted[mid].as_f64().unwrap_or(0.0)
-    };
-
-    Ok(Array::from_vec(vec![T::from_f64(median_value)]))
+pub fn nanmedian<T>(
+    a: &Array<T>,
+    axis: Option<&[isize]>,
+    _out: Option<&mut Array<T>>,
+    _overwrite_input: bool,
+    keepdims: bool,
+) -> Result<Array<T>, NumPyError>
+where
+    T: Clone + Default + PartialOrd + AsF64 + FromF64 + 'static,
+{
+    let q = Array::from_vec(vec![T::from_f64(50.0)]);
+    percentile_internal(a, &q, axis, keepdims, "linear", 100.0, true)
 }
 
 pub fn percentile<T>(
     a: &Array<T>,
     q: &Array<T>,
-    _axis: Option<&[isize]>,
+    axis: Option<&[isize]>,
     _out: Option<&mut Array<T>>,
     _overwrite_input: bool,
     _method: &str,
-    _keepdims: bool,
+    keepdims: bool,
     interpolation: &str,
 ) -> Result<Array<T>, NumPyError>
 where
     T: Clone + Default + PartialOrd + AsF64 + FromF64 + 'static,
 {
-    if a.is_empty() {
-        return Err(NumPyError::invalid_value(
-            "Cannot compute percentile of empty array",
-        ));
-    }
+    percentile_internal(a, q, axis, keepdims, interpolation, 100.0, false)
+}
 
-    let mut data = a.to_vec();
-    data.sort_by(|a, b| {
-        a.as_f64()
-            .unwrap_or(0.0)
-            .partial_cmp(&b.as_f64().unwrap_or(0.0))
-            .unwrap_or(Ordering::Equal)
-    });
-
-    let n = data.len();
-    let mut result = vec![T::default(); q.size()];
-
-    for (i, qv) in q.to_vec().iter().enumerate() {
-        if let Some(percentile) = qv.as_f64() {
-            let idx = (percentile / 100.0 * (n as f64 - 1.0) / 100.0) as usize;
-            let idx_clamped = idx.min(n - 1);
-            let value = if interpolation == "nearest" || interpolation == "lower" {
-                data[idx_clamped].as_f64().unwrap_or(0.0)
-            } else if interpolation == "higher" {
-                data[(idx_clamped + 1).min(n - 1)].as_f64().unwrap_or(0.0)
-            } else if interpolation == "midpoint" {
-                (data[idx_clamped].as_f64().unwrap_or(0.0)
-                    + data[(idx_clamped + 1).min(n - 1)].as_f64().unwrap_or(0.0))
-                    / 2.0
-            } else {
-                let lower = data[idx_clamped].as_f64().unwrap_or(0.0);
-                let upper = data[(idx_clamped + 1).min(n - 1)].as_f64().unwrap_or(0.0);
-                let frac = (percentile / 100.0 * (n as f64 - 1.0) / 100.0) - (idx_clamped as f64);
-                lower * (1.0 - frac) + upper * frac
-            };
-            result[i] = T::from_f64(value);
-        }
-    }
-
-    Ok(Array::from_vec(result))
+pub fn nanpercentile<T>(
+    a: &Array<T>,
+    q: &Array<T>,
+    axis: Option<&[isize]>,
+    _out: Option<&mut Array<T>>,
+    _overwrite_input: bool,
+    _method: &str,
+    keepdims: bool,
+    interpolation: &str,
+) -> Result<Array<T>, NumPyError>
+where
+    T: Clone + Default + PartialOrd + AsF64 + FromF64 + 'static,
+{
+    percentile_internal(a, q, axis, keepdims, interpolation, 100.0, true)
 }
 
 pub fn quantile<T>(
@@ -107,16 +78,24 @@ pub fn quantile<T>(
 where
     T: Clone + Default + PartialOrd + AsF64 + FromF64 + 'static,
 {
-    percentile(
-        a,
-        q,
-        axis,
-        out,
-        overwrite_input,
-        method,
-        keepdims,
-        interpolation,
-    )
+    let _ = (out, overwrite_input, method);
+    percentile_internal(a, q, axis, keepdims, interpolation, 1.0, false)
+}
+
+pub fn nanquantile<T>(
+    a: &Array<T>,
+    q: &Array<T>,
+    axis: Option<&[isize]>,
+    _out: Option<&mut Array<T>>,
+    _overwrite_input: bool,
+    _method: &str,
+    keepdims: bool,
+    interpolation: &str,
+) -> Result<Array<T>, NumPyError>
+where
+    T: Clone + Default + PartialOrd + AsF64 + FromF64 + 'static,
+{
+    percentile_internal(a, q, axis, keepdims, interpolation, 1.0, true)
 }
 
 pub fn average<T>(
@@ -230,52 +209,92 @@ where
 pub fn corrcoef<T>(
     x: &Array<T>,
     y: Option<&Array<T>>,
-    rowvar: bool,
-    bias: Option<bool>,
-    ddof: Option<isize>,
+    _rowvar: bool,
 ) -> Result<Array<T>, NumPyError>
 where
     T: Clone + Default + AsF64 + FromF64 + 'static,
 {
-    // corrcoef is essentially cov normalized by standard deviations
-    // bias defaults to False for corrcoef (unbiased estimator)
-    let bias_val = bias.unwrap_or(false);
-    let ddof_val = ddof.unwrap_or(1);
+    if x.is_empty() {
+        return Err(NumPyError::invalid_value(
+            "Cannot compute corrcoef of empty array",
+        ));
+    }
 
-    // Compute covariance matrix
-    let c = cov(x, y, rowvar, bias_val, ddof_val, None, None)?;
+    let x_data = x.to_vec();
 
-    // Normalize by standard deviations to get correlation matrix
-    let c_data = c.to_vec();
-    let c_shape = c.shape();
+    if let Some(y_arr) = y {
+        let y_data = y_arr.to_vec();
 
-    // For 2D covariance matrix, normalize: corr[i,j] = cov[i,j] / sqrt(cov[i,i] * cov[j,j])
-    if c_shape.len() == 2 {
-        let n = c_shape[0];
-        let mut corr_data = vec![0.0; c_data.len()];
-
-        for i in 0..n {
-            for j in 0..n {
-                let cov_ij = c_data[i * n + j].as_f64().unwrap_or(0.0);
-                let cov_ii = c_data[i * n + i].as_f64().unwrap_or(0.0);
-                let cov_jj = c_data[j * n + j].as_f64().unwrap_or(0.0);
-
-                let std_i = cov_ii.sqrt();
-                let std_j = cov_jj.sqrt();
-
-                if std_i == 0.0 || std_j == 0.0 {
-                    return Err(NumPyError::invalid_value(
-                        "Division by zero in corrcoef: zero variance variable",
-                    ));
-                }
-
-                corr_data[i * n + j] = cov_ij / (std_i * std_j);
-            }
+        if x_data.len() != y_data.len() {
+            return Err(NumPyError::invalid_value("x and y must have same length"));
         }
 
-        Ok(Array::from_shape_vec(c_shape.to_vec(), corr_data.into_iter().map(T::from_f64).collect()))
+        let n = x_data.len() as f64;
+        let x_mean: f64 = x_data
+            .iter()
+            .map(|v| v.as_f64().unwrap_or(0.0))
+            .sum::<f64>()
+            / n;
+        let y_mean: f64 = y_data
+            .iter()
+            .map(|v| v.as_f64().unwrap_or(0.0))
+            .sum::<f64>()
+            / n;
+
+        let covariance: f64 = x_data
+            .iter()
+            .zip(y_data.iter())
+            .map(|(xi, yi)| {
+                (xi.as_f64().unwrap_or(0.0) - x_mean) * (yi.as_f64().unwrap_or(0.0) - y_mean)
+            })
+            .sum::<f64>()
+            / n;
+
+        let x_var: f64 = x_data
+            .iter()
+            .map(|xi| {
+                let diff = xi.as_f64().unwrap_or(0.0) - x_mean;
+                diff * diff
+            })
+            .sum::<f64>()
+            / (n - 1.0);
+
+        let y_var: f64 = y_data
+            .iter()
+            .map(|yi| {
+                let diff = yi.as_f64().unwrap_or(0.0) - y_mean;
+                diff * diff
+            })
+            .sum::<f64>()
+            / (n - 1.0);
+
+        let std_x = x_var.sqrt();
+        let std_y = y_var.sqrt();
+
+        if std_x == 0.0 || std_y == 0.0 {
+            return Err(NumPyError::invalid_value("Division by zero in corrcoef"));
+        }
+
+        let correlation = covariance / (std_x * std_y);
+
+        Ok(Array::from_vec(vec![T::from_f64(correlation)]))
     } else {
-        // For 1D case, single correlation coefficient is 1.0
+        let n = x_data.len() as f64;
+        let x_mean: f64 = x_data
+            .iter()
+            .map(|v| v.as_f64().unwrap_or(0.0))
+            .sum::<f64>()
+            / n;
+
+        let _x_var: f64 = x_data
+            .iter()
+            .map(|xi| {
+                let diff = xi.as_f64().unwrap_or(0.0) - x_mean;
+                diff * diff
+            })
+            .sum::<f64>()
+            / (n - 1.0);
+
         Ok(Array::from_vec(vec![T::from_f64(1.0)]))
     }
 }
@@ -283,11 +302,11 @@ where
 pub fn cov<T>(
     m: &Array<T>,
     y: Option<&Array<T>>,
-    rowvar: bool,
-    bias: bool,
+    _rowvar: bool,
+    _bias: bool,
     ddof: isize,
-    fweights: Option<&Array<T>>,
-    aweights: Option<&Array<T>>,
+    _fweights: Option<&Array<T>>,
+    _aweights: Option<&Array<T>>,
 ) -> Result<Array<T>, NumPyError>
 where
     T: Clone + Default + AsF64 + FromF64 + 'static,
@@ -299,147 +318,47 @@ where
     }
 
     let m_data = m.to_vec();
-    let m_shape = m.shape();
+    let n = m_data.len() as f64;
+    let m_mean: f64 = m_data
+        .iter()
+        .map(|v| v.as_f64().unwrap_or(0.0))
+        .sum::<f64>()
+        / n;
 
-    // Handle 1D case
-    if m_shape.len() == 1 {
-        let n = m_data.len() as f64;
+    if let Some(y_arr) = y {
+        let y_data = y_arr.to_vec();
 
-        if let Some(y_arr) = y {
-            let y_data = y_arr.to_vec();
-            if y_data.len() != m_data.len() {
-                return Err(NumPyError::invalid_value(
-                    "m and y must have same length",
-                ));
-            }
-
-            // Compute covariance between two 1D arrays
-            let m_mean: f64 = m_data.iter().map(|v| v.as_f64().unwrap_or(0.0)).sum::<f64>() / n;
-            let y_mean: f64 = y_data.iter().map(|v| v.as_f64().unwrap_or(0.0)).sum::<f64>() / n;
-
-            let covariance: f64 = m_data
-                .iter()
-                .zip(y_data.iter())
-                .map(|(mi, yi)| {
-                    (mi.as_f64().unwrap_or(0.0) - m_mean) * (yi.as_f64().unwrap_or(0.0) - y_mean)
-                })
-                .sum::<f64>();
-
-            let denom = if bias { n } else { (n as isize - ddof).max(1) as f64 };
-            let cov_val = covariance / denom;
-
-            // Return 2x2 covariance matrix
-            let m_var: f64 = m_data
-                .iter()
-                .map(|mi| {
-                    let diff = mi.as_f64().unwrap_or(0.0) - m_mean;
-                    diff * diff
-                })
-                .sum::<f64>()
-                / denom;
-            let y_var: f64 = y_data
-                .iter()
-                .map(|yi| {
-                    let diff = yi.as_f64().unwrap_or(0.0) - y_mean;
-                    diff * diff
-                })
-                .sum::<f64>()
-                / denom;
-
-            Ok(Array::from_shape_vec(
-                vec![2, 2],
-                vec![
-                    T::from_f64(m_var),
-                    T::from_f64(cov_val),
-                    T::from_f64(cov_val),
-                    T::from_f64(y_var),
-                ],
-            ))
-        } else {
-            // Single 1D array - return 1x1 matrix (variance)
-            let mean: f64 = m_data.iter().map(|v| v.as_f64().unwrap_or(0.0)).sum::<f64>() / n;
-            let variance: f64 = m_data
-                .iter()
-                .map(|mi| {
-                    let diff = mi.as_f64().unwrap_or(0.0) - mean;
-                    diff * diff
-                })
-                .sum::<f64>();
-
-            let denom = if bias { n } else { (n as isize - ddof).max(1) as f64 };
-            Ok(Array::from_shape_vec(vec![1, 1], vec![T::from_f64(variance / denom)]))
-        }
-    } else if m_shape.len() == 2 {
-        // Handle 2D case
-        let (rows, cols) = (m_shape[0], m_shape[1]);
-
-        // Determine number of variables and observations
-        let (n_vars, n_obs) = if rowvar { (rows, cols) } else { (cols, rows) };
-
-        if n_obs < 2 {
-            return Err(NumPyError::invalid_value(
-                "Need at least 2 observations to compute covariance",
-            ));
+        if m_data.len() != y_data.len() {
+            return Err(NumPyError::invalid_value("m and y must have same length"));
         }
 
-        // fweights and aweights validation
-        if fweights.is_some() || aweights.is_some() {
-            return Err(NumPyError::invalid_value(
-                "fweights and aweights are not yet supported for 2D arrays",
-            ));
-        }
+        let y_mean: f64 = y_data
+            .iter()
+            .map(|v| v.as_f64().unwrap_or(0.0))
+            .sum::<f64>()
+            / n;
 
-        // Transpose data if rowvar=false so columns become variables (rows)
-        let data = if !rowvar {
-            // Transpose: rows become columns
-            let mut transposed = vec![0.0; rows * cols];
-            for i in 0..rows {
-                for j in 0..cols {
-                    transposed[j * rows + i] = m_data[i * cols + j].as_f64().unwrap_or(0.0);
-                }
-            }
-            transposed
-        } else {
-            m_data.iter().map(|v| v.as_f64().unwrap_or(0.0)).collect()
-        };
+        let covariance: f64 = m_data
+            .iter()
+            .zip(y_data.iter())
+            .map(|(mi, yi)| {
+                (mi.as_f64().unwrap_or(0.0) - m_mean) * (yi.as_f64().unwrap_or(0.0) - y_mean)
+            })
+            .sum::<f64>()
+            / (n - (ddof as f64));
 
-        // Compute mean for each variable (row)
-        let mut means = vec![0.0; n_vars];
-        for i in 0..n_vars {
-            let row_sum: f64 = (0..n_obs).map(|j| data[i * n_obs + j]).sum();
-            means[i] = row_sum / n_obs as f64;
-        }
-
-        // Compute covariance matrix
-        let mut cov_matrix = vec![0.0; n_vars * n_vars];
-        let denom = if bias {
-            n_obs as f64
-        } else {
-            (n_obs as isize - ddof).max(1) as f64
-        };
-
-        for i in 0..n_vars {
-            for j in i..n_vars {
-                let mut cov_sum = 0.0;
-                for k in 0..n_obs {
-                    let diff_i = data[i * n_obs + k] - means[i];
-                    let diff_j = data[j * n_obs + k] - means[j];
-                    cov_sum += diff_i * diff_j;
-                }
-                let cov_val = cov_sum / denom;
-                cov_matrix[i * n_vars + j] = cov_val;
-                cov_matrix[j * n_vars + i] = cov_val; // Symmetric
-            }
-        }
-
-        Ok(Array::from_shape_vec(
-            vec![n_vars, n_vars],
-            cov_matrix.into_iter().map(T::from_f64).collect(),
-        ))
+        Ok(Array::from_vec(vec![T::from_f64(covariance)]))
     } else {
-        Err(NumPyError::invalid_value(
-            "cov requires 1D or 2D arrays",
-        ))
+        let variance: f64 = m_data
+            .iter()
+            .map(|mi| {
+                let diff = mi.as_f64().unwrap_or(0.0) - m_mean;
+                diff * diff
+            })
+            .sum::<f64>()
+            / (n - (ddof as f64));
+
+        Ok(Array::from_vec(vec![T::from_f64(variance)]))
     }
 }
 
@@ -694,8 +613,285 @@ where
 pub mod exports {
     pub use super::{
         average, bincount, corrcoef, cov, digitize, histogram, histogram2d, histogramdd, median,
-        percentile, ptp, quantile, std, var,
+        nanmedian, nanpercentile, nanquantile, percentile, quantile, std, var,
     };
+}
+
+fn normalize_axes(axis: Option<&[isize]>, ndim: usize) -> Result<Vec<usize>, NumPyError> {
+    match axis {
+        None => Ok((0..ndim).collect()),
+        Some(axes) => {
+            if ndim == 0 {
+                return Err(NumPyError::invalid_operation(
+                    "Cannot specify axis for 0D array",
+                ));
+            }
+
+            let mut normalized: Vec<usize> = axes
+                .iter()
+                .map(|&ax| {
+                    let axis = if ax < 0 { ax + ndim as isize } else { ax };
+                    if axis < 0 || axis >= ndim as isize {
+                        return Err(NumPyError::index_error(axis as usize, ndim));
+                    }
+                    Ok(axis as usize)
+                })
+                .collect::<Result<_, _>>()?;
+
+            normalized.sort_unstable();
+            normalized.dedup();
+            Ok(normalized)
+        }
+    }
+}
+
+fn percentile_internal<T>(
+    a: &Array<T>,
+    q: &Array<T>,
+    axis: Option<&[isize]>,
+    keepdims: bool,
+    interpolation: &str,
+    q_scale: f64,
+    skip_nan: bool,
+) -> Result<Array<T>, NumPyError>
+where
+    T: Clone + Default + PartialOrd + AsF64 + FromF64 + 'static,
+{
+    if a.is_empty() {
+        return Err(NumPyError::invalid_value(
+            "Cannot compute percentile of empty array",
+        ));
+    }
+
+    let q_values = q
+        .to_vec()
+        .into_iter()
+        .map(|value| {
+            value
+                .as_f64()
+                .ok_or_else(|| NumPyError::invalid_value("Invalid percentile value"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let q_shape = q.shape().to_vec();
+    let q_size = q.size();
+    let q_is_scalar = q_size == 1;
+
+    let reduced_axes = normalize_axes(axis, a.ndim())?;
+    let reduction_shape = if axis.is_none() {
+        if keepdims {
+            vec![1; a.ndim()]
+        } else {
+            vec![]
+        }
+    } else {
+        broadcast_shape_for_reduce(a.shape(), axis.unwrap_or(&[]), keepdims)
+    };
+
+    let mut output_shape = if q_is_scalar {
+        reduction_shape.clone()
+    } else {
+        let mut shape = q_shape.clone();
+        shape.extend(reduction_shape.iter().copied());
+        shape
+    };
+
+    if output_shape.is_empty() {
+        output_shape = vec![];
+    }
+
+    let mut output = Array::zeros(output_shape.clone());
+    let reduction_size = if reduction_shape.is_empty() {
+        1
+    } else {
+        reduction_shape.iter().product()
+    };
+
+    for (q_idx, &q_value) in q_values.iter().enumerate() {
+        validate_q_range(q_value, q_scale)?;
+        let normalized_q = q_value / q_scale;
+
+        for output_idx in 0..reduction_size {
+            let output_indices = if reduction_shape.is_empty() {
+                vec![]
+            } else {
+                compute_multi_indices(output_idx, &reduction_shape)
+            };
+
+            let mut values =
+                collect_reduction_values(a, &output_indices, &reduced_axes, keepdims, skip_nan)?;
+
+            if values.is_empty() {
+                let value = if skip_nan { f64::NAN } else { 0.0 };
+                set_output_value(
+                    &mut output,
+                    q_idx,
+                    &q_shape,
+                    &output_indices,
+                    q_is_scalar,
+                    T::from_f64(value),
+                )?;
+                continue;
+            }
+
+            values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
+            let value = percentile_from_sorted(&values, normalized_q, interpolation)?;
+
+            set_output_value(
+                &mut output,
+                q_idx,
+                &q_shape,
+                &output_indices,
+                q_is_scalar,
+                T::from_f64(value),
+            )?;
+        }
+    }
+
+    Ok(output)
+}
+
+fn validate_q_range(q: f64, scale: f64) -> Result<(), NumPyError> {
+    let (min, max, label) = if (scale - 100.0).abs() < f64::EPSILON {
+        (0.0, 100.0, "Percentiles must be in the range [0, 100]")
+    } else {
+        (0.0, 1.0, "Quantiles must be in the range [0, 1]")
+    };
+
+    if q < min || q > max {
+        return Err(NumPyError::invalid_value(label));
+    }
+
+    Ok(())
+}
+
+fn collect_reduction_values<T>(
+    a: &Array<T>,
+    output_indices: &[usize],
+    reduced_axes: &[usize],
+    keepdims: bool,
+    skip_nan: bool,
+) -> Result<Vec<f64>, NumPyError>
+where
+    T: Clone + AsF64,
+{
+    let mut values = Vec::new();
+
+    for linear_idx in 0..a.size() {
+        let input_indices = compute_multi_indices(linear_idx, a.shape());
+        if should_include_for_reduction(&input_indices, output_indices, reduced_axes, keepdims) {
+            if let Some(value) = a.get(linear_idx).and_then(|val| val.as_f64()) {
+                if skip_nan && value.is_nan() {
+                    continue;
+                }
+                values.push(value);
+            } else {
+                return Err(NumPyError::invalid_value("Invalid data value"));
+            }
+        }
+    }
+
+    Ok(values)
+}
+
+fn should_include_for_reduction(
+    input_indices: &[usize],
+    output_indices: &[usize],
+    reduced_axes: &[usize],
+    keepdims: bool,
+) -> bool {
+    if keepdims {
+        for (dim_idx, &input_dim_val) in input_indices.iter().enumerate() {
+            if reduced_axes.contains(&dim_idx) {
+                continue;
+            }
+            if output_indices.get(dim_idx) != Some(&input_dim_val) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    let mut output_dim_idx = 0;
+    for (dim_idx, &input_dim_val) in input_indices.iter().enumerate() {
+        if reduced_axes.contains(&dim_idx) {
+            continue;
+        }
+        if output_indices.get(output_dim_idx) != Some(&input_dim_val) {
+            return false;
+        }
+        output_dim_idx += 1;
+    }
+
+    true
+}
+
+fn percentile_from_sorted(sorted: &[f64], q: f64, interpolation: &str) -> Result<f64, NumPyError> {
+    if sorted.is_empty() {
+        return Err(NumPyError::invalid_value(
+            "Cannot compute percentile of empty slice",
+        ));
+    }
+
+    if sorted.len() == 1 {
+        return Ok(sorted[0]);
+    }
+
+    let n = sorted.len() as f64;
+    let pos = q * (n - 1.0);
+    let lower_idx = pos.floor() as usize;
+    let upper_idx = pos.ceil() as usize;
+    let frac = pos - lower_idx as f64;
+
+    let lower = sorted[lower_idx];
+    let upper = sorted[upper_idx];
+
+    let value = match interpolation {
+        "lower" => lower,
+        "higher" => upper,
+        "nearest" => {
+            if frac <= 0.5 {
+                lower
+            } else {
+                upper
+            }
+        }
+        "midpoint" => (lower + upper) / 2.0,
+        "linear" => lower * (1.0 - frac) + upper * frac,
+        _ => return Err(NumPyError::invalid_value("Invalid interpolation method")),
+    };
+
+    Ok(value)
+}
+
+fn set_output_value<T>(
+    output: &mut Array<T>,
+    q_idx: usize,
+    q_shape: &[usize],
+    reduction_indices: &[usize],
+    q_is_scalar: bool,
+    value: T,
+) -> Result<(), NumPyError>
+where
+    T: Clone + Default + 'static,
+{
+    if output.shape().is_empty() {
+        return output.set(0, value);
+    }
+
+    let indices = if q_is_scalar {
+        reduction_indices.to_vec()
+    } else {
+        let mut idx = if q_shape.is_empty() {
+            vec![q_idx]
+        } else {
+            compute_multi_indices(q_idx, q_shape)
+        };
+        idx.extend_from_slice(reduction_indices);
+        idx
+    };
+
+    output.set_by_indices(&indices, value)
 }
 
 pub enum ArrayOrInt<'a, T> {
@@ -789,41 +985,4 @@ impl FromF64 for usize {
             value as usize
         }
     }
-}
-
-/// Peak-to-peak (maximum - minimum) values along an axis (similar to np.ptp).
-///
-/// # Arguments
-/// - `a`: Input array
-/// - `axis`: Optional axis along which to find the peak-to-peak
-/// - `keepdims`: If true, the reduced axes are left in the result as dimensions with size one
-///
-/// # Returns
-/// Array containing the peak-to-peak (range) of values
-pub fn ptp<T>(
-    a: &Array<T>,
-    _axis: Option<&[isize]>,
-    _keepdims: bool,
-) -> Result<Array<T>, NumPyError>
-where
-    T: Clone + Default + AsF64 + FromF64 + 'static,
-{
-    if a.is_empty() {
-        return Err(NumPyError::invalid_value(
-            "Cannot compute ptp of empty array",
-        ));
-    }
-
-    let data = a.to_vec();
-
-    let min_val = data
-        .iter()
-        .map(|x| x.as_f64().unwrap_or(f64::NAN))
-        .fold(f64::INFINITY, |a, b| a.min(b));
-    let max_val = data
-        .iter()
-        .map(|x| x.as_f64().unwrap_or(f64::NAN))
-        .fold(f64::NEG_INFINITY, |a, b| a.max(b));
-
-    Ok(Array::from_vec(vec![T::from_f64(max_val - min_val)]))
 }

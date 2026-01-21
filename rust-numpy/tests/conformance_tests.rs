@@ -158,7 +158,7 @@ mod tests {
             let arr = Array::from_vec(vec![1.0f64, 2.0f64]);
             let result = numpy::advanced_broadcast::repeat(&arr, 2, None).unwrap();
             assert_eq!(result.shape(), vec![4]);
-            assert_eq!(result.to_vec(), vec![1.0, 2.0, 1.0, 2.0]);
+            assert_eq!(result.to_vec(), vec![1.0, 1.0, 2.0, 2.0]);
         }
     );
 

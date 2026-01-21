@@ -70,6 +70,55 @@ fn compute_size(shape: &[usize]) -> usize {
     shape.iter().product()
 }
 
+fn normalize_axis(axis: isize, ndim: usize) -> Result<usize> {
+    if ndim == 0 {
+        return Err(NumPyError::invalid_operation(
+            "cannot specify axis for 0D array",
+        ));
+    }
+    let axis = if axis < 0 { axis + ndim as isize } else { axis };
+    if axis < 0 || axis >= ndim as isize {
+        return Err(NumPyError::index_error(axis as usize, ndim));
+    }
+    Ok(axis as usize)
+}
+
+fn normalize_axes(axes: &[isize], ndim: usize) -> Result<Vec<usize>> {
+    let mut seen = std::collections::HashSet::new();
+    let mut result = Vec::with_capacity(axes.len());
+    for &axis in axes {
+        let axis = normalize_axis(axis, ndim)?;
+        if !seen.insert(axis) {
+            return Err(NumPyError::invalid_operation("duplicate axis"));
+        }
+        result.push(axis);
+    }
+    Ok(result)
+}
+
+fn indices_from_fortran(linear: usize, shape: &[usize]) -> Vec<usize> {
+    let mut indices = vec![0; shape.len()];
+    let mut remaining = linear;
+    for (i, &dim) in shape.iter().enumerate() {
+        if dim == 0 {
+            indices[i] = 0;
+        } else {
+            indices[i] = remaining % dim;
+            remaining /= dim;
+        }
+    }
+    indices
+}
+
+fn linear_from_indices(indices: &[usize], shape: &[usize]) -> usize {
+    let strides = compute_strides(shape);
+    indices
+        .iter()
+        .zip(strides.iter())
+        .map(|(idx, stride)| *idx as isize * *stride)
+        .sum::<isize>() as usize
+}
+
 // ==================== ARRAY CREATION FUNCTIONS ====================
 
 /// Create a new uninitialized array with the same shape and type as the prototype
@@ -625,7 +674,13 @@ where
         compute_strides(newshape)
     };
 
-    Ok(Array::from_data(a.to_vec(), newshape.to_vec()))
+    Ok(Array {
+        data: a.data.clone(),
+        shape: newshape.to_vec(),
+        strides,
+        dtype: a.dtype().clone(),
+        offset: a.offset,
+    })
 }
 
 /// Return a contiguous flattened array
@@ -647,8 +702,23 @@ where
     }
 
     let size = compute_size(&a.shape());
-
-    let data = a.to_vec();
+    let mut data = Vec::with_capacity(size);
+    let order = order.to_uppercase();
+    if order == "C" {
+        for idx in 0..size {
+            if let Some(value) = a.get_linear(idx) {
+                data.push(value.clone());
+            }
+        }
+    } else {
+        for idx in 0..size {
+            let indices = indices_from_fortran(idx, a.shape());
+            let linear = linear_from_indices(&indices, a.shape());
+            if let Some(value) = a.get_linear(linear) {
+                data.push(value.clone());
+            }
+        }
+    }
     let memory_manager = MemoryManager::from_vec(data);
 
     Ok(Array {
@@ -675,6 +745,141 @@ where
     ravel(a, order)
 }
 
+/// Repeat elements of an array
+///
+/// # Arguments
+/// * `a` - Array to repeat
+/// * `repeats` - Number of repetitions for each element
+/// * `axis` - Optional axis along which to repeat
+pub fn repeat<T>(a: &Array<T>, repeats: usize, axis: Option<isize>) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+{
+    crate::advanced_broadcast::repeat(a, repeats, axis)
+}
+
+/// Construct an array by repeating `a` the number of times given by `reps`
+///
+/// # Arguments
+/// * `a` - Array to tile
+/// * `reps` - Repetitions for each axis
+pub fn tile<T>(a: &Array<T>, reps: &[usize]) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+{
+    crate::advanced_broadcast::tile(a, reps)
+}
+
+/// Interchange two axes of an array
+pub fn swapaxes<T>(a: &Array<T>, axis1: isize, axis2: isize) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+{
+    let ndim = a.ndim();
+    let axis1 = normalize_axis(axis1, ndim)?;
+    let axis2 = normalize_axis(axis2, ndim)?;
+    if axis1 == axis2 {
+        return Ok(a.clone());
+    }
+
+    let mut shape = a.shape().to_vec();
+    let mut strides = a.strides().to_vec();
+    shape.swap(axis1, axis2);
+    strides.swap(axis1, axis2);
+
+    Ok(Array {
+        data: a.data.clone(),
+        shape,
+        strides,
+        dtype: a.dtype().clone(),
+        offset: a.offset,
+    })
+}
+
+/// Roll the specified axis backwards until it lies in a given position
+pub fn rollaxis<T>(a: &Array<T>, axis: isize, start: Option<isize>) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+{
+    let ndim = a.ndim();
+    let axis = normalize_axis(axis, ndim)?;
+    let mut start = start.unwrap_or(0);
+    if start < 0 {
+        start += ndim as isize;
+    }
+    if start < 0 || start as usize > ndim {
+        return Err(NumPyError::index_error(start as usize, ndim));
+    }
+    moveaxis(a, &[axis as isize], &[start])
+}
+
+/// Move axes of an array to new positions
+pub fn moveaxis<T>(a: &Array<T>, source: &[isize], destination: &[isize]) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+{
+    if source.len() != destination.len() {
+        return Err(NumPyError::invalid_operation(
+            "moveaxis requires source and destination to be the same length",
+        ));
+    }
+    let ndim = a.ndim();
+    let source = normalize_axes(source, ndim)?;
+    let mut destination: Vec<usize> = destination
+        .iter()
+        .map(|&axis| {
+            if axis < 0 {
+                (axis + ndim as isize) as usize
+            } else {
+                axis as usize
+            }
+        })
+        .collect();
+
+    let mut seen = std::collections::HashSet::new();
+    for &axis in &destination {
+        if axis > ndim {
+            return Err(NumPyError::index_error(axis, ndim));
+        }
+        if !seen.insert(axis) {
+            return Err(NumPyError::invalid_operation("duplicate destination axis"));
+        }
+    }
+
+    let mut remaining: Vec<usize> = (0..ndim).filter(|ax| !source.contains(ax)).collect();
+    let mut order: Vec<usize> = Vec::with_capacity(ndim);
+    let mut pairs: Vec<(usize, usize)> = source
+        .iter()
+        .copied()
+        .zip(destination.iter().copied())
+        .collect();
+    pairs.sort_by_key(|(_, dst)| *dst);
+
+    for (axis, dst) in pairs {
+        if dst >= remaining.len() {
+            remaining.push(axis);
+        } else {
+            remaining.insert(dst, axis);
+        }
+    }
+    order.append(&mut remaining);
+
+    let mut shape = Vec::with_capacity(ndim);
+    let mut strides = Vec::with_capacity(ndim);
+    for axis in order {
+        shape.push(a.shape()[axis]);
+        strides.push(a.strides()[axis]);
+    }
+
+    Ok(Array {
+        data: a.data.clone(),
+        shape,
+        strides,
+        dtype: a.dtype().clone(),
+        offset: a.offset,
+    })
+}
+
 /// Remove single-dimensional entries from the shape of an array
 ///
 /// # Arguments
@@ -698,13 +903,9 @@ where
 
     match axis {
         Some(axes) => {
-            for &ax in axes {
-                let ax = if ax < 0 { ndim as isize + ax } else { ax } as usize;
-
-                if ax >= ndim {
-                    return Err(NumPyError::index_error(ax, ndim));
-                }
-
+            let mut axes = normalize_axes(axes, ndim)?;
+            axes.sort_unstable_by(|a, b| b.cmp(a));
+            for ax in axes {
                 if a.shape()[ax] != 1 {
                     return Err(NumPyError::invalid_operation(format!(
                         "squeeze() cannot select axis {} with size {}",
@@ -712,7 +913,6 @@ where
                         a.shape()[ax]
                     )));
                 }
-
                 new_shape.remove(ax);
                 new_strides.remove(ax);
             }
@@ -888,6 +1088,7 @@ where
 pub mod exports {
     pub use super::{
         arange, atleast_1d, atleast_2d, atleast_3d, empty_like, eye, flatten, full_like, geomspace,
-        identity, linspace, logspace, meshgrid, ones_like, ravel, reshape, squeeze, zeros_like,
+        identity, linspace, logspace, meshgrid, moveaxis, ones_like, ravel, repeat, reshape,
+        rollaxis, squeeze, swapaxes, tile, zeros_like,
     };
 }

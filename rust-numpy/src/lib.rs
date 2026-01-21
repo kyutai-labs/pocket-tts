@@ -66,6 +66,7 @@ pub mod window;
 
 // Re-export key types for convenience
 pub use array::Array;
+pub use array_manipulation::exports::*;
 pub use bitwise::*;
 pub use dtype::{Casting, Dtype, DtypeKind};
 pub use error::{NumPyError, Result};

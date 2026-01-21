@@ -1,5 +1,6 @@
 use crate::array::Array;
 use crate::error::NumPyError;
+use crate::linalg::LinalgScalar;
 use num_complex::{Complex, Complex64};
 use num_traits::{One, Zero};
 

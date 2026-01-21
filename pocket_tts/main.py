@@ -39,7 +39,7 @@ cli_app = typer.Typer(
 # ------------------------------------------------------
 
 # Global model instance
-tts_model = None
+tts_model: TTSModel | None = None
 global_model_state = None
 
 web_app = FastAPI(
@@ -151,13 +151,13 @@ def text_to_speech(
             content = voice_wav.file.read()
             temp_file.write(content)
             temp_file.flush()
+            temp_file_path = temp_file.name
 
-            try:
-                model_state = tts_model.get_state_for_audio_prompt(
-                    Path(temp_file.name), truncate=True
-                )
-            finally:
-                os.unlink(temp_file.name)
+        # Close the file before reading it back (required on Windows)
+        try:
+            model_state = tts_model.get_state_for_audio_prompt(Path(temp_file_path), truncate=True)
+        finally:
+            os.unlink(temp_file_path)
     else:
         # Use default global model state
         model_state = global_model_state

@@ -257,5 +257,58 @@ def generate(
         )
 
 
+# ----------------------------------------------
+# export audio to safetensors CLI implementation
+# ----------------------------------------------
+
+
+@cli_app.command()
+def export_voice(
+    audio_path: Annotated[str, typer.Argument(help="Audio file to convert and export")],
+    output_path: Annotated[
+        str, typer.Option("-o", help="Output path for the safetensors file")
+    ] = ".",
+    truncate: Annotated[
+        bool, typer.Option("-tr", "--truncate", help="Whether to truncate long audio")
+    ] = False,
+    quiet: Annotated[bool, typer.Option("-q", "--quiet", help="Disable logging output")] = False,
+    variant: Annotated[str, typer.Option(help="Model signature")] = DEFAULT_VARIANT,
+    lsd_decode_steps: Annotated[
+        int, typer.Option(help="Number of generation steps")
+    ] = DEFAULT_LSD_DECODE_STEPS,
+    temperature: Annotated[
+        float, typer.Option(help="Temperature for generation")
+    ] = DEFAULT_TEMPERATURE,
+    noise_clamp: Annotated[float, typer.Option(help="Noise clamp value")] = DEFAULT_NOISE_CLAMP,
+    eos_threshold: Annotated[float, typer.Option(help="EOS threshold")] = DEFAULT_EOS_THRESHOLD,
+    frames_after_eos: Annotated[
+        int, typer.Option(help="Number of frames to generate after EOS")
+    ] = DEFAULT_FRAMES_AFTER_EOS,
+    device: Annotated[str, typer.Option(help="Device to use")] = "cpu",
+):
+    """Convert and save audio to .safetensors."""
+    if "cuda" in device:
+        # Cuda graphs capturing does not play nice with multithreading.
+        os.environ["NO_CUDA_GRAPH"] = "1"
+
+    log_level = logging.ERROR if quiet else logging.INFO
+    with enable_logging("pocket_tts", log_level):
+        if not audio_path:
+            logger.error("Must specify input audio file")
+            exit(1)
+
+        tts_model = TTSModel.load_model(
+            variant, temperature, lsd_decode_steps, noise_clamp, eos_threshold
+        )
+        tts_model.to(device)
+        voice = Path(audio_path).stem
+        sft_path = Path(output_path)
+        if sft_path.is_dir:
+            sft_path = sft_path / voice
+        sft_path = sft_path.with_suffix(".safetensors")
+        tts_model.save_audio_prompt(audio_path, sft_path, truncate)
+        logger.info(f"✅ Successfully exported voice {sft_path.stem} to {sft_path}")
+
+
 if __name__ == "__main__":
     cli_app()

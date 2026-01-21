@@ -138,6 +138,100 @@ where
     solve(a, &eye)
 }
 
+/// Compute the determinant of an array.
+pub fn det<T>(a: &Array<T>) -> Result<T, NumPyError>
+where
+    T: LinalgScalar,
+{
+    if a.ndim() != 2 {
+        return Err(NumPyError::value_error("det requires 2D array", "linalg"));
+    }
+    let n = a.shape()[0];
+    if n != a.shape()[1] {
+        return Err(NumPyError::value_error(
+            "det requires square matrix",
+            "linalg",
+        ));
+    }
+
+    // Gaussian elimination to upper triangular form
+    let a_strides = a.strides();
+    let idx = |row: usize, col: usize, strides: &[isize]| -> usize {
+        (row as isize * strides[0] + col as isize * strides[1]) as usize
+    };
+
+    let mut a_data = vec![T::zero(); n * n];
+    for i in 0..n {
+        for j in 0..n {
+            let a_idx = idx(i, j, a_strides);
+            a_data[i * n + j] = *a.get(a_idx).unwrap();
+        }
+    }
+
+    let mut sign = T::one();
+    let eps = <T::Real as num_traits::Float>::epsilon();
+
+    for col in 0..n {
+        let mut pivot_row = col;
+        let mut pivot_val = a_data[col * n + col].abs();
+        for row in (col + 1)..n {
+            let candidate = a_data[row * n + col].abs();
+            if candidate > pivot_val {
+                pivot_val = candidate;
+                pivot_row = row;
+            }
+        }
+
+        if pivot_val <= eps {
+            return Ok(T::zero());
+        }
+
+        if pivot_row != col {
+            // Swap rows
+            for j in 0..n {
+                a_data.swap(col * n + j, pivot_row * n + j);
+            }
+            sign = T::zero() - sign; // Flip sign
+        }
+
+        let pivot = a_data[col * n + col];
+        for row in (col + 1)..n {
+            let factor = a_data[row * n + col] / pivot;
+            if factor.abs() <= eps {
+                continue;
+            }
+            for j in col..n {
+                a_data[row * n + j] = a_data[row * n + j] - factor * a_data[col * n + j];
+            }
+        }
+    }
+
+    let mut det_val = sign;
+    for i in 0..n {
+        det_val = det_val * a_data[i * n + i];
+    }
+
+    Ok(det_val)
+}
+
+/// Compute the pseudo-inverse of a matrix.
+pub fn pinv<T>(a: &Array<T>, rcond: Option<f64>) -> Result<Array<T>, NumPyError>
+where
+    T: LinalgScalar,
+{
+    // pinv(A) via lstsq(A, I)
+    // A @ X = I  =>  X = A^+
+    // If A is (M, N), I must be (M, M).
+    // lstsq expects b to have shape (M, K).
+    // Result X will be (N, M).
+
+    let m = a.shape()[0];
+    let eye = Array::<T>::eye(m);
+
+    let (x, _, _, _) = lstsq(a, &eye, rcond)?;
+    Ok(x)
+}
+
 /// Return the least-squares solution to a linear matrix equation.
 /// Computes the vector x that approximatively solves the equation a @ x = b.
 /// The equation may be under-, well-, or over-determined.

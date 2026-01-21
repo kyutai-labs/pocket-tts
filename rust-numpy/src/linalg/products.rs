@@ -234,3 +234,30 @@ where
 
     Ok(Array::from_data(output_data, output_shape))
 }
+
+/// Compute the trace of a matrix (sum of diagonal elements)
+pub fn trace<T>(a: &Array<T>) -> Result<T, NumPyError>
+where
+    T: LinalgScalar + Clone + Default + 'static,
+{
+    if a.ndim() < 2 {
+        return Err(NumPyError::value_error(
+            "trace requires at least 2 dimensions",
+            "linalg",
+        ));
+    }
+
+    // Use last two dimensions by default, similar to numpy.trace
+    // Numpy allows specifying offset, axis1, axis2. This is a basic implementation.
+    let diag = diagonal_enhanced(a, 0, None, None)?;
+
+    let mut sum = T::zero();
+    let size: usize = diag.shape.iter().product();
+    for i in 0..size {
+        if let Some(val) = diag.get(i) {
+            sum = sum + *val;
+        }
+    }
+
+    Ok(sum)
+}

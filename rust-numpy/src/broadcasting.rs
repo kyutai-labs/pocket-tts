@@ -53,13 +53,18 @@ where
         ));
     }
 
-    // Create output array with broadcasted shape
-    let mut output = Array::zeros(shape.to_vec());
+    // Compute new strides for the view
+    // This will produce 0-strides for broadcasted dimensions
+    let new_strides = compute_broadcast_strides(current_shape, array.strides(), shape);
 
-    // Copy data with broadcasting
-    broadcast_copy(array, &mut output)?;
-
-    Ok(output)
+    // Return a new View (sharing data)
+    Ok(Array {
+        data: array.data.clone(),
+        shape: shape.to_vec(),
+        strides: new_strides,
+        dtype: array.dtype.clone(),
+        offset: array.offset,
+    })
 }
 
 /// Check if shapes are compatible for broadcasting

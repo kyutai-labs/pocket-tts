@@ -2,6 +2,7 @@ use num_complex::Complex64;
 use numpy::{
     array,
     fft::{fft, fftfreq, fftshift, hfft, ifft, ifftshift, ihfft, irfft, rfft, rfftfreq},
+    Array,
 };
 
 #[test]
@@ -29,7 +30,7 @@ fn test_ifft_basic() {
         Complex64::new(0.0, 0.0),
         Complex64::new(2.0, 0.0),
     ];
-    let arr = numpy::Array::from_vec(a);
+    let arr = Array::from_vec(a);
     let res = ifft(&arr, None, 0, None).unwrap();
     let vals = res.to_vec();
     // Should be [1, 0, -1, 0]
@@ -58,7 +59,7 @@ fn test_irfft_basic() {
         Complex64::new(2.0, 0.0),
         Complex64::new(0.0, 0.0),
     ];
-    let arr = numpy::Array::from_vec(a);
+    let arr = Array::from_vec(a);
     let res = irfft(&arr, Some(4), 0, None).unwrap();
     let vals = res.to_vec();
     assert_eq!(vals.len(), 4);
@@ -115,7 +116,7 @@ fn test_hfft_basic() {
         Complex64::new(2.0, 0.0),
         Complex64::new(0.0, 0.0),
     ];
-    let arr = numpy::Array::from_vec(a);
+    let arr = Array::from_vec(a);
     let res = hfft(&arr, None, 0, None).unwrap();
     let vals = res.to_vec();
     // n = 2*(3-1) = 4
@@ -132,29 +133,46 @@ fn test_hfft_basic() {
 #[test]
 fn test_ihfft_basic() {
     // ihfft takes real input and produces Hermitian-symmetric output
-    let a = array![1.0, 0.0, -1.0, 0.0];
-    let res = ihfft(&a, None, 0, None).unwrap();
+    let a = vec![4.0, 0.0, -4.0, 0.0];
+    let arr = Array::from_vec(a);
+    let res = ihfft(&arr, None, 0, None).unwrap();
     let vals = res.to_vec();
-    // Should give m/2 + 1 = 3 elements
+    // n = 4, m = n/2 + 1 = 3
     assert_eq!(vals.len(), 3);
-    // Should match rfft output (which is also Hermitian-symmetric)
-    // rfft([1, 0, -1, 0]) = [0, 2, 0]
+    // Should give [0, 2, 0]
     assert!((vals[0].re).abs() < 1e-10);
     assert!((vals[1].re - 2.0).abs() < 1e-10);
     assert!((vals[2].re).abs() < 1e-10);
 }
 
 #[test]
-fn test_hfft_ihfft_roundtrip() {
-    // Test that hfft and ihfft are inverses
-    let a = array![1.0, 0.0, -1.0, 0.0];
-    let hermitian = ihfft(&a, None, 0, None).unwrap();
-    let recovered = hfft(&hermitian, None, 0, None).unwrap();
-    let vals = recovered.to_vec();
-
-    // After round-trip, values should be scaled by n
+fn test_hfft_roundtrip() {
+    // Test hfft(rfft(x)) round-trip
+    let x = array![1.0, 2.0, 3.0, 4.0];
+    let fft_res = rfft(&x, None, 0, None).unwrap();
+    let hfft_res = hfft(&fft_res, None, 0, None).unwrap();
+    let vals = hfft_res.to_vec();
+    // Should be [4, 8, 12, 16] (scaled by n=4)
     assert!((vals[0] - 4.0).abs() < 1e-10);
-    assert!((vals[1]).abs() < 1e-10);
-    assert!((vals[2] + 4.0).abs() < 1e-10);
-    assert!((vals[3]).abs() < 1e-10);
+    assert!((vals[1] - 8.0).abs() < 1e-10);
+    assert!((vals[2] - 12.0).abs() < 1e-10);
+    assert!((vals[3] - 16.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_ihfft_roundtrip() {
+    // Test ihfft(hfft(x)) round-trip
+    let x = vec![
+        Complex64::new(1.0, 0.0),
+        Complex64::new(2.0, 0.0),
+        Complex64::new(3.0, 0.0),
+    ];
+    let arr = Array::from_vec(x);
+    let hfft_res = hfft(&arr, None, 0, None).unwrap();
+    let ihfft_res = ihfft(&hfft_res, None, 0, None).unwrap();
+    let vals = ihfft_res.to_vec();
+    // Should be approximately [1, 2, 3]
+    assert!((vals[0].re - 1.0).abs() < 1e-10);
+    assert!((vals[1].re - 2.0).abs() < 1e-10);
+    assert!((vals[2].re - 3.0).abs() < 1e-10);
 }

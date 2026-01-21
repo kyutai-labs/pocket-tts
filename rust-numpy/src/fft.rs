@@ -643,7 +643,7 @@ fn rfft_axis(
     new_shape[axis] = n_out;
 
     let mut result = Array::zeros(new_shape.clone());
-    let mut other_axes = (0..ndim).filter(|&i| i != axis).collect::<Vec<_>>();
+    let other_axes = (0..ndim).filter(|&i| i != axis).collect::<Vec<_>>();
     let outer_size: usize = other_axes.iter().map(|&i| shape[i]).product();
 
     for i in 0..outer_size {
@@ -708,7 +708,7 @@ fn irfft_axis_complex(
     new_shape[axis] = n;
 
     let mut result = Array::zeros(new_shape.clone());
-    let mut other_axes = (0..ndim).filter(|&i| i != axis).collect::<Vec<_>>();
+    let other_axes = (0..ndim).filter(|&i| i != axis).collect::<Vec<_>>();
     let outer_size: usize = other_axes.iter().map(|&i| shape[i]).product();
 
     for i in 0..outer_size {
@@ -842,4 +842,147 @@ where
         None => vec![input.ndim() - 2, input.ndim() - 1],
     };
     irfftn(input, s, Some(&axes), norm)
+}
+
+/// Compute the FFT of a signal that has Hermitian symmetry.
+///
+/// `hfft` represents a 1-D discrete Fourier Transform of a Hermitian symmetric sequence.
+/// The input should be Hermitian symmetric (i.e., the negative frequency terms are
+/// the complex conjugates of the positive frequency terms). The output is real-valued.
+///
+/// # Arguments
+/// * `input` - Input array with Hermitian symmetry
+/// * `n` - Length of the output transform. If None, defaults to 2*(m-1) where m is input length
+/// * `axis` - Axis over which to compute the FFT
+/// * `norm` - Normalization mode
+///
+/// # Returns
+/// Real-valued FFT of the Hermitian symmetric input
+pub fn hfft<T>(
+    input: &Array<T>,
+    n: Option<usize>,
+    axis: isize,
+    norm: Option<&str>,
+) -> Result<Array<f64>>
+where
+    T: Clone + Into<Complex64> + Default + 'static,
+{
+    let axis = normalize_axis(axis, input.ndim())?;
+    // For hfft, n defaults to 2*(m-1) where m is length of input along axis
+    let m = input.shape()[axis];
+    let n = n.unwrap_or(2 * (m - 1));
+
+    if input.ndim() != 1 {
+        return Err(NumPyError::not_implemented(
+            "hfft currently only supports 1D arrays",
+        ));
+    }
+
+    let data: Vec<Complex64> = input.iter().map(|x| x.clone().into()).collect();
+
+    // Reconstruct full spectrum with Hermitian symmetry
+    let mut full_data = vec![Complex64::new(0.0, 0.0); n];
+    for i in 0..m.min(n / 2 + 1) {
+        full_data[i] = data[i];
+    }
+    // Conjugate symmetry for the rest
+    for i in 1..((n + 1) / 2) {
+        if i < m {
+            let target = n - i;
+            if target < n {
+                full_data[target] = data[i].conj();
+            }
+        }
+    }
+
+    let mut planner = FftPlanner::new();
+    let fft = planner.plan_fft_inverse(n);
+    fft.process(&mut full_data);
+
+    // Normalization for hfft is special: default is 1.0 (no normalization)
+    let mut scale = 1.0;
+    if let Some(norm_str) = norm {
+        match norm_str {
+            "ortho" => scale = (n as f64).sqrt(),
+            "forward" => scale = n as f64,
+            _ => {} // "backward" - no scaling for hfft
+        }
+    }
+
+    let result_data: Vec<f64> = full_data.into_iter().map(|x| x.re * scale).collect();
+    Ok(Array::from_data(result_data, vec![n]))
+}
+
+/// Compute the inverse FFT of a real signal.
+///
+/// `ihfft` represents the inverse of `hfft`. It computes the FFT of a real-valued
+/// signal and returns the Hermitian symmetric frequency components.
+///
+/// # Arguments
+/// * `input` - Real-valued input array
+/// * `n` - Length of the output. If None, defaults to m/2+1 where m is input length
+/// * `axis` - Axis over which to compute the FFT
+/// * `norm` - Normalization mode
+///
+/// # Returns
+/// Hermitian symmetric FFT coefficients
+pub fn ihfft<T>(
+    input: &Array<T>,
+    n: Option<usize>,
+    axis: isize,
+    norm: Option<&str>,
+) -> Result<Array<Complex64>>
+where
+    T: Clone + Into<f64> + Default + 'static,
+{
+    let axis = normalize_axis(axis, input.ndim())?;
+    let m = input.shape()[axis];
+    // For ihfft, n defaults to m/2 + 1 (the rfft output length)
+    let n_out = n.unwrap_or(m / 2 + 1);
+
+    if input.ndim() != 1 {
+        return Err(NumPyError::not_implemented(
+            "ihfft currently only supports 1D arrays",
+        ));
+    }
+
+    let mut data: Vec<Complex64> = input
+        .iter()
+        .map(|x| Complex64::new(x.clone().into(), 0.0))
+        .collect();
+
+    // Pad or truncate to m
+    if data.len() < m {
+        data.resize(m, Complex64::new(0.0, 0.0));
+    } else if data.len() > m {
+        data.truncate(m);
+    }
+
+    let mut planner = FftPlanner::new();
+    let fft = planner.plan_fft_forward(m);
+    fft.process(&mut data);
+
+    // Truncate for ihfft: n_out elements
+    data.truncate(n_out);
+
+    // Normalization for ihfft
+    if let Some(norm_str) = norm {
+        match norm_str {
+            "ortho" => {
+                let scale = (m as f64).sqrt();
+                for x in data.iter_mut() {
+                    *x /= scale;
+                }
+            }
+            "forward" => {
+                let scale = m as f64;
+                for x in data.iter_mut() {
+                    *x /= scale;
+                }
+            }
+            _ => {} // "backward" - no scaling
+        }
+    }
+
+    Ok(Array::from_data(data, vec![n_out]))
 }

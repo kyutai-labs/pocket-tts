@@ -11,13 +11,11 @@ use std::fmt;
 use std::ops::{Index, IndexMut};
 use std::sync::Arc;
 
-use ndarray::ShapeBuilder;
-
 use crate::dtype::Dtype;
 use crate::error::NumPyError;
 use crate::memory::MemoryManager;
-use crate::strides::{compute_linear_index, compute_multi_indices};
-use crate::ufunc::ArrayView;
+
+use num_complex::Complex64;
 
 /// Main array structure
 #[derive(Debug)]
@@ -128,8 +126,8 @@ impl<T> Array<T> {
         if index >= self.size() {
             return None;
         }
-        let indices = compute_multi_indices(index, &self.shape);
-        let linear_offset = compute_linear_index(&indices, &self.strides);
+        let indices = crate::strides::compute_multi_indices(index, &self.shape);
+        let linear_offset = crate::strides::compute_linear_index(&indices, &self.strides);
         let physical_idx = (self.offset as isize + linear_offset) as usize;
         self.data.get(physical_idx)
     }
@@ -139,8 +137,8 @@ impl<T> Array<T> {
         if index >= self.size() {
             return;
         }
-        let indices = compute_multi_indices(index, &self.shape);
-        let linear_offset = compute_linear_index(&indices, &self.strides);
+        let indices = crate::strides::compute_multi_indices(index, &self.shape);
+        let linear_offset = crate::strides::compute_linear_index(&indices, &self.strides);
         let physical_idx = (self.offset as isize + linear_offset) as usize;
 
         if let Some(elem) = self.data.get_mut(physical_idx) {
@@ -253,6 +251,147 @@ impl<T> Array<T> {
         T: Clone + Default + 'static,
     {
         crate::broadcasting::broadcast_to(self, shape)
+    }
+
+    /// Get element at multi-dimensional indices
+    pub fn get_multi(&self, indices: &[usize]) -> Result<T, NumPyError>
+    where
+        T: Clone,
+    {
+        if indices.len() != self.ndim() {
+            return Err(NumPyError::invalid_operation(format!(
+                "Index dimension {} does not match array dimension {}",
+                indices.len(),
+                self.ndim()
+            )));
+        }
+
+        let linear_offset = crate::strides::compute_linear_index(indices, &self.strides);
+        let physical_idx = (self.offset as isize + linear_offset) as usize;
+
+        self.data
+            .get(physical_idx)
+            .cloned()
+            .ok_or_else(|| NumPyError::index_error(physical_idx, self.size()))
+    }
+
+    /// Set element at multi-dimensional indices
+    pub fn set_multi(&mut self, indices: &[usize], value: T) -> Result<(), NumPyError>
+    where
+        T: Clone,
+    {
+        if indices.len() != self.ndim() {
+            return Err(NumPyError::invalid_operation(format!(
+                "Index dimension {} does not match array dimension {}",
+                indices.len(),
+                self.ndim()
+            )));
+        }
+
+        let linear_offset = crate::strides::compute_linear_index(indices, &self.strides);
+        let physical_idx = (self.offset as isize + linear_offset) as usize;
+
+        if let Some(elem) = Arc::make_mut(&mut self.data).get_mut(physical_idx) {
+            *elem = value;
+            Ok(())
+        } else {
+            Err(NumPyError::index_error(physical_idx, self.size()))
+        }
+    }
+
+    /// Clone the array and convert elements to Complex64
+    pub fn clone_to_complex(&self) -> Array<Complex64>
+    where
+        T: Clone + Into<Complex64> + Default + 'static,
+    {
+        let data: Vec<Complex64> = self.iter().map(|x| x.clone().into()).collect();
+        Array::from_data(data, self.shape.to_vec())
+    }
+
+    /// Get elements where mask is true (Boolean Indexing)
+    pub fn get_mask(&self, mask: &Array<bool>) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + 'static,
+    {
+        if self.shape() != mask.shape() {
+            return Err(NumPyError::invalid_operation(format!(
+                "Mask shape {:?} must match array shape {:?}",
+                mask.shape(),
+                self.shape()
+            )));
+        }
+
+        let mut extracted = Vec::new();
+        for (i, &is_true) in mask.iter().enumerate() {
+            if is_true {
+                if let Some(val) = self.get_linear(i) {
+                    extracted.push(val.clone());
+                }
+            }
+        }
+
+        Ok(Array::from_vec(extracted))
+    }
+
+    /// Take elements along an axis (Fancy Indexing)
+    pub fn take(&self, indices: &Array<usize>, axis: Option<usize>) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + 'static,
+    {
+        match axis {
+            None => {
+                // Flat indexing
+                let mut data = Vec::with_capacity(indices.size());
+                for &idx in indices.iter() {
+                    if let Some(val) = self.get_linear(idx) {
+                        data.push(val.clone());
+                    } else {
+                        return Err(NumPyError::index_error(idx, self.size()));
+                    }
+                }
+                Ok(Array::from_data(data, indices.shape().to_vec()))
+            }
+            Some(ax) => {
+                let ax = normalize_axis(ax as isize, self.ndim())?;
+                let shape = self.shape();
+                let mut new_shape = shape.to_vec();
+                new_shape[ax] = indices.size();
+
+                let mut result = Array::zeros(new_shape);
+                let outer_size: usize = shape[..ax].iter().product();
+                let inner_size: usize = shape[ax + 1..].iter().product();
+                let axis_len = shape[ax];
+
+                for i in 0..outer_size {
+                    for (j, &idx) in indices.iter().enumerate() {
+                        if idx >= axis_len {
+                            return Err(NumPyError::index_error(idx, axis_len));
+                        }
+                        for k in 0..inner_size {
+                            let mut src_idx = vec![0; self.ndim()];
+                            let mut temp_i = i;
+                            for d in (0..ax).rev() {
+                                src_idx[d] = temp_i % shape[d];
+                                temp_i /= shape[d];
+                            }
+                            src_idx[ax] = idx;
+                            let mut temp_k = k;
+                            for d in (ax + 1..self.ndim()).rev() {
+                                src_idx[d] = temp_k % shape[d];
+                                temp_k /= shape[d];
+                            }
+
+                            let mut dst_idx = src_idx.clone();
+                            dst_idx[ax] = j;
+
+                            let val = self.get_multi(&src_idx)?;
+                            result.set_multi(&dst_idx, val)?;
+                        }
+                    }
+                }
+                Ok(result)
+            }
+        }
     }
 
     /// Reshape array
@@ -408,5 +547,27 @@ impl<T> Clone for Array<T> {
             dtype: self.dtype.clone(),
             offset: self.offset,
         }
+    }
+}
+
+/// Normalize an axis index to be within bounds [0, ndim)
+pub fn normalize_axis(axis: isize, ndim: usize) -> Result<usize, NumPyError> {
+    if axis < 0 {
+        let ax = axis + ndim as isize;
+        if ax < 0 {
+            return Err(NumPyError::invalid_operation(format!(
+                "Axis {} out of bounds for ndim {}",
+                axis, ndim
+            )));
+        }
+        Ok(ax as usize)
+    } else {
+        if axis as usize >= ndim {
+            return Err(NumPyError::invalid_operation(format!(
+                "Axis {} out of bounds for ndim {}",
+                axis, ndim
+            )));
+        }
+        Ok(axis as usize)
     }
 }

@@ -85,8 +85,8 @@ impl<T> Array<T> {
     }
 
     /// Get iterator over array elements
-    pub fn iter(&self) -> std::slice::Iter<'_, T> {
-        self.data.as_slice().iter()
+    pub fn iter(&self) -> crate::iterator::ArrayIter<'_, T> {
+        crate::iterator::ArrayIter::new(self)
     }
     ///
     /// Note: Returns a Vec by copying the array data.

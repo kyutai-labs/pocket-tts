@@ -13,6 +13,10 @@ impl<T: 'static> ArrayView for Array<T> {
         &self.shape
     }
 
+    fn offset(&self) -> usize {
+        self.offset
+    }
+
     fn strides(&self) -> &[isize] {
         self.strides()
     }
@@ -111,6 +115,9 @@ pub trait ArrayView {
 
     /// Get total size
     fn size(&self) -> usize;
+
+    /// Get base offset
+    fn offset(&self) -> usize;
 
     /// Get number of dimensions
     fn ndim(&self) -> usize;

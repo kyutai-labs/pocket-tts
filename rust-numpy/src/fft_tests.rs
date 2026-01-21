@@ -1,6 +1,6 @@
 use crate::{
-    fft, fftfreq, fftshift, ifft, ifftshift, irfft, irfft2, irfftn, rfft, rfft2, rfftfreq, rfftn,
-    Array,
+    fft, fftfreq, fftshift, hilbert_with_params, ifft, ifftshift, irfft, irfft2, irfftn, rfft,
+    rfft2, rfftfreq, rfftn, Array,
 };
 use num_complex::Complex64;
 

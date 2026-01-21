@@ -5,6 +5,7 @@
 pub mod array_clip_round_ptp_tests;
 pub mod array_extra_tests;
 pub mod basic_tests;
+pub mod choose_compress_tests;
 pub mod comparison_tests;
 pub mod comprehensive_tests;
 pub mod conformance_tests;

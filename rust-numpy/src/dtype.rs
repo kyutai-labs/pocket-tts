@@ -21,6 +21,8 @@ pub enum Casting {
     Unsafe,
     /// Allow any cast (legacy name for Unsafe)
     Equiv,
+    /// Identical types only
+    No,
 }
 
 /// Comprehensive dtype system matching NumPy's type system
@@ -420,6 +422,7 @@ impl Dtype {
             Casting::Unsafe | Casting::Equiv => true,
             Casting::SameKind => self.can_cast_same_kind(to),
             Casting::Safe => self.can_cast_safe(to),
+            Casting::No => false,
         }
     }
 

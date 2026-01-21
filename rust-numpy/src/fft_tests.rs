@@ -1,5 +1,100 @@
-use crate::{fft_with_params, hilbert_with_params, ifft, irfft2, irfftn, rfft2, rfftn, Array};
+use crate::{
+    fft, fftfreq, fftshift, ifft, ifftshift, irfft, irfft2, irfftn, rfft, rfft2, rfftfreq, rfftn,
+    Array,
+};
 use num_complex::Complex64;
+
+#[test]
+fn test_fftfreq_basic() {
+    let freqs = fftfreq(8, 0.1);
+    assert_eq!(freqs.len(), 8);
+    assert_eq!(freqs[0], 0.0);
+    assert_eq!(freqs[1], 1.25);
+}
+
+#[test]
+fn test_rfftfreq_basic() {
+    let freqs = rfftfreq(8, 0.1);
+    assert_eq!(freqs.len(), 5);
+    assert_eq!(freqs[0], 0.0);
+    assert_eq!(freqs[1], 1.25);
+    assert_eq!(freqs[4], 5.0);
+
+    let freqs_odd = rfftfreq(7, 0.1);
+    assert_eq!(freqs_odd.len(), 4);
+    assert_eq!(freqs_odd[0], 0.0);
+    assert!((freqs_odd[3] - 3.0 / (7.0 * 0.1)).abs() < 1e-10);
+}
+
+#[test]
+fn test_fftshift_basic() {
+    let a = Array::from_vec(vec![0, 1, 2, 3, 4]);
+    let res = fftshift(&a, None);
+    assert_eq!(res.to_vec(), vec![3, 4, 0, 1, 2]);
+}
+
+#[test]
+fn test_ifftshift_basic() {
+    let a = Array::from_vec(vec![3, 4, 0, 1, 2]);
+    let res = ifftshift(&a, None);
+    assert_eq!(res.to_vec(), vec![0, 1, 2, 3, 4]);
+}
+
+#[test]
+fn test_fft_basic() {
+    let a = Array::from_vec(vec![1.0, 0.0, -1.0, 0.0]);
+    let res = fft(&a, None, 0, None).unwrap();
+    let vals = res.to_vec();
+    assert!((vals[0].re).abs() < 1e-10);
+    assert!((vals[1].re - 2.0).abs() < 1e-10);
+    assert!((vals[2].re).abs() < 1e-10);
+    assert!((vals[3].re - 2.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_ifft_basic() {
+    let a = vec![
+        Complex64::new(0.0, 0.0),
+        Complex64::new(2.0, 0.0),
+        Complex64::new(0.0, 0.0),
+        Complex64::new(2.0, 0.0),
+    ];
+    let arr = Array::from_vec(a);
+    let res = ifft(&arr, None, 0, None).unwrap();
+    let vals = res.to_vec();
+    assert!((vals[0].re - 1.0).abs() < 1e-10);
+    assert!((vals[1].re).abs() < 1e-10);
+    assert!((vals[2].re + 1.0).abs() < 1e-10);
+    assert!((vals[3].re).abs() < 1e-10);
+}
+
+#[test]
+fn test_rfft_basic() {
+    let a = Array::from_vec(vec![1.0, 0.0, -1.0, 0.0]);
+    let res = rfft(&a, None, 0, None).unwrap();
+    let vals = res.to_vec();
+    assert_eq!(vals.len(), 3);
+    assert!((vals[0].re).abs() < 1e-10);
+    assert!((vals[1].re - 2.0).abs() < 1e-10);
+    assert!((vals[2].re).abs() < 1e-10);
+}
+
+#[test]
+fn test_irfft_basic() {
+    let a = vec![
+        Complex64::new(0.0, 0.0),
+        Complex64::new(2.0, 0.0),
+        Complex64::new(0.0, 0.0),
+    ];
+    let arr = Array::from_vec(a);
+    let res = irfft(&arr, Some(4), 0, None).unwrap();
+    let vals = res.to_vec();
+    assert_eq!(vals.len(), 4);
+    assert!((vals[0] - 1.0).abs() < 1e-10);
+    assert!((vals[1]).abs() < 1e-10);
+    assert!((vals[2] + 1.0).abs() < 1e-10);
+    assert!((vals[3]).abs() < 1e-10);
+}
 
 fn assert_real_approx(actual: &[f64], expected: &[f64], tol: f64) {
     assert_eq!(actual.len(), expected.len());

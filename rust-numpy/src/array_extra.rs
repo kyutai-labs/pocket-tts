@@ -670,3 +670,221 @@ where
 
     Ok(Array::from_vec(result))
 }
+
+/// Extract a diagonal from a 2D array (similar to np.diagonal).
+///
+/// # Arguments
+/// - `array`: Input array (must be at least 2D)
+/// - `offset`: Diagonal offset (default 0)
+///   - offset > 0: upper diagonals
+///   - offset < 0: lower diagonals
+///   - offset = 0: main diagonal
+/// - `axis1`: First axis of diagonal (default 0)
+/// - `axis2`: Second axis of diagonal (default 1)
+///
+/// # Returns
+/// 1D array containing the specified diagonal
+pub fn diagonal<T>(
+    array: &Array<T>,
+    offset: isize,
+    axis1: usize,
+    axis2: usize,
+) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+{
+    let ndim = array.ndim();
+
+    if ndim < 2 {
+        return Err(NumPyError::invalid_operation(
+            "diagonal() requires array with at least 2 dimensions",
+        ));
+    }
+
+    if axis1 >= ndim || axis2 >= ndim {
+        return Err(NumPyError::index_error(axis1.max(axis2), ndim));
+    }
+
+    if axis1 == axis2 {
+        return Err(NumPyError::invalid_operation(
+            "diagonal() requires axis1 and axis2 to be different",
+        ));
+    }
+
+    // For 2D arrays, extract the diagonal directly
+    if ndim == 2 {
+        let rows = array.shape()[0];
+        let cols = array.shape()[1];
+        let data = array.to_vec();
+
+        let mut diagonal_elements = Vec::new();
+
+        // Calculate diagonal bounds based on offset
+        let (row_start, col_start): (isize, isize) = if offset >= 0 {
+            (0, offset)
+        } else {
+            (-offset, 0)
+        };
+
+        let row_start = row_start as usize;
+        let col_start = col_start as usize;
+
+        // Iterate along the diagonal
+        let mut i = row_start;
+        let mut j = col_start;
+
+        while i < rows && j < cols {
+            let idx = i * cols + j;
+            if idx < data.len() {
+                diagonal_elements.push(data[idx].clone());
+            }
+            i += 1;
+            j += 1;
+        }
+
+        return Ok(Array::from_vec(diagonal_elements));
+    }
+
+    // For nD arrays, use axis1 and axis2
+    let mut diagonal_shape = array.shape().to_vec();
+    diagonal_shape.remove(axis1.max(axis2));
+    diagonal_shape.remove(axis1.min(axis2));
+
+    let dim1_size = array.shape()[axis1];
+    let dim2_size = array.shape()[axis2];
+
+    let mut diagonal_elements = Vec::new();
+
+    let (start1, start2): (isize, isize) = if offset >= 0 {
+        (0, offset)
+    } else {
+        (-offset, 0)
+    };
+
+    let start1 = start1 as usize;
+    let start2 = start2 as usize;
+
+    // Collect diagonal elements
+    let mut d1 = start1;
+    let mut d2 = start2;
+
+    while d1 < dim1_size && d2 < dim2_size {
+        let mut indices = vec![0; ndim];
+        indices[axis1] = d1;
+        indices[axis2] = d2;
+
+        // Collect all elements for this diagonal position across other dimensions
+        collect_diagonal_elements(array, &mut indices, axis1.min(axis2), 0, &mut diagonal_elements);
+
+        d1 += 1;
+        d2 += 1;
+    }
+
+    let final_shape = if diagonal_shape.is_empty() {
+        vec![1]
+    } else {
+        diagonal_shape
+    };
+
+    Ok(Array::from_shape_vec(final_shape, diagonal_elements))
+}
+
+/// Helper function to collect elements along diagonal for nD arrays
+fn collect_diagonal_elements<T>(
+    array: &Array<T>,
+    indices: &mut [usize],
+    skip_axis: usize,
+    current_axis: usize,
+    result: &mut Vec<T>,
+) where
+    T: Clone + Default + 'static,
+{
+    if current_axis == indices.len() {
+        let linear_idx = compute_linear_index_from_indices(array, indices);
+        if let Some(elem) = array.get_linear(linear_idx) {
+            result.push(elem.clone());
+        }
+        return;
+    }
+
+    if current_axis == skip_axis {
+        collect_diagonal_elements(array, indices, skip_axis, current_axis + 1, result);
+    } else {
+        let dim_size = array.shape()[current_axis];
+        for i in 0..dim_size {
+            indices[current_axis] = i;
+            collect_diagonal_elements(array, indices, skip_axis, current_axis + 1, result);
+        }
+    }
+}
+
+/// Compute linear index from multi-dimensional indices
+fn compute_linear_index_from_indices<T>(array: &Array<T>, indices: &[usize]) -> usize
+where
+    T: Clone + Default + 'static,
+{
+    let strides = array.strides();
+    let offset = array.offset;
+
+    let mut linear_idx: isize = offset as isize;
+    for (i, &idx) in indices.iter().enumerate() {
+        linear_idx += strides[i] * idx as isize;
+    }
+
+    linear_idx as usize
+}
+
+/// Extract a diagonal or construct a diagonal array (similar to np.diag).
+///
+/// # Arguments
+/// - `v`: Input array
+///   - If 2D: extracts the k-th diagonal
+///   - If 1D: constructs a 2D array with v on the k-th diagonal
+/// - `k`: Diagonal offset (default 0)
+///   - k > 0: upper diagonals
+///   - k < 0: lower diagonals
+///   - k = 0: main diagonal
+///
+/// # Returns
+/// - If input is 2D: 1D array containing the k-th diagonal
+/// - If input is 1D: 2D array with input on the k-th diagonal
+pub fn diag<T>(v: &Array<T>, k: isize) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+{
+    let ndim = v.ndim();
+
+    if ndim == 1 {
+        // Construct 2D array with v on the k-th diagonal
+        let n = v.shape()[0];
+        let data = v.to_vec();
+
+        let size = if k >= 0 {
+            n + k as usize
+        } else {
+            n + (-k) as usize
+        };
+
+        let mut matrix = vec![T::default(); size * size];
+
+        for (i, val) in data.iter().enumerate() {
+            let (row, col) = if k >= 0 {
+                (i, i + k as usize)
+            } else {
+                (i + (-k) as usize, i)
+            };
+            if row < size && col < size {
+                matrix[row * size + col] = val.clone();
+            }
+        }
+
+        Ok(Array::from_shape_vec(vec![size, size], matrix))
+    } else if ndim == 2 {
+        // Extract the k-th diagonal from 2D array
+        diagonal(v, k, 0, 1)
+    } else {
+        Err(NumPyError::invalid_operation(
+            "diag() requires 1D or 2D array",
+        ))
+    }
+}

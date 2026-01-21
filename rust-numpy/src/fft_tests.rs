@@ -1,230 +1,226 @@
-#[cfg(test)]
-mod fft_tests {
-    use super::*;
-    use crate::array::Array;
-    use num_complex::Complex64;
+use crate::{fft_with_params, hilbert_with_params, ifft, irfft2, irfftn, rfft2, rfftn, Array};
+use num_complex::Complex64;
 
-    fn assert_real_approx(actual: &[f64], expected: &[f64], tol: f64) {
-        assert_eq!(actual.len(), expected.len());
-        for (idx, (a, e)) in actual.iter().zip(expected.iter()).enumerate() {
-            assert!(
-                (a - e).abs() <= tol,
-                "real mismatch at {}: {} != {}",
-                idx,
-                a,
-                e
-            );
-        }
+fn assert_real_approx(actual: &[f64], expected: &[f64], tol: f64) {
+    assert_eq!(actual.len(), expected.len());
+    for (idx, (a, e)) in actual.iter().zip(expected.iter()).enumerate() {
+        assert!(
+            (a - e).abs() <= tol,
+            "real mismatch at {}: {} != {}",
+            idx,
+            a,
+            e
+        );
     }
+}
 
-    fn assert_complex_approx(actual: &[Complex64], expected: &[Complex64], tol: f64) {
-        assert_eq!(actual.len(), expected.len());
-        for (idx, (a, e)) in actual.iter().zip(expected.iter()).enumerate() {
-            assert!(
-                (a.re - e.re).abs() <= tol && (a.im - e.im).abs() <= tol,
-                "complex mismatch at {}: {} != {}",
-                idx,
-                a,
-                e
-            );
-        }
+fn assert_complex_approx(actual: &[Complex64], expected: &[Complex64], tol: f64) {
+    assert_eq!(actual.len(), expected.len());
+    for (idx, (a, e)) in actual.iter().zip(expected.iter()).enumerate() {
+        assert!(
+            (a.re - e.re).abs() <= tol && (a.im - e.im).abs() <= tol,
+            "complex mismatch at {}: {} != {}",
+            idx,
+            a,
+            e
+        );
     }
+}
 
-    #[test]
-    fn test_rfft2_basic() {
-        let data = vec![1.0, 2.0, 3.0, 4.0];
-        let input = Array::from_shape_vec(vec![2, 2], data).unwrap();
+#[test]
+fn test_rfft2_basic() {
+    let data = vec![1.0, 2.0, 3.0, 4.0];
+    let input = Array::from_shape_vec(vec![2, 2], data);
 
-        let result = rfft2(&input, None, None, None);
-        assert!(result.is_ok());
-    }
+    let result = rfft2(&input, None, None, None);
+    assert!(result.is_ok());
+}
 
-    #[test]
-    fn test_irfft2_basic() {
-        let data = vec![
-            Complex64::new(1.0, 0.0),
-            Complex64::new(0.0, 0.0),
-            Complex64::new(0.0, 0.0),
-            Complex64::new(1.0, 0.0),
-        ];
-        let input = Array::from_shape_vec(vec![2, 2], data).unwrap();
+#[test]
+fn test_irfft2_basic() {
+    let data = vec![
+        Complex64::new(1.0, 0.0),
+        Complex64::new(0.0, 0.0),
+        Complex64::new(0.0, 0.0),
+        Complex64::new(1.0, 0.0),
+    ];
+    let input = Array::from_shape_vec(vec![2, 2], data);
 
-        let result = irfft2(&input, None, None, None);
-        assert!(result.is_ok());
-    }
+    let result = irfft2(&input, None, None, None);
+    assert!(result.is_ok());
+}
 
-    #[test]
-    fn test_rfftn_basic() {
-        let data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
-        let input = Array::from_shape_vec(vec![2, 2, 2], data).unwrap();
+#[test]
+fn test_rfftn_basic() {
+    let data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+    let input = Array::from_shape_vec(vec![2, 2, 2], data);
 
-        let result = rfftn(&input, None, None, None);
-        assert!(result.is_ok());
-    }
+    let result = rfftn(&input, None, None, None);
+    assert!(result.is_ok());
+}
 
-    #[test]
-    fn test_irfftn_basic() {
-        let data = vec![
-            Complex64::new(1.0, 0.0),
-            Complex64::new(0.0, 0.0),
-            Complex64::new(0.0, 0.0),
-            Complex64::new(1.0, 0.0),
-        ];
-        let input = Array::from_shape_vec(vec![2, 2], data).unwrap();
+#[test]
+fn test_irfftn_basic() {
+    let data = vec![
+        Complex64::new(1.0, 0.0),
+        Complex64::new(0.0, 0.0),
+        Complex64::new(0.0, 0.0),
+        Complex64::new(1.0, 0.0),
+    ];
+    let input = Array::from_shape_vec(vec![2, 2], data);
 
-        let result = irfftn(&input, None, None, None);
-        assert!(result.is_ok());
-    }
+    let result = irfftn(&input, None, None, None);
+    assert!(result.is_ok());
+}
 
-    #[test]
-    fn test_hilbert_with_params_basic() {
-        let data = vec![1.0, 2.0, 3.0, 4.0];
-        let input = Array::from_vec(data);
+#[test]
+fn test_hilbert_with_params_basic() {
+    let data = vec![1.0, 2.0, 3.0, 4.0];
+    let input = Array::from_vec(data);
 
-        let result = hilbert_with_params(&input, None, None);
-        assert!(result.is_ok());
-    }
+    let result = hilbert_with_params(&input, None, None);
+    assert!(result.is_ok());
+}
 
-    #[test]
-    fn test_fft_with_params_basic() {
-        let data = vec![1.0, 2.0, 3.0, 4.0];
-        let input = Array::from_vec(data);
+#[test]
+fn test_fft_with_params_basic() {
+    let data = vec![1.0, 2.0, 3.0, 4.0];
+    let input = Array::from_vec(data);
 
-        let result = fft_with_params(&input, None, None, None);
-        assert!(result.is_ok());
-    }
+    let result = fft_with_params(&input, None, None, None);
+    assert!(result.is_ok());
+}
 
-    #[test]
-    fn test_fft_known_delta() {
-        let data = vec![1.0, 0.0, 0.0, 0.0];
-        let input = Array::from_vec(data);
+#[test]
+fn test_fft_known_delta() {
+    let data = vec![1.0, 0.0, 0.0, 0.0];
+    let input = Array::from_vec(data);
 
-        let result = fft_with_params(&input, None, None, None).unwrap();
-        let expected = vec![
-            Complex64::new(1.0, 0.0),
-            Complex64::new(1.0, 0.0),
-            Complex64::new(1.0, 0.0),
-            Complex64::new(1.0, 0.0),
-        ];
-        assert_complex_approx(result.as_slice(), &expected, 1e-9);
-    }
+    let result = fft_with_params(&input, None, None, None).unwrap();
+    let expected = vec![
+        Complex64::new(1.0, 0.0),
+        Complex64::new(1.0, 0.0),
+        Complex64::new(1.0, 0.0),
+        Complex64::new(1.0, 0.0),
+    ];
+    assert_complex_approx(result.as_slice(), &expected, 1e-9);
+}
 
-    #[test]
-    fn test_ifft_known_constant() {
-        let data = vec![
-            Complex64::new(1.0, 0.0),
-            Complex64::new(1.0, 0.0),
-            Complex64::new(1.0, 0.0),
-            Complex64::new(1.0, 0.0),
-        ];
-        let input = Array::from_vec(data);
+#[test]
+fn test_ifft_known_constant() {
+    let data = vec![
+        Complex64::new(1.0, 0.0),
+        Complex64::new(1.0, 0.0),
+        Complex64::new(1.0, 0.0),
+        Complex64::new(1.0, 0.0),
+    ];
+    let input = Array::from_vec(data);
 
-        let result = ifft(&input, None, None, None).unwrap();
-        let expected = vec![
-            Complex64::new(1.0, 0.0),
-            Complex64::new(0.0, 0.0),
-            Complex64::new(0.0, 0.0),
-            Complex64::new(0.0, 0.0),
-        ];
-        assert_complex_approx(result.as_slice(), &expected, 1e-9);
-    }
+    let result = ifft(&input, None, None, None).unwrap();
+    let expected = vec![
+        Complex64::new(1.0, 0.0),
+        Complex64::new(0.0, 0.0),
+        Complex64::new(0.0, 0.0),
+        Complex64::new(0.0, 0.0),
+    ];
+    assert_complex_approx(result.as_slice(), &expected, 1e-9);
+}
 
-    #[test]
-    fn test_rfft2_shape_with_s() {
-        let data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-        let input = Array::from_shape_vec(vec![2, 3], data).unwrap();
+#[test]
+fn test_rfft2_shape_with_s() {
+    let data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+    let input = Array::from_shape_vec(vec![2, 3], data);
 
-        let result = rfft2(&input, Some(&[4, 4]), None, None).unwrap();
-        assert_eq!(result.shape(), vec![4, 3]);
-        assert_eq!(result.size(), 12);
-    }
+    let result = rfft2(&input, Some(&[4, 4]), None, None).unwrap();
+    assert_eq!(result.shape(), vec![4, 3]);
+    assert_eq!(result.size(), 12);
+}
 
-    #[test]
-    fn test_rfft2_irfft2_roundtrip() {
-        let data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-        let input = Array::from_shape_vec(vec![2, 3], data.clone()).unwrap();
+#[test]
+fn test_rfft2_irfft2_roundtrip() {
+    let data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+    let input = Array::from_shape_vec(vec![2, 3], data.clone());
 
-        let spectrum = rfft2(&input, None, None, None).unwrap();
-        let reconstructed = irfft2(&spectrum, Some(&[2, 3]), None, None).unwrap();
-        assert_eq!(reconstructed.shape(), vec![2, 3]);
+    let spectrum = rfft2(&input, None, None, None).unwrap();
+    let reconstructed = irfft2(&spectrum, Some(&[2, 3]), None, None).unwrap();
+    assert_eq!(reconstructed.shape(), vec![2, 3]);
 
-        let expected = data;
-        assert_real_approx(reconstructed.as_slice(), &expected, 1e-9);
-    }
+    let expected = data;
+    assert_real_approx(reconstructed.as_slice(), &expected, 1e-9);
+}
 
-    #[test]
-    fn test_rfftn_axes_shape() {
-        let data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
-        let input = Array::from_shape_vec(vec![2, 2, 2], data).unwrap();
+#[test]
+fn test_rfftn_axes_shape() {
+    let data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+    let input = Array::from_shape_vec(vec![2, 2, 2], data);
 
-        let result = rfftn(&input, Some(&[4, 5]), Some(&[0, 2]), None).unwrap();
-        assert_eq!(result.shape(), vec![4, 2, 3]);
-        assert_eq!(result.size(), 24);
-    }
+    let result = rfftn(&input, Some(&[4, 5]), Some(&[0, 2]), None).unwrap();
+    assert_eq!(result.shape(), vec![4, 2, 3]);
+    assert_eq!(result.size(), 24);
+}
 
-    #[test]
-    fn test_rfftn_duplicate_axes_error() {
-        let data = vec![1.0, 2.0, 3.0, 4.0];
-        let input = Array::from_shape_vec(vec![2, 2], data).unwrap();
+#[test]
+fn test_rfftn_duplicate_axes_error() {
+    let data = vec![1.0, 2.0, 3.0, 4.0];
+    let input = Array::from_shape_vec(vec![2, 2], data);
 
-        let result = rfftn(&input, None, Some(&[1, 1]), None);
-        assert!(result.is_err());
-    }
+    let result = rfftn(&input, None, Some(&[1, 1]), None);
+    assert!(result.is_err());
+}
 
-    #[test]
-    fn test_irfftn_shape_with_s() {
-        let data = vec![
-            Complex64::new(1.0, 0.0),
-            Complex64::new(0.0, 0.0),
-            Complex64::new(0.0, 0.0),
-            Complex64::new(1.0, 0.0),
-            Complex64::new(2.0, 0.0),
-            Complex64::new(3.0, 0.0),
-        ];
-        let input = Array::from_shape_vec(vec![2, 3], data).unwrap();
+#[test]
+fn test_irfftn_shape_with_s() {
+    let data = vec![
+        Complex64::new(1.0, 0.0),
+        Complex64::new(0.0, 0.0),
+        Complex64::new(0.0, 0.0),
+        Complex64::new(1.0, 0.0),
+        Complex64::new(2.0, 0.0),
+        Complex64::new(3.0, 0.0),
+    ];
+    let input = Array::from_shape_vec(vec![2, 3], data);
 
-        let result = irfftn(&input, Some(&[4, 5]), None, None).unwrap();
-        assert_eq!(result.shape(), vec![4, 5]);
-        assert_eq!(result.size(), 20);
-    }
+    let result = irfftn(&input, Some(&[4, 5]), None, None).unwrap();
+    assert_eq!(result.shape(), vec![4, 5]);
+    assert_eq!(result.size(), 20);
+}
 
-    #[test]
-    fn test_rfftn_irfftn_roundtrip() {
-        let data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-        let input = Array::from_shape_vec(vec![2, 3], data.clone()).unwrap();
+#[test]
+fn test_rfftn_irfftn_roundtrip() {
+    let data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+    let input = Array::from_shape_vec(vec![2, 3], data.clone());
 
-        let spectrum = rfftn(&input, None, None, None).unwrap();
-        let reconstructed = irfftn(&spectrum, Some(&[2, 3]), None, None).unwrap();
-        assert_eq!(reconstructed.shape(), vec![2, 3]);
-        assert_real_approx(reconstructed.as_slice(), &data, 1e-9);
-    }
+    let spectrum = rfftn(&input, None, None, None).unwrap();
+    let reconstructed = irfftn(&spectrum, Some(&[2, 3]), None, None).unwrap();
+    assert_eq!(reconstructed.shape(), vec![2, 3]);
+    assert_real_approx(reconstructed.as_slice(), &data, 1e-9);
+}
 
-    #[test]
-    fn test_irfftn_empty_axes() {
-        let data = vec![
-            Complex64::new(1.0, 0.0),
-            Complex64::new(2.0, 0.0),
-            Complex64::new(3.0, 0.0),
-            Complex64::new(4.0, 0.0),
-        ];
-        let input = Array::from_shape_vec(vec![2, 2], data).unwrap();
+#[test]
+fn test_irfftn_empty_axes() {
+    let data = vec![
+        Complex64::new(1.0, 0.0),
+        Complex64::new(2.0, 0.0),
+        Complex64::new(3.0, 0.0),
+        Complex64::new(4.0, 0.0),
+    ];
+    let input = Array::from_shape_vec(vec![2, 2], data);
 
-        let result = irfftn(&input, None, Some(&[]), None).unwrap();
-        assert_eq!(result.shape(), vec![2, 2]);
-        assert_eq!(result.size(), 4);
-    }
+    let result = irfftn(&input, None, Some(&[]), None).unwrap();
+    assert_eq!(result.shape(), vec![2, 2]);
+    assert_eq!(result.size(), 4);
+}
 
-    #[test]
-    fn test_irfft2_invalid_axes() {
-        let data = vec![
-            Complex64::new(1.0, 0.0),
-            Complex64::new(0.0, 0.0),
-            Complex64::new(0.0, 0.0),
-            Complex64::new(1.0, 0.0),
-        ];
-        let input = Array::from_shape_vec(vec![2, 2], data).unwrap();
+#[test]
+fn test_irfft2_invalid_axes() {
+    let data = vec![
+        Complex64::new(1.0, 0.0),
+        Complex64::new(0.0, 0.0),
+        Complex64::new(0.0, 0.0),
+        Complex64::new(1.0, 0.0),
+    ];
+    let input = Array::from_shape_vec(vec![2, 2], data);
 
-        let result = irfft2(&input, None, Some(&[0]), None);
-        assert!(result.is_err());
-    }
+    let result = irfft2(&input, None, Some(&[0]), None);
+    assert!(result.is_err());
 }

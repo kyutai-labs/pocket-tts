@@ -106,3 +106,7 @@ approx = "0.5"
 [[test]]
 name = "linalg_qr_tests"
 path = "tests/linalg_qr_tests.rs"
+
+[[test]]
+name = "lstsq_tests"
+path = "tests/lstsq_tests.rs"

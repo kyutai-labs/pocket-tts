@@ -4,7 +4,7 @@ use super::{Polynomial, PolynomialBase};
 use crate::error::NumPyError;
 use ndarray::{Array1, Array2};
 use num_complex::Complex;
-use num_traits::{Float, Num, One, Zero};
+use num_traits::{Float, Num};
 
 /// Legendre polynomials
 #[derive(Debug, Clone)]
@@ -16,7 +16,14 @@ pub struct Legendre<T> {
 
 impl<T> Legendre<T>
 where
-    T: Float + Num + std::fmt::Debug + 'static,
+    T: Float
+        + Num
+        + std::fmt::Debug
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::SubAssign
+        + std::ops::MulAssign
+        + std::ops::DivAssign,
 {
     pub fn new(coeffs: &Array1<T>) -> Result<Self, NumPyError> {
         if coeffs.len() == 0 {
@@ -26,8 +33,8 @@ where
         }
 
         let coeffs = coeffs.to_owned();
-        let domain = [T::one(), T::one()];
-        let window = [T::one(), T::one()];
+        let domain = [T::from(-1.0).unwrap(), T::one()];
+        let window = [T::from(-1.0).unwrap(), T::one()];
 
         Ok(Self {
             coeffs,
@@ -60,7 +67,14 @@ where
 
 impl<T> PolynomialBase<T> for Legendre<T>
 where
-    T: Float + Num + std::fmt::Debug + 'static,
+    T: Float
+        + Num
+        + std::fmt::Debug
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::SubAssign
+        + std::ops::MulAssign
+        + std::ops::DivAssign,
 {
     fn coeffs(&self) -> &Array1<T> {
         &self.coeffs
@@ -70,10 +84,10 @@ where
         let mut result = Array1::zeros(x.len());
 
         for (i, &xi) in x.iter().enumerate() {
-            let xi_scaled = (T::from(2.0).unwrap() * xi - (self.window[0] + self.window[1]))
-                / (self.window[1] - self.window[0]);
-
-            let value = legendre_eval_recursive(&self.coeffs, xi_scaled);
+            let xi_window = self.window[0]
+                + (xi - self.domain[0]) * (self.window[1] - self.window[0])
+                    / (self.domain[1] - self.domain[0]);
+            let value = legendre_eval_recursive(&self.coeffs, xi_window);
             result[i] = value;
         }
 
@@ -122,7 +136,14 @@ where
 
 fn legendre_eval_recursive<T>(coeffs: &Array1<T>, x: T) -> T
 where
-    T: Float + Num + std::fmt::Debug,
+    T: Float
+        + Num
+        + std::fmt::Debug
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::SubAssign
+        + std::ops::MulAssign
+        + std::ops::DivAssign,
 {
     if coeffs.len() == 0 {
         return T::zero();
@@ -137,9 +158,10 @@ where
     }
 
     for n in 2..coeffs.len() {
-        let p_n = (T::from(2.0_f64).unwrap() * T::from(n - 1).unwrap() * x * p_minus_1
-            - T::from(n - 1).unwrap() * p_minus_2)
-            / T::from(n).unwrap();
+        let fk = T::from(n).unwrap();
+        let p_n = (T::from(2.0_f64).unwrap() * fk - T::one()) * x * p_minus_1
+            - (fk - T::one()) * p_minus_2;
+        let p_n = p_n / fk;
         result += coeffs[n] * p_n;
         p_minus_2 = p_minus_1;
         p_minus_1 = p_n;
@@ -150,7 +172,14 @@ where
 
 fn polynomial_to_legendre<T>(poly_coeffs: &Array1<T>) -> Result<Array1<T>, NumPyError>
 where
-    T: Float + Num + std::fmt::Debug + 'static,
+    T: Float
+        + Num
+        + std::fmt::Debug
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::SubAssign
+        + std::ops::MulAssign
+        + std::ops::DivAssign,
 {
     let n = poly_coeffs.len();
     let mut leg_coeffs = Array1::zeros(n);
@@ -176,23 +205,59 @@ where
 
 fn legendre_to_polynomial<T>(leg_coeffs: &Array1<T>) -> Result<Array1<T>, NumPyError>
 where
-    T: Float + Num + std::fmt::Debug + 'static,
+    T: Float
+        + Num
+        + std::fmt::Debug
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::SubAssign
+        + std::ops::MulAssign
+        + std::ops::DivAssign,
 {
     let n = leg_coeffs.len();
+    if n == 0 {
+        return Ok(Array1::zeros(0));
+    }
+
     let mut poly_coeffs = Array1::zeros(n);
+    if n == 1 {
+        poly_coeffs[0] = leg_coeffs[0];
+        return Ok(poly_coeffs);
+    }
 
-    for k in 0..n {
-        let coeff = leg_coeffs[k];
+    let mut c_prev = Array1::zeros(n);
+    let mut c_curr = Array1::zeros(n);
 
-        for j in 0..=k {
-            if (k - j) % 2 == 0 {
-                let power = (k - j) / 2;
-                let binomial1 = binomial_coefficient(k, j);
-                let binomial2 = binomial_coefficient((k + j) / 2, power);
-                poly_coeffs[j] +=
-                    coeff * binomial1 * binomial2 * T::from((-1.0_f64).powi(power as i32)).unwrap();
-            }
+    // P0 = 1
+    c_prev[0] = T::one();
+    poly_coeffs[0] += leg_coeffs[0] * c_prev[0];
+
+    // P1 = x
+    c_curr[1] = T::one();
+    if n > 1 {
+        poly_coeffs[0] += leg_coeffs[1] * c_curr[0];
+        poly_coeffs[1] += leg_coeffs[1] * c_curr[1];
+    }
+
+    for k in 1..(n - 1) {
+        let mut c_next = Array1::zeros(n);
+        let fk = T::from(k).unwrap();
+        let fk1 = T::from(k + 1).unwrap();
+
+        // P_{k+1} = ((2k+1)x * P_k - k * P_{k-1}) / (k+1)
+        for i in 1..n {
+            c_next[i] += (T::from(2.0).unwrap() * fk + T::one()) * c_curr[i - 1];
         }
+        for i in 0..n {
+            c_next[i] -= fk * c_prev[i];
+            c_next[i] /= fk1;
+        }
+
+        for i in 0..n {
+            poly_coeffs[i] += leg_coeffs[k + 1] * c_next[i];
+        }
+        c_prev = c_curr;
+        c_curr = c_next;
     }
 
     Ok(poly_coeffs)
@@ -200,7 +265,14 @@ where
 
 fn legendre_derivative_coeffs<T>(coeffs: &Array1<T>, m: usize) -> Result<Array1<T>, NumPyError>
 where
-    T: Float + Num + std::fmt::Debug + 'static,
+    T: Float
+        + Num
+        + std::fmt::Debug
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::SubAssign
+        + std::ops::MulAssign
+        + std::ops::DivAssign,
 {
     if m == 0 {
         return Ok(coeffs.clone());
@@ -227,7 +299,13 @@ where
 
 fn legendre_derivative_factor<T>(j: usize, m: usize) -> T
 where
-    T: Float + Num,
+    T: Float
+        + Num
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::SubAssign
+        + std::ops::MulAssign
+        + std::ops::DivAssign,
 {
     if m > j {
         return T::zero();
@@ -247,7 +325,14 @@ fn legendre_integral_coeffs<T>(
     k: Option<T>,
 ) -> Result<Array1<T>, NumPyError>
 where
-    T: Float + Num + std::fmt::Debug + 'static,
+    T: Float
+        + Num
+        + std::fmt::Debug
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::SubAssign
+        + std::ops::MulAssign
+        + std::ops::DivAssign,
 {
     let n = coeffs.len();
     let mut integ_coeffs = Array1::zeros(n + m);
@@ -272,7 +357,13 @@ where
 
 fn binomial_coefficient<T>(n: usize, k: usize) -> T
 where
-    T: Float + Num + 'static,
+    T: Float
+        + Num
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::SubAssign
+        + std::ops::MulAssign
+        + std::ops::DivAssign,
 {
     if k > n {
         return T::zero();

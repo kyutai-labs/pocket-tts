@@ -16,7 +16,6 @@ from typing import Any, ClassVar
 import safetensors
 import torch
 
-from pocket_tts.utils.config import Config
 
 logger = __import__("logging").getLogger(__name__)
 
@@ -127,7 +126,9 @@ class ModelVersionManager:
     CURRENT_MODEL_VERSION = "1.0.0"
 
     @classmethod
-    def get_current_metadata(cls, description: str | None = None, tags: list[str] | None = None) -> ModelMetadata:
+    def get_current_metadata(
+        cls, description: str | None = None, tags: list[str] | None = None
+    ) -> ModelMetadata:
         """Get metadata for the current model version."""
         from datetime import datetime
 
@@ -235,8 +236,7 @@ class ModelVersionManager:
 
         # Unknown version - return as-is and hope for the best
         logger.warning(
-            f"No transformation defined for format version {metadata.format_version}, "
-            "loading as-is"
+            f"No transformation defined for format version {metadata.format_version}, loading as-is"
         )
         return state_dict
 
@@ -269,9 +269,7 @@ def get_model_version_manager() -> ModelVersionManager:
     return ModelVersionManager()
 
 
-def load_model_with_versioning(
-    weights_path: Path,
-) -> tuple[dict[str, torch.Tensor], ModelMetadata]:
+def load_model_with_versioning(weights_path: Path) -> tuple[dict[str, torch.Tensor], ModelMetadata]:
     """Load model weights with version detection and compatibility handling.
 
     Args:

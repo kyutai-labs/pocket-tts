@@ -1355,3 +1355,16 @@ pub mod exports {
         reshape, roll, rollaxis, rot90, squeeze, swapaxes, tile, zeros_like,
     };
 }
+/// Normalize an axis index, supporting negative indexing
+pub fn normalize_axis(axis: isize, ndim: usize) -> Result<usize> {
+    let ndim = ndim as isize;
+    if axis < -ndim || axis >= ndim {
+        return Err(NumPyError::index_error(axis as usize, ndim as usize));
+    }
+
+    if axis < 0 {
+        Ok((axis + ndim) as usize)
+    } else {
+        Ok(axis as usize)
+    }
+}

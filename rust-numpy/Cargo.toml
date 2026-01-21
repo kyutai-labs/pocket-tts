@@ -25,6 +25,10 @@ path = "tests/comprehensive_tests.rs"
 name = "linalg_conformance"
 path = "tests/linalg_conformance.rs"
 
+[[test]]
+name = "nd_fft_tests"
+path = "tests/nd_fft_tests.rs"
+
 [lib]
 name = "numpy"
 crate-type = ["cdylib", "rlib"]

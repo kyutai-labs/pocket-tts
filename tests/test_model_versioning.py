@@ -78,9 +78,7 @@ class TestModelVersionManager:
     def test_get_current_metadata(self):
         """Test getting current metadata."""
         manager = ModelVersionManager()
-        metadata = manager.get_current_metadata(
-            description="Test", tags=["test"]
-        )
+        metadata = manager.get_current_metadata(description="Test", tags=["test"])
 
         assert metadata.format_version == ModelFormatVersion.V2.value
         assert metadata.model_version == manager.CURRENT_MODEL_VERSION
@@ -91,10 +89,7 @@ class TestModelVersionManager:
     def test_check_compatibility_current_version(self):
         """Test compatibility check for current version."""
         manager = ModelVersionManager()
-        metadata = ModelMetadata(
-            format_version=ModelFormatVersion.V2.value,
-            model_version="1.0.0",
-        )
+        metadata = ModelMetadata(format_version=ModelFormatVersion.V2.value, model_version="1.0.0")
 
         is_compatible, warning = manager.check_compatibility(metadata)
         assert is_compatible is True
@@ -103,10 +98,7 @@ class TestModelVersionManager:
     def test_check_compatibility_v1_legacy(self):
         """Test compatibility check for V1 legacy format."""
         manager = ModelVersionManager()
-        metadata = ModelMetadata(
-            format_version=ModelFormatVersion.V1.value,
-            model_version="legacy",
-        )
+        metadata = ModelMetadata(format_version=ModelFormatVersion.V1.value, model_version="legacy")
 
         is_compatible, warning = manager.check_compatibility(metadata)
         assert is_compatible is True
@@ -116,14 +108,8 @@ class TestModelVersionManager:
     def test_transform_v1_to_v2(self):
         """Test V1 to V2 transformation."""
         manager = ModelVersionManager()
-        state_dict = {
-            "layer1.weight": torch.randn(10, 10),
-            "layer1.bias": torch.randn(10),
-        }
-        metadata = ModelMetadata(
-            format_version=ModelFormatVersion.V1.value,
-            model_version="legacy",
-        )
+        state_dict = {"layer1.weight": torch.randn(10, 10), "layer1.bias": torch.randn(10)}
+        metadata = ModelMetadata(format_version=ModelFormatVersion.V1.value, model_version="legacy")
 
         transformed = manager.transform_state_dict_for_version(state_dict, metadata)
 
@@ -134,13 +120,8 @@ class TestModelVersionManager:
     def test_transform_no_op_for_current_version(self):
         """Test that current version doesn't transform."""
         manager = ModelVersionManager()
-        state_dict = {
-            "layer1.weight": torch.randn(10, 10),
-        }
-        metadata = ModelMetadata(
-            format_version=ModelFormatVersion.V2.value,
-            model_version="1.0.0",
-        )
+        state_dict = {"layer1.weight": torch.randn(10, 10)}
+        metadata = ModelMetadata(format_version=ModelFormatVersion.V2.value, model_version="1.0.0")
 
         transformed = manager.transform_state_dict_for_version(state_dict, metadata)
 
@@ -153,20 +134,14 @@ class TestSaveAndLoad:
 
     def test_save_and_load_with_versioning(self):
         """Test saving and loading a model with version metadata."""
-        state_dict = {
-            "layer1.weight": torch.randn(10, 10),
-            "layer1.bias": torch.randn(10),
-        }
+        state_dict = {"layer1.weight": torch.randn(10, 10), "layer1.bias": torch.randn(10)}
 
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "test_model.safetensors"
 
             # Save with versioning
             save_model_with_versioning(
-                state_dict,
-                output_path,
-                description="Test model",
-                tags=["test", "unit-test"],
+                state_dict, output_path, description="Test model", tags=["test", "unit-test"]
             )
 
             # Verify file exists
@@ -178,9 +153,7 @@ class TestSaveAndLoad:
             # Verify state dict
             assert "layer1.weight" in loaded_state_dict
             assert "layer1.bias" in loaded_state_dict
-            assert torch.allclose(
-                loaded_state_dict["layer1.weight"], state_dict["layer1.weight"]
-            )
+            assert torch.allclose(loaded_state_dict["layer1.weight"], state_dict["layer1.weight"])
 
             # Verify metadata
             assert metadata is not None
@@ -194,9 +167,7 @@ class TestSaveAndLoad:
         """Test loading a model without version metadata (legacy)."""
         from safetensors.torch import save_file
 
-        state_dict = {
-            "layer1.weight": torch.randn(10, 10),
-        }
+        state_dict = {"layer1.weight": torch.randn(10, 10)}
 
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "legacy_model.safetensors"
@@ -222,12 +193,7 @@ class TestSaveAndLoad:
             output_path = Path(tmpdir) / "custom_model.safetensors"
 
             save_model_with_versioning(
-                state_dict,
-                output_path,
-                custom_metadata={
-                    "author": "test",
-                    "training_epochs": 100,
-                },
+                state_dict, output_path, custom_metadata={"author": "test", "training_epochs": 100}
             )
 
             # Load and verify custom metadata is present

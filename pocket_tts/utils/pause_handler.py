@@ -28,6 +28,7 @@ class PauseMarker:
         position: Index of the text chunk AFTER which to insert the pause.
         duration_ms: Duration of the pause in milliseconds.
     """
+
     position: int
     duration_ms: int
 
@@ -35,10 +36,10 @@ class PauseMarker:
 # Pattern to match pause/silence tags
 # Supports: <pause:500ms>, <pause:1s>, <pause:0.5s>, <silence:500ms>, etc.
 PAUSE_PATTERN = re.compile(
-    r'<(?:pause|silence)\s*:\s*'  # Opening tag and keyword
-    r'(\d+(?:\.\d+)?)\s*'          # Number (integer or decimal)
-    r'(ms|s)\s*>',                 # Unit (ms or s)
-    re.IGNORECASE
+    r"<(?:pause|silence)\s*:\s*"  # Opening tag and keyword
+    r"(\d+(?:\.\d+)?)\s*"  # Number (integer or decimal)
+    r"(ms|s)\s*>",  # Unit (ms or s)
+    re.IGNORECASE,
 )
 
 
@@ -66,7 +67,7 @@ def parse_pause_tags(text: str) -> tuple[list[str], list[PauseMarker]]:
 
     for match in PAUSE_PATTERN.finditer(text):
         # Extract text before this pause tag
-        chunk = text[last_end:match.start()].strip()
+        chunk = text[last_end : match.start()].strip()
         if chunk:
             chunks.append(chunk)
 
@@ -74,7 +75,7 @@ def parse_pause_tags(text: str) -> tuple[list[str], list[PauseMarker]]:
         value = float(match.group(1))
         unit = match.group(2).lower()
 
-        if unit == 's':
+        if unit == "s":
             duration_ms = int(value * 1000)
         else:  # ms
             duration_ms = int(value)

@@ -35,21 +35,14 @@ def quantize_linear_layers(module: nn.Module, dtype: torch.dtype = torch.qint8) 
         Quantized module (modified in-place for efficiency).
     """
     try:
-        quantized = torch.quantization.quantize_dynamic(
-            module,
-            {nn.Linear},
-            dtype=dtype
-        )
+        quantized = torch.quantization.quantize_dynamic(module, {nn.Linear}, dtype=dtype)
         return quantized
     except Exception as e:
         logger.warning("Dynamic quantization failed: %s", e)
         return module
 
 
-def quantize_model(
-    model,
-    components: Literal["all", "flow-lm", "mimi"] = "all"
-) -> nn.Module:
+def quantize_model(model, components: Literal["all", "flow-lm", "mimi"] = "all") -> nn.Module:
     """Quantize pocket-tts model components to int8 for reduced memory.
 
     This applies dynamic int8 quantization to the specified components,
@@ -91,8 +84,7 @@ def quantize_model(
 
 
 def estimate_memory_savings(
-    model,
-    quantize_components: Literal["all", "flow-lm", "mimi"] = "all"
+    model, quantize_components: Literal["all", "flow-lm", "mimi"] = "all"
 ) -> dict[str, int]:
     """Estimate memory savings from int8 quantization.
 
@@ -103,6 +95,7 @@ def estimate_memory_savings(
     Returns:
         Dictionary with 'original_bytes', 'estimated_quantized_bytes', and 'savings_bytes'.
     """
+
     def count_bytes(module: nn.Module) -> int:
         total = 0
         for p in module.parameters():
@@ -142,5 +135,7 @@ def estimate_memory_savings(
         "original_bytes": original_bytes,
         "estimated_quantized_bytes": estimated_bytes,
         "savings_bytes": original_bytes - estimated_bytes,
-        "savings_percent": round((original_bytes - estimated_bytes) / original_bytes * 100, 1) if original_bytes > 0 else 0
+        "savings_percent": round((original_bytes - estimated_bytes) / original_bytes * 100, 1)
+        if original_bytes > 0
+        else 0,
     }

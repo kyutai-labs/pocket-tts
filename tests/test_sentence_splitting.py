@@ -2,6 +2,7 @@
 
 Tests verify that sentence splitting preserves all content and handles edge cases.
 """
+
 import pytest
 
 from pocket_tts.models.tts_model import split_into_best_sentences
@@ -121,14 +122,14 @@ def test_content_preservation():
 
     # Count words in original and result
     original_words = set(text.lower().split())
-    
+
     # Unprepare chunks to remove added punctuation
     def unprepare(text):
         text = text.lstrip()
-        if text.endswith('.'):
+        if text.endswith("."):
             text = text[:-1]
         return text.strip()
-    
+
     combined_unprepared = " ".join([unprepare(c) for c in result])
     result_words = set(combined_unprepared.lower().split())
 

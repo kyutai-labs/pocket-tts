@@ -4,7 +4,7 @@ use super::{Polynomial, PolynomialBase};
 use crate::error::NumPyError;
 use ndarray::{Array1, Array2};
 use num_complex::Complex;
-use num_traits::{Float, Num, One, Zero};
+use num_traits::{Float, Num};
 
 /// Generalized Laguerre polynomials
 #[derive(Debug, Clone)]
@@ -16,7 +16,14 @@ pub struct Laguerre<T> {
 
 impl<T> Laguerre<T>
 where
-    T: Float + Num + std::fmt::Debug + 'static,
+    T: Float
+        + Num
+        + std::fmt::Debug
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::SubAssign
+        + std::ops::MulAssign
+        + std::ops::DivAssign,
 {
     pub fn new(coeffs: &Array1<T>) -> Result<Self, NumPyError> {
         if coeffs.len() == 0 {
@@ -60,7 +67,14 @@ where
 
 impl<T> PolynomialBase<T> for Laguerre<T>
 where
-    T: Float + Num + std::fmt::Debug + 'static,
+    T: Float
+        + Num
+        + std::fmt::Debug
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::SubAssign
+        + std::ops::MulAssign
+        + std::ops::DivAssign,
 {
     fn coeffs(&self) -> &Array1<T> {
         &self.coeffs
@@ -70,8 +84,10 @@ where
         let mut result = Array1::zeros(x.len());
 
         for (i, &xi) in x.iter().enumerate() {
-            let xi_scaled = (xi - self.window[0]) / (self.window[1] - self.window[0]);
-            let value = laguerre_eval_recursive(&self.coeffs, xi_scaled);
+            let xi_window = self.window[0]
+                + (xi - self.domain[0]) * (self.window[1] - self.window[0])
+                    / (self.domain[1] - self.domain[0]);
+            let value = laguerre_eval_recursive(&self.coeffs, xi_window);
             result[i] = value;
         }
 
@@ -120,7 +136,14 @@ where
 
 fn laguerre_eval_recursive<T>(coeffs: &Array1<T>, x: T) -> T
 where
-    T: Float + Num + std::fmt::Debug,
+    T: Float
+        + Num
+        + std::fmt::Debug
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::SubAssign
+        + std::ops::MulAssign
+        + std::ops::DivAssign,
 {
     if coeffs.len() == 0 {
         return T::zero();
@@ -134,10 +157,11 @@ where
         if n > 0 {
             let mut binomial_sum = T::zero();
             for k in 0..=n {
-                let binomial = binomial_coefficient(n, k);
+                let binomial: T = binomial_coefficient::<T>(n, k);
                 let sign = T::from((-1.0_f64).powi(k as i32)).unwrap();
                 let factorial_part = T::from(factorial(n) / factorial(k)).unwrap();
-                binomial_sum += binomial * sign * factorial_part * x.powi(k as i32);
+                let term: T = binomial * sign * factorial_part * x.powi(k as i32);
+                binomial_sum += term;
             }
             lag_n = binomial_sum / T::from(factorial(n)).unwrap();
         }
@@ -150,7 +174,14 @@ where
 
 fn polynomial_to_laguerre<T>(poly_coeffs: &Array1<T>) -> Result<Array1<T>, NumPyError>
 where
-    T: Float + Num + std::fmt::Debug + 'static,
+    T: Float
+        + Num
+        + std::fmt::Debug
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::SubAssign
+        + std::ops::MulAssign
+        + std::ops::DivAssign,
 {
     let n = poly_coeffs.len();
     let mut lag_coeffs = Array1::zeros(n);
@@ -176,20 +207,60 @@ where
 
 fn laguerre_to_polynomial<T>(lag_coeffs: &Array1<T>) -> Result<Array1<T>, NumPyError>
 where
-    T: Float + Num + std::fmt::Debug + 'static,
+    T: Float
+        + Num
+        + std::fmt::Debug
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::SubAssign
+        + std::ops::MulAssign
+        + std::ops::DivAssign,
 {
     let n = lag_coeffs.len();
+    if n == 0 {
+        return Ok(Array1::zeros(0));
+    }
+
     let mut poly_coeffs = Array1::zeros(n);
+    if n == 1 {
+        poly_coeffs[0] = lag_coeffs[0];
+        return Ok(poly_coeffs);
+    }
 
-    for k in 0..n {
-        let coeff = lag_coeffs[k];
+    let mut c_prev = Array1::zeros(n);
+    let mut c_curr = Array1::zeros(n);
 
-        for j in 0..=k {
-            let binomial = binomial_coefficient(k, j);
-            let sign = T::from((-1.0_f64).powi((k - j) as i32)).unwrap();
-            let factorial = T::from(factorial(k) / factorial(j)).unwrap();
-            poly_coeffs[j] += coeff * binomial * sign / factorial;
+    // L0 = 1
+    c_prev[0] = T::one();
+    poly_coeffs[0] += lag_coeffs[0] * c_prev[0];
+
+    // L1 = 1 - x
+    c_curr[0] = T::one();
+    c_curr[1] = -T::one();
+    poly_coeffs[0] += lag_coeffs[1] * c_curr[0];
+    poly_coeffs[1] += lag_coeffs[1] * c_curr[1];
+
+    for k in 1..(n - 1) {
+        let mut c_next = Array1::zeros(n);
+        let fk = T::from(k).unwrap();
+        let fk1 = T::from(k + 1).unwrap();
+
+        // L_{k+1} = ((2k+1-x) * L_k - k * L_{k-1}) / (k+1)
+        for i in 0..n {
+            c_next[i] += (T::from(2.0).unwrap() * fk + T::one()) * c_curr[i] / fk1;
         }
+        for i in 1..n {
+            c_next[i] -= c_curr[i - 1] / fk1; // -x * L_k / (k+1)
+        }
+        for i in 0..n {
+            c_next[i] -= fk * c_prev[i] / fk1;
+        }
+
+        for i in 0..n {
+            poly_coeffs[i] += lag_coeffs[k + 1] * c_next[i];
+        }
+        c_prev = c_curr.clone();
+        c_curr = c_next;
     }
 
     Ok(poly_coeffs)
@@ -197,7 +268,14 @@ where
 
 fn laguerre_derivative_coeffs<T>(coeffs: &Array1<T>, m: usize) -> Result<Array1<T>, NumPyError>
 where
-    T: Float + Num + std::fmt::Debug + 'static + std::ops::AddAssign + std::ops::MulAssign,
+    T: Float
+        + Num
+        + std::fmt::Debug
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::SubAssign
+        + std::ops::MulAssign
+        + std::ops::DivAssign,
 {
     if m == 0 {
         return Ok(coeffs.clone());
@@ -213,7 +291,7 @@ where
     for k in m..n {
         let mut sum = T::zero();
         for j in m..=k {
-            let factor = laguerre_derivative_factor(k, j, m);
+            let factor: T = laguerre_derivative_factor::<T>(k, j, m);
             sum += coeffs[j] * factor;
         }
         deriv_coeffs[k - m] = sum;
@@ -224,7 +302,12 @@ where
 
 fn laguerre_derivative_factor<T>(k: usize, j: usize, m: usize) -> T
 where
-    T: Float + Num + std::ops::MulAssign,
+    T: Float
+        + Num
+        + std::ops::AddAssign
+        + std::ops::SubAssign
+        + std::ops::MulAssign
+        + std::ops::DivAssign,
 {
     if m > k {
         return T::zero();
@@ -244,7 +327,14 @@ fn laguerre_integral_coeffs<T>(
     k: Option<T>,
 ) -> Result<Array1<T>, NumPyError>
 where
-    T: Float + Num + std::fmt::Debug + 'static,
+    T: Float
+        + Num
+        + std::fmt::Debug
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::SubAssign
+        + std::ops::MulAssign
+        + std::ops::DivAssign,
 {
     let n = coeffs.len();
     let mut integ_coeffs = Array1::zeros(n + m);
@@ -265,7 +355,13 @@ where
 
 fn binomial_coefficient<T>(n: usize, k: usize) -> T
 where
-    T: Float + Num + 'static,
+    T: Float
+        + Num
+        + 'static
+        + std::ops::AddAssign
+        + std::ops::SubAssign
+        + std::ops::MulAssign
+        + std::ops::DivAssign,
 {
     if k > n {
         return T::zero();

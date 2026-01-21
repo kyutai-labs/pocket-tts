@@ -62,6 +62,97 @@ where
     pub fn set_window(&mut self, window: [T; 2]) {
         self.window = window;
     }
+
+    /// Add two polynomials
+    pub fn add(&self, other: &Polynomial<T>) -> Polynomial<T> {
+        let n1 = self.coeffs.len();
+        let n2 = other.coeffs.len();
+        let n = std::cmp::max(n1, n2);
+        let mut new_coeffs = Array1::zeros(n);
+        for i in 0..n {
+            let v1 = if i < n1 { self.coeffs[i] } else { T::zero() };
+            let v2 = if i < n2 { other.coeffs[i] } else { T::zero() };
+            new_coeffs[i] = v1 + v2;
+        }
+        Polynomial {
+            coeffs: new_coeffs,
+            domain: self.domain,
+            window: self.window,
+        }
+    }
+
+    /// Subtract two polynomials
+    pub fn sub(&self, other: &Polynomial<T>) -> Polynomial<T> {
+        let n1 = self.coeffs.len();
+        let n2 = other.coeffs.len();
+        let n = std::cmp::max(n1, n2);
+        let mut new_coeffs = Array1::zeros(n);
+        for i in 0..n {
+            let v1 = if i < n1 { self.coeffs[i] } else { T::zero() };
+            let v2 = if i < n2 { other.coeffs[i] } else { T::zero() };
+            new_coeffs[i] = v1 - v2;
+        }
+        Polynomial {
+            coeffs: new_coeffs,
+            domain: self.domain,
+            window: self.window,
+        }
+    }
+
+    /// Multiply two polynomials
+    pub fn mul(&self, other: &Polynomial<T>) -> Polynomial<T> {
+        let n1 = self.coeffs.len();
+        let n2 = other.coeffs.len();
+        if n1 == 0 || n2 == 0 {
+            return Polynomial {
+                coeffs: Array1::zeros(1),
+                domain: self.domain,
+                window: self.window,
+            };
+        }
+        let n = n1 + n2 - 1;
+        let mut new_coeffs = Array1::zeros(n);
+        for i in 0..n1 {
+            for j in 0..n2 {
+                new_coeffs[i + j] = new_coeffs[i + j] + self.coeffs[i] * other.coeffs[j];
+            }
+        }
+        Polynomial {
+            coeffs: new_coeffs,
+            domain: self.domain,
+            window: self.window,
+        }
+    }
+}
+
+impl<T> std::ops::Add for Polynomial<T>
+where
+    T: Float + Num + std::fmt::Debug + 'static,
+{
+    type Output = Polynomial<T>;
+    fn add(self, other: Self) -> Self::Output {
+        (&self).add(&other)
+    }
+}
+
+impl<T> std::ops::Sub for Polynomial<T>
+where
+    T: Float + Num + std::fmt::Debug + 'static,
+{
+    type Output = Polynomial<T>;
+    fn sub(self, other: Self) -> Self::Output {
+        (&self).sub(&other)
+    }
+}
+
+impl<T> std::ops::Mul for Polynomial<T>
+where
+    T: Float + Num + std::fmt::Debug + 'static,
+{
+    type Output = Polynomial<T>;
+    fn mul(self, other: Self) -> Self::Output {
+        (&self).mul(&other)
+    }
 }
 
 impl<T> PolynomialBase<T> for Polynomial<T>
@@ -350,7 +441,7 @@ where
     }
 
     for i in 0..n {
-        comp[[i, n - 1]] = -coeffs[n - 1 - i] / leading_coeff;
+        comp[[i, n - 1]] = -coeffs[i] / leading_coeff;
     }
 
     Ok(comp)

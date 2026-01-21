@@ -115,3 +115,15 @@ training/
 onnx_export_*/
 *.onnx
 *.onnx.data
+# Ralph Loop runtime
+.ralph/
+.worktrees/
+
+# Ralph worktrees
+**/.worktrees/
+
+# Zone.Identifier files (Windows WSL)
+*:Zone.Identifier
+# Windows WSL Zone.Identifier files
+*:Zone.Identifier
+**/*:Zone.Identifier

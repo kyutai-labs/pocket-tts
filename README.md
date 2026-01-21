@@ -7,9 +7,10 @@ Forget about the hassle of using GPUs and web APIs serving TTS models. With Kyut
 
 Supports Python 3.10, 3.11, 3.12, 3.13 and 3.14. Requires PyTorch 2.5+. Does not require the gpu version of PyTorch.
 
-[🔊 Demo](https://kyutai.org/tts) | 
+[🔊 Demo](https://kyutai.org/pocket-tts) | 
 [🐱‍💻GitHub Repository](https://github.com/kyutai-labs/pocket-tts) | 
 [🤗 Hugging Face Model Card](https://huggingface.co/kyutai/pocket-tts) | 
+[⚙️ Tech report](https://kyutai.org/blog/2026-01-13-pocket-tts) |
 [📄 Paper](https://arxiv.org/abs/2509.06926) | 
 [📚 Documentation](https://github.com/kyutai-labs/pocket-tts/tree/main/docs)
 
@@ -28,7 +29,7 @@ Supports Python 3.10, 3.11, 3.12, 3.13 and 3.14. Requires PyTorch 2.5+. Does not
 
 ## Trying it from the website, without installing anything
 
-Navigate to the [Kyutai website](https://kyutai.org/tts) to try it out directly in your browser. You can input text, select different voices, and generate speech without any installation.
+Navigate to the [Kyutai website](https://kyutai.org/pocket-tts) to try it out directly in your browser. You can input text, select different voices, and generate speech without any installation.
 
 ## Trying it with the CLI
 
@@ -58,6 +59,8 @@ for each voice.
 * [azelma](https://huggingface.co/kyutai/tts-voices/blob/main/vctk/p303_023.wav)
 
 The `--voice` argument can also take a plain wav file as input for voice cloning.
+You can use your own or check out our [voice repository](https://huggingface.co/kyutai/tts-voices).
+
 Feel free to check out the [generate documentation](https://github.com/kyutai-labs/pocket-tts/tree/main/docs/generate.md) for more details and examples.
 For trying multiple voices and prompts quickly, prefer using the `serve` command.
 
@@ -75,6 +78,8 @@ You can check out the [serve documentation](https://github.com/kyutai-labs/pocke
 
 ## Using it as a Python library
 
+You can try out the Python library on Colab [here](https://colab.research.google.com/github/kyutai-labs/pocket-tts/blob/main/docs/pocket-tts-example.ipynb).
+
 Install the package with
 ```bash
 pip install pocket-tts
@@ -89,7 +94,10 @@ import scipy.io.wavfile
 
 tts_model = TTSModel.load_model()
 voice_state = tts_model.get_state_for_audio_prompt(
-    "hf://kyutai/tts-voices/alba-mackenna/casual.wav"
+    "alba"  # One of the pre-made voices, see above
+    # You can also use any voice file you have locally or from Hugging Face:
+    # "./some_audio.wav"
+    # or "hf://kyutai/tts-voices/expresso/ex01-ex02_default_001_channel2_198s.wav"
 )
 audio = tts_model.generate_audio(voice_state, "Hello world, this is a test.")
 # Audio is a 1D torch tensor containing PCM data.
@@ -122,7 +130,7 @@ You can find development instructions in the [CONTRIBUTING.md](https://github.co
 
 ## Alternative implementations
 
-- [babybirdprd/pocket-tts](https://github.com/babybirdprd/pocket-tts) - Candle version (Rust) with WASM and PyO3 bindings.
+- [babybirdprd/pocket-tts](https://github.com/babybirdprd/pocket-tts) - Candle version (Rust) with WebAssembly and PyO3 bindings. Can run in the browser!
 
 ## Projects using pocket-tts
 

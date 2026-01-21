@@ -484,3 +484,109 @@ where
     let data: Vec<T> = array.to_vec().iter().map(|&x| x.powf(exponent)).collect();
     Ok(Array::from_vec(data))
 }
+
+/// Trim the leading and/or trailing zeros from a 1-D array (similar to np.trim_zeros).
+///
+/// # Arguments
+/// - `array`: Input 1-D array
+/// - `trim`: Trim mode - "f" trim from front, "b" trim from back, "fb" trim from both (default)
+///
+/// # Returns
+/// Array with zeros trimmed according to the specified mode
+pub fn trim_zeros<T>(array: &Array<T>, trim: &str) -> Result<Array<T>>
+where
+    T: Clone + Default + PartialEq + num_traits::Zero + 'static,
+{
+    if array.ndim() != 1 {
+        return Err(NumPyError::invalid_operation(
+            "trim_zeros() only supports 1-D arrays",
+        ));
+    }
+
+    if !matches!(trim, "f" | "b" | "fb") {
+        return Err(NumPyError::invalid_operation(
+            "trim_zeros() trim must be 'f', 'b', or 'fb'",
+        ));
+    }
+
+    let data = array.to_vec();
+
+    // Handle empty array or all zeros
+    if data.is_empty() || data.iter().all(|x| x.is_zero()) {
+        return Ok(Array::from_vec(vec![]));
+    }
+
+    let mut start = 0;
+    let mut end = data.len();
+
+    // Trim from front
+    if trim == "f" || trim == "fb" {
+        while start < data.len() && data[start].is_zero() {
+            start += 1;
+        }
+    }
+
+    // Trim from back
+    if trim == "b" || trim == "fb" {
+        while end > start && data[end - 1].is_zero() {
+            end -= 1;
+        }
+    }
+
+    Ok(Array::from_vec(data[start..end].to_vec()))
+}
+
+/// The differences between consecutive elements of an array (similar to np.ediff1d).
+///
+/// # Arguments
+/// - `array`: Input array
+/// - `to_end`: Optional values to append at the end of the returned differences
+/// - `to_begin`: Optional values to prepend at the beginning of the returned differences
+///
+/// # Returns
+/// 1-D array of differences with optional prepended/appended values
+pub fn ediff1d<T>(
+    array: &Array<T>,
+    to_end: Option<&[T]>,
+    to_begin: Option<&[T]>,
+) -> Result<Array<T>>
+where
+    T: Clone + Default + std::ops::Sub<Output = T> + 'static,
+{
+    let data = array.to_vec();
+
+    if data.is_empty() {
+        let mut result = Vec::new();
+        if let Some(begin) = to_begin {
+            result.extend_from_slice(begin);
+        }
+        if let Some(end) = to_end {
+            result.extend_from_slice(end);
+        }
+        return Ok(Array::from_vec(result));
+    }
+
+    // Compute differences
+    let mut diffs = Vec::with_capacity(data.len().saturating_sub(1));
+    for i in 0..data.len().saturating_sub(1) {
+        diffs.push(data[i + 1].clone() - data[i].clone());
+    }
+
+    // Build final result
+    let mut result = Vec::new();
+
+    // Add to_begin values
+    if let Some(begin) = to_begin {
+        result.extend_from_slice(begin);
+    }
+
+    // Add differences
+    result.extend_from_slice(&diffs);
+
+    // Add to_end values
+    if let Some(end) = to_end {
+        result.extend_from_slice(end);
+    }
+
+    Ok(Array::from_vec(result))
+}

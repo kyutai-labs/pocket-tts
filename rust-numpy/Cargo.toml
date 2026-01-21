@@ -102,3 +102,7 @@ datetime = ["chrono"]
 criterion = { version = "0.5", features = ["html_reports"] }
 tempfile = "3.8"
 approx = "0.5"
+
+[[test]]
+name = "linalg_qr_tests"
+path = "tests/linalg_qr_tests.rs"

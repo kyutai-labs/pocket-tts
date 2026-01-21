@@ -26,6 +26,7 @@ pub trait LinalgScalar:
     fn sqrt(self) -> Self;
     fn conj(self) -> Self;
     fn is_positive(self) -> bool;
+    fn from_real(r: Self::Real) -> Self;
 }
 
 impl LinalgScalar for f32 {
@@ -46,6 +47,10 @@ impl LinalgScalar for f32 {
     fn is_positive(self) -> bool {
         self > 0.0
     }
+
+    fn from_real(r: Self::Real) -> Self {
+        r
+    }
 }
 
 impl LinalgScalar for f64 {
@@ -65,6 +70,10 @@ impl LinalgScalar for f64 {
 
     fn is_positive(self) -> bool {
         self > 0.0
+    }
+
+    fn from_real(r: Self::Real) -> Self {
+        r
     }
 }
 
@@ -89,6 +98,10 @@ impl LinalgScalar for Complex<f32> {
     fn is_positive(self) -> bool {
         self.im == 0.0 && self.re > 0.0
     }
+
+    fn from_real(r: Self::Real) -> Self {
+        Complex::new(r, 0.0)
+    }
 }
 
 impl LinalgScalar for Complex<f64> {
@@ -111,6 +124,10 @@ impl LinalgScalar for Complex<f64> {
 
     fn is_positive(self) -> bool {
         self.im == 0.0 && self.re > 0.0
+    }
+
+    fn from_real(r: Self::Real) -> Self {
+        Complex::new(r, 0.0)
     }
 }
 

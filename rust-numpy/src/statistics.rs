@@ -694,7 +694,7 @@ where
 pub mod exports {
     pub use super::{
         average, bincount, corrcoef, cov, digitize, histogram, histogram2d, histogramdd, median,
-        percentile, quantile, std, var,
+        percentile, ptp, quantile, std, var,
     };
 }
 
@@ -789,4 +789,41 @@ impl FromF64 for usize {
             value as usize
         }
     }
+}
+
+/// Peak-to-peak (maximum - minimum) values along an axis (similar to np.ptp).
+///
+/// # Arguments
+/// - `a`: Input array
+/// - `axis`: Optional axis along which to find the peak-to-peak
+/// - `keepdims`: If true, the reduced axes are left in the result as dimensions with size one
+///
+/// # Returns
+/// Array containing the peak-to-peak (range) of values
+pub fn ptp<T>(
+    a: &Array<T>,
+    _axis: Option<&[isize]>,
+    _keepdims: bool,
+) -> Result<Array<T>, NumPyError>
+where
+    T: Clone + Default + AsF64 + FromF64 + 'static,
+{
+    if a.is_empty() {
+        return Err(NumPyError::invalid_value(
+            "Cannot compute ptp of empty array",
+        ));
+    }
+
+    let data = a.to_vec();
+
+    let min_val = data
+        .iter()
+        .map(|x| x.as_f64().unwrap_or(f64::NAN))
+        .fold(f64::INFINITY, |a, b| a.min(b));
+    let max_val = data
+        .iter()
+        .map(|x| x.as_f64().unwrap_or(f64::NAN))
+        .fold(f64::NEG_INFINITY, |a, b| a.max(b));
+
+    Ok(Array::from_vec(vec![T::from_f64(max_val - min_val)]))
 }

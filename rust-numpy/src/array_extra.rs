@@ -485,6 +485,86 @@ where
     Ok(Array::from_vec(data))
 }
 
+/// Clip (limit) the values in an array (similar to np.clip).
+///
+/// # Arguments
+/// - `array`: Input array
+/// - `min`: Minimum value (use None for no minimum)
+/// - `max`: Maximum value (use None for no maximum)
+///
+/// # Returns
+/// Array with values clipped to the specified range
+pub fn clip<T>(array: &Array<T>, min: Option<T>, max: Option<T>) -> Result<Array<T>>
+where
+    T: Clone + Default + PartialOrd + 'static,
+{
+    let data = array.to_vec();
+
+    let clipped: Vec<T> = data
+        .iter()
+        .map(|x| {
+            let mut val = x.clone();
+            if let Some(ref min_val) = min {
+                if val < *min_val {
+                    val = min_val.clone();
+                }
+            }
+            if let Some(ref max_val) = max {
+                if val > *max_val {
+                    val = max_val.clone();
+                }
+            }
+            val
+        })
+        .collect();
+
+    Ok(Array::from_shape_vec(array.shape().to_vec(), clipped))
+}
+
+/// Round elements of the array to the given number of decimals (similar to np.round).
+///
+/// Uses NumPy-compatible rounding (banker's rounding: round half to even).
+///
+/// # Arguments
+/// - `array`: Input array
+/// - `decimals`: Number of decimal places to round to (default 0)
+///
+/// # Returns
+/// Array with values rounded to the specified number of decimals
+pub fn round<T>(array: &Array<T>, decimals: i32) -> Result<Array<T>>
+where
+    T: Clone + Default + num_traits::Float + 'static,
+{
+    let factor = T::from(10.0_f64).unwrap().powi(decimals);
+
+    let rounded: Vec<T> = array
+        .to_vec()
+        .iter()
+        .map(|&x| {
+            let scaled = x * factor.clone();
+            let fract = scaled.fract();
+            let whole_scaled = scaled.trunc();
+
+            // Banker's rounding: round half to even
+            let result = if fract.abs() == T::from(0.5_f64).unwrap() {
+                // Exactly half - round to nearest even integer
+                let whole_i64 = whole_scaled.to_i64().unwrap_or(0);
+                if whole_i64 % 2 == 0 {
+                    whole_scaled
+                } else {
+                    whole_scaled + T::from(whole_scaled.signum()).unwrap()
+                }
+            } else {
+                scaled.round()
+            };
+
+            result / factor.clone()
+        })
+        .collect();
+
+    Ok(Array::from_shape_vec(array.shape().to_vec(), rounded))
+}
+
 /// Trim the leading and/or trailing zeros from a 1-D array (similar to np.trim_zeros).
 ///
 /// # Arguments

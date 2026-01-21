@@ -40,7 +40,7 @@ cli_app = typer.Typer(
 # ------------------------------------------------------
 
 # Global model instance
-tts_model = None
+tts_model: TTSModel | None = None
 global_model_state = None
 
 web_app = FastAPI(
@@ -143,21 +143,22 @@ def text_to_speech(
             raise HTTPException(
                 status_code=400, detail="voice_url must start with http://, https://, or hf://"
             )
-        model_state = tts_model._cached_get_state_for_audio_prompt(voice_url, truncate=True)
+        model_state = tts_model._cached_get_state_for_audio_prompt(voice_url)
         logging.warning("Using voice from URL: %s", voice_url)
     elif voice_wav is not None:
-        # Use uploaded voice file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
+        # Use uploaded voice file - preserve extension for format detection
+        suffix = Path(voice_wav.filename).suffix if voice_wav.filename else ".wav"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
             content = voice_wav.file.read()
             temp_file.write(content)
             temp_file.flush()
+            temp_file_path = temp_file.name
 
-            try:
-                model_state = tts_model.get_state_for_audio_prompt(
-                    Path(temp_file.name), truncate=True
-                )
-            finally:
-                os.unlink(temp_file.name)
+        # Close the file before reading it back (required on Windows)
+        try:
+            model_state = tts_model.get_state_for_audio_prompt(Path(temp_file_path), truncate=True)
+        finally:
+            os.unlink(temp_file_path)
     else:
         # Use default global model state
         model_state = global_model_state

@@ -5,6 +5,27 @@
 
 use crate::array::Array;
 use crate::error::{NumPyError, Result};
+use crate::slicing::{MultiSlice, Slice};
+
+/// Argument for split functions
+pub enum SplitArg {
+    /// Number of sections
+    Count(usize),
+    /// Indices to split at
+    Indices(Vec<usize>),
+}
+
+impl From<usize> for SplitArg {
+    fn from(n: usize) -> Self {
+        SplitArg::Count(n)
+    }
+}
+
+impl From<Vec<usize>> for SplitArg {
+    fn from(indices: Vec<usize>) -> Self {
+        SplitArg::Indices(indices)
+    }
+}
 
 /// Concatenate arrays along an existing axis (similar to np.concatenate).
 ///
@@ -250,6 +271,172 @@ where
 
     let refs: Vec<&Array<T>> = reshaped_arrays.iter().collect();
     concatenate(&refs, 2)
+}
+
+/// Split an array into multiple sub-arrays.
+///
+/// # Arguments
+/// - `array`: Array to split
+/// - `indices_or_sections`: If integer N, split into N roughly equal sections.
+///    If vector of indices, split at those indices.
+/// - `axis`: Axis along which to split.
+pub fn array_split<T>(
+    array: &Array<T>,
+    indices_or_sections: SplitArg,
+    axis: isize,
+) -> Result<Vec<Array<T>>>
+where
+    T: Clone + Default + 'static,
+{
+    let ndim = array.ndim();
+    let axis = if axis < 0 { ndim as isize + axis } else { axis } as usize;
+
+    if axis >= ndim {
+        return Err(NumPyError::invalid_operation(format!(
+            "axis {} is out of bounds for {}-dimensional array",
+            axis, ndim
+        )));
+    }
+
+    let dim_len = array.shape()[axis];
+
+    let split_indices = match indices_or_sections {
+        SplitArg::Count(n) => {
+            if n == 0 {
+                return Err(NumPyError::invalid_value(
+                    "number sections must be larger than 0",
+                ));
+            }
+            let section_len = dim_len / n;
+            let extras = dim_len % n;
+            let mut indices = Vec::with_capacity(n + 1);
+            let mut curr = 0;
+            indices.push(0);
+            for i in 0..n {
+                let size = section_len + if i < extras { 1 } else { 0 };
+                curr += size;
+                indices.push(curr);
+            }
+            indices
+        }
+        SplitArg::Indices(mut inds) => {
+            let mut indices = Vec::with_capacity(inds.len() + 2);
+            indices.push(0);
+            indices.append(&mut inds);
+            indices.push(dim_len);
+            indices
+        }
+    };
+
+    let mut results = Vec::with_capacity(split_indices.len() - 1);
+    for i in 0..split_indices.len() - 1 {
+        let start = split_indices[i];
+        let end = split_indices[i + 1];
+
+        // slice(axis, start, end)
+        let mut slices = Vec::new();
+        for d in 0..ndim {
+            if d == axis {
+                slices.push(Slice::Range(start as isize, end as isize));
+            } else {
+                slices.push(Slice::Full);
+            }
+        }
+        results.push(array.slice(&MultiSlice::new(slices))?);
+    }
+    Ok(results)
+}
+
+/// Split an array into multiple sub-arrays of equal size.
+pub fn split<T>(
+    array: &Array<T>,
+    indices_or_sections: SplitArg,
+    axis: isize,
+) -> Result<Vec<Array<T>>>
+where
+    T: Clone + Default + 'static,
+{
+    let ndim = array.ndim();
+    let axis_us = if axis < 0 { ndim as isize + axis } else { axis } as usize;
+    if axis_us < ndim {
+        if let SplitArg::Count(n) = indices_or_sections {
+            let dim_len = array.shape()[axis_us];
+            if n > 0 && dim_len % n != 0 {
+                return Err(NumPyError::invalid_value(
+                    "array split does not result in an equal division",
+                ));
+            }
+        }
+    }
+    // Pass to array_split (it handles axis validation again)
+    // Note: if indices_or_sections was moved/consumed, we need it again?
+    // SplitArg is not Copy. But argument is passed by value.
+    // We inspected it above. Wait, `if let SplitArg::Count(n) = indices_or_sections` consumes it?
+    // No, matching reference `&indices_or_sections`?
+    // The arguments assume ownership `SplitArg`.
+    // I need to clone it or pass by reference.
+    // Or just re-construct.
+    // Let's implement logic without cloning.
+
+    // Actually, `split` calls `array_split`, but needs to check condition first.
+    // So I will match on reference.
+    match &indices_or_sections {
+        SplitArg::Count(n) => {
+            if axis_us < ndim {
+                let dim_len = array.shape()[axis_us];
+                if *n > 0 && dim_len % n != 0 {
+                    return Err(NumPyError::invalid_value(
+                        "array split does not result in an equal division",
+                    ));
+                }
+            }
+        }
+        _ => {}
+    }
+    array_split(array, indices_or_sections, axis)
+}
+
+/// Split array into multiple sub-arrays horizontally (column-wise).
+pub fn hsplit<T>(array: &Array<T>, indices_or_sections: SplitArg) -> Result<Vec<Array<T>>>
+where
+    T: Clone + Default + 'static,
+{
+    if array.ndim() == 0 {
+        return Err(NumPyError::invalid_value(
+            "hsplit only works on arrays of 1 or more dimensions",
+        ));
+    }
+    if array.ndim() > 1 {
+        split(array, indices_or_sections, 1)
+    } else {
+        split(array, indices_or_sections, 0)
+    }
+}
+
+/// Split array into multiple sub-arrays vertically (row-wise).
+pub fn vsplit<T>(array: &Array<T>, indices_or_sections: SplitArg) -> Result<Vec<Array<T>>>
+where
+    T: Clone + Default + 'static,
+{
+    if array.ndim() < 2 {
+        return Err(NumPyError::invalid_value(
+            "vsplit only works on arrays of 2 or more dimensions",
+        ));
+    }
+    split(array, indices_or_sections, 0)
+}
+
+/// Split array into multiple sub-arrays along the 3rd axis (depth).
+pub fn dsplit<T>(array: &Array<T>, indices_or_sections: SplitArg) -> Result<Vec<Array<T>>>
+where
+    T: Clone + Default + 'static,
+{
+    if array.ndim() < 3 {
+        return Err(NumPyError::invalid_value(
+            "dsplit only works on arrays of 3 or more dimensions",
+        ));
+    }
+    split(array, indices_or_sections, 2)
 }
 
 /// Linear interpolation.

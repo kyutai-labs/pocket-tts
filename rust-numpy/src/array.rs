@@ -95,7 +95,22 @@ impl<T> Array<T> {
     where
         T: Clone,
     {
-        self.data.as_ref().as_vec().to_vec()
+        if self.is_c_contiguous() {
+            let start = self.offset;
+            let end = start + self.size();
+            let data = self.data.as_ref().as_vec();
+            if end <= data.len() {
+                return data[start..end].to_vec();
+            }
+        }
+
+        let mut result = Vec::with_capacity(self.size());
+        for i in 0..self.size() {
+            if let Some(val) = self.get_linear(i) {
+                result.push(val.clone());
+            }
+        }
+        result
     }
 
     /// Get array data as slice

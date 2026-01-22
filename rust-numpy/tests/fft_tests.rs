@@ -81,8 +81,31 @@ fn test_fftshift() {
 fn test_ifftshift() {
     let a = array![3, 4, 0, 1, 2];
     let res = ifftshift(&a, None);
-    // [0, 1, 2, 3, 4]
     assert_eq!(res.to_vec(), vec![0, 1, 2, 3, 4]);
+}
+
+#[test]
+fn test_fftshift_2d() {
+    let a = numpy::array2![[0, 1, 2], [3, 4, 5]];
+
+    // Shift axis 1: [[2, 0, 1], [5, 3, 4]]
+    let res1 = fftshift(&a, Some(&[1]));
+    assert_eq!(res1.to_vec(), vec![2, 0, 1, 5, 3, 4]);
+
+    // Shift axis 0: [[3, 4, 5], [0, 1, 2]]
+    let res0 = fftshift(&a, Some(&[0]));
+    assert_eq!(res0.to_vec(), vec![3, 4, 5, 0, 1, 2]);
+
+    // Shift both: [[5, 3, 4], [2, 0, 1]]
+    let res = fftshift(&a, None);
+    assert_eq!(res.to_vec(), vec![5, 3, 4, 2, 0, 1]);
+}
+
+#[test]
+fn test_ifftshift_2d() {
+    let a = numpy::array2![[5, 3, 4], [2, 0, 1]];
+    let res = ifftshift(&a, None);
+    assert_eq!(res.to_vec(), vec![0, 1, 2, 3, 4, 5]);
 }
 
 #[test]

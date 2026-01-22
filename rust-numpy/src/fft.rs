@@ -120,7 +120,7 @@ pub fn fftshift<T: Clone + Default + 'static>(x: &Array<T>, axes: Option<&[usize
 
     for &axis in &axes {
         let n = shape[axis];
-        let shift = (n + 1) / 2;
+        let shift = n / 2;
         result = shift_axis(&result, axis, shift);
     }
     result
@@ -139,7 +139,7 @@ pub fn ifftshift<T: Clone + Default + 'static>(x: &Array<T>, axes: Option<&[usiz
 
     for &axis in &axes {
         let n = shape[axis];
-        let shift = n / 2;
+        let shift = (n + 1) / 2;
         result = shift_axis(&result, axis, shift);
     }
     result
@@ -154,13 +154,24 @@ fn shift_axis<T: Clone + Default + 'static>(
     let mut result = Array::zeros(shape.to_vec());
     let n = shape[axis];
 
-    // Simplistic implementation: iterate over all multi-indices
-    let size = input.size();
-    for i in 0..size {
-        let mut indices = crate::strides::compute_multi_indices(i, shape);
-        let val = input.get_multi(&indices).unwrap();
-        indices[axis] = (indices[axis] + n - shift) % n;
-        result.set_multi(&indices, val).unwrap();
+    let other_axes: Vec<usize> = (0..input.ndim()).filter(|&ax| ax != axis).collect();
+    let outer_size: usize = other_axes.iter().map(|&ax| shape[ax]).product();
+
+    for i in 0..outer_size {
+        let mut base_indices = vec![0; input.ndim()];
+        let mut temp_idx = i;
+        for &ax in other_axes.iter().rev() {
+            base_indices[ax] = temp_idx % shape[ax];
+            temp_idx /= shape[ax];
+        }
+
+        for k in 0..n {
+            base_indices[axis] = k;
+            let val = input.get_multi(&base_indices).unwrap();
+            let new_k = (k + shift) % n;
+            base_indices[axis] = new_k;
+            result.set_multi(&base_indices, val).unwrap();
+        }
     }
     result
 }
@@ -961,6 +972,9 @@ where
     let fft = planner.plan_fft_forward(m);
     fft.process(&mut data);
 
+    // Default scaling for ihfft
+    let mut scale = m as f64;
+
     // Truncate for ihfft: n_out elements
     data.truncate(n_out);
 
@@ -968,19 +982,23 @@ where
     if let Some(norm_str) = norm {
         match norm_str {
             "ortho" => {
-                let scale = (m as f64).sqrt();
+                scale = (m as f64).sqrt();
                 for x in data.iter_mut() {
                     *x /= scale;
                 }
             }
             "forward" => {
-                let scale = m as f64;
+                scale = m as f64;
                 for x in data.iter_mut() {
                     *x /= scale;
                 }
             }
-            _ => {} // "backward" - no scaling
+            _ => {} // "backward" - default 1/m scaling already set
         }
+    }
+
+    for x in data.iter_mut() {
+        *x /= scale;
     }
 
     Ok(Array::from_data(data, vec![n_out]))

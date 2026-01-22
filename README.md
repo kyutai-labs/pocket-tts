@@ -26,6 +26,7 @@ Supports Python 3.10, 3.11, 3.12, 3.13 and 3.14. Requires PyTorch 2.5+. Does not
 * Voice cloning
 * English only at the moment
 * Can handle infinitely long text inputs
+* [Can run on client-side in the browser](#in-browser-implementations)
 
 ## Trying it from the website, without installing anything
 
@@ -128,11 +129,16 @@ We accept contributions! Feel free to open issues or pull requests on GitHub.
 
 You can find development instructions in the [CONTRIBUTING.md](https://github.com/kyutai-labs/pocket-tts/tree/main/CONTRIBUTING.md) file. You'll also find there how to have an editable install of the package for local development.
 
-## Alternative implementations
+## In-browser implementations
 
-- [babybirdprd/pocket-tts](https://github.com/babybirdprd/pocket-tts) - Candle version (Rust) with WebAssembly and PyO3 bindings. Can run in the browser!
+Pocket TTS is small enough to run directly in your browser in WebAssembly/JavaScript.
+We don't have official support for this yet, but you can try out one of these community implementations:
 
-## Projects using pocket-tts
+- [babybirdprd/pocket-tts](https://github.com/babybirdprd/pocket-tts): Candle version (Rust) with WebAssembly and PyO3 bindings, meaning it can run on the web too.
+- [ekzhang/jax-js](https://github.com/ekzhang/jax-js/tree/main/website/src/routes/tts): Using jax-js, a ML library for the web. Demo [here](https://jax-js.com/tts)
+- [KevinAHM/pocket-tts-onnx-export](https://github.com/KevinAHM/pocket-tts-onnx-export): Model exported to .onnx and run using [ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/). Demo [here](https://huggingface.co/spaces/KevinAHM/pocket-tts-web)
+
+## Projects using Pocket TTS
 
 - [lukasmwerner/pocket-reader](https://github.com/lukasmwerner/pocket-reader) - Browser screen reader
 - [ikidd/pocket-tts-wyoming](https://github.com/ikidd/pocket-tts-wyoming) - Docker container for pocket-tts using Wyoming protocol, ready for Home Assistant Voice use.

@@ -210,6 +210,87 @@ where
     Ok(Array::from_vec(logged))
 }
 
+/// Create an array by executing a function over each coordinate.
+/// Similar to np.fromfunction.
+///
+/// The function receives the indices as a vector and returns the value at that position.
+pub fn fromfunction<T, F>(func: F, shape: &[usize]) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+    F: Fn(&[usize]) -> T,
+{
+    let size: usize = shape.iter().product();
+    let mut data = Vec::with_capacity(size);
+
+    for linear_idx in 0..size {
+        let indices = crate::strides::compute_multi_indices(linear_idx, shape);
+        data.push(func(&indices));
+    }
+
+    Ok(Array::from_data(data, shape.to_vec()))
+}
+
+/// Create a 1-D array from an iterator.
+/// Similar to np.fromiter.
+pub fn fromiter<T, I>(iter: I) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+    I: IntoIterator<Item = T>,
+{
+    let data: Vec<T> = iter.into_iter().collect();
+    Ok(Array::from_vec(data))
+}
+
+/// Create a 1-D array from raw bytes.
+/// Similar to np.frombuffer.
+///
+/// Note: This is a simplified version that copies the bytes. The original NumPy
+/// function creates a view into the buffer without copying.
+pub fn frombuffer<T>(buffer: &[u8]) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static + Copy,
+{
+    let elem_size = std::mem::size_of::<T>();
+    if elem_size == 0 {
+        return Err(NumPyError::invalid_value(
+            "frombuffer: cannot create array from zero-sized type",
+        ));
+    }
+
+    if buffer.len() % elem_size != 0 {
+        return Err(NumPyError::invalid_value(format!(
+            "frombuffer: buffer size {} is not a multiple of element size {}",
+            buffer.len(),
+            elem_size
+        )));
+    }
+
+    let count = buffer.len() / elem_size;
+    let mut data = Vec::with_capacity(count);
+
+    // Safety: We're reinterpreting bytes as the target type
+    // This requires that T is Copy and has no padding requirements
+    for chunk in buffer.chunks_exact(elem_size) {
+        let value: T = unsafe { std::ptr::read_unaligned(chunk.as_ptr() as *const T) };
+        data.push(value);
+    }
+
+    Ok(Array::from_vec(data))
+}
+
+/// Return an array copy of the given object.
+/// Similar to np.copy.
+///
+/// This creates a deep copy of the array, not a view.
+pub fn copy<T>(a: &Array<T>) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+{
+    // Use to_vec() to get all elements (handles non-contiguous arrays)
+    let data = a.to_vec();
+    Ok(Array::from_data(data, a.shape().to_vec()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -444,5 +525,127 @@ mod tests {
         let result = vander(&x, Some(2), false).unwrap();
         assert_eq!(result.shape(), &[3, 2]);
         assert_eq!(result.data(), &[1, 1, 2, 1, 3, 1]);
+    }
+
+    #[test]
+    fn test_fromfunction_1d() {
+        // Create array where value = index
+        let arr = fromfunction(|idx| idx[0] as f64, &[5]).unwrap();
+        assert_eq!(arr.shape(), &[5]);
+        let data = arr.data();
+        for i in 0..5 {
+            assert_eq!(data[i], i as f64);
+        }
+    }
+
+    #[test]
+    fn test_fromfunction_2d() {
+        // Create array where value = row + col
+        let arr = fromfunction(|idx| (idx[0] + idx[1]) as f64, &[3, 4]).unwrap();
+        assert_eq!(arr.shape(), &[3, 4]);
+        // Check a few values
+        assert_eq!(arr.get_multi(&[0, 0]).unwrap(), 0.0);
+        assert_eq!(arr.get_multi(&[1, 2]).unwrap(), 3.0);
+        assert_eq!(arr.get_multi(&[2, 3]).unwrap(), 5.0);
+    }
+
+    #[test]
+    fn test_fromfunction_identity_matrix() {
+        // Create identity matrix
+        let arr = fromfunction(|idx| if idx[0] == idx[1] { 1.0 } else { 0.0 }, &[3, 3]).unwrap();
+        assert_eq!(arr.shape(), &[3, 3]);
+        assert_eq!(arr.get_multi(&[0, 0]).unwrap(), 1.0);
+        assert_eq!(arr.get_multi(&[1, 1]).unwrap(), 1.0);
+        assert_eq!(arr.get_multi(&[2, 2]).unwrap(), 1.0);
+        assert_eq!(arr.get_multi(&[0, 1]).unwrap(), 0.0);
+    }
+
+    #[test]
+    fn test_fromiter_basic() {
+        let arr = fromiter(0..5).unwrap();
+        assert_eq!(arr.shape(), &[5]);
+        let data = arr.data();
+        for i in 0..5 {
+            assert_eq!(data[i], i);
+        }
+    }
+
+    #[test]
+    fn test_fromiter_empty() {
+        let arr: Array<i32> = fromiter(std::iter::empty()).unwrap();
+        assert_eq!(arr.shape(), &[0]);
+        assert_eq!(arr.size(), 0);
+    }
+
+    #[test]
+    fn test_fromiter_filtered() {
+        // Only even numbers
+        let arr = fromiter((0..10).filter(|x| x % 2 == 0)).unwrap();
+        assert_eq!(arr.shape(), &[5]);
+        assert_eq!(arr.data(), &[0, 2, 4, 6, 8]);
+    }
+
+    #[test]
+    fn test_frombuffer_f32() {
+        let values: [f32; 4] = [1.0, 2.0, 3.0, 4.0];
+        let bytes: &[u8] = unsafe {
+            std::slice::from_raw_parts(values.as_ptr() as *const u8, std::mem::size_of_val(&values))
+        };
+        let arr: Array<f32> = frombuffer(bytes).unwrap();
+        assert_eq!(arr.shape(), &[4]);
+        let data = arr.data();
+        assert_eq!(data[0], 1.0);
+        assert_eq!(data[1], 2.0);
+        assert_eq!(data[2], 3.0);
+        assert_eq!(data[3], 4.0);
+    }
+
+    #[test]
+    fn test_frombuffer_i32() {
+        let values: [i32; 3] = [10, 20, 30];
+        let bytes: &[u8] = unsafe {
+            std::slice::from_raw_parts(values.as_ptr() as *const u8, std::mem::size_of_val(&values))
+        };
+        let arr: Array<i32> = frombuffer(bytes).unwrap();
+        assert_eq!(arr.shape(), &[3]);
+        assert_eq!(arr.data(), &[10, 20, 30]);
+    }
+
+    #[test]
+    fn test_frombuffer_size_mismatch() {
+        let bytes: [u8; 5] = [0, 1, 2, 3, 4]; // Not a multiple of i32 size
+        let result: Result<Array<i32>> = frombuffer(&bytes);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_copy_basic() {
+        let original = Array::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0]);
+        let copied = copy(&original).unwrap();
+
+        assert_eq!(copied.shape(), original.shape());
+        assert_eq!(copied.data(), original.data());
+    }
+
+    #[test]
+    fn test_copy_2d() {
+        let original = Array::from_data(vec![1, 2, 3, 4, 5, 6], vec![2, 3]);
+        let copied = copy(&original).unwrap();
+
+        assert_eq!(copied.shape(), &[2, 3]);
+        assert_eq!(copied.data(), original.data());
+    }
+
+    #[test]
+    fn test_copy_independence() {
+        let original = Array::from_vec(vec![1.0, 2.0, 3.0]);
+        let mut copied = copy(&original).unwrap();
+
+        // Modify the copy
+        copied.set(0, 99.0).unwrap();
+
+        // Original should be unchanged
+        assert_eq!(original.get(0), Some(&1.0));
+        assert_eq!(copied.get(0), Some(&99.0));
     }
 }

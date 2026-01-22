@@ -1766,10 +1766,182 @@ where
 /// Re-export all array manipulation functions for public use
 pub mod exports {
     pub use super::{
-        append, arange, atleast_1d, atleast_2d, atleast_3d, delete, empty_like, expand_dims, eye,
-        flatten, flip, full_like, geomspace, identity, insert, linspace, logspace, meshgrid,
-        moveaxis, ones_like, ravel, repeat, reshape, roll, rollaxis, rot90, squeeze, swapaxes,
-        tile, zeros_like,
+        apply_along_axis, apply_over_axes, append, arange, atleast_1d, atleast_2d, atleast_3d,
+        delete, empty_like, expand_dims, eye, flatten, flip, full_like, geomspace, identity,
+        insert, linspace, logspace, meshgrid, moveaxis, ones_like, ravel, repeat, reshape,
+        roll, rollaxis, rot90, squeeze, swapaxes, tile, Vectorize, zeros_like,
     };
 }
 // normalize_axis replaced by internal version above
+
+// ==================== FUNCTION APPLICATION ====================
+
+/// Apply a function to 1-D slices along the given axis.
+///
+/// This function executes `func1d(a, *args)` where `a` is a 1-D slice along `axis`,
+/// for each 1-D slice along the specified axis.
+///
+/// # Arguments
+/// * `func1d` - Function that takes a 1-D array and returns a scalar or array
+/// * `axis` - Axis along which to apply the function
+/// * `arr` - Input array
+/// * `args` - Additional arguments to pass to the function
+///
+/// # Returns
+/// Array with the result of applying `func1d` to each 1-D slice
+///
+/// # Examples
+/// ```ignore
+/// let a = Array::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+/// let result = apply_along_axis(&|slice: &Array<f64>| slice.iter().cloned().sum::<f64>(), 0, &a, &[]).unwrap();
+/// ```
+pub fn apply_along_axis<T, F, R>(
+    func1d: F,
+    axis: isize,
+    arr: &Array<T>,
+    _args: &[R],
+) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+    F: Fn(&Array<T>) -> T + Sync,
+{
+    let ndim = arr.ndim();
+    if ndim == 0 {
+        return Err(NumPyError::invalid_operation(
+            "apply_along_axis requires at least 1 dimension",
+        ));
+    }
+
+    let axis_idx = normalize_axis(axis, ndim)?;
+    let n = arr.shape()[axis_idx];
+
+    // Calculate output shape (all dimensions except axis remain the same)
+    let mut out_shape = arr.shape().to_vec();
+    out_shape.remove(axis_idx);
+
+    let out_size = out_shape.iter().product::<usize>();
+    let mut result_data = Vec::with_capacity(out_size);
+
+    // Calculate strides for iterating along the target axis
+    let arr_shape = arr.shape();
+    let mut strides_before = 1usize;
+    for &dim in &arr_shape[..axis_idx] {
+        strides_before *= dim;
+    }
+    let mut strides_after = 1usize;
+    for &dim in &arr_shape[axis_idx + 1..] {
+        strides_after *= dim;
+    }
+
+    // For each position along the non-target axes, extract a 1-D slice and apply the function
+    for i in 0..strides_before {
+        for j in 0..strides_after {
+            let mut slice_data = Vec::with_capacity(n);
+            for k in 0..n {
+                let linear_idx = i * n * strides_after + j + k * strides_after;
+                if let Some(val) = arr.get(linear_idx) {
+                    slice_data.push(val.clone());
+                }
+            }
+
+            let slice = Array::from_data(slice_data, vec![n]);
+            let output_val = func1d(&slice);
+            result_data.push(output_val);
+        }
+    }
+
+    Ok(Array::from_data(result_data, out_shape))
+}
+
+/// Apply a function repeatedly over multiple axes.
+///
+/// This function applies `func` to `a` along each of the specified axes,
+/// accumulating the results. The output shape has the specified axes removed.
+///
+/// # Arguments
+/// * `func` - Function that takes an array and optional axis argument
+/// * `a` - Input array
+/// * `axes` - Axes over which to apply the function
+///
+/// # Returns
+/// Array with the result of applying `func` over each axis
+///
+/// # Examples
+/// ```ignore
+/// let a = Array::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], vec![2, 2, 2]);
+/// let result = apply_over_axes(&|arr: &Array<f64>, axis| { /* sum along axis */ }, &a, &[0, 1]).unwrap();
+/// ```
+pub fn apply_over_axes<T, F>(
+    func: F,
+    a: &Array<T>,
+    axes: &[isize],
+) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+    F: Fn(&Array<T>, isize) -> Array<T> + Copy,
+{
+    let mut result = a.clone();
+    let mut sorted_axes: Vec<isize> = axes.to_vec();
+    sorted_axes.sort_by_key(|&ax| (ax as i64));
+
+    for &axis in &sorted_axes {
+        result = func(&result, axis);
+    }
+
+    Ok(result)
+}
+
+/// Vectorize function for generalized function application.
+///
+/// This struct provides a way to apply a scalar function to arrays element-wise,
+/// automatically broadcasting inputs as needed.
+///
+/// # Examples
+/// ```ignore
+/// let vfunc = Vectorize::new(|x: &f64, y: &f64| x + y);
+/// let a = Array::from_data(vec![1.0, 2.0, 3.0], vec![3]);
+/// let b = Array::from_data(vec![10.0, 20.0, 30.0], vec![3]);
+/// let result = vfunc.apply(&a, &b).unwrap();
+/// ```
+pub struct Vectorize<T, F>
+where
+    T: Clone + Default + 'static,
+    F: Fn(&T, &T) -> T + Send + Sync,
+{
+    func: F,
+    _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T, F> Vectorize<T, F>
+where
+    T: Clone + Default + 'static,
+    F: Fn(&T, &T) -> T + Send + Sync,
+{
+    /// Create a new vectorized function
+    pub fn new(func: F) -> Self {
+        Self {
+            func,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+
+    /// Apply the vectorized function to arrays with broadcasting
+    pub fn apply(&self, a: &Array<T>, b: &Array<T>) -> Result<Array<T>> {
+        use crate::broadcasting::broadcast_arrays;
+
+        let broadcasted = broadcast_arrays(&[a, b])?;
+        let arr_a = &broadcasted[0];
+        let arr_b = &broadcasted[1];
+        let shape = arr_a.shape().to_vec();
+        let size = shape.iter().product::<usize>();
+
+        let mut result_data = Vec::with_capacity(size);
+        for i in 0..size {
+            if let (Some(val_a), Some(val_b)) = (arr_a.get(i), arr_b.get(i)) {
+                result_data.push((self.func)(val_a, val_b));
+            }
+        }
+
+        Ok(Array::from_data(result_data, shape))
+    }
+}

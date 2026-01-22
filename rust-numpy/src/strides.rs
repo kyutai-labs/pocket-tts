@@ -209,3 +209,20 @@ pub enum StrideOrder {
     F,       // Fortran-contiguous (column-major)
     Neither, // Neither C nor F contiguous
 }
+
+/// Normalize an axis index, supporting negative indexing
+pub fn normalize_axis(axis: isize, ndim: usize) -> crate::error::Result<usize> {
+    if ndim == 0 {
+        return Err(crate::error::NumPyError::invalid_operation(
+            "cannot specify axis for 0D array",
+        ));
+    }
+    let axis_norm = if axis < 0 { axis + ndim as isize } else { axis };
+    if axis_norm < 0 || axis_norm >= ndim as isize {
+        return Err(crate::error::NumPyError::index_error(
+            axis_norm as usize,
+            ndim,
+        ));
+    }
+    Ok(axis_norm as usize)
+}

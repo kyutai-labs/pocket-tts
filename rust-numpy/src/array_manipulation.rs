@@ -71,16 +71,7 @@ fn compute_size(shape: &[usize]) -> usize {
 }
 
 fn normalize_axis(axis: isize, ndim: usize) -> Result<usize> {
-    if ndim == 0 {
-        return Err(NumPyError::invalid_operation(
-            "cannot specify axis for 0D array",
-        ));
-    }
-    let axis = if axis < 0 { axis + ndim as isize } else { axis };
-    if axis < 0 || axis >= ndim as isize {
-        return Err(NumPyError::index_error(axis as usize, ndim));
-    }
-    Ok(axis as usize)
+    crate::strides::normalize_axis(axis, ndim)
 }
 
 fn normalize_axes(axes: &[isize], ndim: usize) -> Result<Vec<usize>> {
@@ -1355,16 +1346,4 @@ pub mod exports {
         reshape, roll, rollaxis, rot90, squeeze, swapaxes, tile, zeros_like,
     };
 }
-/// Normalize an axis index, supporting negative indexing
-pub fn normalize_axis(axis: isize, ndim: usize) -> Result<usize> {
-    let ndim = ndim as isize;
-    if axis < -ndim || axis >= ndim {
-        return Err(NumPyError::index_error(axis as usize, ndim as usize));
-    }
-
-    if axis < 0 {
-        Ok((axis + ndim) as usize)
-    } else {
-        Ok(axis as usize)
-    }
-}
+// normalize_axis replaced by internal version above

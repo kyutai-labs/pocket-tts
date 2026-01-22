@@ -65,12 +65,12 @@ pub mod ufunc_ops;
 pub mod window;
 
 // Re-export key types for convenience
+pub use crate::fft::*;
 pub use array::Array;
 pub use array_manipulation::exports::*;
 pub use bitwise::*;
 pub use dtype::{Casting, Dtype, DtypeKind};
 pub use error::{NumPyError, Result};
-pub use fft::{fft_with_params, hilbert_with_params, ifft, irfft2, irfftn, rfft2, rfftn};
 pub use linalg::norm;
 pub use set_ops::exports::*;
 pub use statistics::{std, var};
@@ -91,7 +91,6 @@ pub type Complex = num_complex::Complex<f64>;
 
 // Re-export common constants
 pub use constants::*;
-
 /// Create array macro for convenient array creation
 #[macro_export]
 macro_rules! array {

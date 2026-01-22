@@ -365,6 +365,99 @@ unsafe fn simd_sqrt_f64_sse(values: &[f64]) -> Vec<f64> {
     result
 }
 
+/// Process array using SIMD-optimized f64 addition
+#[cfg(feature = "simd")]
+#[cfg(target_arch = "x86_64")]
+pub fn simd_add_f64(a: &[f64], b: &[f64]) -> Vec<f64> {
+    #[cfg(target_feature = "avx2")]
+    {
+        if is_x86_feature_detected!("avx2") {
+            let mut result = Vec::with_capacity(a.len());
+            let mut i = 0;
+            while i + 4 <= a.len() {
+                unsafe {
+                    let va = _mm256_loadu_pd(a.as_ptr().add(i));
+                    let vb = _mm256_loadu_pd(b.as_ptr().add(i));
+                    let res = _mm256_add_pd(va, vb);
+                    _mm256_storeu_pd(result.as_mut_ptr().add(i), res);
+                }
+                i += 4;
+            }
+            while i < a.len() {
+                result.push(a[i] + b[i]);
+                i += 1;
+            }
+            unsafe {
+                result.set_len(a.len());
+            }
+            return result;
+        }
+    }
+    a.iter().zip(b.iter()).map(|(x, y)| x + y).collect()
+}
+
+/// Process array using SIMD-optimized f32 addition
+#[cfg(feature = "simd")]
+#[cfg(target_arch = "x86_64")]
+pub fn simd_add_f32(a: &[f32], b: &[f32]) -> Vec<f32> {
+    #[cfg(target_feature = "avx2")]
+    {
+        if is_x86_feature_detected!("avx2") {
+            let mut result = Vec::with_capacity(a.len());
+            let mut i = 0;
+            while i + 8 <= a.len() {
+                unsafe {
+                    let va = _mm256_loadu_ps(a.as_ptr().add(i));
+                    let vb = _mm256_loadu_ps(b.as_ptr().add(i));
+                    let res = _mm256_add_ps(va, vb);
+                    _mm256_storeu_ps(result.as_mut_ptr().add(i), res);
+                }
+                i += 8;
+            }
+            while i < a.len() {
+                result.push(a[i] + b[i]);
+                i += 1;
+            }
+            unsafe {
+                result.set_len(a.len());
+            }
+            return result;
+        }
+    }
+    a.iter().zip(b.iter()).map(|(x, y)| x + y).collect()
+}
+
+/// Process array using SIMD-optimized f64 subtraction
+#[cfg(feature = "simd")]
+#[cfg(target_arch = "x86_64")]
+pub fn simd_sub_f64(a: &[f64], b: &[f64]) -> Vec<f64> {
+    #[cfg(target_feature = "avx2")]
+    {
+        if is_x86_feature_detected!("avx2") {
+            let mut result = Vec::with_capacity(a.len());
+            let mut i = 0;
+            while i + 4 <= a.len() {
+                unsafe {
+                    let va = _mm256_loadu_pd(a.as_ptr().add(i));
+                    let vb = _mm256_loadu_pd(b.as_ptr().add(i));
+                    let res = _mm256_sub_pd(va, vb);
+                    _mm256_storeu_pd(result.as_mut_ptr().add(i), res);
+                }
+                i += 4;
+            }
+            while i < a.len() {
+                result.push(a[i] - b[i]);
+                i += 1;
+            }
+            unsafe {
+                result.set_len(a.len());
+            }
+            return result;
+        }
+    }
+    a.iter().zip(b.iter()).map(|(x, y)| x - y).collect()
+}
+
 /// Scalar fallback for architectures without SIMD support
 #[cfg(any(
     not(feature = "simd"),
@@ -411,6 +504,18 @@ pub fn simd_sqrt_f64(values: &[f64]) -> Vec<f64> {
     values.iter().copied().map(|x| x.sqrt()).collect()
 }
 
+pub fn simd_add_f64(a: &[f64], b: &[f64]) -> Vec<f64> {
+    a.iter().zip(b.iter()).map(|(x, y)| x + y).collect()
+}
+
+pub fn simd_add_f32(a: &[f32], b: &[f32]) -> Vec<f32> {
+    a.iter().zip(b.iter()).map(|(x, y)| x + y).collect()
+}
+
+pub fn simd_sub_f64(a: &[f64], b: &[f64]) -> Vec<f64> {
+    a.iter().zip(b.iter()).map(|(x, y)| x - y).collect()
+}
+
 /// Benchmark helper to compare SIMD vs scalar performance
 #[cfg(feature = "simd")]
 pub fn benchmark_simd_vs_scalar<T>(
@@ -420,7 +525,11 @@ pub fn benchmark_simd_vs_scalar<T>(
 ) where
     T: Copy + std::fmt::Debug,
 {
-    use std::time::Instant;
+    #[cfg(feature = "simd")]
+    #[cfg(target_arch = "x86_64")]
+    use std::arch::x86_64::*;
+
+    use crate::dtype::Dtype;
 
     let test_data: Vec<T> = (0..10000)
         .map(|i| match std::any::TypeId::of::<T>() {

@@ -180,68 +180,53 @@ impl UfuncEngine {
     {
         let input_shape = input.shape();
         let output_shape = output.shape().to_vec();
+        let input_ndim = input.ndim();
 
-        let reduced_axes: Vec<usize> = axes
-            .iter()
-            .map(|&ax| {
-                if ax < 0 {
-                    (ax + input_shape.len() as isize) as usize
-                } else {
-                    ax as usize
-                }
+        let reduced_axes_mask: Vec<bool> = (0..input_ndim)
+            .map(|i| {
+                axes.iter().any(|&ax| {
+                    let norm_ax = if ax < 0 { ax + input_ndim as isize } else { ax } as usize;
+                    norm_ax == i
+                })
             })
-            .filter(|&ax| ax < input_shape.len())
             .collect();
 
-        for output_idx in 0..output.size() {
-            let output_indices = crate::strides::compute_multi_indices(output_idx, &output_shape);
+        // Initialize output with default or first elements if necessary
+        // In many cases, the caller might have initialized it, but let's ensure it's handled.
+        // For simplicity in this O(N) pass, we'll use a tracker to know if it's the first element for that output slot.
+        let mut initialized = vec![false; output.size()];
 
-            let mut result: Option<T> = None;
+        for input_idx in 0..input.size() {
+            let input_indices = crate::strides::compute_multi_indices(input_idx, input_shape);
 
-            for linear_idx in 0..input.size() {
-                let input_indices = crate::strides::compute_multi_indices(linear_idx, input_shape);
-
-                if self.should_include_for_reduction(&input_indices, &output_indices, &reduced_axes)
-                {
-                    if let Ok(element) = input.get_by_indices(&input_indices) {
-                        match &mut result {
-                            None => result = Some(element.clone()),
-                            Some(r) => *r = operation(r.clone(), element.clone()),
-                        }
-                    }
+            // Map input indices to output indices
+            let mut output_indices = Vec::with_capacity(output.ndim());
+            for (dim_idx, &idx_val) in input_indices.iter().enumerate() {
+                if !reduced_axes_mask[dim_idx] {
+                    output_indices.push(idx_val);
                 }
             }
 
-            if let Some(res) = result {
-                output.set_by_indices(&output_indices, res)?;
+            if let Ok(element) = input.get_by_indices(&input_indices) {
+                let out_strides = crate::strides::compute_strides(&output_shape);
+                let out_linear_idx =
+                    crate::strides::compute_linear_index(&output_indices, &out_strides) as usize;
+
+                if !initialized[out_linear_idx] {
+                    output.set_linear(out_linear_idx, element.clone());
+                    initialized[out_linear_idx] = true;
+                } else {
+                    if let Some(current_val) = output.get(out_linear_idx) {
+                        output.set_linear(
+                            out_linear_idx,
+                            operation(current_val.clone(), element.clone()),
+                        );
+                    }
+                }
             }
         }
 
         Ok(())
-    }
-
-    fn should_include_for_reduction(
-        &self,
-        input_indices: &[usize],
-        output_indices: &[usize],
-        reduced_axes: &[usize],
-    ) -> bool {
-        let mut output_dim_idx = 0;
-
-        for (dim_idx, &input_dim_val) in input_indices.iter().enumerate() {
-            if reduced_axes.contains(&dim_idx) {
-                continue;
-            }
-            if output_dim_idx >= output_indices.len() {
-                return false;
-            }
-            if input_dim_val != output_indices[output_dim_idx] {
-                return false;
-            }
-            output_dim_idx += 1;
-        }
-
-        true
     }
 }
 
@@ -634,11 +619,29 @@ where
 
                     for in_idx in 0..self.size() {
                         let in_indices = crate::strides::compute_multi_indices(in_idx, input_shape);
-                        if engine.should_include_for_reduction(
-                            &in_indices,
-                            &out_indices,
-                            &normalized_axes,
-                        ) {
+
+                        let mut reduced_match = true;
+                        for i in 0..input_shape.len() {
+                            if !normalized_axes.contains(&i) {
+                                let out_ax_idx = if keepdims {
+                                    i
+                                } else {
+                                    let mut count = 0;
+                                    for j in 0..i {
+                                        if !normalized_axes.contains(&j) {
+                                            count += 1;
+                                        }
+                                    }
+                                    count
+                                };
+                                if in_indices[i] != out_indices[out_ax_idx] {
+                                    reduced_match = false;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if reduced_match {
                             if let Some(val) = self.get(in_idx) {
                                 if !val.clone().into() {
                                     current_all = false;
@@ -647,7 +650,7 @@ where
                             }
                         }
                     }
-                    output.set(out_idx, current_all)?;
+                    output.set_linear(out_idx, current_all);
                 }
                 Ok(output)
             }
@@ -705,11 +708,29 @@ where
 
                     for in_idx in 0..self.size() {
                         let in_indices = crate::strides::compute_multi_indices(in_idx, input_shape);
-                        if engine.should_include_for_reduction(
-                            &in_indices,
-                            &out_indices,
-                            &normalized_axes,
-                        ) {
+
+                        let mut reduced_match = true;
+                        for i in 0..input_shape.len() {
+                            if !normalized_axes.contains(&i) {
+                                let out_ax_idx = if keepdims {
+                                    i
+                                } else {
+                                    let mut count = 0;
+                                    for j in 0..i {
+                                        if !normalized_axes.contains(&j) {
+                                            count += 1;
+                                        }
+                                    }
+                                    count
+                                };
+                                if in_indices[i] != out_indices[out_ax_idx] {
+                                    reduced_match = false;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if reduced_match {
                             if let Some(val) = self.get(in_idx) {
                                 if val.clone().into() {
                                     current_any = true;
@@ -718,7 +739,7 @@ where
                             }
                         }
                     }
-                    output.set(out_idx, current_any)?;
+                    output.set_linear(out_idx, current_any);
                 }
                 Ok(output)
             }

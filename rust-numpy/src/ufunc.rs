@@ -226,26 +226,38 @@ where
             ));
         }
 
-        // Check dtypes are supported
-        if !self.supports_dtypes(&[inputs[0].dtype(), inputs[1].dtype()]) {
-            return Err(NumPyError::ufunc_error(
-                self.name(),
-                "Unsupported dtype combination".to_string(),
-            ));
-        }
-
         let input0 = unsafe { &*(inputs[0] as *const _ as *const Array<T>) };
         let input1 = unsafe { &*(inputs[1] as *const _ as *const Array<T>) };
         let output = unsafe { &mut *(outputs[0] as *mut _ as *mut Array<T>) };
 
+        // Fast path for C-contiguous arrays of same shape
+        if input0.is_c_contiguous()
+            && input1.is_c_contiguous()
+            && output.is_c_contiguous()
+            && input0.shape() == input1.shape()
+            && input0.shape() == output.shape()
+        {
+            let d0 = input0.data.as_slice();
+            let d1 = input1.data.as_slice();
+            let out_slice = unsafe {
+                std::slice::from_raw_parts_mut(output.as_mut_ptr() as *mut T, output.size())
+            };
+
+            for i in 0..output.size() {
+                out_slice[i] =
+                    (self.operation)(d0[input0.offset + i].clone(), d1[input1.offset + i].clone());
+            }
+            return Ok(());
+        }
+
+        // Generic path using iterators
         let broadcasted = crate::broadcasting::broadcast_arrays(&[input0, input1])?;
         let arr0 = &broadcasted[0];
         let arr1 = &broadcasted[1];
 
         for i in 0..output.size() {
             if let (Some(a), Some(b)) = (arr0.get(i), arr1.get(i)) {
-                let result = (self.operation)(a.clone(), b.clone());
-                output.set(i, result)?;
+                output.set(i, (self.operation)(a.clone(), b.clone()))?;
             }
         }
 
@@ -334,21 +346,25 @@ where
             ));
         }
 
-        // Check dtype is supported
-        if !self.supports_dtypes(&[inputs[0].dtype()]) {
-            return Err(NumPyError::ufunc_error(
-                self.name(),
-                "Unsupported dtype".to_string(),
-            ));
-        }
-
         let input = unsafe { &*(inputs[0] as *const _ as *const Array<T>) };
         let output = unsafe { &mut *(outputs[0] as *mut _ as *mut Array<T>) };
 
+        // Fast path for C-contiguous arrays
+        if input.is_c_contiguous() && output.is_c_contiguous() && input.shape() == output.shape() {
+            let in_slice = input.data.as_slice();
+            let out_slice = unsafe {
+                std::slice::from_raw_parts_mut(output.as_mut_ptr() as *mut T, output.size())
+            };
+
+            for i in 0..output.size() {
+                out_slice[i] = (self.operation)(in_slice[input.offset + i].clone());
+            }
+            return Ok(());
+        }
+
         for i in 0..input.size() {
             if let Some(a) = input.get(i) {
-                let result = (self.operation)(a.clone());
-                output.set(i, result)?;
+                output.set(i, (self.operation)(a.clone()))?;
             }
         }
 

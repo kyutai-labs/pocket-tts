@@ -1,7 +1,5 @@
-use crate::{
-    fft, fftfreq, fftshift, hilbert_with_params, ifft, ifftshift, irfft, irfft2, irfftn, rfft,
-    rfft2, rfftfreq, rfftn, Array,
-};
+use crate::fft::*;
+use crate::Array;
 use num_complex::Complex64;
 
 #[test]
@@ -182,7 +180,7 @@ fn test_fft_with_params_basic() {
     let data = vec![1.0, 2.0, 3.0, 4.0];
     let input = Array::from_vec(data);
 
-    let result = fft_with_params(&input, None, None, None);
+    let result = fft(&input, None, 0, None);
     assert!(result.is_ok());
 }
 
@@ -191,7 +189,7 @@ fn test_fft_known_delta() {
     let data = vec![1.0, 0.0, 0.0, 0.0];
     let input = Array::from_vec(data);
 
-    let result = fft_with_params(&input, None, None, None).unwrap();
+    let result = fft(&input, None, 0, None).unwrap();
     let expected = vec![
         Complex64::new(1.0, 0.0),
         Complex64::new(1.0, 0.0),
@@ -211,7 +209,7 @@ fn test_ifft_known_constant() {
     ];
     let input = Array::from_vec(data);
 
-    let result = ifft(&input, None, None, None).unwrap();
+    let result = ifft(&input, None, 0, None).unwrap();
     let expected = vec![
         Complex64::new(1.0, 0.0),
         Complex64::new(0.0, 0.0),

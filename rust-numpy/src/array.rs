@@ -27,12 +27,11 @@ pub struct Array<T> {
     pub offset: usize,
 }
 
-/// Array creation and manipulation methods
-impl<T> Array<T>
-where
-    T: Clone + Default + 'static,
-{
-    pub fn from_data(data: Vec<T>, shape: Vec<usize>) -> Self {
+impl<T> Array<T> {
+    pub fn from_data(data: Vec<T>, shape: Vec<usize>) -> Self
+    where
+        T: Clone + Default + 'static,
+    {
         let strides = compute_strides(&shape);
         let memory_manager = Arc::new(MemoryManager::from_vec(data));
         Self {
@@ -43,9 +42,7 @@ where
             offset: 0,
         }
     }
-}
 
-impl<T> Array<T> {
     /// Get array shape
     pub fn shape(&self) -> &[usize] {
         &self.shape
@@ -154,10 +151,7 @@ impl<T> Array<T> {
     /// Set element at linear index with Result
     pub fn set(&mut self, index: usize, value: T) -> Result<(), NumPyError> {
         if index >= self.size() {
-            return Err(NumPyError::IndexError {
-                index,
-                size: self.size(),
-            });
+            return Err(NumPyError::index_error(index, self.size()));
         }
         self.set_linear(index, value);
         Ok(())
@@ -449,49 +443,51 @@ where
     }
 }
 
-// Note: Multidimensional indexing removed as [usize] is unsized
-// Use get() or get_linear() methods instead
-
-/// Convenience constructor functions
-impl<T> Array<T>
-where
-    T: Clone + Default + 'static,
-{
-    /// Create array filled with zeros
-    pub fn zeros(shape: Vec<usize>) -> Self {
+impl<T> Array<T> {
+    pub fn zeros(shape: Vec<usize>) -> Self
+    where
+        T: Clone + Default + 'static,
+    {
         let data = vec![T::default(); shape.iter().product()];
         Self::from_data(data, shape)
     }
 
-    /// Create array filled with ones
     pub fn ones(shape: Vec<usize>) -> Self
     where
-        T: num_traits::One,
+        T: num_traits::One + Clone + Default + 'static,
     {
         let data = vec![T::one(); shape.iter().product()];
         Self::from_data(data, shape)
     }
 
-    /// Create empty array (uninitialized)
-    pub fn empty(shape: Vec<usize>) -> Self {
+    pub fn empty(shape: Vec<usize>) -> Self
+    where
+        T: Clone + Default + 'static,
+    {
         let data = Vec::with_capacity(shape.iter().product());
         Self::from_data(data, shape)
     }
 
-    /// Create array filled with value
-    pub fn full(shape: Vec<usize>, value: T) -> Self {
+    pub fn full(shape: Vec<usize>, value: T) -> Self
+    where
+        T: Clone + Default + 'static,
+    {
         let data = vec![value; shape.iter().product()];
         Self::from_data(data, shape)
     }
 
-    /// Create 0-D array from scalar
-    pub fn from_scalar(value: T, shape: Vec<usize>) -> Self {
+    pub fn from_scalar(value: T, shape: Vec<usize>) -> Self
+    where
+        T: Clone + Default + 'static,
+    {
         let data = vec![value];
         Self::from_data(data, shape)
     }
 
-    /// Create array from vector (1D)
-    pub fn from_vec(data: Vec<T>) -> Self {
+    pub fn from_vec(data: Vec<T>) -> Self
+    where
+        T: Clone + Default + 'static,
+    {
         let shape = vec![data.len()];
         let strides = vec![1];
         let memory_manager = Arc::new(MemoryManager::from_vec(data));
@@ -504,15 +500,16 @@ where
         }
     }
 
-    /// Create array from vector and shape
-    pub fn from_shape_vec(shape: Vec<usize>, data: Vec<T>) -> Self {
+    pub fn from_shape_vec(shape: Vec<usize>, data: Vec<T>) -> Self
+    where
+        T: Clone + Default + 'static,
+    {
         Self::from_data(data, shape)
     }
 
-    /// Create identity matrix
     pub fn eye(size: usize) -> Self
     where
-        T: num_traits::Zero + num_traits::One + Clone,
+        T: num_traits::Zero + num_traits::One + Clone + Default + 'static,
     {
         let mut data = vec![T::zero(); size * size];
         for i in 0..size {

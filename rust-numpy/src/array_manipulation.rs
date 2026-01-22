@@ -1744,17 +1744,13 @@ where
         // Append arr elements for this slice
         for axis_idx in 0..stride_at_axis {
             let offset = (base_arr + axis_idx * stride_after_axis) as usize;
-            result_data.extend_from_slice(
-                &arr_data[offset..offset + stride_after_axis]
-            );
+            result_data.extend_from_slice(&arr_data[offset..offset + stride_after_axis]);
         }
 
         // Append values elements for this slice
         for axis_idx in 0..values_shape[axis] {
             let offset = (base_values + axis_idx * stride_after_axis) as usize;
-            result_data.extend_from_slice(
-                &values_data[offset..offset + stride_after_axis]
-            );
+            result_data.extend_from_slice(&values_data[offset..offset + stride_after_axis]);
         }
     }
 
@@ -1766,10 +1762,10 @@ where
 /// Re-export all array manipulation functions for public use
 pub mod exports {
     pub use super::{
-        apply_along_axis, apply_over_axes, append, arange, atleast_1d, atleast_2d, atleast_3d,
+        append, apply_along_axis, apply_over_axes, arange, atleast_1d, atleast_2d, atleast_3d,
         delete, empty_like, expand_dims, eye, flatten, flip, full_like, geomspace, identity,
-        insert, linspace, logspace, meshgrid, moveaxis, ones_like, ravel, repeat, reshape,
-        roll, rollaxis, rot90, squeeze, swapaxes, tile, Vectorize, zeros_like,
+        insert, linspace, logspace, meshgrid, moveaxis, ones_like, ravel, repeat, reshape, roll,
+        rollaxis, rot90, squeeze, swapaxes, tile, zeros_like, Vectorize,
     };
 }
 // normalize_axis replaced by internal version above
@@ -1871,11 +1867,7 @@ where
 /// let a = Array::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], vec![2, 2, 2]);
 /// let result = apply_over_axes(&|arr: &Array<f64>, axis| { /* sum along axis */ }, &a, &[0, 1]).unwrap();
 /// ```
-pub fn apply_over_axes<T, F>(
-    func: F,
-    a: &Array<T>,
-    axes: &[isize],
-) -> Result<Array<T>>
+pub fn apply_over_axes<T, F>(func: F, a: &Array<T>, axes: &[isize]) -> Result<Array<T>>
 where
     T: Clone + Default + 'static,
     F: Fn(&Array<T>, isize) -> Array<T> + Copy,

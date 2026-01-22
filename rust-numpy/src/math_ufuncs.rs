@@ -544,7 +544,7 @@ macro_rules! impl_trig_ops_complex {
                 }
 
                 fn arcsin(&self) -> Result<$t> {
-                    Ok((-<$t>::i() * (<$t>::i() * self + (1.0 - self * self).sqrt()).ln()))
+                    Ok(-<$t>::i() * (<$t>::i() * self + (1.0 - self * self).sqrt()).ln())
                 }
 
                 fn arccos(&self) -> Result<$t> {

@@ -922,6 +922,70 @@ where
     })
 }
 
+/// Expand the shape of an array
+///
+/// Inserts a new axis at the specified position, increasing the number of dimensions.
+///
+/// # Arguments
+/// * `a` - Input array
+/// * `axis` - Position in the expanded axes where the new axis is placed.
+///            Can be negative (counts from the end).
+///
+/// # Returns
+/// Array with expanded dimensions
+///
+/// # Examples
+/// ```ignore
+/// let a = Array::from_vec(vec![1, 2, 3, 4]);
+/// let expanded = expand_dims(&a, 0)?;
+/// assert_eq!(expanded.shape(), &[1, 4]);
+///
+/// let expanded2 = expand_dims(&a, -1)?;
+/// assert_eq!(expanded2.shape(), &[4, 1]);
+/// ```
+pub fn expand_dims<T>(a: &Array<T>, axis: isize) -> Result<Array<T>>
+where
+    T: Clone + 'static,
+{
+    let ndim = a.ndim();
+
+    // Normalize axis (allow negative values)
+    let axis_norm = if axis < 0 {
+        let abs_axis = axis.abs() as usize;
+        if abs_axis > ndim {
+            return Err(NumPyError::invalid_operation(format!(
+                "axis {} is out of bounds for array of dimension {}",
+                axis, ndim
+            )));
+        }
+        ndim - abs_axis + 1
+    } else {
+        let axis_usize = axis as usize;
+        if axis_usize > ndim {
+            return Err(NumPyError::invalid_operation(format!(
+                "axis {} is out of bounds for array of dimension {}",
+                axis, ndim
+            )));
+        }
+        axis_usize
+    };
+
+    // Insert new dimension of size 1 at the specified position
+    let mut new_shape = a.shape().to_vec();
+    let mut new_strides = a.strides().to_vec();
+
+    new_shape.insert(axis_norm, 1);
+    new_strides.insert(axis_norm, 0); // Zero stride broadcasts the single element
+
+    Ok(Array {
+        data: a.data.clone(),
+        shape: new_shape,
+        strides: new_strides,
+        dtype: a.dtype().clone(),
+        offset: a.offset,
+    })
+}
+
 /// Ensure arrays have at least 1 dimension
 ///
 /// # Arguments
@@ -1702,9 +1766,10 @@ where
 /// Re-export all array manipulation functions for public use
 pub mod exports {
     pub use super::{
-        append, arange, atleast_1d, atleast_2d, atleast_3d, delete, empty_like, eye, flatten, flip,
-        full_like, geomspace, identity, insert, linspace, logspace, meshgrid, moveaxis, ones_like,
-        ravel, repeat, reshape, roll, rollaxis, rot90, squeeze, swapaxes, tile, zeros_like,
+        append, arange, atleast_1d, atleast_2d, atleast_3d, delete, empty_like, expand_dims, eye,
+        flatten, flip, full_like, geomspace, identity, insert, linspace, logspace, meshgrid,
+        moveaxis, ones_like, ravel, repeat, reshape, roll, rollaxis, rot90, squeeze, swapaxes,
+        tile, zeros_like,
     };
 }
 // normalize_axis replaced by internal version above

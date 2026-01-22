@@ -482,6 +482,7 @@ class TTSModel(nn.Module):
         text_to_generate: str,
         frames_after_eos: int | None = None,
         copy_state: bool = True,
+        use_teacher_forcing: bool = False,
     ):
         """Generate audio streaming chunks from text input.
 
@@ -504,6 +505,10 @@ class TTSModel(nn.Module):
             copy_state: Whether to create a deep copy of the model state before
                 generation. If True, preserves the original state for reuse.
                 If False, modifies the input state in-place. Defaults to True.
+            use_teacher_forcing: If True, uses audio from previous chunks as
+                context for the next chunk, improving continuity for long texts.
+                This is done by using copy_state=True only for the first sentence,
+                then copy_state=False for subsequent sentences. Defaults to False.
 
         Yields:
             torch.Tensor: Audio chunks with shape [samples] at the model's
@@ -528,10 +533,8 @@ class TTSModel(nn.Module):
         # Build a lookup of chunk_index -> pause_duration_ms
         pause_after_chunk = {p.position: p.duration_ms for p in pause_markers}
 
-        # This is a very simplistic way of handling long texts. We could do much better
-        # by using teacher forcing, but it would be a bit slower.
-        # TODO: add the teacher forcing method for long texts where we use the audio of one chunk
-        # as conditioning for the next chunk.
+        # Track first sentence for teacher forcing
+        is_first_sentence = True
 
         for chunk_idx, text_chunk in enumerate(text_chunks):
             # Further split long chunks into sentences
@@ -540,11 +543,19 @@ class TTSModel(nn.Module):
             for sentence in sentences:
                 text_to_generate, frames_after_eos_guess = prepare_text_prompt(sentence)
                 frames_after_eos_guess += 2
+
+                # Teacher forcing: use copy_state=True only for first sentence
+                # to preserve initial state, then False to carry forward audio context
+                current_copy_state = copy_state
+                if use_teacher_forcing:
+                    current_copy_state = is_first_sentence
+                    is_first_sentence = False
+
                 yield from self._generate_audio_stream_short_text(
                     model_state=model_state,
                     text_to_generate=sentence,
                     frames_after_eos=frames_after_eos_guess,
-                    copy_state=copy_state,
+                    copy_state=current_copy_state,
                 )
 
             # Insert silence if there's a pause after this chunk

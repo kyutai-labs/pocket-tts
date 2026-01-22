@@ -113,6 +113,7 @@ fn test_ifft2_basic() {
 fn test_fft2_ifft2_roundtrip() {
     let shape = vec![4, 4];
     let data: Vec<f64> = (0..16).map(|i| i as f64).collect();
+    let data_clone = data.clone();
     let arr = Array::from_data(data, shape);
 
     let fwd = fft2(&arr, None, None, None).unwrap();
@@ -120,7 +121,7 @@ fn test_fft2_ifft2_roundtrip() {
 
     assert_eq!(back.shape(), &[4, 4]);
     for (i, val) in back.iter().enumerate() {
-        assert!((val.re - data[i]).abs() < 1e-8);
+        assert!((val.re - data_clone[i]).abs() < 1e-8);
         assert!(val.im.abs() < 1e-8);
     }
 }

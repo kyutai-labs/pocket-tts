@@ -4,7 +4,7 @@ use numpy::slicing::{MultiSlice, Slice};
 #[test]
 fn test_slice_view_semantics() {
     // 1D Array: [0, 1, 2, 3, 4]
-    let mut a = Array::from_vec(vec![0, 1, 2, 3, 4]);
+    let a = Array::from_vec(vec![0, 1, 2, 3, 4]);
 
     // Slice: [1:4] -> [1, 2, 3]
     let slices = vec![Slice::Range(1, 4)];

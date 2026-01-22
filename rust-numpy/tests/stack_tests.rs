@@ -1,5 +1,5 @@
 use numpy::array::Array;
-use numpy::array_extra::{dstack, hstack, stack, vstack};
+use numpy::array_extra::{dstack, stack};
 
 #[test]
 fn test_stack() {

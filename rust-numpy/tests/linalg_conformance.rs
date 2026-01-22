@@ -1,6 +1,4 @@
-use approx::assert_abs_diff_eq;
 // use numpy::linalg;
-use numpy::{array, array2};
 
 /*
 #[test]

@@ -610,10 +610,37 @@ where
     Ok(Array::from_vec(result))
 }
 
+pub fn ptp<T>(
+    a: &Array<T>,
+    _axis: Option<&[isize]>,
+    _keepdims: bool,
+) -> Result<Array<T>, NumPyError>
+where
+    T: Clone + Default + AsF64 + FromF64 + 'static,
+{
+    if a.is_empty() {
+        return Err(NumPyError::invalid_value(
+            "Cannot compute ptp of empty array",
+        ));
+    }
+
+    let data = a.to_vec();
+    let min_val = data
+        .iter()
+        .map(|x| x.as_f64().unwrap_or(0.0))
+        .fold(f64::INFINITY, |a, b| a.min(b));
+    let max_val = data
+        .iter()
+        .map(|x| x.as_f64().unwrap_or(0.0))
+        .fold(f64::NEG_INFINITY, |a, b| a.max(b));
+
+    Ok(Array::from_vec(vec![T::from_f64(max_val - min_val)]))
+}
+
 pub mod exports {
     pub use super::{
         average, bincount, corrcoef, cov, digitize, histogram, histogram2d, histogramdd, median,
-        nanmedian, nanpercentile, nanquantile, percentile, quantile, std, var,
+        nanmedian, nanpercentile, nanquantile, percentile, ptp, quantile, std, var,
     };
 }
 

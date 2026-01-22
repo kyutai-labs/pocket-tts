@@ -73,7 +73,7 @@ pub use dtype::{Casting, Dtype, DtypeKind};
 pub use error::{NumPyError, Result};
 pub use linalg::norm;
 pub use set_ops::exports::*;
-pub use statistics::{std, var};
+pub use statistics::{ptp, std, var};
 pub use type_promotion::promote_types;
 pub use ufunc_ops::UfuncEngine;
 

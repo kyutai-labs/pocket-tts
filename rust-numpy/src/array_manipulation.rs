@@ -212,47 +212,47 @@ where
 /// Create a 2-D array with ones on the diagonal and zeros elsewhere
 ///
 /// # Arguments
-/// * `N` - Number of rows in the output
-/// * `M` - Optional number of columns in the output (defaults to N)
+/// * `n` - Number of rows in the output
+/// * `m` - Optional number of columns in the output (defaults to n)
 /// * `k` - Optional diagonal offset (0 for main diagonal, positive for upper, negative for lower)
 /// * `dtype` - Optional data type (defaults to appropriate default)
 ///
 /// # Returns
 /// 2-D array with specified diagonal of ones
 pub fn eye<T>(
-    N: usize,
-    M: Option<usize>,
+    n: usize,
+    m: Option<usize>,
     k: Option<isize>,
     dtype: Option<Dtype>,
 ) -> Result<Array<T>>
 where
     T: Clone + Default + Zero + One + 'static,
 {
-    let M = M.unwrap_or(N);
+    let m_val = m.unwrap_or(n);
     let k = k.unwrap_or(0);
 
-    if N == 0 || M == 0 {
+    if n == 0 || m_val == 0 {
         return Ok(Array {
             data: std::sync::Arc::new(MemoryManager::from_vec(vec![])),
-            shape: vec![N, M],
-            strides: compute_strides(&[N, M]),
+            shape: vec![n, m_val],
+            strides: compute_strides(&[n, m_val]),
             dtype: dtype.unwrap_or(Dtype::Float64 { byteorder: None }),
             offset: 0,
         });
     }
 
-    let mut data = vec![T::zero(); N * M];
+    let mut data = vec![T::zero(); n * m_val];
 
-    for i in 0..N {
+    for i in 0..n {
         let j = (i as isize + k) as usize;
-        if j < M {
-            data[i * M + j] = T::one();
+        if j < m_val {
+            data[i * m_val + j] = T::one();
         }
     }
 
     let _memory_manager = MemoryManager::from_vec(data.clone());
 
-    Ok(Array::from_data(data, vec![N, M]))
+    Ok(Array::from_data(data, vec![n, m_val]))
 }
 
 /// Create the identity array
@@ -1104,7 +1104,7 @@ where
     };
 
     // Compute new shape and strides for flipped view
-    let mut new_shape = a.shape().to_vec();
+    let new_shape = a.shape().to_vec();
     let mut new_strides = a.strides().to_vec();
     let mut new_offset = a.offset;
 

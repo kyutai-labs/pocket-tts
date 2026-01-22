@@ -114,3 +114,7 @@ path = "tests/linalg_qr_tests.rs"
 [[test]]
 name = "lstsq_tests"
 path = "tests/lstsq_tests.rs"
+
+[[example]]
+name = "test_log"
+path = "examples/test_log.rs"

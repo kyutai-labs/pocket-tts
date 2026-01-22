@@ -1,6 +1,6 @@
 use numpy::array::Array;
 use numpy::broadcasting::broadcast_to;
-use numpy::strides::{compute_broadcast_shape, compute_broadcast_strides};
+use numpy::strides::compute_broadcast_strides;
 
 #[test]
 fn test_broadcast_stride_zero() {

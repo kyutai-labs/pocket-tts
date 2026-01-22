@@ -1,5 +1,4 @@
 use crate::array::Array;
-use crate::broadcasting::compute_broadcast_shape;
 use crate::dtype::{Dtype, DtypeKind};
 use crate::error::{NumPyError, Result};
 use std::marker::PhantomData;

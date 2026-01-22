@@ -589,7 +589,7 @@ where
                 Ok(Array::from_scalar(result, vec![]))
             }
             Some(axes) => {
-                let engine = UfuncEngine::new();
+                let _engine = UfuncEngine::new();
                 // We need to map T to bool first, or use a custom reduction
                 // Since execute_reduction expects T -> T, let's just do it manually for now
                 // to match the existing pattern or implement a specialized logical reduction.
@@ -682,7 +682,7 @@ where
                 Ok(Array::from_scalar(result, vec![]))
             }
             Some(axes) => {
-                let engine = UfuncEngine::new();
+                let _engine = UfuncEngine::new();
                 let output_shape =
                     crate::broadcasting::broadcast_shape_for_reduce(self.shape(), axes, keepdims);
                 let mut output = Array::<bool>::full(output_shape, false);

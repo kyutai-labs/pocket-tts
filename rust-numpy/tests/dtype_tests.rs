@@ -1,5 +1,5 @@
 use half::f16;
-use numpy::{array, Array, Dtype};
+use numpy::{Array, Dtype};
 use std::mem;
 
 #[test]
@@ -37,7 +37,6 @@ fn test_float16_ops() {
 
     // We don't have Array ops for f16 yet (that requires UFuncs),
     // but we can verify the underlying type works as expected in our environment
-    use num_traits::Float;
     assert_eq!(a + b, f16::from_f32(4.0));
     assert_eq!(a * b, f16::from_f32(3.75));
 }

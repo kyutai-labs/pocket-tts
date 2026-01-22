@@ -1,6 +1,5 @@
 use numpy::array::Array;
-use numpy::array_extra::{array_split, dsplit, hsplit, split, vsplit, SplitArg};
-use numpy::slicing::Slice; // If needed for checking, but we rely on split returning Arrays
+use numpy::array_extra::{array_split, hsplit, split, vsplit, SplitArg};
 
 #[test]
 fn test_array_split_equal() {

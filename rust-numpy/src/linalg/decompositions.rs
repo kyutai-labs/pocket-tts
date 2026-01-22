@@ -1,7 +1,7 @@
 use crate::array::Array;
 use crate::error::NumPyError;
 use crate::linalg::LinalgScalar;
-use num_traits::{Float, One, Zero};
+use num_traits::{Float, Zero};
 
 /// Cholesky decomposition.
 /// Return the Cholesky decomposition, L * L.H, of the square matrix a,

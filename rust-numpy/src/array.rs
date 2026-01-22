@@ -59,6 +59,25 @@ impl<T> Array<T> {
         self.strides == c_strides
     }
 
+    /// Check if array is Fortran-contiguous
+    pub fn is_f_contiguous(&self) -> bool {
+        if self.shape.is_empty() {
+            return true;
+        }
+        let mut stride = 1;
+        let f_strides: Vec<isize> = self.shape.iter().map(|&dim| {
+            let s = stride as isize;
+            stride *= dim;
+            s
+        }).collect();
+        self.strides == f_strides
+    }
+
+    /// Check if array is contiguous (either C or Fortran order)
+    pub fn is_contiguous(&self) -> bool {
+        self.is_c_contiguous() || self.is_f_contiguous()
+    }
+
     /// Get array dtype
     pub fn dtype(&self) -> &Dtype {
         &self.dtype
@@ -237,6 +256,39 @@ impl<T> Array<T> {
             dtype: self.dtype.clone(),
             offset: 0,
         }
+    }
+
+    /// Transpose array view (non-consuming, shares data)
+    /// For 2D arrays, returns a view with swapped axes
+    /// For higher dimensions, reverses the axes
+    pub fn transpose_view(&self, _axes: Option<&[usize]>) -> Result<Self, NumPyError>
+    where
+        T: Clone,
+    {
+        if self.ndim() != 2 {
+            // For higher dimensions, reverse axes
+            let new_shape: Vec<usize> = self.shape.iter().rev().cloned().collect();
+            let new_strides: Vec<isize> = self.strides.iter().rev().cloned().collect();
+            return Ok(Self {
+                data: Arc::clone(&self.data),
+                shape: new_shape,
+                strides: new_strides,
+                dtype: self.dtype.clone(),
+                offset: self.offset,
+            });
+        }
+
+        // For 2D arrays, swap the two axes
+        let new_shape = vec![self.shape[1], self.shape[0]];
+        let new_strides = vec![self.strides[1], self.strides[0]];
+
+        Ok(Self {
+            data: Arc::clone(&self.data),
+            shape: new_shape,
+            strides: new_strides,
+            dtype: self.dtype.clone(),
+            offset: self.offset,
+        })
     }
 
     /// Broadcast array to new shape

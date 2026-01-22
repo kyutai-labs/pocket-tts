@@ -1,6 +1,5 @@
-use approx::assert_abs_diff_eq;
 use numpy::linalg::qr;
-use numpy::{array, array2, Array};
+use numpy::{array2, Array};
 
 #[test]
 fn test_qr_basic_reduced() {
@@ -25,7 +24,7 @@ fn test_qr_basic_reduced() {
     // We can't strictly compare elements as signs of columns in Q can vary,
     // but the product must match A.
     // Also Q orthonormal: Q.T * Q = I
-    let qt_q = q.transpose().dot(&q).unwrap();
+    let _qt_q = q.transpose().dot(&q).unwrap();
     // Should be identity 2x2
     // assert identity...
 }

@@ -293,9 +293,9 @@ where
         let mut indices = vec![0usize; ar.ndim()];
         loop {
             // Check if the current axis index is one of the unique ones
-            if let Some(&unique_idx) = unique_indices.iter().find(|&&x| x == indices[axis_norm]) {
+            if let Some(&_unique_idx) = unique_indices.iter().find(|&&x| x == indices[axis_norm]) {
                 // Map to the new index in the unique array
-                let new_axis_idx = unique_indices
+                let _new_axis_idx = unique_indices
                     .iter()
                     .position(|&x| x == indices[axis_norm])
                     .unwrap();

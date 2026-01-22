@@ -1,4 +1,3 @@
-use numpy::error::NumPyError;
 use numpy::*;
 
 #[test]

@@ -323,8 +323,8 @@ mod tests {
         {
             let arr1 = Array::from_vec(vec![1i32, 2i32, 3i32, 4i32, 5i32]);
             let arr2 = Array::from_vec(vec![3i32, 4i32, 5i32, 6i32, 7i32]);
-            let result = numpy::set_ops::intersect1d(&arr1, &arr2).unwrap();
-            assert_eq!(result.to_vec(), vec![3i32, 4i32, 5i32]);
+            let result = numpy::set_ops::intersect1d(&arr1, &arr2, false, false).unwrap();
+            assert_eq!(result.values.to_vec(), vec![3i32, 4i32, 5i32]);
         }
     );
 
@@ -345,7 +345,7 @@ mod tests {
         {
             let arr1 = Array::from_vec(vec![1i32, 2i32, 3i32, 4i32, 5i32]);
             let arr2 = Array::from_vec(vec![3i32, 4i32, 5i32]);
-            let result = numpy::set_ops::setdiff1d(&arr1, &arr2).unwrap();
+            let result = numpy::set_ops::setdiff1d(&arr1, &arr2, false).unwrap();
             assert_eq!(result.to_vec(), vec![1i32, 2i32]);
         }
     );
@@ -356,7 +356,7 @@ mod tests {
         {
             let arr1 = Array::from_vec(vec![1i32, 2i32, 3i32, 4i32]);
             let arr2 = Array::from_vec(vec![3i32, 4i32, 5i32, 6i32]);
-            let result = numpy::set_ops::setxor1d(&arr1, &arr2).unwrap();
+            let result = numpy::set_ops::setxor1d(&arr1, &arr2, false).unwrap();
             assert_eq!(result.to_vec(), vec![1i32, 2i32, 5i32, 6i32]);
         }
     );

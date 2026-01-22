@@ -2,7 +2,6 @@ use crate::array::Array;
 use crate::error::{NumPyError, Result};
 use num_complex::Complex64;
 use rustfft::FftPlanner;
-use std::sync::Arc;
 
 /// Compute the 1-dimensional discrete Fourier Transform.
 pub fn fft<T>(
@@ -611,7 +610,7 @@ where
         }
     };
 
-    let mut current = input.clone_to_complex();
+    let current = input.clone_to_complex();
 
     // Apply irfft-like on the last axis
     let last_ax_idx = axes.len() - 1;

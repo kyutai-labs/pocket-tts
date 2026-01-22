@@ -130,56 +130,56 @@ mod tests {
     #[test]
     fn test_ptp_basic() {
         let arr = array![1, 2, 3, 4, 5];
-        let range = statistics::ptp(&arr, None, false).unwrap();
+        let range = ptp(&arr, None, false).unwrap();
         assert_eq!(range.to_vec(), vec![4i32]); // 5 - 1 = 4
     }
 
     #[test]
     fn test_ptp_single_element() {
         let arr = array![5];
-        let range = statistics::ptp(&arr, None, false).unwrap();
+        let range = ptp(&arr, None, false).unwrap();
         assert_eq!(range.to_vec(), vec![0i32]); // 5 - 5 = 0
     }
 
     #[test]
     fn test_ptp_negative_values() {
         let arr = array![-5, -3, 0, 3, 5];
-        let range = statistics::ptp(&arr, None, false).unwrap();
+        let range = ptp(&arr, None, false).unwrap();
         assert_eq!(range.to_vec(), vec![10i32]); // 5 - (-5) = 10
     }
 
     #[test]
     fn test_ptp_float() {
         let arr = Array::<f64>::from_vec(vec![1.5, 2.7, 3.2, 4.9]);
-        let range = statistics::ptp(&arr, None, false).unwrap();
+        let range = ptp(&arr, None, false).unwrap();
         assert_eq!(range.to_vec(), vec![4.9 - 1.5]); // 4.9 - 1.5 = 3.4
     }
 
     #[test]
     fn test_ptp_empty_array_error() {
         let arr = Array::<i32>::from_vec(vec![]);
-        let result = statistics::ptp(&arr, None, false);
+        let result = ptp(&arr, None, false);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_ptp_all_same_values() {
         let arr = array![5, 5, 5, 5];
-        let range = statistics::ptp(&arr, None, false).unwrap();
+        let range = ptp(&arr, None, false).unwrap();
         assert_eq!(range.to_vec(), vec![0i32]); // 5 - 5 = 0
     }
 
     #[test]
     fn test_ptp_large_range() {
         let arr = array![0, 100, 200, 300, 400, 500];
-        let range = statistics::ptp(&arr, None, false).unwrap();
+        let range = ptp(&arr, None, false).unwrap();
         assert_eq!(range.to_vec(), vec![500i32]); // 500 - 0 = 500
     }
 
     #[test]
     fn test_ptp_f32() {
         let arr = Array::<f32>::from_vec(vec![1.5, 2.7, 3.2, 4.9]);
-        let range = statistics::ptp(&arr, None, false).unwrap();
+        let range = ptp(&arr, None, false).unwrap();
         assert!((range.to_vec()[0] - (4.9 - 1.5)).abs() < 0.001);
     }
 }

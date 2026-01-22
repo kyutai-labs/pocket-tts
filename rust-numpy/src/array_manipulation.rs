@@ -1336,14 +1336,375 @@ where
     Ok(result)
 }
 
+// ==================== ARRAY ELEMENT INSERTION/DELETION FUNCTIONS ====================
+
+/// Insert values along the given axis before the given indices
+///
+/// # Arguments
+/// * `arr` - Input array
+/// * `obj` - Index or indices before which to insert values (can be int, slice, or array)
+/// * `values` - Values to insert
+/// * `axis` - Axis along which to insert (None flattens first)
+///
+/// # Returns
+/// New array with values inserted
+pub fn insert<T>(
+    arr: &Array<T>,
+    obj: &Array<isize>,
+    values: &Array<T>,
+    axis: Option<isize>,
+) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+{
+    if axis.is_none() {
+        // Flatten both arrays and insert
+        let flat_arr = flatten(arr, "C")?;
+        let flat_values = flatten(values, "C")?;
+        return insert_1d(&flat_arr, obj, &flat_values);
+    }
+
+    let axis = normalize_axis(axis.unwrap(), arr.ndim())?;
+    insert_along_axis(arr, obj, values, axis)
+}
+
+/// Delete sub-arrays along the given axis
+///
+/// # Arguments
+/// * `arr` - Input array
+/// * `obj` - Indices or slice indicating what to delete
+/// * `axis` - Axis along which to delete (None flattens first)
+///
+/// # Returns
+/// New array with specified elements deleted
+pub fn delete<T>(arr: &Array<T>, obj: &Array<isize>, axis: Option<isize>) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+{
+    if axis.is_none() {
+        // Flatten and delete
+        let flat_arr = flatten(arr, "C")?;
+        return delete_1d(&flat_arr, obj);
+    }
+
+    let axis = normalize_axis(axis.unwrap(), arr.ndim())?;
+    delete_along_axis(arr, obj, axis)
+}
+
+/// Append values to the end of an array
+///
+/// # Arguments
+/// * `arr` - Input array
+/// * `values` - Values to append
+/// * `axis` - Axis along which to append (None flattens first)
+///
+/// # Returns
+/// New array with values appended
+pub fn append<T>(arr: &Array<T>, values: &Array<T>, axis: Option<isize>) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+{
+    if axis.is_none() {
+        // Flatten both and concatenate
+        let flat_arr = flatten(arr, "C")?;
+        let flat_values = flatten(values, "C")?;
+        return concatenate_1d(&flat_arr, &flat_values);
+    }
+
+    let axis = normalize_axis(axis.unwrap(), arr.ndim())?;
+    append_along_axis(arr, values, axis)
+}
+
+// ==================== HELPER FUNCTIONS FOR INSERT/DELETE/APPEND ====================
+
+fn insert_1d<T>(arr: &Array<T>, indices: &Array<isize>, values: &Array<T>) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+{
+    let arr_data = arr.to_vec();
+    let values_data = values.to_vec();
+    let indices_vec = indices.to_vec();
+
+    // Normalize indices (handle negative values)
+    let mut normalized_indices = Vec::new();
+    for &idx in &indices_vec {
+        let norm_idx = if idx < 0 {
+            (arr_data.len() as isize + idx).max(0) as usize
+        } else {
+            idx.min(arr_data.len() as isize) as usize
+        };
+        normalized_indices.push(norm_idx);
+    }
+
+    // Sort and deduplicate indices
+    normalized_indices.sort();
+    normalized_indices.dedup();
+
+    // Calculate new size
+    let new_size = arr_data.len() + values_data.len();
+    let mut result = Vec::with_capacity(new_size);
+
+    let mut arr_idx = 0;
+    let mut values_idx = 0;
+
+    for insert_idx in &normalized_indices {
+        // Copy elements from arr up to insert point
+        while arr_idx < *insert_idx && arr_idx < arr_data.len() {
+            result.push(arr_data[arr_idx].clone());
+            arr_idx += 1;
+        }
+
+        // Insert value if available
+        if values_idx < values_data.len() {
+            result.push(values_data[values_idx].clone());
+            values_idx += 1;
+        }
+    }
+
+    // Copy remaining elements from arr
+    while arr_idx < arr_data.len() {
+        result.push(arr_data[arr_idx].clone());
+        arr_idx += 1;
+    }
+
+    // Insert any remaining values
+    while values_idx < values_data.len() {
+        result.push(values_data[values_idx].clone());
+        values_idx += 1;
+    }
+
+    Ok(Array::from_shape_vec(vec![result.len()], result))
+}
+
+fn delete_1d<T>(arr: &Array<T>, indices: &Array<isize>) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+{
+    let arr_data = arr.to_vec();
+    let indices_vec = indices.to_vec();
+
+    if arr_data.is_empty() {
+        return Ok(Array::from_shape_vec(vec![0], vec![]));
+    }
+
+    // Normalize indices and build set of indices to delete
+    let mut to_delete = std::collections::HashSet::new();
+    for &idx in &indices_vec {
+        let norm_idx = if idx < 0 {
+            (arr_data.len() as isize + idx) as usize
+        } else {
+            idx as usize
+        };
+        if norm_idx < arr_data.len() {
+            to_delete.insert(norm_idx);
+        }
+    }
+
+    // Build result excluding deleted indices
+    let result: Vec<T> = arr_data
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| !to_delete.contains(i))
+        .map(|(_, v)| v.clone())
+        .collect();
+
+    Ok(Array::from_shape_vec(vec![result.len()], result))
+}
+
+fn concatenate_1d<T>(arr1: &Array<T>, arr2: &Array<T>) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+{
+    let mut data1 = arr1.to_vec();
+    let data2 = arr2.to_vec();
+    data1.extend(data2);
+
+    Ok(Array::from_shape_vec(vec![data1.len()], data1))
+}
+
+fn insert_along_axis<T>(
+    arr: &Array<T>,
+    indices: &Array<isize>,
+    values: &Array<T>,
+    axis: usize,
+) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+{
+    let shape = arr.shape();
+    let axis_size = shape[axis];
+
+    // Calculate how many elements to insert along axis
+    let indices_vec = indices.to_vec();
+    let num_insertions = indices_vec.len();
+
+    // Validate values shape
+    if values.ndim() != arr.ndim() {
+        return Err(NumPyError::shape_mismatch(
+            vec![arr.ndim()],
+            vec![values.ndim()],
+        ));
+    }
+
+    // New shape along axis
+    let mut new_shape = shape.to_vec();
+    new_shape[axis] = axis_size + num_insertions;
+
+    // Build result array
+    let mut result_data = Vec::new();
+    let arr_data = arr.to_vec();
+    let values_data = values.to_vec();
+
+    // For each position along axis, copy or insert
+    let mut insert_positions = std::collections::HashSet::new();
+    for &idx in &indices_vec {
+        let norm_idx = if idx < 0 {
+            (axis_size as isize + idx).max(0) as usize
+        } else {
+            idx.min(axis_size as isize) as usize
+        };
+        insert_positions.insert(norm_idx);
+    }
+
+    let mut values_idx = 0;
+    for i in 0..=axis_size {
+        if insert_positions.contains(&i) && values_idx < values_data.len() {
+            // Insert values at this position
+            result_data.extend_from_slice(
+                &values_data[values_idx * arr.size() / axis_size
+                    ..(values_idx + 1) * arr.size() / axis_size],
+            );
+            values_idx += 1;
+        }
+        if i < axis_size {
+            // Copy elements from arr
+            result_data.extend_from_slice(
+                &arr_data[i * arr.size() / axis_size..(i + 1) * arr.size() / axis_size],
+            );
+        }
+    }
+
+    Ok(Array::from_shape_vec(new_shape, result_data))
+}
+
+fn delete_along_axis<T>(arr: &Array<T>, indices: &Array<isize>, axis: usize) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+{
+    let shape = arr.shape();
+    let axis_size = shape[axis];
+
+    // Normalize indices
+    let indices_vec = indices.to_vec();
+    let mut to_delete = std::collections::HashSet::new();
+    for &idx in &indices_vec {
+        let norm_idx = if idx < 0 {
+            (axis_size as isize + idx) as usize
+        } else {
+            idx as usize
+        };
+        if norm_idx < axis_size {
+            to_delete.insert(norm_idx);
+        }
+    }
+
+    // New shape along axis
+    let new_axis_size = axis_size - to_delete.len();
+    let mut new_shape = shape.to_vec();
+    new_shape[axis] = new_axis_size;
+
+    // Build result array excluding deleted indices
+    let arr_data = arr.to_vec();
+    let mut result_data = Vec::new();
+
+    for i in 0..axis_size {
+        if !to_delete.contains(&i) {
+            result_data.extend_from_slice(
+                &arr_data[i * arr.size() / axis_size..(i + 1) * arr.size() / axis_size],
+            );
+        }
+    }
+
+    Ok(Array::from_shape_vec(new_shape, result_data))
+}
+
+fn append_along_axis<T>(arr: &Array<T>, values: &Array<T>, axis: usize) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+{
+    let shape = arr.shape();
+    let values_shape = values.shape();
+
+    // Validate shapes match except on append axis
+    if arr.ndim() != values.ndim() {
+        return Err(NumPyError::shape_mismatch(
+            vec![arr.ndim()],
+            vec![values.ndim()],
+        ));
+    }
+
+    for (i, (&s1, &s2)) in shape.iter().zip(values_shape.iter()).enumerate() {
+        if i != axis && s1 != s2 {
+            return Err(NumPyError::shape_mismatch(
+                shape.to_vec(),
+                values_shape.to_vec(),
+            ));
+        }
+    }
+
+    // Calculate new shape
+    let mut new_shape = shape.to_vec();
+    new_shape[axis] = shape[axis] + values_shape[axis];
+
+    // Build result by iterating through all dimensions
+    let arr_data = arr.to_vec();
+    let values_data = values.to_vec();
+    let mut result_data = Vec::with_capacity(arr_data.len() + values_data.len());
+
+    // Calculate stride for the target axis
+    let mut stride_before_axis = 1;
+    for i in 0..axis {
+        stride_before_axis *= shape[i];
+    }
+    let stride_at_axis = shape[axis];
+    let mut stride_after_axis = 1;
+    for i in (axis + 1)..shape.len() {
+        stride_after_axis *= shape[i];
+    }
+
+    // For each slice along the axis
+    for before_idx in 0..stride_before_axis {
+        let base_arr = before_idx * stride_at_axis * stride_after_axis;
+        let base_values = before_idx * values_shape[axis] * stride_after_axis;
+
+        // Append arr elements for this slice
+        for axis_idx in 0..stride_at_axis {
+            let offset = (base_arr + axis_idx * stride_after_axis) as usize;
+            result_data.extend_from_slice(
+                &arr_data[offset..offset + stride_after_axis]
+            );
+        }
+
+        // Append values elements for this slice
+        for axis_idx in 0..values_shape[axis] {
+            let offset = (base_values + axis_idx * stride_after_axis) as usize;
+            result_data.extend_from_slice(
+                &values_data[offset..offset + stride_after_axis]
+            );
+        }
+    }
+
+    Ok(Array::from_shape_vec(new_shape, result_data))
+}
+
 // ==================== PUBLIC EXPORTS ====================
 
 /// Re-export all array manipulation functions for public use
 pub mod exports {
     pub use super::{
-        arange, atleast_1d, atleast_2d, atleast_3d, empty_like, eye, flatten, flip, full_like,
-        geomspace, identity, linspace, logspace, meshgrid, moveaxis, ones_like, ravel, repeat,
-        reshape, roll, rollaxis, rot90, squeeze, swapaxes, tile, zeros_like,
+        append, arange, atleast_1d, atleast_2d, atleast_3d, delete, empty_like, eye, flatten, flip,
+        full_like, geomspace, identity, insert, linspace, logspace, meshgrid, moveaxis, ones_like,
+        ravel, repeat, reshape, roll, rollaxis, rot90, squeeze, swapaxes, tile, zeros_like,
     };
 }
 // normalize_axis replaced by internal version above

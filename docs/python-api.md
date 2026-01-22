@@ -119,7 +119,6 @@ voice_state = model.get_state_for_audio_prompt(
     "https://huggingface.co/kyutai/tts-voices/resolve"
     "/main/expresso/ex01-ex02_default_001_channel1_168s.wav"
 )
-
 ```
 
 ##### `generate_audio(model_state, text_to_generate, frames_after_eos=None, copy_state=True)`
@@ -191,7 +190,9 @@ from pocket_tts import TTSModel
 
 model = TTSModel.load_model()
 # From HuggingFace URL
-model.get_state_for_audio_prompt("hf://kyutai/tts-voices/alba-mackenna/casual.wav", "casual.safetensors")
+model.get_state_for_audio_prompt(
+    "hf://kyutai/tts-voices/alba-mackenna/casual.wav", "casual.safetensors"
+)
 
 # From local file (the .safetensors extension will be added automatically)
 tensor = model.get_state_for_audio_prompt("./my_voice.wav", "my_voice")

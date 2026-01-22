@@ -346,7 +346,7 @@ def export_voice(
             if not likely_dir(export_path):
                 # batch convert, output path must be directory, not file
                 out_path = Path("./")
-            for path in Path(VOICES_PATH).iterdir():
+            for path in Path(in_path).iterdir():
                 if path.is_file() and path.suffix.lower() in [
                     ".wav",
                     ".mp3",

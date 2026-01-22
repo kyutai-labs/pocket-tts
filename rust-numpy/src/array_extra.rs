@@ -567,10 +567,147 @@ where
     vstack(&refs)
 }
 
+/// Replaces specified elements of an array with given values.
+///
+/// The indexing works on the flattened target array.
+pub fn put<T>(array: &mut Array<T>, indices: &[usize], values: &[T], mode: &str) -> Result<()>
+where
+    T: Clone + Default + Send + Sync + 'static,
+{
+    let size = array.size();
+    for (i, &idx) in indices.iter().enumerate() {
+        let actual_idx = match mode {
+            "raise" => {
+                if idx >= size {
+                    return Err(NumPyError::index_error(idx, size));
+                }
+                idx
+            }
+            "wrap" => idx % size,
+            "clip" => idx.min(size - 1),
+            _ => {
+                return Err(NumPyError::invalid_value(
+                    "mode must be 'raise', 'wrap', or 'clip'",
+                ))
+            }
+        };
+        let val = &values[i % values.len()];
+        array.set_linear(actual_idx, val.clone());
+    }
+    Ok(())
+}
+
+/// Change elements of an array based on conditional and input values.
+///
+/// Sets a.flat[n] = values[n] for each n where mask.flat[n]==True.
+pub fn putmask<T>(array: &mut Array<T>, mask: &Array<bool>, values: &Array<T>) -> Result<()>
+where
+    T: Clone + Default + Send + Sync + 'static,
+{
+    if array.shape() != mask.shape() {
+        return Err(NumPyError::shape_mismatch(
+            array.shape().to_vec(),
+            mask.shape().to_vec(),
+        ));
+    }
+
+    let mut val_idx = 0;
+    let values_size = values.size();
+    for i in 0..array.size() {
+        if let Some(&m) = mask.get_linear(i) {
+            if m {
+                if let Some(v) = values.get_linear(val_idx % values_size) {
+                    array.set_linear(i, v.clone());
+                }
+                val_idx += 1;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Change elements of an array based on conditional and input values.
+///
+/// Similar to np.putmask, but the indexing is different.
+pub fn place<T>(array: &mut Array<T>, mask: &Array<bool>, values: &[T]) -> Result<()>
+where
+    T: Clone + Default + Send + Sync + 'static,
+{
+    if array.shape() != mask.shape() {
+        return Err(NumPyError::shape_mismatch(
+            array.shape().to_vec(),
+            mask.shape().to_vec(),
+        ));
+    }
+
+    let mut val_idx = 0;
+    for i in 0..array.size() {
+        if let Some(&m) = mask.get_linear(i) {
+            if m {
+                array.set_linear(i, values[val_idx % values.len()].clone());
+                val_idx += 1;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Put values into the destination array by matching 1d index and data slices.
+///
+/// This iterates over matching 1d slices oriented along the specified axis in the index
+/// and data arrays, and uses the former to place values into the latter.
+pub fn put_along_axis<T>(
+    array: &mut Array<T>,
+    indices: &Array<usize>,
+    values: &Array<T>,
+    axis: isize,
+) -> Result<()>
+where
+    T: Clone + Default + Send + Sync + 'static,
+{
+    let ndim = array.ndim();
+    let axis = normalize_axis(axis, ndim)?;
+    let shape = array.shape().to_vec(); // Clone to owned to avoid borrow issues
+
+    // Indices and values must have the same shape
+    if indices.shape() != values.shape() {
+        return Err(NumPyError::shape_mismatch(
+            indices.shape().to_vec(),
+            values.shape().to_vec(),
+        ));
+    }
+
+    // Iterate over all positions in the indices/values array
+    for i in 0..indices.size() {
+        // Compute multi-index from linear index
+        let mut idx = crate::strides::compute_multi_indices(i, indices.shape());
+
+        // Get the index value along the axis
+        let axis_idx = *indices
+            .get_linear(i)
+            .ok_or_else(|| NumPyError::index_error(i, indices.size()))?;
+
+        if axis_idx >= shape[axis] {
+            return Err(NumPyError::index_error(axis_idx, shape[axis]));
+        }
+
+        // Replace the axis dimension with the actual index value
+        idx[axis] = axis_idx;
+
+        // Get the value to place
+        let val = values.get_linear(i).cloned().unwrap_or_default();
+
+        // Set the value in the target array
+        array.set_multi(&idx, val)?;
+    }
+    Ok(())
+}
+
 pub mod exports {
     pub use super::{
         array_split, block, column_stack, concatenate, diag, diagonal, dsplit, dstack, hsplit,
-        hstack, row_stack, split, stack, tril, triu, vsplit, vstack,
+        hstack, place, put, put_along_axis, putmask, row_stack, split, stack, tril, triu, vsplit,
+        vstack,
     };
 }
 

@@ -144,8 +144,14 @@ where
             ));
         }
 
-        let input = unsafe { &*(inputs[0] as *const _ as *const Array<T>) };
-        let output = unsafe { &mut *(outputs[0] as *mut _ as *mut Array<T>) };
+        let input = inputs[0]
+            .as_any()
+            .downcast_ref::<Array<T>>()
+            .ok_or_else(|| NumPyError::invalid_operation("Failed to downcast input array"))?;
+        let output = outputs[0]
+            .as_any_mut()
+            .downcast_mut::<Array<T>>()
+            .ok_or_else(|| NumPyError::invalid_operation("Failed to downcast output array"))?;
 
         // Handle where_mask
         let mask = if let Some(m) = where_mask {
@@ -354,8 +360,14 @@ where
             ));
         }
 
-        let input = unsafe { &*(inputs[0] as *const _ as *const Array<T>) };
-        let output = unsafe { &mut *(outputs[0] as *mut _ as *mut Array<T>) };
+        let input = inputs[0]
+            .as_any()
+            .downcast_ref::<Array<T>>()
+            .ok_or_else(|| NumPyError::invalid_operation("Failed to downcast input array"))?;
+        let output = outputs[0]
+            .as_any_mut()
+            .downcast_mut::<Array<T>>()
+            .ok_or_else(|| NumPyError::invalid_operation("Failed to downcast output array"))?;
 
         // Handle where_mask
         let mask = if let Some(m) = where_mask {

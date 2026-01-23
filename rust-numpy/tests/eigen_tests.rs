@@ -1,5 +1,5 @@
 use num_complex::Complex64;
-use numpy::linalg::eig;
+use numpy::linalg::{eig, eigh, eigvals, eigvalsh};
 use numpy::{array2, Array};
 
 fn assert_approx_eq_c64(a: Complex64, b: Complex64, eps: f64, msg: &str) {
@@ -251,4 +251,46 @@ fn test_eig_stacked() {
             }
         }
     }
+}
+
+#[test]
+fn test_eigh_identity() {
+    // Identity matrix should have eigenvalue 1
+    let a = array2!([1.0, 0.0], [0.0, 1.0]);
+    let (w, _v) = eigh(&a, None).unwrap();
+
+    assert_eq!(w.data().len(), 2);
+    assert!((w.data()[0] - 1.0).abs() < 1e-10);
+    assert!((w.data()[1] - 1.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_eigvals() {
+    // Test eigvals function
+    let a = array2!([2.0, 1.0], [1.0, 2.0]);
+    let w = eigvals(&a).unwrap();
+
+    assert_eq!(w.data().len(), 2);
+    // Should have 2 eigenvalues (3 and 1)
+    let has_three = w.data().iter().any(|&x| (x.re - 3.0).abs() < 1e-10);
+    let has_one = w.data().iter().any(|&x| (x.re - 1.0).abs() < 1e-10);
+    assert!(has_three && has_one);
+}
+
+#[test]
+fn test_eigvalsh() {
+    // Test eigvalsh function (eigenvalues of Hermitian matrix, real output)
+    let a = array2!([2.0, 1.0], [1.0, 2.0]);
+    let w = eigvalsh(&a, None).unwrap();
+
+    assert_eq!(w.data().len(), 2);
+    // For symmetric real matrix, eigenvalues should be real and positive
+    // Eigenvalues of [[2,1],[1,2]] are 3 and 1
+    let sorted = {
+        let mut vals = w.data().to_vec();
+        vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        vals
+    };
+    assert!((sorted[0] - 1.0).abs() < 1e-10);
+    assert!((sorted[1] - 3.0).abs() < 1e-10);
 }

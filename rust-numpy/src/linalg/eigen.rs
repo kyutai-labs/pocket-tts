@@ -4,6 +4,295 @@ use crate::linalg::LinalgScalar;
 use num_complex::{Complex, Complex64};
 use num_traits::{One, Zero};
 
+/// Computes the eigenvalues and right eigenvectors of a Hermitian or real symmetric matrix.
+///
+/// Parameters
+/// ----------
+/// a : (..., M, M) Array
+///     Hermitian (conjugate symmetric) or real symmetric matrices.
+/// UPLO : {'L', 'U'}, optional
+///     Specifies whether the calculation is done with the lower ('L') or
+///     upper ('U') triangular part of the matrix. Default is 'L'.
+///
+/// Returns
+/// -------
+/// w : (..., M) Array
+///     The eigenvalues in ascending order, each repeated according to its multiplicity.
+/// v : (..., M, M) Array
+///     The normalized eigenvectors.
+pub fn eigh<T>(
+    a: &Array<T>,
+    uplo: Option<&str>,
+) -> Result<(Array<f64>, Array<Complex64>), NumPyError>
+where
+    T: ToComplex + Clone,
+{
+    let shape = a.shape();
+    let ndim = shape.len();
+    if ndim < 2 {
+        return Err(NumPyError::invalid_value(format!(
+            "Input must be at least 2-dimensional, got shape {:?}",
+            shape
+        )));
+    }
+    let n = shape[ndim - 2];
+    let m = shape[ndim - 1];
+    if n != m {
+        return Err(NumPyError::invalid_value(format!(
+            "Last two dimensions must be square, got unique dimensions {} and {}",
+            n, m
+        )));
+    }
+
+    let uplo_val = uplo.unwrap_or("L");
+    if uplo_val != "L" && uplo_val != "U" {
+        return Err(NumPyError::value_error("UPLO must be 'L' or 'U'", "linalg"));
+    }
+
+    if n == 0 {
+        let mut w_shape = shape.to_vec();
+        w_shape.pop();
+        let v_shape = shape.to_vec();
+        return Ok((
+            Array::from_data(vec![], w_shape),
+            Array::from_data(vec![], v_shape),
+        ));
+    }
+
+    let batch_size = shape[..ndim - 2].iter().product::<usize>();
+    let mut w_final_data = Vec::with_capacity(batch_size * n);
+    let mut v_final_data = Vec::with_capacity(batch_size * n * n);
+
+    let strides = a.strides();
+    let offset = a.offset;
+    let data = a.data();
+
+    let mut multi_indices = vec![0; ndim];
+
+    for b in 0..batch_size {
+        let mut temp_b = b;
+        for k in (0..ndim - 2).rev() {
+            multi_indices[k] = temp_b % shape[k];
+            temp_b /= shape[k];
+        }
+
+        let mut data_c64 = Vec::with_capacity(n * n);
+        for i in 0..n {
+            multi_indices[ndim - 2] = i;
+            for j in 0..n {
+                multi_indices[ndim - 1] = j;
+                let linear_idx = crate::strides::compute_linear_index(&multi_indices, strides);
+                let physical_idx = (offset as isize + linear_idx) as usize;
+                let val = data[physical_idx].clone().to_complex();
+
+                // Enforce Hermitian symmetry based on UPLO
+                if uplo_val == "L" {
+                    if j > i {
+                        multi_indices[ndim - 2] = j;
+                        multi_indices[ndim - 1] = i;
+                        let sym_linear =
+                            crate::strides::compute_linear_index(&multi_indices, strides);
+                        let sym_phys = (offset as isize + sym_linear) as usize;
+                        data_c64.push(data[sym_phys].clone().to_complex().conj());
+                        multi_indices[ndim - 2] = i;
+                        multi_indices[ndim - 1] = j;
+                    } else {
+                        data_c64.push(val);
+                    }
+                } else {
+                    if i > j {
+                        multi_indices[ndim - 2] = j;
+                        multi_indices[ndim - 1] = i;
+                        let sym_linear =
+                            crate::strides::compute_linear_index(&multi_indices, strides);
+                        let sym_phys = (offset as isize + sym_linear) as usize;
+                        data_c64.push(data[sym_phys].clone().to_complex().conj());
+                        multi_indices[ndim - 2] = i;
+                        multi_indices[ndim - 1] = j;
+                    } else {
+                        data_c64.push(val);
+                    }
+                }
+            }
+        }
+
+        // For Hermitian matrices, eigenvalues are real.
+        // We use tridiagonal reduction + QR iteration.
+        let (mut h, mut q) = symmetric_tridiagonal_reduction(n, &mut data_c64);
+
+        // QR iteration for tridiagonal matrices
+        qr_iteration_tridiagonal(n, &mut h, &mut q, 1000)?;
+
+        // Extract real eigenvalues
+        let mut w_batch = Vec::with_capacity(n);
+        for i in 0..n {
+            w_batch.push(h[i * n + i].re);
+        }
+
+        // Sort eigenvalues and corresponding eigenvectors
+        let mut p: Vec<usize> = (0..n).collect();
+        p.sort_by(|&i, &j| w_batch[i].partial_cmp(&w_batch[j]).unwrap());
+
+        for &idx in &p {
+            w_final_data.push(w_batch[idx]);
+        }
+
+        let mut v_batch = vec![Complex64::zero(); n * n];
+        for (new_col, &old_col) in p.iter().enumerate() {
+            for row in 0..n {
+                v_batch[row * n + new_col] = q[row * n + old_col];
+            }
+        }
+        v_final_data.extend(v_batch);
+    }
+
+    let mut w_shape = shape.to_vec();
+    w_shape.pop();
+    let v_shape = shape.to_vec();
+
+    Ok((
+        Array::from_data(w_final_data, w_shape),
+        Array::from_data(v_final_data, v_shape),
+    ))
+}
+
+/// Compute only the eigenvalues of a square matrix.
+pub fn eigvals<T>(a: &Array<T>) -> Result<Array<Complex64>, NumPyError>
+where
+    T: ToComplex + Clone,
+{
+    let (w, _) = eig(a)?;
+    Ok(w)
+}
+
+/// Compute only the eigenvalues of a Hermitian or real symmetric matrix.
+pub fn eigvalsh<T>(a: &Array<T>, uplo: Option<&str>) -> Result<Array<f64>, NumPyError>
+where
+    T: ToComplex + Clone,
+{
+    let (w, _) = eigh(a, uplo)?;
+    Ok(w)
+}
+
+fn symmetric_tridiagonal_reduction(
+    n: usize,
+    a: &mut [Complex64],
+) -> (Vec<Complex64>, Vec<Complex64>) {
+    let mut q = vec![Complex64::zero(); n * n];
+    for i in 0..n {
+        q[i * n + i] = Complex64::one();
+    }
+
+    if n <= 2 {
+        return (a.to_vec(), q);
+    }
+
+    for k in 0..n - 2 {
+        let mut x = Vec::with_capacity(n - (k + 1));
+        for i in k + 1..n {
+            x.push(a[i * n + k]);
+        }
+
+        let mut x_norm_sq = 0.0;
+        for val in &x {
+            x_norm_sq += val.norm_sqr();
+        }
+        let x_norm = x_norm_sq.sqrt();
+
+        if x_norm == 0.0 {
+            continue;
+        }
+
+        let mut v = x.clone();
+        let phase = if x[0].norm() == 0.0 {
+            Complex64::one()
+        } else {
+            x[0] / x[0].norm()
+        };
+        v[0] += phase * Complex64::from_real(x_norm);
+
+        let mut v_norm_sq = 0.0;
+        for val in &v {
+            v_norm_sq += val.norm_sqr();
+        }
+        let v_norm = v_norm_sq.sqrt();
+        if v_norm == 0.0 {
+            continue;
+        }
+        for val in v.iter_mut() {
+            *val /= Complex64::from_real(v_norm);
+        }
+
+        // P = I - 2vv^H
+        for j in k..n {
+            let mut vh_a = Complex64::zero();
+            for i in 0..v.len() {
+                vh_a += v[i].conj() * a[(k + 1 + i) * n + j];
+            }
+            for i in 0..v.len() {
+                a[(k + 1 + i) * n + j] -= Complex64::from_real(2.0) * v[i] * vh_a;
+            }
+        }
+        for i in 0..n {
+            let mut a_v = Complex64::zero();
+            for j in 0..v.len() {
+                a_v += a[i * n + (k + 1 + j)] * v[j];
+            }
+            for j in 0..v.len() {
+                a[i * n + (k + 1 + j)] -= Complex64::from_real(2.0) * a_v * v[j].conj();
+            }
+        }
+        for i in 0..n {
+            let mut q_v = Complex64::zero();
+            for j in 0..v.len() {
+                q_v += q[i * n + (k + 1 + j)] * v[j];
+            }
+            for j in 0..v.len() {
+                q[i * n + (k + 1 + j)] -= Complex64::from_real(2.0) * q_v * v[j].conj();
+            }
+        }
+    }
+    (a.to_vec(), q)
+}
+
+fn qr_iteration_tridiagonal(
+    n: usize,
+    h: &mut [Complex64],
+    q: &mut [Complex64],
+    max_iter: usize,
+) -> Result<(), NumPyError> {
+    let eps = 1e-12;
+    let mut m = n;
+
+    while m > 1 {
+        let mut iter = 0;
+        while iter < max_iter {
+            let mut i = m - 1;
+            while i > 0 {
+                if h[i * n + (i - 1)].norm()
+                    <= eps * (h[(i - 1) * n + (i - 1)].norm() + h[i * n + i].norm())
+                {
+                    break;
+                }
+                i -= 1;
+            }
+
+            if i == m - 1 {
+                m -= 1;
+                break;
+            }
+
+            apply_qr_step(n, h, q, i, m);
+            iter += 1;
+        }
+
+        if iter == max_iter {
+            return Err(NumPyError::linalg_error("eigh", "QR failed to converge"));
+        }
+    }
+    Ok(())
+}
+
 /// Computes the eigenvalues and right eigenvectors of a square array.
 ///
 /// Parameters

@@ -3,7 +3,7 @@ use numpy::{promote_types, Dtype};
 #[test]
 fn test_same_kind_promotion() {
     let i8 = Dtype::Int8 { byteorder: None };
-    let _i16 = Dtype::Int16 { byteorder: None };
+    let i16 = Dtype::Int16 { byteorder: None };
     let i32 = Dtype::Int32 { byteorder: None };
 
     assert_eq!(promote_types(&i8, &i8), Some(i8.clone()));

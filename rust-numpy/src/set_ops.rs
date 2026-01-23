@@ -275,9 +275,6 @@ where
             }
         }
 
-        // Extract unique slices into a new array
-        let mut final_data = Vec::new();
-
         // Calculate the total size of the result array
         let mut result_size = 1;
         for (i, &dim) in ar.shape().iter().enumerate() {
@@ -287,48 +284,16 @@ where
                 result_size *= dim;
             }
         }
-        final_data.reserve(result_size);
 
-        // Build the result by iterating through all possible indices
-        let mut indices = vec![0usize; ar.ndim()];
-        loop {
-            // Check if the current axis index is one of the unique ones
-            if let Some(&_unique_idx) = unique_indices.iter().find(|&&x| x == indices[axis_norm]) {
-                // Map to the new index in the unique array
-                let _new_axis_idx = unique_indices
-                    .iter()
-                    .position(|&x| x == indices[axis_norm])
-                    .unwrap();
-
-                // Calculate linear index in original array
-                let mut orig_linear = 0;
-                let mut stride = 1;
-                for i in (0..ar.ndim()).rev() {
-                    orig_linear += indices[i] * stride;
-                    stride *= ar.shape()[i];
+        // Efficiently extract unique slices into a new array
+        let mut final_data = Vec::with_capacity(result_size);
+        for slice_idx in 0..elements_per_slice {
+            let base_idx = slice_idx * total_slice_size;
+            for &unique_idx in &unique_indices {
+                for offset in 0..slice_size {
+                    let linear_idx = base_idx + unique_idx * slice_size + offset;
+                    final_data.push(ar.get_linear(linear_idx).unwrap().clone());
                 }
-
-                // Add the element to final_data
-                final_data.push(ar.get_linear(orig_linear).unwrap().clone());
-            }
-
-            // Increment indices (like a odometer)
-            let mut carry = true;
-            for i in (0..ar.ndim()).rev() {
-                if carry {
-                    indices[i] += 1;
-                    if indices[i] >= ar.shape()[i] {
-                        indices[i] = 0;
-                        carry = true;
-                    } else {
-                        carry = false;
-                    }
-                }
-            }
-
-            // Check if we've wrapped around
-            if carry {
-                break;
             }
         }
 
@@ -799,7 +764,7 @@ impl SetOps {
     /// Find unique rows in a 2D array
     pub fn unique_rows<T>(ar: &Array<T>) -> Result<Array<T>>
     where
-        T: SetElement + Clone + 'static,
+        T: SetElement + Clone + Default + 'static,
     {
         if ar.ndim() != 2 {
             return Err(NumPyError::invalid_operation(
@@ -807,10 +772,8 @@ impl SetOps {
             ));
         }
 
-        // For now, implement a simple version
-        Err(NumPyError::not_implemented(
-            "unique_rows is not yet implemented",
-        ))
+        let result = unique(ar, false, false, false, Some(&[0]))?;
+        Ok(result.values)
     }
 }
 

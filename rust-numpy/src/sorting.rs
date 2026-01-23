@@ -191,12 +191,6 @@ where
 {
     let search_side = SearchSide::from_str(side)?;
 
-    if sorter.is_some() {
-        return Err(NumPyError::not_implemented(
-            "searchsorted with custom sorter",
-        ));
-    }
-
     if a.ndim() > 1 || v.ndim() > 1 {
         return Err(NumPyError::invalid_operation(
             "searchsorted only supports 1D arrays",
@@ -207,12 +201,58 @@ where
     let v_data = v.to_vec();
     let mut indices = Vec::with_capacity(v_data.len());
 
-    for value in &v_data {
-        let idx = binary_search_slice(&a_data, value, search_side);
-        indices.push(idx as isize);
+    if let Some(s) = sorter {
+        if s.ndim() != 1 || s.size() != a.size() {
+            return Err(NumPyError::invalid_operation(
+                "sorter must be 1D and have same size as sorted array",
+            ));
+        }
+        let s_data = s.to_vec();
+        for value in &v_data {
+            let idx = binary_search_with_sorter(&a_data, value, &s_data, search_side);
+            indices.push(idx as isize);
+        }
+    } else {
+        for value in &v_data {
+            let idx = binary_search_slice(&a_data, value, search_side);
+            indices.push(idx as isize);
+        }
     }
 
     Ok(Array::from_shape_vec(vec![indices.len()], indices))
+}
+
+/// Binary search in a slice using a sorter index array
+fn binary_search_with_sorter<T>(data: &[T], value: &T, sorter: &[isize], side: SearchSide) -> usize
+where
+    T: PartialOrd + ComparisonOps<T>,
+{
+    let mut left = 0;
+    let mut right = sorter.len();
+
+    while left < right {
+        let mid = left + (right - left) / 2;
+        let idx = sorter[mid] as usize;
+        let mid_val = &data[idx];
+
+        match side {
+            SearchSide::Left => {
+                if mid_val.less(value) {
+                    left = mid + 1;
+                } else {
+                    right = mid;
+                }
+            }
+            SearchSide::Right => {
+                if mid_val.less_equal(value) {
+                    left = mid + 1;
+                } else {
+                    right = mid;
+                }
+            }
+        }
+    }
+    left
 }
 
 /// Return elements from an array that meet a condition

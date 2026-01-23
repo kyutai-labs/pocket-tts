@@ -1,6 +1,6 @@
 use num_complex::Complex64;
 use numpy::{
-    array,
+    array, array2,
     fft::{fft, fftfreq, fftshift, hfft, ifft, ifftshift, ihfft, irfft, rfft, rfftfreq},
     Array,
 };
@@ -198,4 +198,57 @@ fn test_ihfft_roundtrip() {
     assert!((vals[0].re - 1.0).abs() < 1e-10);
     assert!((vals[1].re - 2.0).abs() < 1e-10);
     assert!((vals[2].re - 3.0).abs() < 1e-10);
+}
+#[test]
+fn test_fft_2d() {
+    // 2x4 array
+    let a = array2![[1.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]];
+
+    // FFT along axis 1 (horizontal)
+    let res = fft(&a, None, 1, None).unwrap();
+    assert_eq!(res.shape(), &[2, 4]);
+
+    // Each row should have [1, 1, 1, 1] as FFT (since it's [1, 0, 0, 0])
+    for i in 0..2 {
+        for j in 0..4 {
+            let val = res.get_multi(&[i, j]).unwrap();
+            assert!((val.re - 1.0).abs() < 1e-10);
+            assert!(val.im.abs() < 1e-10);
+        }
+    }
+}
+
+#[test]
+fn test_ifft_2d() {
+    let a = Array::full(vec![2, 4], Complex64::new(1.0, 0.0));
+
+    let res = ifft(&a, None, 1, None).unwrap();
+    assert_eq!(res.shape(), &[2, 4]);
+
+    // IFFT of [1, 1, 1, 1] is [1, 0, 0, 0]
+    for i in 0..2 {
+        let val0 = res.get_multi(&[i, 0]).unwrap();
+        assert!((val0.re - 1.0).abs() < 1e-10);
+
+        for j in 1..4 {
+            let val = res.get_multi(&[i, j]).unwrap();
+            assert!(val.re.abs() < 1e-10);
+        }
+    }
+}
+
+#[test]
+fn test_rfft_2d() {
+    let a = array2![[1.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]];
+
+    let res = rfft(&a, None, 1, None).unwrap();
+    assert_eq!(res.shape(), &[2, 3]); // n/2 + 1 = 4/2 + 1 = 3
+}
+
+#[test]
+fn test_irfft_2d() {
+    let a = Array::full(vec![2, 3], Complex64::new(1.0, 0.0));
+
+    let res = irfft(&a, Some(4), 1, None).unwrap();
+    assert_eq!(res.shape(), &[2, 4]);
 }

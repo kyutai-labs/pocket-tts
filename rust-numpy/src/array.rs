@@ -265,8 +265,8 @@ impl<T> Array<T> {
         let (rows, cols) = (self.shape()[0], self.shape()[1]);
         let mut transposed_data = Vec::with_capacity(self.size());
 
-        for i in 0..rows {
-            for j in 0..cols {
+        for j in 0..cols {
+            for i in 0..rows {
                 transposed_data.push(self.get_linear(i * cols + j).unwrap().clone());
             }
         }

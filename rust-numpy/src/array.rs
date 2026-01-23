@@ -171,6 +171,11 @@ impl<T> Array<T> {
         self.get_linear(index)
     }
 
+    /// Get element at physical index (direct access to data buffer)
+    pub fn get_linear_physical(&self, physical_index: usize) -> Option<&T> {
+        self.data.get(physical_index)
+    }
+
     /// Set element at linear index with Result
     pub fn set(&mut self, index: usize, value: T) -> Result<(), NumPyError> {
         if index >= self.size() {
@@ -178,6 +183,23 @@ impl<T> Array<T> {
         }
         self.set_linear(index, value);
         Ok(())
+    }
+
+    /// Set element at physical index (direct access to data buffer)
+    pub fn set_linear_physical(
+        &mut self,
+        physical_index: usize,
+        value: T,
+    ) -> Result<(), NumPyError> {
+        if physical_index >= self.data.len() {
+            return Err(NumPyError::index_error(physical_index, self.data.len()));
+        }
+        if let Some(elem) = self.data.get_mut(physical_index) {
+            *elem = value;
+            Ok(())
+        } else {
+            Err(NumPyError::index_error(physical_index, self.data.len()))
+        }
     }
 
     /// Create 2D array from matrix

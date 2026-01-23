@@ -4,7 +4,7 @@ use crate::linalg::solvers::inv;
 use crate::linalg::LinalgScalar;
 
 /// Dot product of two arrays.
-/// Supports scalar (0D), vector (1D), and matrix (2D) multiplication.
+/// Supports scalar (0D), vector (1D), matrix (2D), and N-D arrays.
 pub fn dot<T>(a: &Array<T>, b: &Array<T>) -> Result<Array<T>, NumPyError>
 where
     T: LinalgScalar,
@@ -73,93 +73,93 @@ where
                         let b_idx =
                             (k as isize * b_strides[0] + j as isize * b_strides[1]) as usize;
 
-                        let a_val = a.get(a_idx).unwrap();
-                        let b_val = b.get(b_idx).unwrap();
+                        let a_val = a.get_linear_physical(a_idx).unwrap();
+                        let b_val = b.get_linear_physical(b_idx).unwrap();
 
                         sum = sum + (*a_val * *b_val);
                     }
 
                     let out_idx =
                         (i as isize * output_strides[0] + j as isize * output_strides[1]) as usize;
-                    output.set(out_idx, sum)?;
+                    output.set_linear_physical(out_idx, sum)?;
                 }
             }
 
             Ok(output)
         }
-        _ => tensor_dot(a, b),
+        _ => dot_nd(a, b),
     }
 }
 
-/// Matrix multiplication (same as dot for 2D)
+/// Matrix multiplication
 pub fn matmul<T>(a: &Array<T>, b: &Array<T>) -> Result<Array<T>, NumPyError>
 where
     T: LinalgScalar,
 {
+    // For now, matmul uses dot. For proper N-D matmul, broadcasting should be implemented.
     dot(a, b)
 }
 
-/// Tensor dot product for higher-dimensional arrays
-/// Uses reshape + matmul + reshape strategy for >2D arrays
-pub fn tensor_dot<T>(a: &Array<T>, b: &Array<T>) -> Result<Array<T>, NumPyError>
+/// N-D dot product implementation.
+/// For N-D arrays, it is a sum product over the last axis of a and the second-to-last axis of b.
+pub fn dot_nd<T>(a: &Array<T>, b: &Array<T>) -> Result<Array<T>, NumPyError>
 where
-    T: LinalgScalar + Clone + Default + 'static,
+    T: LinalgScalar,
 {
-    // For 1D and 2D arrays, use existing dot function
-    if a.ndim() <= 2 && b.ndim() <= 2 {
-        return dot(a, b);
-    }
-
-    // For >2D arrays, use reshape strategy
-    // Strategy: reshape to 2D, multiply, reshape back
     let a_ndim = a.ndim();
     let b_ndim = b.ndim();
-
-    // Reshape a to 2D: (a.shape[0..-2], a.shape[-2] * a.shape[-1])
     let a_shape = a.shape();
-    let a_batch_dims = if a_ndim >= 2 {
-        &a_shape[0..a_ndim - 2]
-    } else {
-        &[]
-    };
-    let a_rows = *a_shape.last().unwrap_or(&1);
-    let a_cols = *a_shape.get(a_ndim.saturating_sub(1)).unwrap_or(&1);
-
-    let a_2d_shape: Vec<usize> = a_batch_dims
-        .iter()
-        .cloned()
-        .chain([a_rows * a_cols].iter().cloned())
-        .collect();
-
-    let a_2d = a.reshape(&a_2d_shape)?;
-
-    // Reshape b to 2D: (b.shape[0..-2], b.shape[-2] * b.shape[-1])
     let b_shape = b.shape();
-    let b_batch_dims = if b_ndim >= 2 {
-        &b_shape[0..b_ndim - 2]
+
+    let a_last_dim = a_shape[a_ndim - 1];
+    let b_contract_dim = if b_ndim == 1 {
+        b_shape[0]
     } else {
-        &[]
+        b_shape[b_ndim - 2]
     };
-    let b_rows = *b_shape.get(b_ndim.saturating_sub(2)).unwrap_or(&1);
-    let b_cols = *b_shape.last().unwrap_or(&1);
 
-    let b_2d_shape: Vec<usize> = b_batch_dims
-        .iter()
-        .cloned()
-        .chain([b_rows * b_cols].iter().cloned())
-        .collect();
+    if a_last_dim != b_contract_dim {
+        return Err(NumPyError::shape_mismatch(
+            a_shape.to_vec(),
+            b_shape.to_vec(),
+        ));
+    }
 
-    let b_2d = b.reshape(&b_2d_shape)?;
+    // Compute result shape
+    let mut res_shape = a_shape[..a_ndim - 1].to_vec();
+    if b_ndim > 1 {
+        res_shape.extend_from_slice(&b_shape[..b_ndim - 2]);
+        res_shape.push(b_shape[b_ndim - 1]);
+    }
 
-    // Perform matrix multiplication on 2D arrays
-    let result_2d = dot(&a_2d, &b_2d)?;
+    let a_outer_size = a.size() / a_last_dim;
+    let b_inner_dim = if b_ndim == 1 { 1 } else { b_shape[b_ndim - 1] };
+    let b_batch_size = b.size() / (b_contract_dim * b_inner_dim);
 
-    // Compute output shape: (batch_dims, a_rows, b_cols)
-    let mut output_shape: Vec<usize> = a_batch_dims.to_vec();
-    output_shape.push(a_rows);
-    output_shape.push(b_cols);
+    let mut res_data = Vec::with_capacity(a_outer_size * b_batch_size * b_inner_dim);
 
-    result_2d.reshape(&output_shape)
+    for i in 0..a_outer_size {
+        for j in 0..b_batch_size {
+            for k in 0..b_inner_dim {
+                let mut sum = T::zero();
+                for l in 0..a_last_dim {
+                    // a[i, l]
+                    let a_val = *a.get_linear(i * a_last_dim + l).unwrap();
+                    // b[j, l, k]
+                    let b_val = if b_ndim == 1 {
+                        *b.get_linear(l).unwrap()
+                    } else {
+                        *b.get_linear(j * b_contract_dim * b_inner_dim + l * b_inner_dim + k)
+                            .unwrap()
+                    };
+                    sum = sum + a_val * b_val;
+                }
+                res_data.push(sum);
+            }
+        }
+    }
+
+    Ok(Array::from_data(res_data, res_shape))
 }
 
 /// Extract diagonal with custom axes support

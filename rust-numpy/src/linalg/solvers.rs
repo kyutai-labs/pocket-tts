@@ -269,7 +269,10 @@ where
         return Err(NumPyError::shape_mismatch(vec![m], vec![b.shape()[0]]));
     }
 
-    let (q, r) = qr(a, "reduced")?;
+    let (q, r) = match qr(a, "reduced")? {
+        crate::linalg::decompositions::QRResult::QR(q, r) => (q, r),
+        _ => unreachable!(),
+    };
 
     // Compute d = Q.T @ b
     let q_t = q.transpose();

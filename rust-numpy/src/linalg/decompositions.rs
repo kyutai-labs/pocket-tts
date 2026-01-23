@@ -69,8 +69,17 @@ where
     Ok(Array::from_data(l_data, vec![n, n]))
 }
 
+/// Result of QR decomposition
+#[derive(Debug, Clone)]
+pub enum QRResult<T> {
+    /// Q and R matrices
+    QR(Array<T>, Array<T>),
+    /// Only R matrix
+    R(Array<T>),
+}
+
 /// QR decomposition
-pub fn qr<T>(a: &Array<T>, mode: &str) -> Result<(Array<T>, Array<T>), NumPyError>
+pub fn qr<T>(a: &Array<T>, mode: &str) -> Result<QRResult<T>, NumPyError>
 where
     T: LinalgScalar,
 {
@@ -93,10 +102,15 @@ where
         }
     }
 
-    let mut q_data = vec![T::zero(); m * m];
-    for i in 0..m {
-        q_data[i * m + i] = T::one();
-    }
+    let mut q_data = if mode != "r" {
+        let mut q = vec![T::zero(); m * m];
+        for i in 0..m {
+            q[i * m + i] = T::one();
+        }
+        Some(q)
+    } else {
+        None
+    };
 
     let iterations = m.min(n);
 
@@ -174,23 +188,23 @@ where
         }
 
         // Apply H to Q: Q = Q (I - 2 v v*)
-        // Q[:, k:m] etc.
-        // z = Q[:, k:m] * v
-        let mut z = vec![T::zero(); m];
-        for i in 0..m {
-            let mut sum = T::zero();
-            for l in 0..v.len() {
-                sum = sum + q_data[i * m + (k + l)] * v[l];
+        if let Some(ref mut q_ref) = q_data {
+            let mut z = vec![T::zero(); m];
+            for i in 0..m {
+                let mut sum = T::zero();
+                for l in 0..v.len() {
+                    sum = sum + q_ref[i * m + (k + l)] * v[l];
+                }
+                z[i] = sum;
             }
-            z[i] = sum;
-        }
 
-        for i in 0..m {
-            for l in 0..v.len() {
-                let one_real = <T::Real as num_traits::One>::one();
-                let two = T::from_real(one_real + one_real);
-                let update = z[i] * v[l].conj() * two;
-                q_data[i * m + (k + l)] = q_data[i * m + (k + l)] - update;
+            for i in 0..m {
+                for l in 0..v.len() {
+                    let one_real = <T::Real as num_traits::One>::one();
+                    let two = T::from_real(one_real + one_real);
+                    let update = z[i] * v[l].conj() * two;
+                    q_ref[i * m + (k + l)] = q_ref[i * m + (k + l)] - update;
+                }
             }
         }
     }
@@ -198,12 +212,13 @@ where
     // Extract result based on mode
     let k_dim = m.min(n);
 
-    let (final_q, final_r) = match mode {
+    Ok(match mode {
         "reduced" => {
+            let q_data_vec = q_data.unwrap();
             let mut q_red = Vec::with_capacity(m * k_dim);
             for i in 0..m {
                 for j in 0..k_dim {
-                    q_red.push(q_data[i * m + j]);
+                    q_red.push(q_data_vec[i * m + j]);
                 }
             }
             let mut r_red = Vec::with_capacity(k_dim * n);
@@ -212,22 +227,26 @@ where
                     r_red.push(r_data[i * n + j]);
                 }
             }
-            (
+            QRResult::QR(
                 Array::from_data(q_red, vec![m, k_dim]),
                 Array::from_data(r_red, vec![k_dim, n]),
             )
         }
-        "complete" => (
-            Array::from_data(q_data, vec![m, m]),
+        "complete" => QRResult::QR(
+            Array::from_data(q_data.unwrap(), vec![m, m]),
             Array::from_data(r_data, vec![m, n]),
         ),
         "r" => {
-            return Err(NumPyError::not_implemented("mode 'r' not supported"));
+            let mut r_red = Vec::with_capacity(k_dim * n);
+            for i in 0..k_dim {
+                for j in 0..n {
+                    r_red.push(r_data[i * n + j]);
+                }
+            }
+            QRResult::R(Array::from_data(r_red, vec![k_dim, n]))
         }
         _ => return Err(NumPyError::value_error("invalid mode", "linalg")),
-    };
-
-    Ok((final_q, final_r))
+    })
 }
 
 /// Singular Value Decomposition

@@ -1,5 +1,6 @@
 import copy
 import logging
+import math
 import os
 import queue
 import statistics
@@ -46,6 +47,9 @@ logger = logging.getLogger(__name__)
 
 
 class TTSModel(nn.Module):
+    _TOKENS_PER_SECOND_ESTIMATE = 3.0
+    _GEN_SECONDS_PADDING = 2.0
+
     def __init__(
         self,
         flow_lm: FlowLMModel,
@@ -322,12 +326,20 @@ class TTSModel(nn.Module):
                     expanded_cache[:, :, :current_length, :, :] = cache
                     module_state["cache"] = expanded_cache
 
+    def _flow_lm_current_end(self, model_state: dict) -> int:
+        for module_state in model_state.values():
+            current_end = module_state.get("current_end")
+            if current_end is not None:
+                return int(current_end.shape[0])
+        return 0
+
     @torch.no_grad
     def _decode_audio_worker(self, latents_queue: queue.Queue, result_queue: queue.Queue):
         """Worker thread function for decoding audio latents from queue with immediate streaming."""
         try:
             audio_chunks = []
-            mimi_state = init_states(self.mimi, batch_size=1, sequence_length=1000)
+            mimi_context = max(1, int(self.config.mimi.transformer.context))
+            mimi_state = init_states(self.mimi, batch_size=1, sequence_length=mimi_context)
             while True:
                 latent = latents_queue.get()
                 if latent is None:
@@ -486,9 +498,6 @@ class TTSModel(nn.Module):
         if copy_state:
             model_state = copy.deepcopy(model_state)
 
-        # Expand sliced KV caches back to full size for generation
-        self._expand_kv_cache(model_state, sequence_length=1000)
-
         # Set up multithreaded generation and decoding
         latents_queue = queue.Queue()
         result_queue = queue.Queue()
@@ -556,9 +565,13 @@ class TTSModel(nn.Module):
         latents_queue: queue.Queue,
         result_queue: queue.Queue,
     ):
-        gen_len_sec = len(text_to_generate.split()) * 1 + 2.0
-        max_gen_len = int(gen_len_sec * 12.5)
         prepared = self.flow_lm.conditioner.prepare(text_to_generate)
+        token_count = prepared.tokens.shape[1]
+        word_count = len(text_to_generate.split())
+        max_gen_len = self._estimate_max_gen_len(token_count, word_count)
+        current_end = self._flow_lm_current_end(model_state)
+        required_len = current_end + token_count + max_gen_len
+        self._expand_kv_cache(model_state, sequence_length=required_len)
 
         with display_execution_time("Prompting text"):
             self._run_flow_lm_and_increment_step(
@@ -699,7 +712,9 @@ class TTSModel(nn.Module):
                 #     "/projects/huggingface/pocket-tts/embeddings/cosette.safetensors"
                 # )
 
-        model_state = init_states(self.flow_lm, batch_size=1, sequence_length=1000)
+        prompt_length = int(prompt.shape[1]) if prompt.ndim >= 2 else 1
+        prompt_length = max(prompt_length, 1)
+        model_state = init_states(self.flow_lm, batch_size=1, sequence_length=prompt_length)
 
         with display_execution_time("Prompting audio"):
             self._run_flow_lm_and_increment_step(model_state=model_state, audio_conditioning=prompt)
@@ -709,6 +724,15 @@ class TTSModel(nn.Module):
         self._slice_kv_cache(model_state, num_audio_frames)
 
         return model_state
+
+    def _estimate_max_gen_len(self, token_count: int, word_count: int | None = None) -> int:
+        if token_count > 0:
+            gen_len_sec = token_count / self._TOKENS_PER_SECOND_ESTIMATE + self._GEN_SECONDS_PADDING
+        else:
+            wc = word_count or 0
+            gen_len_sec = wc * 1.0 + self._GEN_SECONDS_PADDING
+        frame_rate = float(self.config.mimi.frame_rate)
+        return max(int(math.ceil(gen_len_sec * frame_rate)), 1)
 
 
 def prepare_text_prompt(text: str) -> tuple[str, int]:

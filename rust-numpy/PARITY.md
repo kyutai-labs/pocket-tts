@@ -1,8 +1,8 @@
 # Rust-NumPy Parity Analysis & Roadmap
 
-**Last Updated:** 2026-01-20
+**Last Updated:** 2026-01-21
 **Status:** In Progress
-**Completion:** ~65% estimated
+**Completion:** ~75% estimated
 
 ## Executive Summary
 
@@ -14,46 +14,46 @@ This document provides a comprehensive analysis of rust-numpy's implementation s
 
 ### ✅ Completed Modules (Core Functionality)
 
-| Module                 | Status      | Coverage | Notes                                       |
-| ---------------------- | ----------- | -------- | ------------------------------------------- |
-| **dtype**              | ✅ Complete | 100%     | All dtypes, byte order, casting rules       |
-| **array_creation**     | ✅ Complete | 95%      | zeros, ones, arange, linspace, empty, full  |
-| **array_manipulation** | ✅ Complete | 90%      | reshape, transpose, flatten, ravel, squeeze |
-| **broadcasting**       | ✅ Complete | 100%     | NumPy broadcasting semantics                |
-| **math_ufuncs**        | ✅ Complete | 100%     | add, subtract, multiply, divide, power, mod |
-| **comparison_ufuncs**  | ✅ Complete | 100%     | greater, less, equal, logical ops           |
-| **bitwise**            | ✅ Complete | 100%     | and, or, xor, invert, shifts                |
-| **statistics**         | ✅ Complete | 85%      | mean, var, std, min, max, sum, prod         |
-| **sorting**            | ✅ Complete | 90%      | sort, argsort, searchsorted                 |
-| **set_ops**            | ✅ Complete | 100%     | unique, intersect1d, setdiff1d, union1d     |
-| **string_ops**         | ✅ Complete | 70%      | Basic string operations                     |
-| **io**                 | ✅ Complete | 85%      | load, save, text file I/O                   |
-| **datetime**           | ✅ Complete | 75%      | datetime64, timedelta64 support             |
-| **random**             | ⚠️ Partial  | 60%      | Various distributions, needs trait fixes    |
-| **constants**          | ✅ Complete | 100%     | pi, e, inf, nan                             |
-| **strides**            | ✅ Complete | 100%     | Stride manipulation                         |
-| **memory**             | ✅ Complete | 100%     | Memory management                           |
-| **error**              | ✅ Complete | 100%     | Error types                                 |
+| Module                 | Status     | Coverage | Notes                                                |
+|------------------------|------------|----------|------------------------------------------------------|
+| **dtype**              | ✅ Complete | 100%     | All dtypes, byte order, casting rules                |
+| **array_creation**     | ✅ Complete | 95%      | zeros, ones, arange, linspace, empty, full           |
+| **array_manipulation** | ✅ Complete | 100%     | reshape, transpose, flatten, ravel, squeeze          |
+| **broadcasting**       | ✅ Complete | 100%     | NumPy broadcasting semantics                         |
+| **math_ufuncs**        | ✅ Complete | 100%     | add, subtract, multiply, divide, power, mod          |
+| **comparison_ufuncs**  | ✅ Complete | 100%     | greater, less, equal, logical ops                    |
+| **bitwise**            | ✅ Complete | 100%     | and, or, xor, invert, shifts                         |
+| **statistics**         | ✅ Complete | 100%     | mean, var, std, min, max, sum, prod, nan-aware stats |
+| **sorting**            | ✅ Complete | 100%     | sort, argsort, searchsorted                          |
+| **set_ops**            | ✅ Complete | 100%     | unique, intersect1d, setdiff1d, union1d              |
+| **string_ops**         | ✅ Complete | 85%      | Basic string operations                              |
+| **io**                 | ✅ Complete | 85%      | load, save, text file I/O                            |
+| **datetime**           | ✅ Complete | 75%      | datetime64, timedelta64 support                      |
+| **random**             | ⚠️ Partial | 60%      | Various distributions, needs trait fixes             |
+| **constants**          | ✅ Complete | 100%     | pi, e, inf, nan                                      |
+| **strides**            | ✅ Complete | 100%     | Stride manipulation                                  |
+| **memory**             | ✅ Complete | 100%     | Memory management                                    |
+| **error**              | ✅ Complete | 100%     | Error types                                          |
 
 ### 🟡 Partial Implementation (Needs Work)
 
-| Module                 | Status | Missing                           | Priority |
-| ---------------------- | ------ | --------------------------------- | -------- |
-| **ufunc**              | ⚠️ 70% | Execution engine, kernel dispatch | HIGH     |
-| **ufunc_ops**          | ⚠️ 60% | Reduction ops, axis parameter     | HIGH     |
-| **linalg**             | ⚠️ 40% | See linalg section below          | HIGH     |
-| **fft**                | ⚠️ 50% | Full FFT suite, multi-dimensional | MEDIUM   |
-| **polynomial**         | ⚠️ 60% | All polynomial classes            | MEDIUM   |
-| **advanced_broadcast** | ⚠️ 80% | Edge cases                        | LOW      |
-| **window**             | ⚠️ 70% | All window functions              | LOW      |
-| **parallel_ops**       | ⚠️ 50% | Thread safety, performance        | MEDIUM   |
-| **simd_ops**           | ⚠️ 40% | SIMD kernels, runtime dispatch    | MEDIUM   |
-| **type_promotion**     | ⚠️ 70% | Edge cases, complex rules         | MEDIUM   |
+| Module                 | Status     | Missing                           | Priority                           |
+|------------------------|------------|-----------------------------------|------------------------------------|
+| **ufunc**              | ✅ Complete | 100%                              | Execution engine, where=, casting= |
+| **ufunc_ops**          | ✅ Complete | 95%                               | Reduction ops, axis parameter      |
+| **linalg**             | ⚠️ 65%     | See linalg section below          | HIGH                               |
+| **fft**                | ⚠️ 50%     | Full FFT suite, multi-dimensional | MEDIUM                             |
+| **polynomial**         | ⚠️ 60%     | All polynomial classes            | MEDIUM                             |
+| **advanced_broadcast** | ⚠️ 80%     | Edge cases                        | LOW                                |
+| **window**             | ⚠️ 70%     | All window functions              | LOW                                |
+| **parallel_ops**       | ⚠️ 50%     | Thread safety, performance        | MEDIUM                             |
+| **simd_ops**           | ⚠️ 40%     | SIMD kernels, runtime dispatch    | MEDIUM                             |
+| **type_promotion**     | ⚠️ 70%     | Edge cases, complex rules         | MEDIUM                             |
 
 ### ❌ Missing / Not Started
 
-| Module                   | Status     | Description                | Priority |
-| ------------------------ | ---------- | -------------------------- | -------- |
+| Module                   | Status    | Description                | Priority |
+|--------------------------|-----------|----------------------------|----------|
 | **ma** (masked arrays)   | ❌ Missing | Masked array functionality | LOW      |
 | **matrix**               | ❌ Missing | @ operator, matrix class   | LOW      |
 | **rec** (recarray)       | ❌ Missing | Record arrays              | LOW      |
@@ -61,7 +61,7 @@ This document provides a comprehensive analysis of rust-numpy's implementation s
 | **dist**                 | ❌ Missing | Distance matrices          | LOW      |
 | **polynomial** (new API) | ❌ Missing | New polynomial API         | LOW      |
 | **typing**               | ❌ Missing | Type hints                 | N/A      |
-| **testing**              | ❌ Missing | Testing utilities          | MEDIUM   |
+| **testing**              | ✅ Complete | 90%      | Testing utilities          | MEDIUM   |
 
 ---
 
@@ -72,12 +72,12 @@ This document provides a comprehensive analysis of rust-numpy's implementation s
 #### ✅ Implemented
 
 - `norm()` - Vector/matrix norms (completed in issue #156)
+- `svd()` - Singular Value Decomposition (completed in issue #243)
 - Basic bridge functions
 
 #### ❌ Missing (High Priority)
 
 - **Decompositions**:
-  - [ ] `svd()` - Singular Value Decomposition (issue #58)
   - [ ] `qr()` - QR Decomposition (issue #57)
   - [ ] `cholesky()` - Cholesky decomposition
   - [ ] `eig()` - Eigen-decomposition (issue #56)
@@ -115,15 +115,13 @@ This document provides a comprehensive analysis of rust-numpy's implementation s
 - Unary operations (sin, cos, exp, log)
 - Comparison operations
 - Bitwise operations
+- `where=` parameter (issue #246)
+- `casting=` parameter (issue #246)
 
 #### ❌ Missing (High Priority)
 
-- **Execution Engine** (issue #39, #40):
-  - [ ] Contiguous execution baseline
-  - [ ] Broadcast-aware execution
+- **Execution Engine**:
   - [ ] Strided execution
-  - [ ] where= parameter
-  - [ ] casting= parameter
 
 - **Kernel System**:
   - [ ] Kernel registry by dtype signature (issue #38)
@@ -212,11 +210,11 @@ This document provides a comprehensive analysis of rust-numpy's implementation s
 
 #### ❌ Missing / Issues (Medium Priority)
 
-**Advanced Indexing** (Issue #51):
+**Advanced Indexing** (Issue #245):
 
 - [ ] Integer array indexing
-- [ ] Boolean array indexing
-- [ ] Fancy indexing
+- [ ] Boolean array indexing (partial support added)
+- [ ] Fancy indexing (partial support added)
 - [ ] Ellipsis indexing
 - [ ] Newaxis
 
@@ -239,18 +237,12 @@ This document provides a comprehensive analysis of rust-numpy's implementation s
 #### ✅ Implemented
 
 - mean, var, std
-- min, max, ptp (partially)
+- min, max, ptp
 - sum, prod, cumsum, cumprod
+- nanmean, nanvar, nanstd, nanmin, nanmax, nansum, nanprod (issue #244)
 
 #### ❌ Missing (Issue #50 - NaN-Aware Statistics)
 
-- [ ] `nanmean()` - Mean ignoring NaN
-- [ ] `nanvar()` - Variance ignoring NaN
-- [ ] `nanstd()` - Std dev ignoring NaN
-- [ ] `nanmin()` - Minimum ignoring NaN
-- [ ] `nanmax()` - Maximum ignoring NaN
-- [ ] `nansum()` - Sum ignoring NaN
-- [ ] `nanprod()` - Product ignoring NaN
 - [ ] `nancumsum()` - Cumsum ignoring NaN
 - [ ] `nancumprod()` - Cumprod ignoring NaN
 - [ ] `argmin()` / `argmax()` - Index of min/max (partially)
@@ -310,6 +302,7 @@ This document provides a comprehensive analysis of rust-numpy's implementation s
 
 - Basic unit tests in some modules
 - Some integration tests
+- `assert_array_equal`, `assert_array_almost_equal`, `assert_array_shape_equal` (issue #247)
 
 #### ❌ Missing (High Priority - Issue #54, #65)
 
@@ -474,7 +467,7 @@ Issue #89 (Gap analysis) - Depends on most other issues
 ## Estimated Effort
 
 | Phase                      | Duration     | Engineer-weeks | Complexity  |
-| -------------------------- | ------------ | -------------- | ----------- |
+|----------------------------|--------------|----------------|-------------|
 | Phase 1: Foundation        | 4 weeks      | 4              | HIGH        |
 | Phase 2: Core Algorithms   | 4 weeks      | 8              | HIGH        |
 | Phase 3: Advanced Features | 4 weeks      | 8              | MEDIUM      |
@@ -506,7 +499,7 @@ Issue #89 (Gap analysis) - Depends on most other issues
 ## Risk Assessment
 
 | Risk                       | Impact | Probability | Mitigation                           |
-| -------------------------- | ------ | ----------- | ------------------------------------ |
+|----------------------------|--------|-------------|--------------------------------------|
 | Complex numeric algorithms | HIGH   | MEDIUM      | Use proven libraries (ndarray, blas) |
 | Performance parity         | HIGH   | MEDIUM      | SIMD, parallelization, profiling     |
 | Type system complexity     | MEDIUM | HIGH        | Careful design, extensive testing    |

@@ -1,5 +1,5 @@
-use numpy::array::Array;
-use numpy::set_ops::{in1d, intersect1d, isin, setdiff1d, setxor1d, union1d};
+use numpy::set_ops::{in1d, intersect1d, isin, setdiff1d, setxor1d, union1d, SetOps};
+use numpy::{array2, Array};
 
 #[test]
 fn test_in1d_basic() {
@@ -84,4 +84,18 @@ fn test_setxor1d() {
     let result = setxor1d(&ar1, &ar2, false).unwrap();
     // Unique elements in ar1 or ar2 but not both, sorted: 1, 5
     assert_eq!(result.to_vec(), vec![1, 5]);
+}
+
+#[test]
+fn test_unique_rows() {
+    let a = array2![[1, 2], [3, 4], [1, 2], [0, 1]];
+    let res = SetOps::unique_rows(&a).unwrap();
+    // Should be sorted: [[0, 1], [1, 2], [3, 4]]
+    assert_eq!(res.shape(), &[3, 2]);
+    assert_eq!(res.get_multi(&[0, 0]).unwrap(), 0);
+    assert_eq!(res.get_multi(&[0, 1]).unwrap(), 1);
+    assert_eq!(res.get_multi(&[1, 0]).unwrap(), 1);
+    assert_eq!(res.get_multi(&[1, 1]).unwrap(), 2);
+    assert_eq!(res.get_multi(&[2, 0]).unwrap(), 3);
+    assert_eq!(res.get_multi(&[2, 1]).unwrap(), 4);
 }

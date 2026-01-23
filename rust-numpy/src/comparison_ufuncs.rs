@@ -1,5 +1,5 @@
 use crate::array::Array;
-use crate::broadcasting::{broadcast_arrays, compute_broadcast_shape};
+use crate::broadcasting::broadcast_arrays;
 use crate::dtype::{Dtype, DtypeKind};
 use crate::error::{NumPyError, Result};
 use crate::ufunc::Ufunc;
@@ -71,6 +71,7 @@ where
         &self,
         inputs: &[&dyn crate::ufunc::ArrayView],
         outputs: &mut [&mut dyn crate::ufunc::ArrayViewMut],
+        where_mask: Option<&Array<bool>>,
     ) -> Result<()> {
         if inputs.len() != 2 || outputs.len() != 1 {
             return Err(NumPyError::ufunc_error(
@@ -87,19 +88,28 @@ where
         let input1 = unsafe { &*(inputs[1] as *const _ as *const Array<T>) };
         let output = unsafe { &mut *(outputs[0] as *mut _ as *mut Array<bool>) };
 
-        let shape0 = input0.shape();
-        let shape1 = input1.shape();
-        let broadcast_shape = compute_broadcast_shape(shape0, shape1);
+        let broadcast_shape = output.shape();
+
+        // Handle where_mask
+        let mask = if let Some(m) = where_mask {
+            Some(crate::broadcasting::broadcast_to(m, broadcast_shape)?)
+        } else {
+            None
+        };
 
         let broadcasted = broadcast_arrays(&[input0, input1])?;
-
         let arr0 = &broadcasted[0];
         let arr1 = &broadcasted[1];
 
-        for i in 0..broadcast_shape.iter().product::<usize>() {
-            if let (Some(a), Some(b)) = (arr0.get(i), arr1.get(i)) {
-                let result = (self.operation)(a, b);
-                output.set(i, result)?;
+        for i in 0..output.size() {
+            if mask
+                .as_ref()
+                .map_or(true, |m| *m.get_linear(i).unwrap_or(&false))
+            {
+                if let (Some(a), Some(b)) = (arr0.get(i), arr1.get(i)) {
+                    let result = (self.operation)(a, b);
+                    output.set(i, result)?;
+                }
             }
         }
 
@@ -173,6 +183,7 @@ where
         &self,
         inputs: &[&dyn crate::ufunc::ArrayView],
         outputs: &mut [&mut dyn crate::ufunc::ArrayViewMut],
+        where_mask: Option<&Array<bool>>,
     ) -> Result<()> {
         if inputs.len() != 1 || outputs.len() != 1 {
             return Err(NumPyError::ufunc_error(
@@ -188,10 +199,22 @@ where
         let input = unsafe { &*(inputs[0] as *const _ as *const Array<T>) };
         let output = unsafe { &mut *(outputs[0] as *mut _ as *mut Array<bool>) };
 
+        // Handle where_mask
+        let mask = if let Some(m) = where_mask {
+            Some(crate::broadcasting::broadcast_to(m, output.shape())?)
+        } else {
+            None
+        };
+
         for i in 0..input.size() {
-            if let Some(a) = input.get(i) {
-                let result = (self.operation)(a);
-                output.set(i, result)?;
+            if mask
+                .as_ref()
+                .map_or(true, |m| *m.get_linear(i).unwrap_or(&false))
+            {
+                if let Some(a) = input.get(i) {
+                    let result = (self.operation)(a);
+                    output.set(i, result)?;
+                }
             }
         }
 
@@ -265,6 +288,7 @@ where
         &self,
         inputs: &[&dyn crate::ufunc::ArrayView],
         outputs: &mut [&mut dyn crate::ufunc::ArrayViewMut],
+        where_mask: Option<&Array<bool>>,
     ) -> Result<()> {
         if inputs.len() != 2 || outputs.len() != 1 {
             return Err(NumPyError::ufunc_error(
@@ -281,19 +305,28 @@ where
         let input1 = unsafe { &*(inputs[1] as *const _ as *const Array<T>) };
         let output = unsafe { &mut *(outputs[0] as *mut _ as *mut Array<T>) };
 
-        let shape0 = input0.shape();
-        let shape1 = input1.shape();
-        let broadcast_shape = compute_broadcast_shape(shape0, shape1);
+        let broadcast_shape = output.shape();
+
+        // Handle where_mask
+        let mask = if let Some(m) = where_mask {
+            Some(crate::broadcasting::broadcast_to(m, broadcast_shape)?)
+        } else {
+            None
+        };
 
         let broadcasted = broadcast_arrays(&[input0, input1])?;
-
         let arr0 = &broadcasted[0];
         let arr1 = &broadcasted[1];
 
-        for i in 0..broadcast_shape.iter().product::<usize>() {
-            if let (Some(a), Some(b)) = (arr0.get(i), arr1.get(i)) {
-                let result = (self.operation)(a, b);
-                output.set(i, result)?;
+        for i in 0..output.size() {
+            if mask
+                .as_ref()
+                .map_or(true, |m| *m.get_linear(i).unwrap_or(&false))
+            {
+                if let (Some(a), Some(b)) = (arr0.get(i), arr1.get(i)) {
+                    let result = (self.operation)(a, b);
+                    output.set(i, result)?;
+                }
             }
         }
 
@@ -465,4 +498,199 @@ where
     fn logical_not(self: &num_complex::Complex<T>) -> bool {
         self.norm() == T::zero()
     }
+}
+
+// ==================== TOLERANCE-BASED COMPARISON FUNCTIONS ====================
+
+/// Check if two arrays are element-wise equal within tolerance
+///
+/// Returns a boolean array where each element is True if the corresponding
+/// elements of the input arrays are close within the specified tolerance.
+///
+/// # Arguments
+/// * `a` - First array
+/// * `b` - Second array
+/// * `rtol` - Relative tolerance (default: 1e-05)
+/// * `atol` - Absolute tolerance (default: 1e-08)
+/// * `equal_nan` - If True, consider NaN values as equal (default: false)
+///
+/// # Formula
+/// `|a - b| <= atol + rtol * |b|`
+///
+/// # Returns
+/// Boolean array indicating which elements are close
+pub fn isclose<T>(
+    a: &Array<T>,
+    b: &Array<T>,
+    rtol: Option<f64>,
+    atol: Option<f64>,
+    equal_nan: Option<bool>,
+) -> Result<Array<bool>>
+where
+    T: Clone + Default + Into<f64> + 'static + Send + Sync,
+{
+    let rtol = rtol.unwrap_or(1e-05);
+    let atol = atol.unwrap_or(1e-08);
+    let equal_nan = equal_nan.unwrap_or(false);
+
+    // Broadcast arrays if needed
+    let broadcasted = broadcast_arrays(&[a, b])?;
+    let a_broadcast = &broadcasted[0];
+    let b_broadcast = &broadcasted[1];
+
+    let size = a_broadcast.size();
+    let mut result = vec![false; size];
+
+    for i in 0..size {
+        let a_val = a_broadcast.get_linear(i).unwrap();
+        let b_val = b_broadcast.get_linear(i).unwrap();
+
+        let a_f64: f64 = a_val.clone().into();
+        let b_f64: f64 = b_val.clone().into();
+
+        // Handle NaN comparisons
+        if a_f64.is_nan() || b_f64.is_nan() {
+            result[i] = equal_nan && a_f64.is_nan() && b_f64.is_nan();
+            continue;
+        }
+
+        // Handle infinity comparisons
+        if a_f64.is_infinite() || b_f64.is_infinite() {
+            result[i] = a_f64 == b_f64;
+            continue;
+        }
+
+        // Standard tolerance comparison
+        let diff = (a_f64 - b_f64).abs();
+        let tolerance = atol + rtol * b_f64.abs();
+        result[i] = diff <= tolerance;
+    }
+
+    Ok(Array::from_vec(result)
+        .reshape(a_broadcast.shape())
+        .unwrap())
+}
+
+/// Check if two arrays are element-wise equal within tolerance
+///
+/// Returns True if all elements of the two arrays are equal within
+/// the specified tolerance.
+///
+/// # Arguments
+/// * `a` - First array
+/// * `b` - Second array
+/// * `rtol` - Relative tolerance (default: 1e-05)
+/// * `atol` - Absolute tolerance (default: 1e-08)
+/// * `equal_nan` - If True, consider NaN values as equal (default: false)
+///
+/// # Returns
+/// True if all elements are close, False otherwise
+pub fn allclose<T>(
+    a: &Array<T>,
+    b: &Array<T>,
+    rtol: Option<f64>,
+    atol: Option<f64>,
+    equal_nan: Option<bool>,
+) -> Result<bool>
+where
+    T: Clone + Default + Into<f64> + 'static + Send + Sync,
+{
+    let close_array = isclose(a, b, rtol, atol, equal_nan)?;
+
+    // Check if all elements are true
+    for i in 0..close_array.size() {
+        if let Some(&val) = close_array.get_linear(i) {
+            if !val {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
+}
+
+/// Check if two arrays are exactly equal
+///
+/// Returns True if arrays have the same shape and all elements are equal.
+/// This is a strict comparison that does not use tolerance.
+///
+/// # Arguments
+/// * `a1` - First array
+/// * `a2` - Second array
+///
+/// # Returns
+/// True if arrays are equal, False otherwise
+pub fn array_equal<T>(a1: &Array<T>, a2: &Array<T>) -> bool
+where
+    T: Clone + PartialEq + 'static,
+{
+    // Check shape equality
+    if a1.shape() != a2.shape() {
+        return false;
+    }
+
+    // Check element equality
+    for i in 0..a1.size() {
+        let val1 = a1.get_linear(i);
+        let val2 = a2.get_linear(i);
+
+        match (val1, val2) {
+            (Some(v1), Some(v2)) => {
+                if v1 != v2 {
+                    return false;
+                }
+            }
+            _ => return false,
+        }
+    }
+
+    true
+}
+
+/// Check if two arrays are element-wise equivalent (broadcasting allowed)
+///
+/// Returns True if arrays are element-wise equal after broadcasting.
+/// Unlike array_equal, this function allows broadcasting.
+///
+/// # Arguments
+/// * `a1` - First array
+/// * `a2` - Second array
+///
+/// # Returns
+/// True if arrays are equivalent, False otherwise
+pub fn array_equiv<T>(a1: &Array<T>, a2: &Array<T>) -> bool
+where
+    T: Clone + PartialEq + Default + 'static,
+{
+    // Try to broadcast arrays
+    let broadcasted = match broadcast_arrays(&[a1, a2]) {
+        Ok(arrs) => arrs,
+        Err(_) => return false,
+    };
+
+    let a1_broadcast = &broadcasted[0];
+    let a2_broadcast = &broadcasted[1];
+
+    // Check element equality
+    for i in 0..a1_broadcast.size() {
+        let val1 = a1_broadcast.get_linear(i);
+        let val2 = a2_broadcast.get_linear(i);
+
+        match (val1, val2) {
+            (Some(v1), Some(v2)) => {
+                if v1 != v2 {
+                    return false;
+                }
+            }
+            _ => return false,
+        }
+    }
+
+    true
+}
+
+// ==================== PUBLIC EXPORTS ====================
+
+/// Re-export comparison functions for public use
+pub mod exports {
+    pub use super::{allclose, array_equal, array_equiv, isclose};
 }

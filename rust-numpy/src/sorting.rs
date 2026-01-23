@@ -191,12 +191,6 @@ where
 {
     let search_side = SearchSide::from_str(side)?;
 
-    if sorter.is_some() {
-        return Err(NumPyError::not_implemented(
-            "searchsorted with custom sorter",
-        ));
-    }
-
     if a.ndim() > 1 || v.ndim() > 1 {
         return Err(NumPyError::invalid_operation(
             "searchsorted only supports 1D arrays",
@@ -207,12 +201,58 @@ where
     let v_data = v.to_vec();
     let mut indices = Vec::with_capacity(v_data.len());
 
-    for value in &v_data {
-        let idx = binary_search_slice(&a_data, value, search_side);
-        indices.push(idx as isize);
+    if let Some(s) = sorter {
+        if s.ndim() != 1 || s.size() != a.size() {
+            return Err(NumPyError::invalid_operation(
+                "sorter must be 1D and have same size as sorted array",
+            ));
+        }
+        let s_data = s.to_vec();
+        for value in &v_data {
+            let idx = binary_search_with_sorter(&a_data, value, &s_data, search_side);
+            indices.push(idx as isize);
+        }
+    } else {
+        for value in &v_data {
+            let idx = binary_search_slice(&a_data, value, search_side);
+            indices.push(idx as isize);
+        }
     }
 
     Ok(Array::from_shape_vec(vec![indices.len()], indices))
+}
+
+/// Binary search in a slice using a sorter index array
+fn binary_search_with_sorter<T>(data: &[T], value: &T, sorter: &[isize], side: SearchSide) -> usize
+where
+    T: PartialOrd + ComparisonOps<T>,
+{
+    let mut left = 0;
+    let mut right = sorter.len();
+
+    while left < right {
+        let mid = left + (right - left) / 2;
+        let idx = sorter[mid] as usize;
+        let mid_val = &data[idx];
+
+        match side {
+            SearchSide::Left => {
+                if mid_val.less(value) {
+                    left = mid + 1;
+                } else {
+                    right = mid;
+                }
+            }
+            SearchSide::Right => {
+                if mid_val.less_equal(value) {
+                    left = mid + 1;
+                } else {
+                    right = mid;
+                }
+            }
+        }
+    }
+    left
 }
 
 /// Return elements from an array that meet a condition
@@ -518,13 +558,7 @@ where
         None => {
             // Flatten and argpartition
             let data = a.to_vec();
-            let kth_val = match kth {
-                ArrayOrInt::Integer(k) => k,
-                ArrayOrInt::Array(_) => {
-                    return Err(NumPyError::not_implemented("argpartition with array kth"));
-                }
-            };
-            let indices = argpartition_slice(&data, kth_val, sort_kind, sort_order)?;
+            let indices = argpartition_slice(&data, kth, sort_kind, sort_order)?;
             Ok(Array::from_shape_vec(vec![indices.len()], indices))
         }
         Some(ax) => {
@@ -552,13 +586,7 @@ where
         None => {
             // Flatten and partition
             let mut data = a.to_vec();
-            let kth_val = match kth {
-                ArrayOrInt::Integer(k) => k,
-                ArrayOrInt::Array(_) => {
-                    return Err(NumPyError::not_implemented("partition with array kth"));
-                }
-            };
-            partition_slice(&mut data, kth_val, sort_kind, sort_order)?;
+            partition_slice(&mut data, kth, sort_kind, sort_order)?;
             Ok(Array::from_shape_vec(vec![data.len()], data))
         }
         Some(ax) => {
@@ -737,7 +765,7 @@ where
 /// Argpartition of a slice
 fn argpartition_slice<T>(
     data: &[T],
-    kth: isize,
+    kth: ArrayOrInt,
     _kind: SortKind,
     _order: SortOrder,
 ) -> Result<Vec<isize>>
@@ -749,25 +777,44 @@ where
         return Ok(vec![]);
     }
 
-    let kth = if kth < 0 { kth + len as isize } else { kth };
-    if kth < 0 || kth >= len as isize {
-        return Err(NumPyError::index_error(kth as usize, len));
+    let mut kths = match kth {
+        ArrayOrInt::Integer(k) => vec![k],
+        ArrayOrInt::Array(arr) => arr.to_vec(),
+    };
+
+    for k in &mut kths {
+        if *k < 0 {
+            *k += len as isize;
+        }
+        if *k < 0 || *k >= len as isize {
+            return Err(NumPyError::index_error(*k as usize, len));
+        }
     }
 
     let mut indices: Vec<isize> = (0..len).map(|i| i as isize).collect();
 
-    // Use nth_element algorithm (quickselect)
-    nth_element(&mut indices, kth as usize, |&a, &b| {
-        data[a as usize]
-            .partial_cmp(&data[b as usize])
-            .unwrap_or(Ordering::Equal)
-    });
+    // Multi-pivot partitioning for multiple kth values
+    kths.sort_unstable();
+    kths.dedup();
+
+    for &k in &kths {
+        nth_element(&mut indices, k as usize, |&a, &b| {
+            data[a as usize]
+                .partial_cmp(&data[b as usize])
+                .unwrap_or(Ordering::Equal)
+        });
+    }
 
     Ok(indices)
 }
 
 /// Partition a slice
-fn partition_slice<T>(data: &mut [T], kth: isize, _kind: SortKind, _order: SortOrder) -> Result<()>
+fn partition_slice<T>(
+    data: &mut [T],
+    kth: ArrayOrInt,
+    _kind: SortKind,
+    _order: SortOrder,
+) -> Result<()>
 where
     T: Clone + PartialOrd + ComparisonOps<T>,
 {
@@ -776,13 +823,26 @@ where
         return Ok(());
     }
 
-    let kth = if kth < 0 { kth + len as isize } else { kth };
-    if kth < 0 || kth >= len as isize {
-        return Err(NumPyError::index_error(kth as usize, len));
+    let mut kths = match kth {
+        ArrayOrInt::Integer(k) => vec![k],
+        ArrayOrInt::Array(arr) => arr.to_vec(),
+    };
+
+    for k in &mut kths {
+        if *k < 0 {
+            *k += len as isize;
+        }
+        if *k < 0 || *k >= len as isize {
+            return Err(NumPyError::index_error(*k as usize, len));
+        }
     }
 
-    // Use quickselect algorithm
-    quickselect(data, kth as usize);
+    kths.sort_unstable();
+    kths.dedup();
+
+    for &k in &kths {
+        quickselect(data, k as usize);
+    }
 
     Ok(())
 }
@@ -1139,6 +1199,7 @@ where
         stride *= shape[i];
     }
 
+    let result_shape = shape.to_vec();
     let num_slices = a.size() / axis_size;
     let mut result_data = Vec::with_capacity(a.size());
 
@@ -1153,21 +1214,11 @@ where
             }
         }
 
-        let indices = argpartition_slice(
-            &slice_data,
-            match kth {
-                ArrayOrInt::Integer(k) => k,
-                ArrayOrInt::Array(_) => {
-                    return Err(NumPyError::not_implemented("argpartition with array kth"));
-                }
-            },
-            kind,
-            order,
-        )?;
+        let indices = argpartition_slice(&slice_data, kth.clone(), kind, order)?;
         result_data.extend_from_slice(&indices);
     }
 
-    Ok(Array::from_shape_vec(shape.to_vec(), result_data))
+    Ok(Array::from_shape_vec(result_shape, result_data))
 }
 
 fn partition_along_axis<T>(
@@ -1202,52 +1253,43 @@ where
             }
         }
 
-        partition_slice(
-            &mut slice_data,
-            match kth {
-                ArrayOrInt::Integer(k) => k,
-                ArrayOrInt::Array(_) => {
-                    return Err(NumPyError::not_implemented("partition with array kth"));
-                }
-            },
-            kind,
-            order,
-        )?;
+        partition_slice(&mut slice_data, kth.clone(), kind, order)?;
         result_data.extend_from_slice(&slice_data);
     }
 
     Ok(Array::from_shape_vec(shape.to_vec(), result_data))
 }
 
-// ===== Utility Functions =====
+// ...
 
 fn compute_index_along_axis(
     slice_idx: usize,
     elem_idx: usize,
-    stride: usize,
+    _stride: usize,
     axis: usize,
     shape: &[usize],
 ) -> usize {
-    let mut index = 0;
-    let mut remaining = slice_idx;
+    let mut full_indices = vec![0; shape.len()];
+    let mut rem = slice_idx;
 
-    // Compute indices for dimensions before the axis
-    for i in 0..axis {
-        let dim_size = shape[i];
-        index += (remaining % dim_size) * stride;
-        remaining /= dim_size;
+    // Fill non-axis dimensions
+    for i in (0..shape.len()).rev() {
+        if i == axis {
+            continue;
+        }
+        full_indices[i] = rem % shape[i];
+        rem /= shape[i];
     }
+    full_indices[axis] = elem_idx;
 
-    // Add element index along the axis
-    index += elem_idx * stride;
-
-    // Add indices for dimensions after the axis
-    for i in (axis + 1)..shape.len() {
-        index += remaining % shape[i];
-        remaining /= shape[i];
+    // Convert to linear index (row-major)
+    let mut linear_idx = 0;
+    let mut current_stride = 1;
+    for i in (0..shape.len()).rev() {
+        linear_idx += full_indices[i] * current_stride;
+        current_stride *= shape[i];
     }
-
-    index
+    linear_idx
 }
 
 fn quicksort_by_key<K>(indices: &mut [isize], keys: &[K], order: SortOrder)

@@ -110,18 +110,18 @@ mod tests {
         let b = array![4, 5, 6];
 
         // Test method existence - actual execution depends on ufunc implementation
-        let _add_result = a.add(&b);
-        let _sub_result = a.subtract(&b);
-        let _mul_result = a.multiply(&b);
-        let _div_result = a.divide(&b);
+        let _add_result = a.add(&b, None, numpy::dtype::Casting::Safe);
+        let _sub_result = a.subtract(&b, None, numpy::dtype::Casting::Safe);
+        let _mul_result = a.multiply(&b, None, numpy::dtype::Casting::Safe);
+        let _div_result = a.divide(&b, None, numpy::dtype::Casting::Safe);
 
         // Test unary operations
-        let _neg_result = a.negative();
-        let _abs_result = a.abs();
+        let _neg_result = a.negative(None, numpy::dtype::Casting::Safe);
+        let _abs_result = a.abs(None, numpy::dtype::Casting::Safe);
 
         // Test reductions
         let _sum_result = a.sum(None, false);
-        let _prod_result = a.product(None, false);
+        let _prod_result = a.prod(None, false);
         let _min_result = a.min(None, false);
         let _max_result = a.max(None, false);
 

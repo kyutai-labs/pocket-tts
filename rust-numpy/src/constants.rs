@@ -242,3 +242,19 @@ pub use dtype::{
 pub use float::{EPSILON, EPSILON_F32, MAX, MIN, MIN_POSITIVE};
 /// Re-export commonly used constants
 pub use math::{E, INF, NAN, NEG_INF, PI, TAU};
+
+/// Indexing constants
+pub mod index {
+    /// A placeholder for adding a new axis in array indexing
+    /// Equivalent to np.newaxis in NumPy
+    ///
+    /// # Examples
+    /// ```ignore
+    /// let a = array![1, 2, 3];
+    /// // Use expand_dims function or pass newaxis to indexing operations
+    /// let expanded = expand_dims(&a, 0)?;
+    /// ```
+    pub const NEWAXIS: isize = -1;
+}
+
+pub use index::NEWAXIS;

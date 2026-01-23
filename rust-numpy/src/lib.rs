@@ -39,6 +39,9 @@ pub mod array_extra;
 pub mod array_manipulation;
 pub mod bitwise;
 pub mod broadcasting;
+pub mod char;
+#[cfg(test)]
+mod char_tests;
 pub mod comparison_ufuncs;
 pub mod constants;
 pub mod datetime;
@@ -52,8 +55,11 @@ mod fft_tests;
 pub mod iterator;
 pub mod linalg;
 pub mod math_ufuncs;
+pub mod matrix;
 pub mod memory;
+pub mod modules;
 pub mod random;
+pub mod rec;
 pub mod set_ops;
 pub mod slicing;
 pub mod sorting;
@@ -65,16 +71,27 @@ pub mod ufunc_ops;
 pub mod window;
 
 // Re-export key types for convenience
+pub use crate::array_extra::exports::*;
+pub use crate::comparison_ufuncs::exports::*;
 pub use crate::fft::*;
+pub use crate::matrix::exports::*;
+pub use crate::modules::ma::exports::*;
+pub use crate::modules::testing::exports::*;
 pub use array::Array;
-pub use array_manipulation::exports::*;
 pub use bitwise::*;
+pub use char::exports::*;
 pub use dtype::{Casting, Dtype, DtypeKind};
 pub use error::{NumPyError, Result};
 pub use linalg::norm;
+pub use rec::{array as rec_array, fromarrays, fromrecords, RecArray};
 pub use set_ops::exports::*;
 pub use statistics::{ptp, std, var};
 pub use type_promotion::promote_types;
+// Complex utility functions
+pub use math_ufuncs::{
+    angle, angle32, conj, conj32, conjugate, conjugate32, imag, imag32, real, real32,
+    real_if_close, real_if_close32,
+};
 pub use ufunc_ops::UfuncEngine;
 
 /// Version information
@@ -90,6 +107,7 @@ pub type Int = i64;
 pub type Complex = num_complex::Complex<f64>;
 
 // Re-export common constants
+pub use array_creation::{copy, frombuffer, fromfunction, fromiter, vander};
 pub use constants::*;
 /// Create array macro for convenient array creation
 #[macro_export]

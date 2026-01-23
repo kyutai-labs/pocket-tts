@@ -28,320 +28,204 @@ impl From<Vec<usize>> for SplitArg {
 }
 
 /// Concatenate arrays along an existing axis (similar to np.concatenate).
-///
-/// # Arguments
-/// - `arrays`: Slice of arrays to concatenate
-/// - `axis`: Axis along which to concatenate (default 0)
-///
-/// # Returns
-/// Concatenated array
 pub fn concatenate<T>(arrays: &[&Array<T>], axis: isize) -> Result<Array<T>>
 where
-    T: Clone + Default + 'static,
+    T: Clone + Default + Send + Sync + 'static,
 {
     if arrays.is_empty() {
         return Err(NumPyError::invalid_value(
-            "need at least one array to concatenate",
+            "concatenate: must provide at least one array",
         ));
     }
 
-    let first = &arrays[0];
-    let ndim = first.ndim();
-
-    if ndim == 0 {
-        let mut all_data = Vec::new();
-        for arr in arrays {
-            all_data.extend_from_slice(&arr.to_vec());
-        }
-        return Ok(Array::from_vec(all_data));
-    }
-
+    let ndim = arrays[0].ndim();
     let axis = if axis < 0 { ndim as isize + axis } else { axis } as usize;
 
     if axis >= ndim {
-        return Err(NumPyError::invalid_operation(format!(
-            "axis {} is out of bounds for {}-dimensional array",
-            axis, ndim
-        )));
+        return Err(NumPyError::index_error(axis, ndim));
     }
 
-    for arr in arrays {
+    let mut target_shape = arrays[0].shape().to_vec();
+    let mut total_axis_len = target_shape[axis];
+
+    for arr in arrays.iter().skip(1) {
         if arr.ndim() != ndim {
-            return Err(NumPyError::shape_mismatch(vec![ndim], vec![arr.ndim()]));
+            return Err(NumPyError::shape_mismatch(
+                arr.shape().to_vec(),
+                target_shape,
+            ));
         }
-
-        let mut arr_shape = arr.shape().to_vec();
-        let mut first_shape = first.shape().to_vec();
-
-        arr_shape.remove(axis);
-        first_shape.remove(axis);
-
-        if arr_shape != first_shape {
-            return Err(NumPyError::shape_mismatch(arr_shape, first_shape));
-        }
-    }
-
-    // Calculate output shape
-    let mut output_shape = first.shape().to_vec();
-    let mut total_axis_size = 0;
-    for arr in arrays {
-        total_axis_size += arr.shape()[axis];
-    }
-    output_shape[axis] = total_axis_size;
-
-    let output_strides = crate::array::compute_strides(&output_shape);
-    let output_size = output_shape.iter().product();
-    let mut new_data = vec![T::default(); output_size];
-
-    let mut current_axis_offset = 0;
-
-    for arr in arrays {
-        let arr_size = arr.size();
-        let arr_shape = arr.shape();
-
-        for i in 0..arr_size {
-            if let Some(val) = arr.get_linear(i) {
-                let mut coords = crate::strides::compute_multi_indices(i, arr_shape);
-                coords[axis] += current_axis_offset;
-                let out_linear = crate::strides::compute_linear_index(&coords, &output_strides);
-                new_data[out_linear as usize] = val.clone();
+        for (i, (&d1, &d2)) in arr.shape().iter().zip(target_shape.iter()).enumerate() {
+            if i != axis && d1 != d2 {
+                return Err(NumPyError::shape_mismatch(
+                    arr.shape().to_vec(),
+                    target_shape,
+                ));
             }
         }
-        current_axis_offset += arr.shape()[axis];
+        total_axis_len += arr.shape()[axis];
     }
 
-    Ok(Array::from_shape_vec(output_shape, new_data))
+    target_shape[axis] = total_axis_len;
+    let total_size: usize = target_shape.iter().product();
+
+    let mut reordered_data = vec![T::default(); total_size];
+    let mut current_axis_start = 0;
+
+    for arr in arrays {
+        let shape = arr.shape();
+        let axis_len = shape[axis];
+        let outer_size: usize = shape[0..axis].iter().product();
+        let inner_size: usize = shape[axis + 1..].iter().product();
+
+        for i in 0..outer_size {
+            for j in 0..axis_len {
+                for k in 0..inner_size {
+                    let src_idx = (i * axis_len + j) * inner_size + k;
+                    let dst_axis_idx = current_axis_start + j;
+                    let dst_idx = (i * total_axis_len + dst_axis_idx) * inner_size + k;
+
+                    if let Some(val) = arr.get_linear(src_idx) {
+                        reordered_data[dst_idx] = val.clone();
+                    }
+                }
+            }
+        }
+        current_axis_start += axis_len;
+    }
+
+    Ok(Array::from_shape_vec(target_shape, reordered_data))
 }
 
 /// Stack arrays along a new axis.
 pub fn stack<T>(arrays: &[&Array<T>], axis: isize) -> Result<Array<T>>
 where
-    T: Clone + Default + 'static,
+    T: Clone + Default + Send + Sync + 'static,
 {
     if arrays.is_empty() {
         return Err(NumPyError::invalid_value(
-            "need at least one array to stack",
+            "stack: must provide at least one array",
         ));
     }
-    let first = arrays[0];
-    let ndim = first.ndim();
-    let shape = first.shape();
 
-    for arr in arrays {
-        if arr.shape() != shape {
-            return Err(NumPyError::shape_mismatch(
-                shape.to_vec(),
-                arr.shape().to_vec(),
-            ));
-        }
-    }
-
-    // Normalize axis. The output has ndim + 1 dimensions.
-    // For 0D arrays, ndim=0, output is 1D. Axis must be 0.
-    let axis_limit = ndim + 1;
+    let ndim = arrays[0].ndim();
     let axis = if axis < 0 {
-        axis + axis_limit as isize
+        (ndim + 1) as isize + axis
     } else {
         axis
-    };
-    if axis < 0 || axis >= axis_limit as isize {
-        return Err(NumPyError::invalid_operation(format!(
-            "axis {} out of bounds",
-            axis
-        )));
-    }
-    let axis = axis as usize;
+    } as usize;
 
-    let mut new_shape = shape.to_vec();
-    new_shape.insert(axis, 1);
-
-    let mut reshaped_arrays = Vec::with_capacity(arrays.len());
+    let mut expanded = Vec::new();
     for arr in arrays {
-        reshaped_arrays.push(arr.reshape(&new_shape)?);
+        let mut new_shape = arr.shape().to_vec();
+        new_shape.insert(axis, 1);
+        expanded.push(arr.reshape(&new_shape)?);
     }
 
-    let refs: Vec<&Array<T>> = reshaped_arrays.iter().collect();
+    let refs: Vec<&Array<T>> = expanded.iter().collect();
     concatenate(&refs, axis as isize)
 }
 
 /// Vertically stack arrays (row-wise).
 pub fn vstack<T>(arrays: &[&Array<T>]) -> Result<Array<T>>
 where
-    T: Clone + Default + 'static,
+    T: Clone + Default + Send + Sync + 'static,
 {
-    if arrays.is_empty() {
-        return Err(NumPyError::invalid_value(
-            "need at least one array to vstack",
-        ));
+    let mut promoted = Vec::new();
+    for arr in arrays {
+        if arr.ndim() < 2 {
+            let mut new_shape = vec![1];
+            new_shape.extend_from_slice(arr.shape());
+            promoted.push(arr.reshape(&new_shape)?);
+        } else {
+            promoted.push((*arr).clone());
+        }
     }
-
-    let first = &arrays[0];
-    let ndim = first.ndim();
-
-    if ndim == 1 {
-        let mut rows = Vec::new();
-        for arr in arrays {
-            if arr.ndim() != 1 {
-                return Err(NumPyError::shape_mismatch(vec![1], vec![arr.ndim()]));
-            }
-            rows.push((*arr).clone());
-        }
-
-        let mut total_length = 0;
-        for arr in arrays {
-            total_length += arr.shape()[0];
-        }
-
-        let mut all_data = Vec::new();
-        for arr in arrays {
-            all_data.extend_from_slice(&arr.to_vec());
-        }
-
-        return Ok(Array::from_shape_vec(
-            vec![arrays.len(), total_length / arrays.len()],
-            all_data,
-        ));
-    }
-
-    concatenate(arrays, 0)
+    let refs: Vec<&Array<T>> = promoted.iter().collect();
+    concatenate(&refs, 0)
 }
 
 /// Horizontally stack arrays (column-wise).
 pub fn hstack<T>(arrays: &[&Array<T>]) -> Result<Array<T>>
 where
-    T: Clone + Default + 'static,
+    T: Clone + Default + Send + Sync + 'static,
 {
-    if arrays.is_empty() {
-        return Err(NumPyError::invalid_value(
-            "need at least one array to hstack",
-        ));
+    let mut promoted = Vec::new();
+    for arr in arrays {
+        promoted.push((*arr).clone());
     }
-
-    let first = &arrays[0];
-    let ndim = first.ndim();
-
-    if ndim == 1 {
-        let mut all_data = Vec::new();
-        for arr in arrays {
-            if arr.ndim() != 1 {
-                return Err(NumPyError::shape_mismatch(vec![1], vec![arr.ndim()]));
-            }
-            all_data.extend_from_slice(&arr.to_vec());
-        }
-        return Ok(Array::from_vec(all_data));
-    }
-
-    concatenate(arrays, (ndim - 1) as isize)
+    let refs: Vec<&Array<T>> = promoted.iter().collect();
+    let axis = if !arrays.is_empty() && arrays[0].ndim() == 1 {
+        0
+    } else {
+        1
+    };
+    concatenate(&refs, axis)
 }
 
 /// Stack arrays in depth wise (along third axis).
 pub fn dstack<T>(arrays: &[&Array<T>]) -> Result<Array<T>>
 where
-    T: Clone + Default + 'static,
+    T: Clone + Default + Send + Sync + 'static,
 {
-    if arrays.is_empty() {
-        return Err(NumPyError::invalid_value(
-            "need at least one array to dstack",
-        ));
-    }
-
-    let mut reshaped_arrays = Vec::with_capacity(arrays.len());
-
+    let mut promoted = Vec::new();
     for arr in arrays {
         let ndim = arr.ndim();
-        if ndim <= 2 {
-            let shape = arr.shape();
-            let mut new_shape = vec![1, 1, 1];
-            if ndim == 1 {
-                // (N,) -> (1, N, 1)
-                new_shape[0] = 1;
-                new_shape[1] = shape[0];
-                new_shape[2] = 1;
-            } else {
-                // (M, N) -> (M, N, 1)
-                new_shape[0] = shape[0];
-                new_shape[1] = shape[1];
-                new_shape[2] = 1;
-            }
-            reshaped_arrays.push(arr.reshape(&new_shape)?);
+        if ndim == 0 {
+            promoted.push(arr.reshape(&[1, 1, 1])?);
+        } else if ndim == 1 {
+            promoted.push(arr.reshape(&[1, arr.shape()[0], 1])?);
+        } else if ndim == 2 {
+            let mut new_shape = arr.shape().to_vec();
+            new_shape.push(1);
+            promoted.push(arr.reshape(&new_shape)?);
         } else {
-            reshaped_arrays.push((*arr).clone());
+            promoted.push((*arr).clone());
         }
     }
-
-    let refs: Vec<&Array<T>> = reshaped_arrays.iter().collect();
+    let refs: Vec<&Array<T>> = promoted.iter().collect();
     concatenate(&refs, 2)
 }
 
 /// Split an array into multiple sub-arrays.
-///
-/// # Arguments
-/// - `array`: Array to split
-/// - `indices_or_sections`: If integer N, split into N roughly equal sections.
-///    If vector of indices, split at those indices.
-/// - `axis`: Axis along which to split.
 pub fn array_split<T>(
     array: &Array<T>,
     indices_or_sections: SplitArg,
     axis: isize,
 ) -> Result<Vec<Array<T>>>
 where
-    T: Clone + Default + 'static,
+    T: Clone + Default + Send + Sync + 'static,
 {
     let ndim = array.ndim();
-    let axis = if axis < 0 { ndim as isize + axis } else { axis } as usize;
+    let axis_idx = normalize_axis(axis, ndim)?;
+    let axis_len = array.shape()[axis_idx];
 
-    if axis >= ndim {
-        return Err(NumPyError::invalid_operation(format!(
-            "axis {} is out of bounds for {}-dimensional array",
-            axis, ndim
-        )));
+    let mut offsets = Vec::new();
+    match indices_or_sections {
+        SplitArg::Count(n) => {
+            let size = axis_len / n;
+            let extras = axis_len % n;
+            let mut curr = 0;
+            for i in 0..n {
+                let len = size + if i < extras { 1 } else { 0 };
+                offsets.push((curr, curr + len));
+                curr += len;
+            }
+        }
+        SplitArg::Indices(indices) => {
+            let mut curr = 0;
+            for idx in indices {
+                offsets.push((curr, idx));
+                curr = idx;
+            }
+            offsets.push((curr, axis_len));
+        }
     }
 
-    let dim_len = array.shape()[axis];
-
-    let split_indices = match indices_or_sections {
-        SplitArg::Count(n) => {
-            if n == 0 {
-                return Err(NumPyError::invalid_value(
-                    "number sections must be larger than 0",
-                ));
-            }
-            let section_len = dim_len / n;
-            let extras = dim_len % n;
-            let mut indices = Vec::with_capacity(n + 1);
-            let mut curr = 0;
-            indices.push(0);
-            for i in 0..n {
-                let size = section_len + if i < extras { 1 } else { 0 };
-                curr += size;
-                indices.push(curr);
-            }
-            indices
-        }
-        SplitArg::Indices(mut inds) => {
-            let mut indices = Vec::with_capacity(inds.len() + 2);
-            indices.push(0);
-            indices.append(&mut inds);
-            indices.push(dim_len);
-            indices
-        }
-    };
-
-    let mut results = Vec::with_capacity(split_indices.len() - 1);
-    for i in 0..split_indices.len() - 1 {
-        let start = split_indices[i];
-        let end = split_indices[i + 1];
-
-        // slice(axis, start, end)
-        let mut slices = Vec::new();
-        for d in 0..ndim {
-            if d == axis {
-                slices.push(Slice::Range(start as isize, end as isize));
-            } else {
-                slices.push(Slice::Full);
-            }
-        }
+    let mut results = Vec::new();
+    for (start, end) in offsets {
+        let mut slices = vec![Slice::Full; ndim];
+        slices[axis_idx] = Slice::Range(start as isize, end as isize);
         results.push(array.slice(&MultiSlice::new(slices))?);
     }
     Ok(results)
@@ -354,44 +238,15 @@ pub fn split<T>(
     axis: isize,
 ) -> Result<Vec<Array<T>>>
 where
-    T: Clone + Default + 'static,
+    T: Clone + Default + Send + Sync + 'static,
 {
-    let ndim = array.ndim();
-    let axis_us = if axis < 0 { ndim as isize + axis } else { axis } as usize;
-    if axis_us < ndim {
-        if let SplitArg::Count(n) = indices_or_sections {
-            let dim_len = array.shape()[axis_us];
-            if n > 0 && dim_len % n != 0 {
-                return Err(NumPyError::invalid_value(
-                    "array split does not result in an equal division",
-                ));
-            }
+    if let SplitArg::Count(n) = indices_or_sections {
+        let axis_idx = normalize_axis(axis, array.ndim())?;
+        if !array.shape()[axis_idx].is_multiple_of(n) {
+            return Err(NumPyError::invalid_value(
+                "array split does not result in an equal division",
+            ));
         }
-    }
-    // Pass to array_split (it handles axis validation again)
-    // Note: if indices_or_sections was moved/consumed, we need it again?
-    // SplitArg is not Copy. But argument is passed by value.
-    // We inspected it above. Wait, `if let SplitArg::Count(n) = indices_or_sections` consumes it?
-    // No, matching reference `&indices_or_sections`?
-    // The arguments assume ownership `SplitArg`.
-    // I need to clone it or pass by reference.
-    // Or just re-construct.
-    // Let's implement logic without cloning.
-
-    // Actually, `split` calls `array_split`, but needs to check condition first.
-    // So I will match on reference.
-    match &indices_or_sections {
-        SplitArg::Count(n) => {
-            if axis_us < ndim {
-                let dim_len = array.shape()[axis_us];
-                if *n > 0 && dim_len % n != 0 {
-                    return Err(NumPyError::invalid_value(
-                        "array split does not result in an equal division",
-                    ));
-                }
-            }
-        }
-        _ => {}
     }
     array_split(array, indices_or_sections, axis)
 }
@@ -399,681 +254,620 @@ where
 /// Split array into multiple sub-arrays horizontally (column-wise).
 pub fn hsplit<T>(array: &Array<T>, indices_or_sections: SplitArg) -> Result<Vec<Array<T>>>
 where
-    T: Clone + Default + 'static,
+    T: Clone + Default + Send + Sync + 'static,
 {
-    if array.ndim() == 0 {
-        return Err(NumPyError::invalid_value(
-            "hsplit only works on arrays of 1 or more dimensions",
-        ));
-    }
-    if array.ndim() > 1 {
-        split(array, indices_or_sections, 1)
-    } else {
-        split(array, indices_or_sections, 0)
-    }
+    let axis = if array.ndim() < 2 { 0 } else { 1 };
+    array_split(array, indices_or_sections, axis)
 }
 
 /// Split array into multiple sub-arrays vertically (row-wise).
 pub fn vsplit<T>(array: &Array<T>, indices_or_sections: SplitArg) -> Result<Vec<Array<T>>>
 where
-    T: Clone + Default + 'static,
+    T: Clone + Default + Send + Sync + 'static,
 {
-    if array.ndim() < 2 {
-        return Err(NumPyError::invalid_value(
-            "vsplit only works on arrays of 2 or more dimensions",
-        ));
-    }
-    split(array, indices_or_sections, 0)
+    array_split(array, indices_or_sections, 0)
 }
 
 /// Split array into multiple sub-arrays along the 3rd axis (depth).
 pub fn dsplit<T>(array: &Array<T>, indices_or_sections: SplitArg) -> Result<Vec<Array<T>>>
 where
-    T: Clone + Default + 'static,
+    T: Clone + Default + Send + Sync + 'static,
 {
-    if array.ndim() < 3 {
-        return Err(NumPyError::invalid_value(
-            "dsplit only works on arrays of 3 or more dimensions",
-        ));
-    }
-    split(array, indices_or_sections, 2)
+    array_split(array, indices_or_sections, 2)
 }
 
 /// Linear interpolation.
 pub fn interp<T>(x: &Array<T>, xp: &Array<T>, fp: &Array<T>) -> Result<Array<T>>
 where
-    T: Clone + Default + num_traits::Float + 'static,
+    T: Clone + Default + PartialOrd + num_traits::Float + Send + Sync + 'static,
 {
-    if xp.shape()[0] != fp.shape()[0] {
-        return Err(NumPyError::invalid_operation(
-            "fp and xp must have the same size",
-        ));
-    }
-    let x_data = x.to_vec();
-    let xp_data = xp.to_vec();
-    let fp_data = fp.to_vec();
-    let mut result = Vec::with_capacity(x_data.len());
-
-    for &x_val in &x_data {
-        if x_val <= xp_data[0] {
-            result.push(fp_data[0]);
-        } else if x_val >= xp_data[xp_data.len() - 1] {
-            result.push(fp_data[fp_data.len() - 1]);
-        } else {
-            let mut i = 0;
-            while i < xp_data.len() - 1 && xp_data[i + 1] < x_val {
-                i += 1;
+    let mut result = Vec::with_capacity(x.size());
+    for i in 0..x.size() {
+        let val = x.get_linear(i).cloned().unwrap_or_default();
+        if val <= *xp.get_linear(0).unwrap() {
+            result.push(fp.get_linear(0).cloned().unwrap_or_default());
+            continue;
+        }
+        if val >= *xp.get_linear(xp.size() - 1).unwrap() {
+            result.push(fp.get_linear(fp.size() - 1).cloned().unwrap_or_default());
+            continue;
+        }
+        let mut found = false;
+        for j in 0..xp.size() - 1 {
+            let x0 = *xp.get_linear(j).unwrap();
+            let x1 = *xp.get_linear(j + 1).unwrap();
+            if val >= x0 && val <= x1 {
+                let f0 = *fp.get_linear(j).unwrap();
+                let f1 = *fp.get_linear(j + 1).unwrap();
+                result.push(f0 + (f1 - f0) * (val - x0) / (x1 - x0));
+                found = true;
+                break;
             }
-            let x0 = xp_data[i];
-            let x1 = xp_data[i + 1];
-            let y0 = &fp_data[i];
-            let y1 = &fp_data[i + 1];
-            let t = (x_val - x0) / (x1 - x0);
-            let interpolated = *y0 + t * (*y1 - *y0);
-            result.push(interpolated);
+        }
+        if !found {
+            result.push(T::nan());
         }
     }
-    Ok(Array::from_vec(result))
+    Ok(Array::from_data(result, x.shape().to_vec()))
 }
 
-/// Element-wise power.
-pub fn power<T>(array: &Array<T>, exponent: T) -> Result<Array<T>>
-where
-    T: Clone + Default + num_traits::Float + 'static,
-{
-    let data: Vec<T> = array.to_vec().iter().map(|&x| x.powf(exponent)).collect();
-    Ok(Array::from_vec(data))
-}
-
-/// Clip (limit) the values in an array (similar to np.clip).
-///
-/// # Arguments
-/// - `array`: Input array
-/// - `min`: Minimum value (use None for no minimum)
-/// - `max`: Maximum value (use None for no maximum)
-///
-/// # Returns
-/// Array with values clipped to the specified range
+/// Clip values to be within a specified range.
 pub fn clip<T>(array: &Array<T>, min: Option<T>, max: Option<T>) -> Result<Array<T>>
 where
-    T: Clone + Default + PartialOrd + 'static,
+    T: Clone + Default + PartialOrd + Send + Sync + 'static,
 {
-    let data = array.to_vec();
-
-    let clipped: Vec<T> = data
-        .iter()
-        .map(|x| {
-            let mut val = x.clone();
-            if let Some(ref min_val) = min {
-                if val < *min_val {
-                    val = min_val.clone();
-                }
+    let mut data = Vec::with_capacity(array.size());
+    for i in 0..array.size() {
+        let mut val = array.get_linear(i).cloned().unwrap_or_default();
+        if let Some(ref m) = min {
+            if val < *m {
+                val = m.clone();
             }
-            if let Some(ref max_val) = max {
-                if val > *max_val {
-                    val = max_val.clone();
-                }
+        }
+        if let Some(ref m) = max {
+            if val > *m {
+                val = m.clone();
             }
-            val
-        })
-        .collect();
-
-    Ok(Array::from_shape_vec(array.shape().to_vec(), clipped))
+        }
+        data.push(val);
+    }
+    Ok(Array::from_data(data, array.shape().to_vec()))
 }
 
-/// Round elements of the array to the given number of decimals (similar to np.round).
-///
-/// Uses NumPy-compatible rounding (banker's rounding: round half to even).
-///
-/// # Arguments
-/// - `array`: Input array
-/// - `decimals`: Number of decimal places to round to (default 0)
-///
-/// # Returns
-/// Array with values rounded to the specified number of decimals
-pub fn round<T>(array: &Array<T>, decimals: i32) -> Result<Array<T>>
-where
-    T: Clone + Default + num_traits::Float + 'static,
-{
-    let factor = T::from(10.0_f64).unwrap().powi(decimals);
-
-    let rounded: Vec<T> = array
-        .to_vec()
-        .iter()
-        .map(|&x| {
-            let scaled = x * factor.clone();
-            let fract = scaled.fract();
-            let whole_scaled = scaled.trunc();
-
-            // Banker's rounding: round half to even
-            let result = if fract.abs() == T::from(0.5_f64).unwrap() {
-                // Exactly half - round to nearest even integer
-                let whole_i64 = whole_scaled.to_i64().unwrap_or(0);
-                if whole_i64 % 2 == 0 {
-                    whole_scaled
-                } else {
-                    whole_scaled + T::from(whole_scaled.signum()).unwrap()
-                }
-            } else {
-                scaled.round()
-            };
-
-            result / factor.clone()
-        })
-        .collect();
-
-    Ok(Array::from_shape_vec(array.shape().to_vec(), rounded))
-}
-
-/// Trim the leading and/or trailing zeros from a 1-D array (similar to np.trim_zeros).
-///
-/// # Arguments
-/// - `array`: Input 1-D array
-/// - `trim`: Trim mode - "f" trim from front, "b" trim from back, "fb" trim from both (default)
-///
-/// # Returns
-/// Array with zeros trimmed according to the specified mode
+/// Trim the leading and/or trailing zeros from a 1-D array.
 pub fn trim_zeros<T>(array: &Array<T>, trim: &str) -> Result<Array<T>>
 where
-    T: Clone + Default + PartialEq + num_traits::Zero + 'static,
+    T: Clone + Default + PartialEq + Send + Sync + 'static,
 {
-    if array.ndim() != 1 {
-        return Err(NumPyError::invalid_operation(
-            "trim_zeros() only supports 1-D arrays",
-        ));
-    }
-
-    if !matches!(trim, "f" | "b" | "fb") {
-        return Err(NumPyError::invalid_operation(
-            "trim_zeros() trim must be 'f', 'b', or 'fb'",
-        ));
-    }
-
-    let data = array.to_vec();
-
-    // Handle empty array or all zeros
-    if data.is_empty() || data.iter().all(|x| x.is_zero()) {
-        return Ok(Array::from_vec(vec![]));
-    }
-
+    let data = array.data();
     let mut start = 0;
     let mut end = data.len();
-
-    // Trim from front
-    if trim == "f" || trim == "fb" {
-        while start < data.len() && data[start].is_zero() {
+    if trim.contains('f') {
+        while start < end && data[start] == T::default() {
             start += 1;
         }
     }
-
-    // Trim from back
-    if trim == "b" || trim == "fb" {
-        while end > start && data[end - 1].is_zero() {
+    if trim.contains('b') {
+        while end > start && data[end - 1] == T::default() {
             end -= 1;
         }
     }
-
     Ok(Array::from_vec(data[start..end].to_vec()))
 }
 
-/// The differences between consecutive elements of an array (similar to np.ediff1d).
-///
-/// # Arguments
-/// - `array`: Input array
-/// - `to_end`: Optional values to append at the end of the returned differences
-/// - `to_begin`: Optional values to prepend at the beginning of the returned differences
-///
-/// # Returns
-/// 1-D array of differences with optional prepended/appended values
+/// The differences between consecutive elements of an array.
 pub fn ediff1d<T>(
     array: &Array<T>,
     to_end: Option<&[T]>,
     to_begin: Option<&[T]>,
 ) -> Result<Array<T>>
 where
-    T: Clone + Default + std::ops::Sub<Output = T> + 'static,
+    T: Clone + Default + std::ops::Sub<Output = T> + Send + Sync + 'static,
 {
-    let data = array.to_vec();
-
-    if data.is_empty() {
-        let mut result = Vec::new();
-        if let Some(begin) = to_begin {
-            result.extend_from_slice(begin);
+    let size = array.size();
+    let mut diffs = Vec::new();
+    if size >= 2 {
+        for i in 0..size - 1 {
+            let v1 = array.get_linear(i).unwrap();
+            let v2 = array.get_linear(i + 1).unwrap();
+            diffs.push(v2.clone() - v1.clone());
         }
-        if let Some(end) = to_end {
-            result.extend_from_slice(end);
-        }
-        return Ok(Array::from_vec(result));
     }
-
-    // Compute differences
-    let mut diffs = Vec::with_capacity(data.len().saturating_sub(1));
-    for i in 0..data.len().saturating_sub(1) {
-        diffs.push(data[i + 1].clone() - data[i].clone());
-    }
-
-    // Build final result
     let mut result = Vec::new();
-
-    // Add to_begin values
-    if let Some(begin) = to_begin {
-        result.extend_from_slice(begin);
+    if let Some(tb) = to_begin {
+        result.extend_from_slice(tb);
     }
-
-    // Add differences
-    result.extend_from_slice(&diffs);
-
-    // Add to_end values
-    if let Some(end) = to_end {
-        result.extend_from_slice(end);
+    result.extend(diffs);
+    if let Some(te) = to_end {
+        result.extend_from_slice(te);
     }
-
     Ok(Array::from_vec(result))
 }
 
-/// Extract a diagonal from a 2D array (similar to np.diagonal).
-///
-/// # Arguments
-/// - `array`: Input array (must be at least 2D)
-/// - `offset`: Diagonal offset (default 0)
-///   - offset > 0: upper diagonals
-///   - offset < 0: lower diagonals
-///   - offset = 0: main diagonal
-/// - `axis1`: First axis of diagonal (default 0)
-/// - `axis2`: Second axis of diagonal (default 1)
-///
-/// # Returns
-/// 1D array containing the specified diagonal
+/// Extract a diagonal from an array.
 pub fn diagonal<T>(array: &Array<T>, offset: isize, axis1: usize, axis2: usize) -> Result<Array<T>>
 where
-    T: Clone + Default + 'static,
+    T: Clone + Default + Send + Sync + 'static,
 {
     let ndim = array.ndim();
-
     if ndim < 2 {
-        return Err(NumPyError::invalid_operation(
-            "diagonal() requires array with at least 2 dimensions",
+        return Err(NumPyError::invalid_value(
+            "diagonal requires at least 2D array",
         ));
     }
-
-    if axis1 >= ndim || axis2 >= ndim {
-        return Err(NumPyError::index_error(axis1.max(axis2), ndim));
-    }
-
-    if axis1 == axis2 {
-        return Err(NumPyError::invalid_operation(
-            "diagonal() requires axis1 and axis2 to be different",
-        ));
-    }
-
-    // For 2D arrays, extract the diagonal directly
-    if ndim == 2 {
-        let rows = array.shape()[0];
-        let cols = array.shape()[1];
-        let data = array.to_vec();
-
-        let mut diagonal_elements = Vec::new();
-
-        // Calculate diagonal bounds based on offset
-        let (row_start, col_start): (isize, isize) = if offset >= 0 {
-            (0, offset)
-        } else {
-            (-offset, 0)
-        };
-
-        let row_start = row_start as usize;
-        let col_start = col_start as usize;
-
-        // Iterate along the diagonal
-        let mut i = row_start;
-        let mut j = col_start;
-
-        while i < rows && j < cols {
-            let idx = i * cols + j;
-            if idx < data.len() {
-                diagonal_elements.push(data[idx].clone());
-            }
-            i += 1;
-            j += 1;
-        }
-
-        return Ok(Array::from_vec(diagonal_elements));
-    }
-
-    // For nD arrays, use axis1 and axis2
-    let mut diagonal_shape = array.shape().to_vec();
-    diagonal_shape.remove(axis1.max(axis2));
-    diagonal_shape.remove(axis1.min(axis2));
-
-    let dim1_size = array.shape()[axis1];
-    let dim2_size = array.shape()[axis2];
-
-    let mut diagonal_elements = Vec::new();
-
-    let (start1, start2): (isize, isize) = if offset >= 0 {
-        (0, offset)
+    let axis1 = normalize_axis(axis1 as isize, ndim)?;
+    let axis2 = normalize_axis(axis2 as isize, ndim)?;
+    let dim1 = array.shape()[axis1];
+    let dim2 = array.shape()[axis2];
+    let mut diag = Vec::new();
+    let (mut r, mut c) = if offset >= 0 {
+        (0, offset as usize)
     } else {
-        (-offset, 0)
+        ((-offset) as usize, 0)
     };
-
-    let start1 = start1 as usize;
-    let start2 = start2 as usize;
-
-    // Collect diagonal elements
-    let mut d1 = start1;
-    let mut d2 = start2;
-
-    while d1 < dim1_size && d2 < dim2_size {
-        let mut indices = vec![0; ndim];
-        indices[axis1] = d1;
-        indices[axis2] = d2;
-
-        // Collect all elements for this diagonal position across other dimensions
-        collect_diagonal_elements(
-            array,
-            &mut indices,
-            axis1.min(axis2),
-            0,
-            &mut diagonal_elements,
-        );
-
-        d1 += 1;
-        d2 += 1;
+    while r < dim1 && c < dim2 {
+        let mut idx = vec![0; ndim];
+        idx[axis1] = r;
+        idx[axis2] = c;
+        diag.push(array.get_multi(&idx)?);
+        r += 1;
+        c += 1;
     }
-
-    let final_shape = if diagonal_shape.is_empty() {
-        vec![1]
-    } else {
-        diagonal_shape
-    };
-
-    Ok(Array::from_shape_vec(final_shape, diagonal_elements))
+    Ok(Array::from_vec(diag))
 }
 
-/// Helper function to collect elements along diagonal for nD arrays
-fn collect_diagonal_elements<T>(
-    array: &Array<T>,
-    indices: &mut [usize],
-    skip_axis: usize,
-    current_axis: usize,
-    result: &mut Vec<T>,
-) where
-    T: Clone + Default + 'static,
-{
-    if current_axis == indices.len() {
-        let linear_idx = compute_linear_index_from_indices(array, indices);
-        if let Some(elem) = array.get_linear(linear_idx) {
-            result.push(elem.clone());
-        }
-        return;
-    }
-
-    if current_axis == skip_axis {
-        collect_diagonal_elements(array, indices, skip_axis, current_axis + 1, result);
-    } else {
-        let dim_size = array.shape()[current_axis];
-        for i in 0..dim_size {
-            indices[current_axis] = i;
-            collect_diagonal_elements(array, indices, skip_axis, current_axis + 1, result);
-        }
-    }
-}
-
-/// Compute linear index from multi-dimensional indices
-fn compute_linear_index_from_indices<T>(array: &Array<T>, indices: &[usize]) -> usize
-where
-    T: Clone + Default + 'static,
-{
-    let strides = array.strides();
-    let offset = array.offset;
-
-    let mut linear_idx: isize = offset as isize;
-    for (i, &idx) in indices.iter().enumerate() {
-        linear_idx += strides[i] * idx as isize;
-    }
-
-    linear_idx as usize
-}
-
-/// Extract a diagonal or construct a diagonal array (similar to np.diag).
+/// Extract a diagonal or construct a diagonal array.
+<<<<<<< HEAD
+=======
 ///
-/// # Arguments
-/// - `v`: Input array
-///   - If 2D: extracts the k-th diagonal
-///   - If 1D: constructs a 2D array with v on the k-th diagonal
-/// - `k`: Diagonal offset (default 0)
-///   - k > 0: upper diagonals
-///   - k < 0: lower diagonals
-///   - k = 0: main diagonal
-///
-/// # Returns
-/// - If input is 2D: 1D array containing the k-th diagonal
-/// - If input is 1D: 2D array with input on the k-th diagonal
-pub fn diag<T>(v: &Array<T>, k: isize) -> Result<Array<T>>
+/// If `array` is 2-D, return the diagonal elements (main or offset diagonal).
+/// If `array` is 1-D, return a 2-D array with the input as diagonal.
+>>>>>>> origin/main
+pub fn diag<T>(array: &Array<T>, k: isize) -> Result<Array<T>>
 where
-    T: Clone + Default + 'static,
+    T: Clone + Default + Send + Sync + 'static,
 {
-    let ndim = v.ndim();
-
+    let ndim = array.ndim();
     if ndim == 1 {
-        // Construct 2D array with v on the k-th diagonal
-        let n = v.shape()[0];
-        let data = v.to_vec();
-
-        let size = if k >= 0 {
-            n + k as usize
-        } else {
-            n + (-k) as usize
-        };
-
-        let mut matrix = vec![T::default(); size * size];
-
-        for (i, val) in data.iter().enumerate() {
+<<<<<<< HEAD
+=======
+        // Construct a 2D array with array on the k-th diagonal
+>>>>>>> origin/main
+        let n = array.shape()[0];
+        let size = n + k.unsigned_abs();
+        let mut data = vec![T::default(); size * size];
+        for i in 0..n {
             let (row, col) = if k >= 0 {
                 (i, i + k as usize)
             } else {
                 (i + (-k) as usize, i)
             };
-            if row < size && col < size {
-                matrix[row * size + col] = val.clone();
-            }
+            data[row * size + col] = array.get_linear(i).cloned().unwrap_or_default();
         }
-
-        Ok(Array::from_shape_vec(vec![size, size], matrix))
+        Ok(Array::from_shape_vec(vec![size, size], data))
     } else if ndim == 2 {
-        // Extract the k-th diagonal from 2D array
-        diagonal(v, k, 0, 1)
+<<<<<<< HEAD
+=======
+        // Extract the k-th diagonal
+>>>>>>> origin/main
+        diagonal(array, k, 0, 1)
     } else {
-        Err(NumPyError::invalid_operation(
-            "diag() requires 1D or 2D array",
-        ))
+        Err(NumPyError::invalid_value("diag requires 1D or 2D array"))
     }
 }
 
-/// Construct an array from an index array and a list of arrays (similar to np.choose).
-///
-/// # Arguments
-/// - `index`: Array of indices (must be same shape as choice arrays)
-/// - `choices`: Slice of arrays to choose from
-/// - `mode`: Mode for handling out-of-bounds indices
-///   - "raise" (default): raise an error
-///   - "wrap": wrap around using modulo
-///   - "clip": clip to the valid range
-///
-/// # Returns
-/// Array constructed from choices at index positions
-pub fn choose<T>(index: &Array<i32>, choices: &[&Array<T>], mode: &str) -> Result<Array<T>>
+/// Return the upper triangle of an array.
+pub fn triu<T>(array: &Array<T>, k: isize) -> Result<Array<T>>
 where
-    T: Clone + Default + 'static,
+    T: Clone + Default + Send + Sync + 'static,
 {
-    if choices.is_empty() {
-        return Err(NumPyError::invalid_value("need at least one choice array"));
+    let ndim = array.ndim();
+    let mut result = Array::from_data(array.to_vec(), array.shape().to_vec());
+    let shape = array.shape();
+    let rows = shape[ndim - 2];
+    let cols = shape[ndim - 1];
+    let outer_size: usize = shape[..ndim - 2].iter().product();
+
+    for i in 0..outer_size {
+        for r in 0..rows {
+            for c in 0..cols {
+                if (c as isize) < (r as isize) + k {
+                    let idx = (i * rows + r) * cols + c;
+                    result.set(idx, T::default())?;
+                }
+            }
+        }
     }
+    Ok(result)
+}
 
-    let n_choices = choices.len();
+/// Return the lower triangle of an array.
+pub fn tril<T>(array: &Array<T>, k: isize) -> Result<Array<T>>
+where
+    T: Clone + Default + Send + Sync + 'static,
+{
+    let ndim = array.ndim();
+    let mut result = Array::from_data(array.to_vec(), array.shape().to_vec());
+    let shape = array.shape();
+    let rows = shape[ndim - 2];
+    let cols = shape[ndim - 1];
+    let outer_size: usize = shape[..ndim - 2].iter().product();
 
-    if !matches!(mode, "raise" | "wrap" | "clip") {
-        return Err(NumPyError::invalid_operation(
-            "choose() mode must be 'raise', 'wrap', or 'clip'",
+    for i in 0..outer_size {
+        for r in 0..rows {
+            for c in 0..cols {
+                if (c as isize) > (r as isize) + k {
+                    let idx = (i * rows + r) * cols + c;
+                    result.set(idx, T::default())?;
+                }
+            }
+        }
+    }
+    Ok(result)
+}
+
+/// Stack 1-D arrays as columns into a 2-D array.
+<<<<<<< HEAD
+=======
+///
+/// Takes a sequence of 1-D arrays and stacks them as columns to make a single 2-D array.
+/// 2-D arrays are stacked as-is, just like with hstack.
+>>>>>>> origin/main
+pub fn column_stack<T>(arrays: &[&Array<T>]) -> Result<Array<T>>
+where
+    T: Clone + Default + Send + Sync + 'static,
+{
+    if arrays.is_empty() {
+        return Err(NumPyError::invalid_value(
+            "column_stack: must provide at least one array",
         ));
     }
 
-    let index_data = index.to_vec();
-    let mut result = Vec::with_capacity(index_data.len());
-
-    for (pos, &idx) in index_data.iter().enumerate() {
-        // First, compute the adjusted choice index based on mode
-        let choice_idx = if idx < 0 {
-            match mode {
-                "raise" => return Err(NumPyError::index_error((-idx) as usize, n_choices)),
-                "wrap" => {
-                    let mut i = idx % n_choices as i32;
-                    if i < 0 {
-                        i += n_choices as i32;
-                    }
-                    i as usize
-                }
-                "clip" => 0,
-                _ => unreachable!(),
-            }
-        } else if (idx as usize) >= n_choices {
-            match mode {
-                "raise" => return Err(NumPyError::index_error(idx as usize, n_choices)),
-                "wrap" => idx as usize % n_choices,
-                "clip" => n_choices - 1,
-                _ => unreachable!(),
-            }
+    let mut promoted = Vec::new();
+    for arr in arrays {
+        if arr.ndim() == 1 {
+<<<<<<< HEAD
+=======
+            // Reshape 1-D to (n, 1)
+>>>>>>> origin/main
+            let n = arr.shape()[0];
+            promoted.push(arr.reshape(&[n, 1])?);
         } else {
-            idx as usize
-        };
-
-        // Now determine the element index
-        let choice_array = choices[choice_idx];
-        let choice_data = choice_array.to_vec();
-        let element_idx = if mode == "wrap" || mode == "clip" {
-            // For wrap/clip modes, use the (wrapped) index value for element selection
-            let idx_for_element = if mode == "wrap" {
-                // Apply same wrap logic to index for element selection
-                let mut i = idx % choice_data.len() as i32;
-                if i < 0 {
-                    i += choice_data.len() as i32;
-                }
-                i as usize
-            } else {
-                // Clip mode: clamp to array bounds
-                if idx < 0 {
-                    0
-                } else {
-                    (idx as usize).min(choice_data.len().saturating_sub(1))
-                }
-            };
-            idx_for_element
-        } else {
-            // For raise mode, use the position in the index array
-            pos % choice_data.len().max(1)
-        };
-        result.push(choice_data[element_idx].clone());
+            promoted.push((*arr).clone());
+        }
     }
-
-    Ok(Array::from_shape_vec(index.shape().to_vec(), result))
+    let refs: Vec<&Array<T>> = promoted.iter().collect();
+    hstack(&refs)
 }
 
-/// Return selected slices of an array along given axis (similar to np.compress).
+/// Stack arrays in sequence vertically (row wise).
+<<<<<<< HEAD
+=======
 ///
-/// # Arguments
-/// - `condition`: Boolean or integer array used to select elements
-/// - `array`: Input array
-/// - `axis`: Axis along which to select (None for flattened selection)
-///
-/// # Returns
-/// Array with selected elements
-pub fn compress<T>(
-    condition: &Array<bool>,
-    array: &Array<T>,
-    axis: Option<isize>,
-) -> Result<Array<T>>
+/// This is equivalent to concatenation along the first axis.
+/// row_stack is an alias for vstack.
+>>>>>>> origin/main
+pub fn row_stack<T>(arrays: &[&Array<T>]) -> Result<Array<T>>
 where
-    T: Clone + Default + 'static,
+    T: Clone + Default + Send + Sync + 'static,
 {
-    let cond_data = condition.to_vec();
-    let arr_data = array.to_vec();
+    vstack(arrays)
+}
 
-    if let Some(ax) = axis {
-        let ndim = array.ndim();
-        if ndim == 0 {
-            return Ok(array.clone());
-        }
+/// Assemble an nd-array from nested sequences of blocks.
+<<<<<<< HEAD
+=======
+///
+/// Blocks in the innermost lists are concatenated along the last axis (-1),
+/// then these are concatenated along the second-last axis (-2), etc.
+>>>>>>> origin/main
+pub fn block<T>(arrays: &[&[&Array<T>]]) -> Result<Array<T>>
+where
+    T: Clone + Default + Send + Sync + 'static,
+{
+    if arrays.is_empty() {
+        return Err(NumPyError::invalid_value(
+            "block: must provide at least one row of arrays",
+        ));
+    }
 
-        let ax = if ax < 0 { ndim as isize + ax } else { ax } as usize;
-
-        if ax >= ndim {
-            return Err(NumPyError::index_error(ax, ndim));
-        }
-
-        // For 2D arrays with axis selection
-        if ndim == 2 {
-            let axis_len = array.shape()[ax];
-            if cond_data.len() != axis_len {
-                return Err(NumPyError::shape_mismatch(
-                    vec![cond_data.len()],
-                    vec![axis_len],
-                ));
-            }
-
-            let rows = array.shape()[0];
-            let cols = array.shape()[1];
-
-            if ax == 0 {
-                // Select rows
-                let mut result = Vec::new();
-                for (i, &keep) in cond_data.iter().enumerate() {
-                    if keep && i < rows {
-                        for j in 0..cols {
-                            result.push(arr_data[i * cols + j].clone());
-                        }
-                    }
-                }
-                let kept_count = cond_data.iter().filter(|&&x| x).count();
-                return Ok(Array::from_shape_vec(vec![kept_count, cols], result));
-            } else {
-                // Select columns
-                let mut result = Vec::new();
-                for i in 0..rows {
-                    for (j, &keep) in cond_data.iter().enumerate() {
-                        if keep && j < cols {
-                            result.push(arr_data[i * cols + j].clone());
-                        }
-                    }
-                }
-                let kept_count = cond_data.iter().filter(|&&x| x).count();
-                return Ok(Array::from_shape_vec(vec![rows, kept_count], result));
-            }
-        }
-
-        // For higher dimensions, flatten and use condition
-        let mut result = Vec::new();
-        for (i, val) in arr_data.iter().enumerate() {
-            if cond_data.get(i % cond_data.len()).copied().unwrap_or(false) {
-                result.push(val.clone());
-            }
-        }
-        return Ok(Array::from_vec(result));
-    } else {
-        // No axis specified - flatten and select
-        if cond_data.len() != arr_data.len() {
-            return Err(NumPyError::shape_mismatch(
-                vec![cond_data.len()],
-                vec![arr_data.len()],
+<<<<<<< HEAD
+=======
+    // First, concatenate each row along axis 1 (horizontally)
+>>>>>>> origin/main
+    let mut rows = Vec::new();
+    for row in arrays {
+        if row.is_empty() {
+            return Err(NumPyError::invalid_value(
+                "block: each row must have at least one array",
             ));
         }
+        let row_result = hstack(row)?;
+        rows.push(row_result);
+    }
 
-        let mut result = Vec::new();
-        for (&cond, val) in cond_data.iter().zip(arr_data.iter()) {
-            if cond {
-                result.push(val.clone());
+<<<<<<< HEAD
+=======
+    // Then concatenate all rows along axis 0 (vertically)
+>>>>>>> origin/main
+    let refs: Vec<&Array<T>> = rows.iter().collect();
+    vstack(&refs)
+}
+
+/// Replaces specified elements of an array with given values.
+<<<<<<< HEAD
+=======
+///
+/// The indexing works on the flattened target array.
+>>>>>>> origin/main
+pub fn put<T>(array: &mut Array<T>, indices: &[usize], values: &[T], mode: &str) -> Result<()>
+where
+    T: Clone + Default + Send + Sync + 'static,
+{
+    let size = array.size();
+    for (i, &idx) in indices.iter().enumerate() {
+        let actual_idx = match mode {
+            "raise" => {
+                if idx >= size {
+                    return Err(NumPyError::index_error(idx, size));
+                }
+                idx
+            }
+            "wrap" => idx % size,
+            "clip" => idx.min(size - 1),
+            _ => {
+                return Err(NumPyError::invalid_value(
+                    "mode must be 'raise', 'wrap', or 'clip'",
+                ))
+            }
+        };
+        let val = &values[i % values.len()];
+        array.set_linear(actual_idx, val.clone());
+    }
+    Ok(())
+}
+
+/// Change elements of an array based on conditional and input values.
+<<<<<<< HEAD
+=======
+///
+/// Sets a.flat[n] = values[n] for each n where mask.flat[n]==True.
+>>>>>>> origin/main
+pub fn putmask<T>(array: &mut Array<T>, mask: &Array<bool>, values: &Array<T>) -> Result<()>
+where
+    T: Clone + Default + Send + Sync + 'static,
+{
+    if array.shape() != mask.shape() {
+        return Err(NumPyError::shape_mismatch(
+            array.shape().to_vec(),
+            mask.shape().to_vec(),
+        ));
+    }
+
+    let mut val_idx = 0;
+    let values_size = values.size();
+    for i in 0..array.size() {
+        if let Some(&m) = mask.get_linear(i) {
+            if m {
+                if let Some(v) = values.get_linear(val_idx % values_size) {
+                    array.set_linear(i, v.clone());
+                }
+                val_idx += 1;
             }
         }
+    }
+    Ok(())
+}
 
-        Ok(Array::from_vec(result))
+/// Change elements of an array based on conditional and input values.
+<<<<<<< HEAD
+=======
+///
+/// Similar to np.putmask, but the indexing is different.
+>>>>>>> origin/main
+pub fn place<T>(array: &mut Array<T>, mask: &Array<bool>, values: &[T]) -> Result<()>
+where
+    T: Clone + Default + Send + Sync + 'static,
+{
+    if array.shape() != mask.shape() {
+        return Err(NumPyError::shape_mismatch(
+            array.shape().to_vec(),
+            mask.shape().to_vec(),
+        ));
+    }
+
+    let mut val_idx = 0;
+    for i in 0..array.size() {
+        if let Some(&m) = mask.get_linear(i) {
+            if m {
+                array.set_linear(i, values[val_idx % values.len()].clone());
+                val_idx += 1;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Put values into the destination array by matching 1d index and data slices.
+<<<<<<< HEAD
+=======
+///
+/// This iterates over matching 1d slices oriented along the specified axis in the index
+/// and data arrays, and uses the former to place values into the latter.
+>>>>>>> origin/main
+pub fn put_along_axis<T>(
+    array: &mut Array<T>,
+    indices: &Array<usize>,
+    values: &Array<T>,
+    axis: isize,
+) -> Result<()>
+where
+    T: Clone + Default + Send + Sync + 'static,
+{
+    let ndim = array.ndim();
+    let axis = normalize_axis(axis, ndim)?;
+<<<<<<< HEAD
+    let shape = array.shape().to_vec();
+
+=======
+    let shape = array.shape().to_vec(); // Clone to owned to avoid borrow issues
+
+    // Indices and values must have the same shape
+>>>>>>> origin/main
+    if indices.shape() != values.shape() {
+        return Err(NumPyError::shape_mismatch(
+            indices.shape().to_vec(),
+            values.shape().to_vec(),
+        ));
+    }
+
+<<<<<<< HEAD
+    for i in 0..indices.size() {
+        let mut idx = crate::strides::compute_multi_indices(i, indices.shape());
+=======
+    // Iterate over all positions in the indices/values array
+    for i in 0..indices.size() {
+        // Compute multi-index from linear index
+        let mut idx = crate::strides::compute_multi_indices(i, indices.shape());
+
+        // Get the index value along the axis
+>>>>>>> origin/main
+        let axis_idx = *indices
+            .get_linear(i)
+            .ok_or_else(|| NumPyError::index_error(i, indices.size()))?;
+
+        if axis_idx >= shape[axis] {
+            return Err(NumPyError::index_error(axis_idx, shape[axis]));
+        }
+
+<<<<<<< HEAD
+        idx[axis] = axis_idx;
+        let val = values.get_linear(i).cloned().unwrap_or_default();
+=======
+        // Replace the axis dimension with the actual index value
+        idx[axis] = axis_idx;
+
+        // Get the value to place
+        let val = values.get_linear(i).cloned().unwrap_or_default();
+
+        // Set the value in the target array
+>>>>>>> origin/main
+        array.set_multi(&idx, val)?;
+    }
+    Ok(())
+}
+
+/// Generate a Vandermonde matrix.
+<<<<<<< HEAD
+=======
+///
+/// The columns of the output matrix are powers of the input vector. The order
+/// of the powers is determined by the `increasing` parameter.
+>>>>>>> origin/main
+pub fn vander<T>(x: &Array<T>, n: Option<usize>, increasing: bool) -> Result<Array<T>>
+where
+    T: Clone + Default + num_traits::Num + num_traits::Pow<u32, Output = T> + Send + Sync + 'static,
+{
+    if x.ndim() != 1 {
+        return Err(NumPyError::invalid_value("vander requires 1D array"));
+    }
+
+    let m = x.shape()[0];
+    let n_val = n.unwrap_or(m);
+    let mut data = vec![T::default(); m * n_val];
+
+    for i in 0..m {
+        let val = x.get_linear(i).cloned().unwrap_or_default();
+        for j in 0..n_val {
+            let power = if increasing {
+                j as u32
+            } else {
+                (n_val - 1 - j) as u32
+            };
+            data[i * n_val + j] = val.clone().pow(power);
+        }
+    }
+
+    Ok(Array::from_shape_vec(vec![m, n_val], data))
+}
+
+pub mod exports {
+    pub use super::{
+        array_split, block, column_stack, concatenate, diag, diagonal, dsplit, dstack, hsplit,
+        hstack, place, put, put_along_axis, putmask, row_stack, split, stack, tril, triu, vander,
+        vsplit, vstack,
+    };
+}
+
+fn normalize_axis(axis: isize, ndim: usize) -> Result<usize> {
+    if axis < 0 {
+        let ax = axis + ndim as isize;
+        if ax < 0 {
+            return Err(NumPyError::invalid_value("axis out of bounds"));
+        }
+        Ok(ax as usize)
+    } else {
+        if axis as usize >= ndim {
+            return Err(NumPyError::invalid_value("axis out of bounds"));
+        }
+        Ok(axis as usize)
+<<<<<<< HEAD
+=======
+    }
+}
+
+#[cfg(test)]
+mod extra_tests {
+    use super::*;
+
+    #[test]
+    fn test_triu_basic() {
+        let arr = Array::from_shape_vec(vec![3, 3], vec![1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        let result = triu(&arr, 0).unwrap();
+        assert_eq!(result.data(), &[1, 2, 3, 0, 5, 6, 0, 0, 9]);
+        // Verify original is untouched
+        assert_eq!(arr.data(), &[1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    }
+
+    #[test]
+    fn test_triu_offset() {
+        let arr = Array::from_shape_vec(vec![3, 3], vec![1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        // k = 1: zero out main diagonal and below
+        let result = triu(&arr, 1).unwrap();
+        assert_eq!(result.data(), &[0, 2, 3, 0, 0, 6, 0, 0, 0]);
+
+        // k = -1: keep one below main diagonal
+        let result_neg = triu(&arr, -1).unwrap();
+        assert_eq!(result_neg.data(), &[1, 2, 3, 4, 5, 6, 0, 8, 9]);
+    }
+
+    #[test]
+    fn test_tril_basic() {
+        let arr = Array::from_shape_vec(vec![3, 3], vec![1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        let result = tril(&arr, 0).unwrap();
+        assert_eq!(result.data(), &[1, 0, 0, 4, 5, 0, 7, 8, 9]);
+        // Verify original is untouched
+        assert_eq!(arr.data(), &[1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    }
+
+    #[test]
+    fn test_tril_offset() {
+        let arr = Array::from_shape_vec(vec![3, 3], vec![1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        // k = -1: below main diagonal
+        let result = tril(&arr, -1).unwrap();
+        assert_eq!(result.data(), &[0, 0, 0, 4, 0, 0, 7, 8, 0]);
+
+        // k = 1: keep one above main diagonal
+        let result_pos = tril(&arr, 1).unwrap();
+        assert_eq!(result_pos.data(), &[1, 2, 0, 4, 5, 6, 7, 8, 9]);
+    }
+
+    #[test]
+    fn test_tri_nd() {
+        let arr = Array::from_shape_vec(vec![2, 2, 2], vec![1, 2, 3, 4, 5, 6, 7, 8]);
+        let result = triu(&arr, 0).unwrap();
+        // Each 2x2 matrix should be triu
+        assert_eq!(result.data(), &[1, 2, 0, 4, 5, 6, 0, 8]);
+>>>>>>> origin/main
     }
 }

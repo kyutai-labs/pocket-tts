@@ -106,9 +106,7 @@ impl<T> Array<T> {
     pub fn iter(&self) -> crate::iterator::ArrayIter<'_, T> {
         crate::iterator::ArrayIter::new(self)
     }
-    ///
-    /// Note: Returns a Vec by copying the array data.
-    /// For non-consuming access, use as_slice() instead to avoid allocation.
+
     pub fn to_vec(&self) -> Vec<T>
     where
         T: Clone,
@@ -222,8 +220,6 @@ impl<T> Array<T> {
         let (rows, cols) = (self.shape()[0], self.shape()[1]);
         let data = self.data.as_ref().as_vec();
 
-        // Create ndarray2 with proper shape
-
         let array2 = ndarray::Array2::from_shape_vec((rows, cols), data.to_vec())
             .map_err(|e| NumPyError::invalid_operation(e.to_string()))?;
 
@@ -236,15 +232,14 @@ impl<T> Array<T> {
         T: Clone,
     {
         if self.ndim() != 2 {
-            // For higher dimensions, just return clone (proper transpose requires more work)
             return self.clone();
         }
 
         let (rows, cols) = (self.shape()[0], self.shape()[1]);
         let mut transposed_data = Vec::with_capacity(self.size());
 
-        for i in 0..rows {
-            for j in 0..cols {
+        for j in 0..cols {
+            for i in 0..rows {
                 transposed_data.push(self.get_linear(i * cols + j).unwrap().clone());
             }
         }
@@ -263,14 +258,11 @@ impl<T> Array<T> {
     }
 
     /// Transpose array view (non-consuming, shares data)
-    /// For 2D arrays, returns a view with swapped axes
-    /// For higher dimensions, reverses the axes
     pub fn transpose_view(&self, _axes: Option<&[usize]>) -> Result<Self, NumPyError>
     where
         T: Clone,
     {
         if self.ndim() != 2 {
-            // For higher dimensions, reverse axes
             let new_shape: Vec<usize> = self.shape.iter().rev().cloned().collect();
             let new_strides: Vec<isize> = self.strides.iter().rev().cloned().collect();
             return Ok(Self {
@@ -282,7 +274,6 @@ impl<T> Array<T> {
             });
         }
 
-        // For 2D arrays, swap the two axes
         let new_shape = vec![self.shape[1], self.shape[0]];
         let new_strides = vec![self.strides[1], self.strides[0]];
 
@@ -390,7 +381,6 @@ impl<T> Array<T> {
     {
         match axis {
             None => {
-                // Flat indexing
                 let mut data = Vec::with_capacity(indices.size());
                 for &idx in indices.iter() {
                     if let Some(val) = self.get_linear(idx) {
@@ -461,28 +451,23 @@ impl<T> Array<T> {
             )));
         }
 
-        // 1. Determine broadcasted shape of index arrays
         let mut broadcast_shape = indices[0].shape().to_vec();
         for idx in indices.iter().skip(1) {
             broadcast_shape =
                 crate::broadcasting::compute_broadcast_shape(&broadcast_shape, idx.shape());
         }
 
-        // 2. Broadcast all index arrays to the common shape
         let mut broadcasted_indices = Vec::with_capacity(indices.len());
         for idx in indices {
             broadcasted_indices.push(idx.broadcast_to(&broadcast_shape)?);
         }
 
-        // 3. Create result array
         let total_elements = broadcast_shape.iter().product();
         let mut result_data = Vec::with_capacity(total_elements);
 
-        // 4. Iterate over indices and extract data
         for i in 0..total_elements {
             let mut coords = vec![0; self.ndim()];
 
-            // For indices that were provided
             for (dim, b_idx) in broadcasted_indices.iter().enumerate() {
                 let idx_val = *b_idx
                     .get_linear(i)
@@ -493,13 +478,6 @@ impl<T> Array<T> {
                 }
                 coords[dim] = idx_val;
             }
-
-            // For dimensions not covered by fancy indexing, this basic implementation
-            // assumes all dimensions are indexed. If fewer indices are provided,
-            // NumPy's behavior is more complex (mixing fancy and basic indexing).
-            // For Phase 3.7, we'll implement the "pure" fancy indexing where all
-            // indices are provided or the remaining are treated as full slices if needed.
-            // BUT, usually fancy indexing replaces the dimensions it covers.
 
             if indices.len() < self.ndim() {
                 return Err(NumPyError::not_implemented(
@@ -650,13 +628,11 @@ pub fn compute_strides(shape: &[usize]) -> Vec<isize> {
     let mut strides = Vec::with_capacity(shape.len());
     let mut stride = 1;
 
-    // Compute strides in reverse order
     for &dim in shape.iter().rev() {
         strides.push(stride as isize);
         stride *= dim;
     }
 
-    // Reverse to get correct order
     strides.reverse();
     strides
 }

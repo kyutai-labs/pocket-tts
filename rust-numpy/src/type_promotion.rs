@@ -25,10 +25,14 @@ pub fn promote_types(t1: &Dtype, t2: &Dtype) -> Option<Dtype> {
     let score = |k: &DtypeKind| match k {
         Bool => 0,
         Integer => 1,
-        Unsigned => 1, // Treat signed/unsigned roughly same level, handled specifically
+        Unsigned => 1, // Same level, handled specifically
         Float => 2,
         Complex => 3,
-        _ => 4, // Other types usually don't mix or strictly equal
+        Datetime => 4,
+        String => 5,
+        Bytes => 6,
+        Object => 10,
+        _ => 20,
     };
 
     let s1 = score(&k1);
@@ -62,6 +66,7 @@ pub fn promote_types(t1: &Dtype, t2: &Dtype) -> Option<Dtype> {
         (Unsigned, Integer) => promote_mixed_int(t2, t1), // swap
         (Float, Float) => promote_float(t1, t2),
         (Complex, Complex) => promote_complex(t1, t2),
+        (Datetime, Datetime) => promote_datetime(t1, t2),
         (String, String) => {
             // Pick larger length
             let l1 = match t1 {
@@ -181,6 +186,40 @@ fn promote_complex(t1: &Dtype, t2: &Dtype) -> Option<Dtype> {
     }
 }
 
+/// Promote types specifically for division operations.
+///
+/// NumPy's `true_divide` (/) always promotes to at least float64 (or float32).
+pub fn promote_types_division(t1: &Dtype, t2: &Dtype) -> Option<Dtype> {
+    let base = promote_types(t1, t2)?;
+    match base.kind() {
+        DtypeKind::Integer | DtypeKind::Unsigned | DtypeKind::Bool => {
+            Some(Dtype::Float64 { byteorder: None })
+        }
+        _ => Some(base),
+    }
+}
+
+/// Promote types for bitwise operations.
+///
+/// Only valid for integer and boolean types.
+pub fn promote_types_bitwise(t1: &Dtype, t2: &Dtype) -> Option<Dtype> {
+    use DtypeKind::*;
+    match (t1.kind(), t2.kind()) {
+        (Integer | Unsigned | Bool, Integer | Unsigned | Bool) => promote_types(t1, t2),
+        _ => None,
+    }
+}
+
+fn promote_datetime(t1: &Dtype, t2: &Dtype) -> Option<Dtype> {
+    // For datetime/timedelta, NumPy usually takes the finer unit or errors if incompatible
+    // For simplicity, we'll return the first one if they match, or error for now
+    if t1 == t2 {
+        Some(t1.clone())
+    } else {
+        None
+    }
+}
+
 fn size_to_signed(size: usize) -> Option<Dtype> {
     match size {
         1 => Some(Dtype::Int8 { byteorder: None }),
@@ -188,5 +227,15 @@ fn size_to_signed(size: usize) -> Option<Dtype> {
         4 => Some(Dtype::Int32 { byteorder: None }),
         8 => Some(Dtype::Int64 { byteorder: None }),
         _ => Some(Dtype::Float64 { byteorder: None }), // Fallback
+    }
+}
+
+fn size_to_unsigned(size: usize) -> Option<Dtype> {
+    match size {
+        1 => Some(Dtype::UInt8 { byteorder: None }),
+        2 => Some(Dtype::UInt16 { byteorder: None }),
+        4 => Some(Dtype::UInt32 { byteorder: None }),
+        8 => Some(Dtype::UInt64 { byteorder: None }),
+        _ => None,
     }
 }

@@ -17,7 +17,7 @@ use crate::array::Array;
 use crate::broadcasting::{broadcast_arrays, compute_broadcast_shape};
 use crate::dtype::DtypeKind;
 use crate::error::{NumPyError, Result};
-use crate::ufunc::{get_ufunc, Ufunc};
+use crate::ufunc::{get_ufunc, get_ufunc_typed, Ufunc};
 use num_traits::{FloatConst, Zero};
 use std::f64::consts;
 use std::marker::PhantomData;
@@ -131,6 +131,7 @@ where
         &self,
         inputs: &[&dyn crate::ufunc::ArrayView],
         outputs: &mut [&mut dyn crate::ufunc::ArrayViewMut],
+        where_mask: Option<&Array<bool>>,
     ) -> Result<()> {
         if inputs.len() != 1 || outputs.len() != 1 {
             return Err(NumPyError::ufunc_error(
@@ -143,13 +144,31 @@ where
             ));
         }
 
-        let input = unsafe { &*(inputs[0] as *const _ as *const Array<T>) };
-        let output = unsafe { &mut *(outputs[0] as *mut _ as *mut Array<T>) };
+        let input = inputs[0]
+            .as_any()
+            .downcast_ref::<Array<T>>()
+            .ok_or_else(|| NumPyError::invalid_operation("Failed to downcast input array"))?;
+        let output = outputs[0]
+            .as_any_mut()
+            .downcast_mut::<Array<T>>()
+            .ok_or_else(|| NumPyError::invalid_operation("Failed to downcast output array"))?;
+
+        // Handle where_mask
+        let mask = if let Some(m) = where_mask {
+            Some(crate::broadcasting::broadcast_to(m, output.shape())?)
+        } else {
+            None
+        };
 
         for i in 0..input.size() {
-            if let Some(a) = input.get(i) {
-                let result = (self.operation)(a);
-                output.set(i, result)?;
+            if mask
+                .as_ref()
+                .map_or(true, |m| *m.get_linear(i).unwrap_or(&false))
+            {
+                if let Some(a) = input.get(i) {
+                    let result = (self.operation)(a);
+                    output.set(i, result)?;
+                }
             }
         }
 
@@ -222,6 +241,7 @@ where
         &self,
         inputs: &[&dyn crate::ufunc::ArrayView],
         outputs: &mut [&mut dyn crate::ufunc::ArrayViewMut],
+        where_mask: Option<&Array<bool>>,
     ) -> Result<()> {
         if inputs.len() != 2 || outputs.len() != 1 {
             return Err(NumPyError::ufunc_error(
@@ -238,19 +258,26 @@ where
         let input1 = unsafe { &*(inputs[1] as *const _ as *const Array<T>) };
         let output = unsafe { &mut *(outputs[0] as *mut _ as *mut Array<T>) };
 
-        let shape0 = input0.shape();
-        let shape1 = input1.shape();
-        let broadcast_shape = compute_broadcast_shape(shape0, shape1);
+        // Handle where_mask
+        let mask = if let Some(m) = where_mask {
+            Some(crate::broadcasting::broadcast_to(m, output.shape())?)
+        } else {
+            None
+        };
 
         let broadcasted = broadcast_arrays(&[input0, input1])?;
-
         let arr0 = &broadcasted[0];
         let arr1 = &broadcasted[1];
 
-        for i in 0..broadcast_shape.iter().product::<usize>() {
-            if let (Some(a), Some(b)) = (arr0.get(i), arr1.get(i)) {
-                let result = (self.operation)(a, b);
-                output.set(i, result)?;
+        for i in 0..output.size() {
+            if mask
+                .as_ref()
+                .map_or(true, |m| *m.get_linear(i).unwrap_or(&false))
+            {
+                if let (Some(a), Some(b)) = (arr0.get(i), arr1.get(i)) {
+                    let result = (self.operation)(a, b);
+                    output.set(i, result)?;
+                }
             }
         }
 
@@ -320,6 +347,7 @@ where
         &self,
         inputs: &[&dyn crate::ufunc::ArrayView],
         outputs: &mut [&mut dyn crate::ufunc::ArrayViewMut],
+        where_mask: Option<&Array<bool>>,
     ) -> Result<()> {
         if inputs.len() != 1 || outputs.len() != 1 {
             return Err(NumPyError::ufunc_error(
@@ -332,13 +360,31 @@ where
             ));
         }
 
-        let input = unsafe { &*(inputs[0] as *const _ as *const Array<T>) };
-        let output = unsafe { &mut *(outputs[0] as *mut _ as *mut Array<T>) };
+        let input = inputs[0]
+            .as_any()
+            .downcast_ref::<Array<T>>()
+            .ok_or_else(|| NumPyError::invalid_operation("Failed to downcast input array"))?;
+        let output = outputs[0]
+            .as_any_mut()
+            .downcast_mut::<Array<T>>()
+            .ok_or_else(|| NumPyError::invalid_operation("Failed to downcast output array"))?;
+
+        // Handle where_mask
+        let mask = if let Some(m) = where_mask {
+            Some(crate::broadcasting::broadcast_to(m, output.shape())?)
+        } else {
+            None
+        };
 
         for i in 0..input.size() {
-            if let Some(a) = input.get(i) {
-                let result = (self.operation)(a)?;
-                output.set(i, result)?;
+            if mask
+                .as_ref()
+                .map_or(true, |m| *m.get_linear(i).unwrap_or(&false))
+            {
+                if let Some(a) = input.get(i) {
+                    let result = (self.operation)(a)?;
+                    output.set(i, result)?;
+                }
             }
         }
 
@@ -544,7 +590,7 @@ macro_rules! impl_trig_ops_complex {
                 }
 
                 fn arcsin(&self) -> Result<$t> {
-                    Ok((-<$t>::i() * (<$t>::i() * self + (1.0 - self * self).sqrt()).ln()))
+                    Ok(-<$t>::i() * (<$t>::i() * self + (1.0 - self * self).sqrt()).ln())
                 }
 
                 fn arccos(&self) -> Result<$t> {
@@ -728,7 +774,7 @@ where
 
     if let Some(ufunc) = get_ufunc("sin") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -745,7 +791,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("sin") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -789,7 +835,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("cos") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -806,7 +852,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("cos") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -823,7 +869,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("tan") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -840,7 +886,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("arcsin") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -857,7 +903,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("arccos") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -874,7 +920,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("arctan") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -895,7 +941,7 @@ where
             vec![T::default(); broadcast_shape.iter().product::<usize>()],
             broadcast_shape,
         );
-        ufunc.execute(&[x1, x2], &mut [&mut output])?;
+        ufunc.execute(&[x1, x2], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -916,7 +962,7 @@ where
             vec![T::default(); broadcast_shape.iter().product::<usize>()],
             broadcast_shape,
         );
-        ufunc.execute(&[x1, x2], &mut [&mut output])?;
+        ufunc.execute(&[x1, x2], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -933,7 +979,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("degrees") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -950,7 +996,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("radians") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -969,7 +1015,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("sinh") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -986,7 +1032,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("cosh") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -1003,7 +1049,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("tanh") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -1020,7 +1066,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("arcsinh") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -1037,7 +1083,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("arccosh") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -1054,7 +1100,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("arctanh") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -1100,7 +1146,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("exp") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -1117,7 +1163,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("exp") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -1134,7 +1180,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("exp2") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -1151,7 +1197,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("expm1") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -1195,7 +1241,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("log") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -1212,7 +1258,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("log") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -1229,7 +1275,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("log2") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -1246,7 +1292,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("log10") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -1263,7 +1309,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("log1p") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -1284,7 +1330,7 @@ where
             vec![T::default(); broadcast_shape.iter().product::<usize>()],
             broadcast_shape,
         );
-        ufunc.execute(&[x1, x2], &mut [&mut output])?;
+        ufunc.execute(&[x1, x2], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -1305,7 +1351,7 @@ where
             vec![T::default(); broadcast_shape.iter().product::<usize>()],
             broadcast_shape,
         );
-        ufunc.execute(&[x1, x2], &mut [&mut output])?;
+        ufunc.execute(&[x1, x2], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -1349,7 +1395,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("rint") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -1366,7 +1412,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("floor") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -1383,7 +1429,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("ceil") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -1400,7 +1446,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("trunc") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -1417,7 +1463,7 @@ where
 {
     if let Some(ufunc) = get_ufunc("fix") {
         let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
-        ufunc.execute(&[x], &mut [&mut output])?;
+        ufunc.execute(&[x], &mut [&mut output], None)?;
         Ok(output)
     } else {
         Err(NumPyError::ufunc_error(
@@ -1425,6 +1471,334 @@ where
             "Ufunc not found".to_string(),
         ))
     }
+}
+
+// Floating-point checking functions
+
+/// Floating-point checking ufunc that returns boolean array
+pub struct FloatCheckUfunc<T, F>
+where
+    T: Clone + 'static,
+    F: Fn(&T) -> bool + Send + Sync,
+{
+    name: &'static str,
+    operation: F,
+    phantom: PhantomData<T>,
+}
+
+impl<T, F> FloatCheckUfunc<T, F>
+where
+    T: Clone + 'static,
+    F: Fn(&T) -> bool + Send + Sync,
+{
+    pub fn new(name: &'static str, operation: F) -> Self {
+        Self {
+            name,
+            operation,
+            phantom: PhantomData,
+        }
+    }
+}
+
+impl<T, F> Ufunc for FloatCheckUfunc<T, F>
+where
+    T: Clone + 'static + Send + Sync,
+    F: Fn(&T) -> bool + Send + Sync,
+{
+    fn name(&self) -> &'static str {
+        self.name
+    }
+
+    fn nin(&self) -> usize {
+        1
+    }
+
+    fn nout(&self) -> usize {
+        1
+    }
+
+    fn supported_dtypes(&self) -> &[DtypeKind] {
+        &[DtypeKind::Float, DtypeKind::Complex]
+    }
+
+    fn type_signature(&self) -> String {
+        format!("{}({})", self.name, std::any::type_name::<T>())
+    }
+
+    fn matches_concrete_types(&self, input_types: &[&'static str]) -> bool {
+        input_types.len() == 1 && input_types[0] == std::any::type_name::<T>()
+    }
+
+    fn input_dtypes(&self) -> Vec<crate::dtype::Dtype> {
+        vec![crate::dtype::Dtype::from_type::<T>()]
+    }
+
+    fn execute(
+        &self,
+        inputs: &[&dyn crate::ufunc::ArrayView],
+        outputs: &mut [&mut dyn crate::ufunc::ArrayViewMut],
+        _where_mask: Option<&Array<bool>>,
+    ) -> Result<()> {
+        if inputs.len() != 1 || outputs.len() != 1 {
+            return Err(NumPyError::ufunc_error(
+                self.name(),
+                format!(
+                    "Expected 1 input, 1 output, got {} inputs, {} outputs",
+                    inputs.len(),
+                    outputs.len()
+                ),
+            ));
+        }
+
+        let input = unsafe { &*(inputs[0] as *const _ as *const Array<T>) };
+        let output = unsafe { &mut *(outputs[0] as *mut _ as *mut Array<bool>) };
+
+        for i in 0..input.size() {
+            if let Some(a) = input.get(i) {
+                let result = (self.operation)(a);
+                output.set(i, result)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// Test element-wise for NaN and return result as a boolean array
+pub fn isnan<T>(x: &Array<T>) -> Result<Array<bool>>
+where
+    T: Clone + 'static + Send + Sync,
+{
+    if let Some(ufunc) = get_ufunc_typed::<T>("isnan") {
+        let mut output = Array::from_data(vec![false; x.size()], x.shape().to_vec());
+        let x_ref: &dyn crate::ufunc::ArrayView = x;
+        let out_ref: &mut dyn crate::ufunc::ArrayViewMut = &mut output;
+        ufunc.execute(&[x_ref], &mut [out_ref], None)?;
+        Ok(output)
+    } else {
+        Err(NumPyError::ufunc_error(
+            "isnan",
+            "Ufunc not found".to_string(),
+        ))
+    }
+}
+
+/// Test element-wise for positive or negative infinity and return result as a boolean array
+pub fn isinf<T>(x: &Array<T>) -> Result<Array<bool>>
+where
+    T: Clone + 'static + Send + Sync,
+{
+    if let Some(ufunc) = get_ufunc_typed::<T>("isinf") {
+        let mut output = Array::from_data(vec![false; x.size()], x.shape().to_vec());
+        let x_ref: &dyn crate::ufunc::ArrayView = x;
+        let out_ref: &mut dyn crate::ufunc::ArrayViewMut = &mut output;
+        ufunc.execute(&[x_ref], &mut [out_ref], None)?;
+        Ok(output)
+    } else {
+        Err(NumPyError::ufunc_error(
+            "isinf",
+            "Ufunc not found".to_string(),
+        ))
+    }
+}
+
+/// Test element-wise for finiteness (not NaN or infinity) and return result as a boolean array
+pub fn isfinite<T>(x: &Array<T>) -> Result<Array<bool>>
+where
+    T: Clone + 'static + Send + Sync,
+{
+    if let Some(ufunc) = get_ufunc_typed::<T>("isfinite") {
+        let mut output = Array::from_data(vec![false; x.size()], x.shape().to_vec());
+        let x_ref: &dyn crate::ufunc::ArrayView = x;
+        let out_ref: &mut dyn crate::ufunc::ArrayViewMut = &mut output;
+        ufunc.execute(&[x_ref], &mut [out_ref], None)?;
+        Ok(output)
+    } else {
+        Err(NumPyError::ufunc_error(
+            "isfinite",
+            "Ufunc not found".to_string(),
+        ))
+    }
+}
+
+/// Test element-wise for negative infinity and return result as a boolean array
+pub fn isneginf<T>(x: &Array<T>) -> Result<Array<bool>>
+where
+    T: Clone + 'static + Send + Sync,
+{
+    if let Some(ufunc) = get_ufunc_typed::<T>("isneginf") {
+        let mut output = Array::from_data(vec![false; x.size()], x.shape().to_vec());
+        let x_ref: &dyn crate::ufunc::ArrayView = x;
+        let out_ref: &mut dyn crate::ufunc::ArrayViewMut = &mut output;
+        ufunc.execute(&[x_ref], &mut [out_ref], None)?;
+        Ok(output)
+    } else {
+        Err(NumPyError::ufunc_error(
+            "isneginf",
+            "Ufunc not found".to_string(),
+        ))
+    }
+}
+
+/// Test element-wise for positive infinity and return result as a boolean array
+pub fn isposinf<T>(x: &Array<T>) -> Result<Array<bool>>
+where
+    T: Clone + 'static + Send + Sync,
+{
+    if let Some(ufunc) = get_ufunc_typed::<T>("isposinf") {
+        let mut output = Array::from_data(vec![false; x.size()], x.shape().to_vec());
+        let x_ref: &dyn crate::ufunc::ArrayView = x;
+        let out_ref: &mut dyn crate::ufunc::ArrayViewMut = &mut output;
+        ufunc.execute(&[x_ref], &mut [out_ref], None)?;
+        Ok(output)
+    } else {
+        Err(NumPyError::ufunc_error(
+            "isposinf",
+            "Ufunc not found".to_string(),
+        ))
+    }
+}
+
+/// Return the phase angle (also called argument) of a complex number
+/// For real input, the result is 0 for positive numbers and pi for negative numbers
+pub fn angle(z: &Array<num_complex::Complex64>) -> Result<Array<f64>> {
+    let mut data = Vec::with_capacity(z.size());
+    for i in 0..z.size() {
+        if let Some(val) = z.get(i) {
+            data.push(val.im.atan2(val.re));
+        }
+    }
+    Ok(Array::from_data(data, z.shape().to_vec()))
+}
+
+/// Return the phase angle for Complex32 arrays
+pub fn angle32(z: &Array<num_complex::Complex32>) -> Result<Array<f32>> {
+    let mut data = Vec::with_capacity(z.size());
+    for i in 0..z.size() {
+        if let Some(val) = z.get(i) {
+            data.push(val.im.atan2(val.re));
+        }
+    }
+    Ok(Array::from_data(data, z.shape().to_vec()))
+}
+
+/// Return the real part of the Complex64 number
+pub fn real(z: &Array<num_complex::Complex64>) -> Result<Array<f64>> {
+    let mut data = Vec::with_capacity(z.size());
+    for i in 0..z.size() {
+        if let Some(val) = z.get(i) {
+            data.push(val.re);
+        }
+    }
+    Ok(Array::from_data(data, z.shape().to_vec()))
+}
+
+/// Return the real part of the Complex32 number
+pub fn real32(z: &Array<num_complex::Complex32>) -> Result<Array<f32>> {
+    let mut data = Vec::with_capacity(z.size());
+    for i in 0..z.size() {
+        if let Some(val) = z.get(i) {
+            data.push(val.re);
+        }
+    }
+    Ok(Array::from_data(data, z.shape().to_vec()))
+}
+
+/// Return the imaginary part of the Complex64 number
+pub fn imag(z: &Array<num_complex::Complex64>) -> Result<Array<f64>> {
+    let mut data = Vec::with_capacity(z.size());
+    for i in 0..z.size() {
+        if let Some(val) = z.get(i) {
+            data.push(val.im);
+        }
+    }
+    Ok(Array::from_data(data, z.shape().to_vec()))
+}
+
+/// Return the imaginary part of the Complex32 number
+pub fn imag32(z: &Array<num_complex::Complex32>) -> Result<Array<f32>> {
+    let mut data = Vec::with_capacity(z.size());
+    for i in 0..z.size() {
+        if let Some(val) = z.get(i) {
+            data.push(val.im);
+        }
+    }
+    Ok(Array::from_data(data, z.shape().to_vec()))
+}
+
+/// Return the complex conjugate, element-wise
+/// The conjugate of a complex number is obtained by changing the sign of its imaginary part
+pub fn conj(z: &Array<num_complex::Complex64>) -> Result<Array<num_complex::Complex64>> {
+    let mut data = Vec::with_capacity(z.size());
+    for i in 0..z.size() {
+        if let Some(val) = z.get(i) {
+            data.push(num_complex::Complex64::new(val.re, -val.im));
+        }
+    }
+    Ok(Array::from_data(data, z.shape().to_vec()))
+}
+
+/// Return the complex conjugate for Complex32 arrays
+pub fn conj32(z: &Array<num_complex::Complex32>) -> Result<Array<num_complex::Complex32>> {
+    let mut data = Vec::with_capacity(z.size());
+    for i in 0..z.size() {
+        if let Some(val) = z.get(i) {
+            data.push(num_complex::Complex32::new(val.re, -val.im));
+        }
+    }
+    Ok(Array::from_data(data, z.shape().to_vec()))
+}
+
+/// Return the complex conjugate, element-wise (alias for conj)
+pub fn conjugate(z: &Array<num_complex::Complex64>) -> Result<Array<num_complex::Complex64>> {
+    conj(z)
+}
+
+/// Return the complex conjugate for Complex32 arrays (alias for conj32)
+pub fn conjugate32(z: &Array<num_complex::Complex32>) -> Result<Array<num_complex::Complex32>> {
+    conj32(z)
+}
+
+/// Return the real part of the array if the imaginary part is close to zero
+/// If the imaginary part is not close to zero, return the array as is
+pub fn real_if_close(
+    a: &Array<num_complex::Complex64>,
+    tol: Option<f64>,
+) -> Result<Array<num_complex::Complex64>> {
+    let tolerance = tol.unwrap_or(1e-10);
+    let mut data = Vec::with_capacity(a.size());
+
+    for i in 0..a.size() {
+        if let Some(val) = a.get(i) {
+            if val.im.abs() < tolerance {
+                // Return real part as a complex number with zero imaginary part
+                data.push(num_complex::Complex64::new(val.re, 0.0));
+            } else {
+                data.push(val.clone());
+            }
+        }
+    }
+    Ok(Array::from_data(data, a.shape().to_vec()))
+}
+
+/// Return the real part of the array if the imaginary part is close to zero (Complex32 version)
+pub fn real_if_close32(
+    a: &Array<num_complex::Complex32>,
+    tol: Option<f32>,
+) -> Result<Array<num_complex::Complex32>> {
+    let tolerance = tol.unwrap_or(1e-10);
+    let mut data = Vec::with_capacity(a.size());
+
+    for i in 0..a.size() {
+        if let Some(val) = a.get(i) {
+            if val.im.abs() < tolerance {
+                data.push(num_complex::Complex32::new(val.re, 0.0));
+            } else {
+                data.push(val.clone());
+            }
+        }
+    }
+    Ok(Array::from_data(data, a.shape().to_vec()))
 }
 
 /// Register all mathematical ufuncs
@@ -1808,9 +2182,242 @@ pub fn register_math_ufuncs(registry: &mut crate::ufunc::UfuncRegistry) {
             x.ceil()
         }
     })));
+
+    // Floating-point checking functions
+    registry.register(Box::new(FloatCheckUfunc::new("isnan", |x: &f32| {
+        x.is_nan()
+    })));
+    registry.register(Box::new(FloatCheckUfunc::new("isnan", |x: &f64| {
+        x.is_nan()
+    })));
+    registry.register(Box::new(FloatCheckUfunc::new(
+        "isnan",
+        |x: &num_complex::Complex32| x.re.is_nan() || x.im.is_nan(),
+    )));
+    registry.register(Box::new(FloatCheckUfunc::new(
+        "isnan",
+        |x: &num_complex::Complex64| x.re.is_nan() || x.im.is_nan(),
+    )));
+
+    registry.register(Box::new(FloatCheckUfunc::new("isinf", |x: &f32| {
+        x.is_infinite()
+    })));
+    registry.register(Box::new(FloatCheckUfunc::new("isinf", |x: &f64| {
+        x.is_infinite()
+    })));
+    registry.register(Box::new(FloatCheckUfunc::new(
+        "isinf",
+        |x: &num_complex::Complex32| x.re.is_infinite() || x.im.is_infinite(),
+    )));
+    registry.register(Box::new(FloatCheckUfunc::new(
+        "isinf",
+        |x: &num_complex::Complex64| x.re.is_infinite() || x.im.is_infinite(),
+    )));
+
+    registry.register(Box::new(FloatCheckUfunc::new("isfinite", |x: &f32| {
+        x.is_finite()
+    })));
+    registry.register(Box::new(FloatCheckUfunc::new("isfinite", |x: &f64| {
+        x.is_finite()
+    })));
+    registry.register(Box::new(FloatCheckUfunc::new(
+        "isfinite",
+        |x: &num_complex::Complex32| x.re.is_finite() && x.im.is_finite(),
+    )));
+    registry.register(Box::new(FloatCheckUfunc::new(
+        "isfinite",
+        |x: &num_complex::Complex64| x.re.is_finite() && x.im.is_finite(),
+    )));
+
+    registry.register(Box::new(FloatCheckUfunc::new("isneginf", |x: &f32| {
+        *x == f32::NEG_INFINITY
+    })));
+    registry.register(Box::new(FloatCheckUfunc::new("isneginf", |x: &f64| {
+        *x == f64::NEG_INFINITY
+    })));
+    registry.register(Box::new(FloatCheckUfunc::new(
+        "isneginf",
+        |x: &num_complex::Complex32| x.re == f32::NEG_INFINITY,
+    )));
+    registry.register(Box::new(FloatCheckUfunc::new(
+        "isneginf",
+        |x: &num_complex::Complex64| x.re == f64::NEG_INFINITY,
+    )));
+
+    registry.register(Box::new(FloatCheckUfunc::new("isposinf", |x: &f32| {
+        *x == f32::INFINITY
+    })));
+    registry.register(Box::new(FloatCheckUfunc::new("isposinf", |x: &f64| {
+        *x == f64::INFINITY
+    })));
+    registry.register(Box::new(FloatCheckUfunc::new(
+        "isposinf",
+        |x: &num_complex::Complex32| x.re == f32::INFINITY,
+    )));
+    registry.register(Box::new(FloatCheckUfunc::new(
+        "isposinf",
+        |x: &num_complex::Complex64| x.re == f64::INFINITY,
+    )));
+}
+
+/// Compute sinc function: sin(pi*x) / (pi*x)
+/// For x=0, sinc(0) = 1.0
+pub fn sinc<T>(x: &Array<T>) -> Result<Array<T>>
+where
+    T: Clone + Default + num_traits::Float + num_traits::FloatConst + 'static + Send + Sync,
+{
+    let mut data = Vec::with_capacity(x.size());
+    let pi = T::PI();
+    for i in 0..x.size() {
+        if let Some(val) = x.get(i) {
+            if val.is_zero() {
+                data.push(T::one());
+            } else {
+                let pix = pi * *val;
+                data.push(pix.sin() / pix);
+            }
+        }
+    }
+    Ok(Array::from_data(data, x.shape().to_vec()))
+}
+
+/// Modified Bessel function of the first kind, order 0.
+/// This is a polynomial approximation for I0(x).
+pub fn i0<T>(x: &Array<T>) -> Result<Array<T>>
+where
+    T: Clone + Default + num_traits::Float + 'static + Send + Sync,
+{
+    let mut data = Vec::with_capacity(x.size());
+    for i in 0..x.size() {
+        if let Some(val) = x.get(i) {
+            let ax = val.abs();
+            let y: T;
+            if ax < T::from(3.75).unwrap() {
+                let t = ax / T::from(3.75).unwrap();
+                let t2 = t * t;
+                y = T::one()
+                    + t2 * (T::from(3.5156229).unwrap()
+                        + t2 * (T::from(3.0899424).unwrap()
+                            + t2 * (T::from(1.2067492).unwrap()
+                                + t2 * (T::from(0.2659732).unwrap()
+                                    + t2 * (T::from(0.0360768).unwrap()
+                                        + t2 * T::from(0.0045813).unwrap())))));
+            } else {
+                let t = T::from(3.75).unwrap() / ax;
+                y = ax.exp() / ax.sqrt()
+                    * (T::from(0.39894228).unwrap()
+                        + t * (T::from(0.01328592).unwrap()
+                            + t * (T::from(0.00225319).unwrap()
+                                + t * (T::from(-0.00157565).unwrap()
+                                    + t * (T::from(0.00916281).unwrap()
+                                        + t * (T::from(-0.02057706).unwrap()
+                                            + t * (T::from(0.02635537).unwrap()
+                                                + t * (T::from(-0.01647633).unwrap()
+                                                    + t * T::from(0.00392377).unwrap()))))))));
+            }
+            data.push(y);
+        }
+    }
+    Ok(Array::from_data(data, x.shape().to_vec()))
+}
+
+/// Compute the Heaviside step function.
+/// heaviside(x, h0) = 0 if x < 0, h0 if x == 0, 1 if x > 0
+pub fn heaviside<T>(x: &Array<T>, h0: T) -> Result<Array<T>>
+where
+    T: Clone + Default + PartialOrd + num_traits::Zero + num_traits::One + 'static + Send + Sync,
+{
+    let mut data = Vec::with_capacity(x.size());
+    for i in 0..x.size() {
+        if let Some(val) = x.get(i) {
+            if *val < T::zero() {
+                data.push(T::zero());
+            } else if *val > T::zero() {
+                data.push(T::one());
+            } else {
+                data.push(h0.clone());
+            }
+        }
+    }
+    Ok(Array::from_data(data, x.shape().to_vec()))
+}
+
+/// Discrete, linear convolution of two one-dimensional sequences.
+pub fn convolve<T>(a: &Array<T>, v: &Array<T>, mode: &str) -> Result<Array<T>>
+where
+    T: Clone
+        + Default
+        + std::ops::Add<Output = T>
+        + std::ops::Mul<Output = T>
+        + 'static
+        + Send
+        + Sync,
+{
+    let a_data = a.data();
+    let v_data = v.data();
+    let n = a_data.len();
+    let m = v_data.len();
+
+    if n == 0 || m == 0 {
+        return Err(NumPyError::invalid_value(
+            "convolve: inputs must be non-empty",
+        ));
+    }
+
+    let full_len = n + m - 1;
+    let mut full_result = vec![T::default(); full_len];
+
+    for i in 0..n {
+        for j in 0..m {
+            let prod = a_data[i].clone() * v_data[j].clone();
+            full_result[i + j] = full_result[i + j].clone() + prod;
+        }
+    }
+
+    match mode {
+        "full" => Ok(Array::from_vec(full_result)),
+        "same" => {
+            let start = (m - 1) / 2;
+            let end = start + n;
+            Ok(Array::from_vec(full_result[start..end].to_vec()))
+        }
+        "valid" => {
+            if n >= m {
+                let start = m - 1;
+                let end = n;
+                Ok(Array::from_vec(full_result[start..end].to_vec()))
+            } else {
+                let start = n - 1;
+                let end = m;
+                Ok(Array::from_vec(full_result[start..end].to_vec()))
+            }
+        }
+        _ => Err(NumPyError::invalid_value(
+            "mode must be 'full', 'same', or 'valid'",
+        )),
+    }
+}
+
+/// Cross-correlation of two 1-dimensional sequences.
+pub fn correlate<T>(a: &Array<T>, v: &Array<T>, mode: &str) -> Result<Array<T>>
+where
+    T: Clone
+        + Default
+        + std::ops::Add<Output = T>
+        + std::ops::Mul<Output = T>
+        + 'static
+        + Send
+        + Sync,
+{
+    // correlate(a, v) = convolve(a, v[::-1])
+    let v_data = v.data();
+    let v_reversed: Vec<T> = v_data.iter().rev().cloned().collect();
+    let v_rev = Array::from_vec(v_reversed);
+    convolve(a, &v_rev, mode)
 }
 
 #[cfg(test)]
+
 mod tests {
     use super::*;
     use crate::array::Array;
@@ -1863,5 +2470,354 @@ mod tests {
         assert_eq!(floor_result.size(), 3);
         assert_eq!(ceil_result.size(), 3);
         assert_eq!(round_result.size(), 3);
+    }
+
+    #[test]
+    fn test_isnan() {
+        let x = Array::from_data(vec![1.0, f64::NAN, 3.0], vec![3]);
+
+        let result = isnan(&x).unwrap();
+
+        assert_eq!(result.size(), 3);
+        assert!(!result.get(0).unwrap()); // 1.0 is not NaN
+        assert!(result.get(1).unwrap()); // NaN is NaN
+        assert!(!result.get(2).unwrap()); // 3.0 is not NaN
+    }
+
+    #[test]
+    fn test_isinf() {
+        let x = Array::from_data(vec![1.0, f64::INFINITY, f64::NEG_INFINITY], vec![3]);
+
+        let result = isinf(&x).unwrap();
+
+        assert_eq!(result.size(), 3);
+        assert!(!result.get(0).unwrap()); // 1.0 is not infinite
+        assert!(result.get(1).unwrap()); // INFINITY is infinite
+        assert!(result.get(2).unwrap()); // NEG_INFINITY is infinite
+    }
+
+    #[test]
+    fn test_isfinite() {
+        let x = Array::from_data(vec![1.0, f64::NAN, f64::INFINITY], vec![3]);
+
+        let result = isfinite(&x).unwrap();
+
+        assert_eq!(result.size(), 3);
+        assert!(result.get(0).unwrap()); // 1.0 is finite
+        assert!(!result.get(1).unwrap()); // NaN is not finite
+        assert!(!result.get(2).unwrap()); // INFINITY is not finite
+    }
+
+    #[test]
+    fn test_isneginf() {
+        let x = Array::from_data(vec![1.0, f64::NEG_INFINITY, f64::INFINITY], vec![3]);
+
+        let result = isneginf(&x).unwrap();
+
+        assert_eq!(result.size(), 3);
+        assert!(!result.get(0).unwrap()); // 1.0 is not negative infinity
+        assert!(result.get(1).unwrap()); // NEG_INFINITY is negative infinity
+        assert!(!result.get(2).unwrap()); // INFINITY is not negative infinity
+    }
+
+    #[test]
+    fn test_isposinf() {
+        let x = Array::from_data(vec![1.0, f64::INFINITY, f64::NEG_INFINITY], vec![3]);
+
+        let result = isposinf(&x).unwrap();
+
+        assert_eq!(result.size(), 3);
+        assert!(!result.get(0).unwrap()); // 1.0 is not positive infinity
+        assert!(result.get(1).unwrap()); // INFINITY is positive infinity
+        assert!(!result.get(2).unwrap()); // NEG_INFINITY is not positive infinity
+    }
+
+    #[test]
+    fn test_float_check_edge_cases() {
+        // Test with complex numbers containing NaN/Inf
+        let x = Array::from_data(
+            vec![
+                num_complex::Complex64::new(1.0, 2.0),
+                num_complex::Complex64::new(f64::NAN, 2.0),
+                num_complex::Complex64::new(1.0, f64::INFINITY),
+            ],
+            vec![3],
+        );
+
+        let isnan_result = isnan(&x).unwrap();
+        let isinf_result = isinf(&x).unwrap();
+        let isfinite_result = isfinite(&x).unwrap();
+
+        assert!(!isnan_result.get(0).unwrap()); // (1.0, 2.0) is not NaN
+        assert!(isnan_result.get(1).unwrap()); // (NaN, 2.0) has NaN in real part
+        assert!(!isnan_result.get(2).unwrap()); // (1.0, Inf) is not NaN
+
+        assert!(!isinf_result.get(0).unwrap()); // (1.0, 2.0) is not infinite
+        assert!(!isinf_result.get(1).unwrap()); // (NaN, 2.0) - NaN is not Inf
+        assert!(isinf_result.get(2).unwrap()); // (1.0, Inf) has infinite imag part
+
+        assert!(isfinite_result.get(0).unwrap()); // (1.0, 2.0) is finite
+        assert!(!isfinite_result.get(1).unwrap()); // (NaN, 2.0) is not finite (NaN)
+        assert!(!isfinite_result.get(2).unwrap()); // (1.0, Inf) is not finite (Inf)
+    }
+
+    #[test]
+    fn test_angle() {
+        // Test with complex numbers on the unit circle
+        let z = Array::from_data(
+            vec![
+                num_complex::Complex64::new(1.0, 0.0),  // angle = 0
+                num_complex::Complex64::new(0.0, 1.0),  // angle = π/2
+                num_complex::Complex64::new(-1.0, 0.0), // angle = π
+                num_complex::Complex64::new(0.0, -1.0), // angle = -π/2
+                num_complex::Complex64::new(1.0, 1.0),  // angle = π/4
+            ],
+            vec![5],
+        );
+
+        let result = angle(&z).unwrap();
+
+        assert!((result.get(0).unwrap() - 0.0).abs() < 1e-10);
+        assert!((result.get(1).unwrap() - std::f64::consts::FRAC_PI_2).abs() < 1e-10);
+        assert!((result.get(2).unwrap() - std::f64::consts::PI).abs() < 1e-10);
+        assert!((result.get(3).unwrap() - (-std::f64::consts::FRAC_PI_2)).abs() < 1e-10);
+        assert!((result.get(4).unwrap() - std::f64::consts::FRAC_PI_4).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_angle32() {
+        // Test with Complex32 numbers
+        let z = Array::from_data(
+            vec![
+                num_complex::Complex32::new(1.0, 0.0),
+                num_complex::Complex32::new(0.0, 1.0),
+                num_complex::Complex32::new(-1.0, 0.0),
+            ],
+            vec![3],
+        );
+
+        let result = angle32(&z).unwrap();
+
+        assert!((result.get(0).unwrap() - 0.0).abs() < 1e-6);
+        assert!((result.get(1).unwrap() - std::f32::consts::FRAC_PI_2).abs() < 1e-6);
+        assert!((result.get(2).unwrap() - std::f32::consts::PI).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_real_imag() {
+        // Test real part extraction
+        let z = Array::from_data(
+            vec![
+                num_complex::Complex64::new(1.0, 2.0),
+                num_complex::Complex64::new(-3.0, 4.5),
+                num_complex::Complex64::new(0.0, -1.0),
+            ],
+            vec![3],
+        );
+
+        let real_result = real(&z).unwrap();
+        let imag_result = imag(&z).unwrap();
+
+        assert_eq!(real_result.get(0).unwrap(), &1.0);
+        assert_eq!(real_result.get(1).unwrap(), &(-3.0));
+        assert_eq!(real_result.get(2).unwrap(), &0.0);
+
+        assert_eq!(imag_result.get(0).unwrap(), &2.0);
+        assert_eq!(imag_result.get(1).unwrap(), &4.5);
+        assert_eq!(imag_result.get(2).unwrap(), &(-1.0));
+    }
+
+    #[test]
+    fn test_real32_imag32() {
+        // Test Complex32 versions
+        let z = Array::from_data(
+            vec![
+                num_complex::Complex32::new(1.5, 2.5),
+                num_complex::Complex32::new(-3.0, 4.0),
+            ],
+            vec![2],
+        );
+
+        let real_result = real32(&z).unwrap();
+        let imag_result = imag32(&z).unwrap();
+
+        assert_eq!(real_result.get(0).unwrap(), &1.5);
+        assert_eq!(real_result.get(1).unwrap(), &(-3.0));
+
+        assert_eq!(imag_result.get(0).unwrap(), &2.5);
+        assert_eq!(imag_result.get(1).unwrap(), &4.0);
+    }
+
+    #[test]
+    fn test_conj() {
+        // Test complex conjugate
+        let z = Array::from_data(
+            vec![
+                num_complex::Complex64::new(1.0, 2.0),
+                num_complex::Complex64::new(-3.0, 4.5),
+                num_complex::Complex64::new(0.0, -1.0),
+            ],
+            vec![3],
+        );
+
+        let result = conj(&z).unwrap();
+
+        assert_eq!(
+            result.get(0).unwrap(),
+            &num_complex::Complex64::new(1.0, -2.0)
+        );
+        assert_eq!(
+            result.get(1).unwrap(),
+            &num_complex::Complex64::new(-3.0, -4.5)
+        );
+        assert_eq!(
+            result.get(2).unwrap(),
+            &num_complex::Complex64::new(0.0, 1.0)
+        );
+    }
+
+    #[test]
+    fn test_conj32() {
+        // Test complex conjugate for Complex32
+        let z = Array::from_data(
+            vec![
+                num_complex::Complex32::new(1.0, 2.0),
+                num_complex::Complex32::new(-3.0, 4.0),
+            ],
+            vec![2],
+        );
+
+        let result = conj32(&z).unwrap();
+
+        assert_eq!(
+            result.get(0).unwrap(),
+            &num_complex::Complex32::new(1.0, -2.0)
+        );
+        assert_eq!(
+            result.get(1).unwrap(),
+            &num_complex::Complex32::new(-3.0, -4.0)
+        );
+    }
+
+    #[test]
+    fn test_conjugate() {
+        // Test that conjugate is an alias for conj
+        let z = Array::from_data(
+            vec![
+                num_complex::Complex64::new(1.0, 2.0),
+                num_complex::Complex64::new(-3.0, 4.5),
+            ],
+            vec![2],
+        );
+
+        let conj_result = conj(&z).unwrap();
+        let conjugate_result = conjugate(&z).unwrap();
+
+        assert_eq!(
+            conj_result.get(0).unwrap(),
+            conjugate_result.get(0).unwrap()
+        );
+        assert_eq!(
+            conj_result.get(1).unwrap(),
+            conjugate_result.get(1).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_real_if_close() {
+        // Test real_if_close with negligible imaginary part
+        let z = Array::from_data(
+            vec![
+                num_complex::Complex64::new(1.0, 0.0),     // already real
+                num_complex::Complex64::new(2.0, 1e-12),   // negligible imag
+                num_complex::Complex64::new(3.0, 0.5),     // significant imag
+                num_complex::Complex64::new(-1.0, -1e-11), // negligible imag
+            ],
+            vec![4],
+        );
+
+        let result = real_if_close(&z, Some(1e-10)).unwrap();
+
+        // Should have zero imaginary part for first, second, and fourth elements
+        assert_eq!(
+            result.get(0).unwrap(),
+            &num_complex::Complex64::new(1.0, 0.0)
+        );
+        assert_eq!(
+            result.get(1).unwrap(),
+            &num_complex::Complex64::new(2.0, 0.0)
+        );
+        assert_eq!(
+            result.get(2).unwrap(),
+            &num_complex::Complex64::new(3.0, 0.5)
+        ); // unchanged
+        assert_eq!(
+            result.get(3).unwrap(),
+            &num_complex::Complex64::new(-1.0, 0.0)
+        );
+    }
+
+    #[test]
+    fn test_real_if_close32() {
+        // Test real_if_close32 with Complex32
+        let z = Array::from_data(
+            vec![
+                num_complex::Complex32::new(1.0, 0.0),
+                num_complex::Complex32::new(2.0, 1e-7),
+                num_complex::Complex32::new(3.0, 0.5),
+            ],
+            vec![3],
+        );
+
+        let result = real_if_close32(&z, Some(1e-6)).unwrap();
+
+        assert_eq!(
+            result.get(0).unwrap(),
+            &num_complex::Complex32::new(1.0, 0.0)
+        );
+        assert_eq!(
+            result.get(1).unwrap(),
+            &num_complex::Complex32::new(2.0, 0.0)
+        );
+        assert_eq!(
+            result.get(2).unwrap(),
+            &num_complex::Complex32::new(3.0, 0.5)
+        ); // unchanged
+    }
+
+    #[test]
+    fn test_complex_utilities_2d_array() {
+        // Test with 2D complex arrays
+        let z = Array::from_data(
+            vec![
+                num_complex::Complex64::new(1.0, 2.0),
+                num_complex::Complex64::new(3.0, 4.0),
+                num_complex::Complex64::new(5.0, 6.0),
+                num_complex::Complex64::new(7.0, 8.0),
+            ],
+            vec![2, 2],
+        );
+
+        let real_result = real(&z).unwrap();
+        let imag_result = imag(&z).unwrap();
+        let conj_result = conj(&z).unwrap();
+
+        assert_eq!(real_result.shape(), &vec![2, 2]);
+        assert_eq!(imag_result.shape(), &vec![2, 2]);
+        assert_eq!(conj_result.shape(), &vec![2, 2]);
+
+        assert_eq!(real_result.get(0).unwrap(), &1.0);
+        assert_eq!(imag_result.get(0).unwrap(), &2.0);
+        assert_eq!(
+            conj_result.get(0).unwrap(),
+            &num_complex::Complex64::new(1.0, -2.0)
+        );
+
+        assert_eq!(real_result.get(3).unwrap(), &7.0);
+        assert_eq!(imag_result.get(3).unwrap(), &8.0);
+        assert_eq!(
+            conj_result.get(3).unwrap(),
+            &num_complex::Complex64::new(7.0, -8.0)
+        );
     }
 }

@@ -610,6 +610,177 @@ where
     Ok(Array::from_vec(result))
 }
 
+pub fn nansum<T>(
+    a: &Array<T>,
+    axis: Option<&[isize]>,
+    keepdims: bool,
+) -> Result<Array<T>, NumPyError>
+where
+    T: Clone + Default + AsF64 + FromF64 + 'static,
+{
+    let sum_func = |vals: &[f64]| vals.iter().filter(|&&x| !x.is_nan()).sum::<f64>();
+    nan_reduce_internal(a, axis, keepdims, sum_func)
+}
+
+pub fn nanprod<T>(
+    a: &Array<T>,
+    axis: Option<&[isize]>,
+    keepdims: bool,
+) -> Result<Array<T>, NumPyError>
+where
+    T: Clone + Default + AsF64 + FromF64 + 'static,
+{
+    let prod_func = |vals: &[f64]| vals.iter().filter(|&&x| !x.is_nan()).product::<f64>();
+    nan_reduce_internal(a, axis, keepdims, prod_func)
+}
+
+pub fn nanmean<T>(
+    a: &Array<T>,
+    axis: Option<&[isize]>,
+    keepdims: bool,
+) -> Result<Array<T>, NumPyError>
+where
+    T: Clone + Default + AsF64 + FromF64 + 'static,
+{
+    let mean_func = |vals: &[f64]| {
+        let non_nan: Vec<_> = vals.iter().filter(|&&x| !x.is_nan()).collect();
+        if non_nan.is_empty() {
+            f64::NAN
+        } else {
+            non_nan.iter().map(|&&x| x).sum::<f64>() / non_nan.len() as f64
+        }
+    };
+    nan_reduce_internal(a, axis, keepdims, mean_func)
+}
+
+pub fn nanvar<T>(
+    a: &Array<T>,
+    axis: Option<&[isize]>,
+    ddof: isize,
+    keepdims: bool,
+) -> Result<Array<T>, NumPyError>
+where
+    T: Clone + Default + AsF64 + FromF64 + 'static,
+{
+    let var_func = |vals: &[f64]| {
+        let non_nan: Vec<_> = vals.iter().filter(|&&x| !x.is_nan()).collect();
+        if non_nan.is_empty() {
+            f64::NAN
+        } else {
+            let n = non_nan.len() as f64;
+            let mean = non_nan.iter().map(|&&x| x).sum::<f64>() / n;
+            let variance = non_nan
+                .iter()
+                .map(|&&x| {
+                    let diff = x - mean;
+                    diff * diff
+                })
+                .sum::<f64>()
+                / (n - ddof as f64).max(0.0);
+            variance
+        }
+    };
+    nan_reduce_internal(a, axis, keepdims, var_func)
+}
+
+pub fn nanstd<T>(
+    a: &Array<T>,
+    axis: Option<&[isize]>,
+    ddof: isize,
+    keepdims: bool,
+) -> Result<Array<T>, NumPyError>
+where
+    T: Clone + Default + AsF64 + FromF64 + 'static,
+{
+    let var_arr = nanvar(a, axis, ddof, keepdims)?;
+    let mut data = var_arr.to_vec();
+    for val in data.iter_mut() {
+        let f = val.as_f64().unwrap_or(f64::NAN);
+        *val = T::from_f64(f.sqrt());
+    }
+    Ok(Array::from_data(data, var_arr.shape().to_vec()))
+}
+
+pub fn nanmin<T>(
+    a: &Array<T>,
+    axis: Option<&[isize]>,
+    keepdims: bool,
+) -> Result<Array<T>, NumPyError>
+where
+    T: Clone + Default + AsF64 + FromF64 + 'static,
+{
+    let min_func = |vals: &[f64]| {
+        vals.iter()
+            .filter(|&&x| !x.is_nan())
+            .fold(f64::INFINITY, |a, &b| a.min(b))
+    };
+    nan_reduce_internal(a, axis, keepdims, min_func)
+}
+
+pub fn nanmax<T>(
+    a: &Array<T>,
+    axis: Option<&[isize]>,
+    keepdims: bool,
+) -> Result<Array<T>, NumPyError>
+where
+    T: Clone + Default + AsF64 + FromF64 + 'static,
+{
+    let max_func = |vals: &[f64]| {
+        vals.iter()
+            .filter(|&&x| !x.is_nan())
+            .fold(f64::NEG_INFINITY, |a, &b| a.max(b))
+    };
+    nan_reduce_internal(a, axis, keepdims, max_func)
+}
+
+fn nan_reduce_internal<T, F>(
+    a: &Array<T>,
+    axis: Option<&[isize]>,
+    keepdims: bool,
+    mut reduce_op: F,
+) -> Result<Array<T>, NumPyError>
+where
+    T: Clone + Default + AsF64 + FromF64 + 'static,
+    F: FnMut(&[f64]) -> f64,
+{
+    let reduced_axes = normalize_axes(axis, a.ndim())?;
+    let output_shape = if axis.is_none() {
+        if keepdims {
+            vec![1; a.ndim()]
+        } else {
+            vec![]
+        }
+    } else {
+        broadcast_shape_for_reduce(a.shape(), axis.unwrap_or(&[]), keepdims)
+    };
+
+    let mut output = Array::zeros(output_shape.clone());
+    let reduction_size = if output_shape.is_empty() {
+        1
+    } else {
+        output_shape.iter().product()
+    };
+
+    for output_idx in 0..reduction_size {
+        let output_indices = if output_shape.is_empty() {
+            vec![]
+        } else {
+            crate::strides::compute_multi_indices(output_idx, &output_shape)
+        };
+
+        let values = collect_reduction_values(a, &output_indices, &reduced_axes, keepdims, false)?;
+        let result = reduce_op(&values);
+
+        if output_shape.is_empty() {
+            output.set(0, T::from_f64(result))?;
+        } else {
+            output.set_by_indices(&output_indices, T::from_f64(result))?;
+        }
+    }
+
+    Ok(output)
+}
+
 pub fn ptp<T>(
     a: &Array<T>,
     _axis: Option<&[isize]>,
@@ -640,7 +811,8 @@ where
 pub mod exports {
     pub use super::{
         average, bincount, corrcoef, cov, digitize, histogram, histogram2d, histogramdd, median,
-        nanmedian, nanpercentile, nanquantile, percentile, ptp, quantile, std, var,
+        nanmax, nanmean, nanmedian, nanmin, nanpercentile, nanprod, nanquantile, nanstd, nansum,
+        nanvar, percentile, ptp, quantile, std, var,
     };
 }
 

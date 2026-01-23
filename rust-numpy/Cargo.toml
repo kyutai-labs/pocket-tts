@@ -115,6 +115,10 @@ path = "tests/linalg_qr_tests.rs"
 name = "lstsq_tests"
 path = "tests/lstsq_tests.rs"
 
+[[test]]
+name = "pad_tests"
+path = "tests/pad_tests.rs"
+
 [[example]]
 name = "test_log"
 path = "examples/test_log.rs"

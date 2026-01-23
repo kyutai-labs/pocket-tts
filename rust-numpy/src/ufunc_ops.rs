@@ -2,7 +2,7 @@ use crate::array::Array;
 use crate::broadcasting::{broadcast_arrays, compute_broadcast_shape};
 
 use crate::error::{NumPyError, Result};
-use crate::ufunc::{get_ufunc, get_ufunc_typed, get_ufunc_typed_binary, UfuncRegistry};
+use crate::ufunc::UfuncRegistry;
 use std::sync::Arc;
 
 /// Ufunc execution engine
@@ -25,24 +25,19 @@ impl UfuncEngine {
         ufunc_name: &str,
         a: &Array<T>,
         b: &Array<T>,
+        where_mask: Option<&Array<bool>>,
+        casting: crate::dtype::Casting,
     ) -> Result<Array<T>>
     where
         T: Clone + Default + 'static,
     {
-        let ufunc = get_ufunc_typed_binary::<T>(ufunc_name)
-            .ok_or_else(|| NumPyError::ufunc_error(ufunc_name, "Function not found"))?;
-
-        // Check if ufunc supports the dtype
-        if !ufunc.supports_dtypes(&[a.dtype(), b.dtype()]) {
-            return Err(NumPyError::ufunc_error(
-                ufunc_name,
-                format!(
-                    "Unsupported dtype combination: {:?} and {:?}",
-                    a.dtype(),
-                    b.dtype()
-                ),
-            ));
-        }
+        let input_dtypes = vec![a.dtype().clone(), b.dtype().clone()];
+        let (ufunc, _target_dtypes) = self
+            .registry
+            .resolve_ufunc(ufunc_name, &input_dtypes, casting)
+            .ok_or_else(|| {
+                NumPyError::ufunc_error(ufunc_name, "Function not found or unsupported casting")
+            })?;
 
         // Broadcast arrays to common shape
         let broadcasted = broadcast_arrays(&[a, b])?;
@@ -60,58 +55,30 @@ impl UfuncEngine {
         let mut outputs: Vec<&mut dyn crate::ufunc::ArrayViewMut> = vec![&mut output];
 
         // Execute ufunc
-        ufunc.execute(&views, &mut outputs)?;
+        ufunc.execute(&views, &mut outputs, where_mask)?;
 
         Ok(output)
     }
 
-    /// Execute unary ufunc on single array
-    pub fn execute_unary<T>(&self, ufunc_name: &str, a: &Array<T>) -> Result<Array<T>>
-    where
-        T: Clone + Default + 'static,
-    {
-        let ufunc = get_ufunc_typed::<T>(ufunc_name)
-            .ok_or_else(|| NumPyError::ufunc_error(ufunc_name, "Function not found"))?;
-
-        if !ufunc.supports_dtypes(&[a.dtype()]) {
-            return Err(NumPyError::ufunc_error(
-                ufunc_name,
-                format!("Unsupported dtype: {:?}", a.dtype()),
-            ));
-        }
-
-        let mut output = a.clone();
-
-        let input_views: Vec<&dyn crate::ufunc::ArrayView> = vec![a];
-        let mut outputs: Vec<&mut dyn crate::ufunc::ArrayViewMut> = vec![&mut output];
-
-        ufunc.execute(&input_views, &mut outputs)?;
-
-        Ok(output)
-    }
-
+    /// Execute comparison ufunc on two arrays
     pub fn execute_comparison<T>(
         &self,
         ufunc_name: &str,
         a: &Array<T>,
         b: &Array<T>,
+        where_mask: Option<&Array<bool>>,
+        casting: crate::dtype::Casting,
     ) -> Result<Array<bool>>
     where
         T: Clone + Default + 'static,
     {
-        let ufunc = get_ufunc_typed_binary::<T>(ufunc_name)
-            .ok_or_else(|| NumPyError::ufunc_error(ufunc_name, "Function not found"))?;
-
-        if !ufunc.supports_dtypes(&[a.dtype(), b.dtype()]) {
-            return Err(NumPyError::ufunc_error(
-                ufunc_name,
-                format!(
-                    "Unsupported dtype combination: {:?} and {:?}",
-                    a.dtype(),
-                    b.dtype()
-                ),
-            ));
-        }
+        let input_dtypes = vec![a.dtype().clone(), b.dtype().clone()];
+        let (ufunc, _target_dtypes) = self
+            .registry
+            .resolve_ufunc(ufunc_name, &input_dtypes, casting)
+            .ok_or_else(|| {
+                NumPyError::ufunc_error(ufunc_name, "Function not found or unsupported casting")
+            })?;
 
         let broadcasted = broadcast_arrays(&[a, b])?;
 
@@ -125,7 +92,65 @@ impl UfuncEngine {
 
         let mut outputs: Vec<&mut dyn crate::ufunc::ArrayViewMut> = vec![&mut output];
 
-        ufunc.execute(&views, &mut outputs)?;
+        ufunc.execute(&views, &mut outputs, where_mask)?;
+
+        Ok(output)
+    }
+
+    /// Execute unary ufunc on single array
+    pub fn execute_unary_bool<T>(
+        &self,
+        ufunc_name: &str,
+        a: &Array<T>,
+        where_mask: Option<&Array<bool>>,
+        casting: crate::dtype::Casting,
+    ) -> Result<Array<bool>>
+    where
+        T: Clone + Default + 'static,
+    {
+        let input_dtypes = vec![a.dtype().clone()];
+        let (ufunc, _target_dtypes) = self
+            .registry
+            .resolve_ufunc(ufunc_name, &input_dtypes, casting)
+            .ok_or_else(|| {
+                NumPyError::ufunc_error(ufunc_name, "Function not found or unsupported casting")
+            })?;
+
+        let output_shape = a.shape().to_vec();
+        let mut output = Array::<bool>::zeros(output_shape);
+
+        let input_views: Vec<&dyn crate::ufunc::ArrayView> = vec![a];
+        let mut outputs: Vec<&mut dyn crate::ufunc::ArrayViewMut> = vec![&mut output];
+
+        ufunc.execute(&input_views, &mut outputs, where_mask)?;
+
+        Ok(output)
+    }
+
+    pub fn execute_unary<T>(
+        &self,
+        ufunc_name: &str,
+        a: &Array<T>,
+        where_mask: Option<&Array<bool>>,
+        casting: crate::dtype::Casting,
+    ) -> Result<Array<T>>
+    where
+        T: Clone + Default + 'static,
+    {
+        let input_dtypes = vec![a.dtype().clone()];
+        let (ufunc, _target_dtypes) = self
+            .registry
+            .resolve_ufunc(ufunc_name, &input_dtypes, casting)
+            .ok_or_else(|| {
+                NumPyError::ufunc_error(ufunc_name, "Function not found or unsupported casting")
+            })?;
+
+        let mut output = a.clone();
+
+        let input_views: Vec<&dyn crate::ufunc::ArrayView> = vec![a];
+        let mut outputs: Vec<&mut dyn crate::ufunc::ArrayViewMut> = vec![&mut output];
+
+        ufunc.execute(&input_views, &mut outputs, where_mask)?;
 
         Ok(output)
     }
@@ -151,7 +176,7 @@ impl UfuncEngine {
         let mut output = Array::zeros(output_shape);
 
         if let Some(reduction_axes) = axis {
-            self.reduce_along_axes(array, &mut output, reduction_axes, &operation)?;
+            self.reduce_along_axes(array, &mut output, reduction_axes, keepdims, &operation)?;
         } else if let Some(initial) = array.get(0) {
             let mut result = initial.clone();
             for i in 1..array.size() {
@@ -172,6 +197,7 @@ impl UfuncEngine {
         input: &Array<T>,
         output: &mut Array<T>,
         axes: &[isize],
+        keepdims: bool,
         operation: F,
     ) -> Result<()>
     where
@@ -191,9 +217,6 @@ impl UfuncEngine {
             })
             .collect();
 
-        // Initialize output with default or first elements if necessary
-        // In many cases, the caller might have initialized it, but let's ensure it's handled.
-        // For simplicity in this O(N) pass, we'll use a tracker to know if it's the first element for that output slot.
         let mut initialized = vec![false; output.size()];
 
         for input_idx in 0..input.size() {
@@ -204,6 +227,8 @@ impl UfuncEngine {
             for (dim_idx, &idx_val) in input_indices.iter().enumerate() {
                 if !reduced_axes_mask[dim_idx] {
                     output_indices.push(idx_val);
+                } else if keepdims {
+                    output_indices.push(0);
                 }
             }
 
@@ -242,42 +267,70 @@ where
     T: Clone + Default + 'static,
 {
     /// Element-wise addition
-    pub fn add(&self, other: &Array<T>) -> Result<Array<T>> {
+    pub fn add(
+        &self,
+        other: &Array<T>,
+        where_mask: Option<&Array<bool>>,
+        casting: crate::dtype::Casting,
+    ) -> Result<Array<T>> {
         let engine = UfuncEngine::new();
-        engine.execute_binary("add", self, other)
+        engine.execute_binary("add", self, other, where_mask, casting)
     }
 
     /// Element-wise subtraction
-    pub fn subtract(&self, other: &Array<T>) -> Result<Array<T>> {
+    pub fn subtract(
+        &self,
+        other: &Array<T>,
+        where_mask: Option<&Array<bool>>,
+        casting: crate::dtype::Casting,
+    ) -> Result<Array<T>> {
         let engine = UfuncEngine::new();
-        engine.execute_binary("subtract", self, other)
+        engine.execute_binary("subtract", self, other, where_mask, casting)
     }
 
     /// Element-wise multiplication
-    pub fn multiply(&self, other: &Array<T>) -> Result<Array<T>> {
+    pub fn multiply(
+        &self,
+        other: &Array<T>,
+        where_mask: Option<&Array<bool>>,
+        casting: crate::dtype::Casting,
+    ) -> Result<Array<T>> {
         let engine = UfuncEngine::new();
-        engine.execute_binary("multiply", self, other)
+        engine.execute_binary("multiply", self, other, where_mask, casting)
     }
 
     /// Element-wise division
-    pub fn divide(&self, other: &Array<T>) -> Result<Array<T>> {
+    pub fn divide(
+        &self,
+        other: &Array<T>,
+        where_mask: Option<&Array<bool>>,
+        casting: crate::dtype::Casting,
+    ) -> Result<Array<T>> {
         let engine = UfuncEngine::new();
-        engine.execute_binary("divide", self, other)
+        engine.execute_binary("divide", self, other, where_mask, casting)
     }
 
     /// Element-wise negation
-    pub fn negative(&self) -> Result<Array<T>> {
+    pub fn negative(
+        &self,
+        where_mask: Option<&Array<bool>>,
+        casting: crate::dtype::Casting,
+    ) -> Result<Array<T>> {
         let engine = UfuncEngine::new();
-        engine.execute_unary("negative", self)
+        engine.execute_unary("negative", self, where_mask, casting)
     }
 
     /// Absolute value
-    pub fn abs(&self) -> Result<Array<T>> {
+    pub fn abs(
+        &self,
+        where_mask: Option<&Array<bool>>,
+        casting: crate::dtype::Casting,
+    ) -> Result<Array<T>> {
         let engine = UfuncEngine::new();
-        engine.execute_unary("absolute", self)
+        engine.execute_unary("absolute", self, where_mask, casting)
     }
 
-    /// Sum of elements
+    /// Sum of elements along given axes.
     pub fn sum(&self, axis: Option<&[isize]>, keepdims: bool) -> Result<Array<T>>
     where
         T: std::ops::Add<Output = T>,
@@ -286,12 +339,13 @@ where
         engine.execute_reduction("sum", self, axis, keepdims, |a, b| a + b)
     }
 
-    pub fn product(&self, axis: Option<&[isize]>, keepdims: bool) -> Result<Array<T>>
+    /// Product of elements along given axes.
+    pub fn prod(&self, axis: Option<&[isize]>, keepdims: bool) -> Result<Array<T>>
     where
         T: std::ops::Mul<Output = T>,
     {
         let engine = UfuncEngine::new();
-        engine.execute_reduction("product", self, axis, keepdims, |a, b| a * b)
+        engine.execute_reduction("prod", self, axis, keepdims, |a, b| a * b)
     }
 
     pub fn count_reduced_elements(
@@ -436,6 +490,11 @@ where
     {
         match axis {
             None => {
+                if self.is_empty() {
+                    return Err(NumPyError::invalid_operation(
+                        "Cannot compute argmin of empty array",
+                    ));
+                }
                 let mut min_idx = 0;
                 let mut min_val = self.get(0);
 
@@ -450,48 +509,47 @@ where
                     }
                 }
 
-                Ok(Array::from_vec(vec![min_idx]))
+                Ok(Array::from_scalar(min_idx, vec![]))
             }
             Some(ax) => {
-                let ax = if ax < 0 {
-                    ax + self.ndim() as isize
-                } else {
-                    ax
-                } as usize;
+                let ndim = self.ndim();
+                if ndim == 0 {
+                    return Err(NumPyError::invalid_operation(
+                        "Cannot specify axis for 0D array",
+                    ));
+                }
+                let ax = if ax < 0 { ax + ndim as isize } else { ax } as usize;
 
-                if ax >= self.ndim() {
-                    return Err(NumPyError::index_error(ax, self.ndim()));
+                if ax >= ndim {
+                    return Err(NumPyError::index_error(ax, ndim));
                 }
 
-                let output_shape: Vec<usize> = self
-                    .shape()
-                    .iter()
-                    .enumerate()
-                    .filter(|(i, _)| *i != ax)
-                    .map(|(_, &dim)| dim)
-                    .collect();
-
-                if output_shape.is_empty() {
-                    return Err(NumPyError::invalid_operation("Cannot reduce all axes"));
+                let shape = self.shape();
+                let mut output_shape = Vec::with_capacity(ndim - 1);
+                for (i, &dim) in shape.iter().enumerate() {
+                    if i != ax {
+                        output_shape.push(dim);
+                    }
                 }
 
                 let mut result = Array::zeros(output_shape.clone());
+                let axis_len = shape[ax];
 
                 for output_idx in 0..result.size() {
                     let output_indices =
                         crate::strides::compute_multi_indices(output_idx, &output_shape);
 
                     let mut min_pos = 0;
-                    let mut min_val: Option<&T> = None;
+                    let mut min_val: Option<T> = None;
 
-                    for pos in 0..self.shape()[ax] {
+                    for pos in 0..axis_len {
                         let mut full_indices = output_indices.clone();
                         full_indices.insert(ax, pos);
 
                         if let Ok(val) = self.get_by_indices(&full_indices) {
-                            if min_val.is_none() || val < min_val.unwrap() {
+                            if min_val.is_none() || val < min_val.as_ref().unwrap() {
                                 min_pos = pos;
-                                min_val = Some(val);
+                                min_val = Some(val.clone());
                             }
                         }
                     }
@@ -510,6 +568,11 @@ where
     {
         match axis {
             None => {
+                if self.is_empty() {
+                    return Err(NumPyError::invalid_operation(
+                        "Cannot compute argmax of empty array",
+                    ));
+                }
                 let mut max_idx = 0;
                 let mut max_val = self.get(0);
 
@@ -524,48 +587,47 @@ where
                     }
                 }
 
-                Ok(Array::from_vec(vec![max_idx]))
+                Ok(Array::from_scalar(max_idx, vec![]))
             }
             Some(ax) => {
-                let ax = if ax < 0 {
-                    ax + self.ndim() as isize
-                } else {
-                    ax
-                } as usize;
+                let ndim = self.ndim();
+                if ndim == 0 {
+                    return Err(NumPyError::invalid_operation(
+                        "Cannot specify axis for 0D array",
+                    ));
+                }
+                let ax = if ax < 0 { ax + ndim as isize } else { ax } as usize;
 
-                if ax >= self.ndim() {
-                    return Err(NumPyError::index_error(ax, self.ndim()));
+                if ax >= ndim {
+                    return Err(NumPyError::index_error(ax, ndim));
                 }
 
-                let output_shape: Vec<usize> = self
-                    .shape()
-                    .iter()
-                    .enumerate()
-                    .filter(|(i, _)| *i != ax)
-                    .map(|(_, &dim)| dim)
-                    .collect();
-
-                if output_shape.is_empty() {
-                    return Err(NumPyError::invalid_operation("Cannot reduce all axes"));
+                let shape = self.shape();
+                let mut output_shape = Vec::with_capacity(ndim - 1);
+                for (i, &dim) in shape.iter().enumerate() {
+                    if i != ax {
+                        output_shape.push(dim);
+                    }
                 }
 
                 let mut result = Array::zeros(output_shape.clone());
+                let axis_len = shape[ax];
 
                 for output_idx in 0..result.size() {
                     let output_indices =
                         crate::strides::compute_multi_indices(output_idx, &output_shape);
 
                     let mut max_pos = 0;
-                    let mut max_val: Option<&T> = None;
+                    let mut max_val: Option<T> = None;
 
-                    for pos in 0..self.shape()[ax] {
+                    for pos in 0..axis_len {
                         let mut full_indices = output_indices.clone();
                         full_indices.insert(ax, pos);
 
                         if let Ok(val) = self.get_by_indices(&full_indices) {
-                            if max_val.is_none() || val > max_val.unwrap() {
+                            if max_val.is_none() || val > max_val.as_ref().unwrap() {
                                 max_pos = pos;
-                                max_val = Some(val);
+                                max_val = Some(val.clone());
                             }
                         }
                     }
@@ -881,6 +943,138 @@ where
         }
     }
 
+    /// Cumulative sum, treating NaNs as zero.
+    pub fn nancumsum(&self, axis: Option<isize>) -> Result<Array<T>>
+    where
+        T: Clone + Default + std::ops::Add<Output = T> + num_traits::Float,
+    {
+        match axis {
+            None => {
+                let mut data = Vec::with_capacity(self.size());
+                let mut running_sum = T::zero();
+
+                for i in 0..self.size() {
+                    if let Some(val) = self.get(i) {
+                        if !val.is_nan() {
+                            running_sum = running_sum + val.clone();
+                        }
+                        data.push(running_sum);
+                    }
+                }
+
+                Ok(Array::from_vec(data))
+            }
+            Some(ax) => {
+                let ax = if ax < 0 {
+                    ax + self.ndim() as isize
+                } else {
+                    ax
+                } as usize;
+
+                if ax >= self.ndim() {
+                    return Err(NumPyError::index_error(ax, self.ndim()));
+                }
+
+                let mut result = Array::zeros(self.shape().to_vec());
+
+                let stride_before = if ax > 0 {
+                    self.shape()[..ax].iter().product::<usize>()
+                } else {
+                    1
+                };
+                let stride_after = if ax + 1 < self.ndim() {
+                    self.shape()[ax + 1..].iter().product::<usize>()
+                } else {
+                    1
+                };
+                let axis_size = self.shape()[ax];
+
+                for outer in 0..stride_before {
+                    for inner in 0..stride_after {
+                        let mut running = T::zero();
+                        for pos in 0..axis_size {
+                            let idx = outer * axis_size * stride_after + pos * stride_after + inner;
+                            if let Some(val) = self.get(idx) {
+                                if !val.is_nan() {
+                                    running = running + val.clone();
+                                }
+                                result.set(idx, running)?;
+                            }
+                        }
+                    }
+                }
+
+                Ok(result)
+            }
+        }
+    }
+
+    /// Cumulative product, treating NaNs as one.
+    pub fn nancumprod(&self, axis: Option<isize>) -> Result<Array<T>>
+    where
+        T: Clone + Default + std::ops::Mul<Output = T> + num_traits::Float,
+    {
+        match axis {
+            None => {
+                let mut data = Vec::with_capacity(self.size());
+                let mut running_prod = T::one();
+
+                for i in 0..self.size() {
+                    if let Some(val) = self.get(i) {
+                        if !val.is_nan() {
+                            running_prod = running_prod * val.clone();
+                        }
+                        data.push(running_prod);
+                    }
+                }
+
+                Ok(Array::from_vec(data))
+            }
+            Some(ax) => {
+                let ax = if ax < 0 {
+                    ax + self.ndim() as isize
+                } else {
+                    ax
+                } as usize;
+
+                if ax >= self.ndim() {
+                    return Err(NumPyError::index_error(ax, self.ndim()));
+                }
+
+                let mut result = Array::zeros(self.shape().to_vec());
+
+                let stride_before = if ax > 0 {
+                    self.shape()[..ax].iter().product::<usize>()
+                } else {
+                    1
+                };
+                let stride_after = if ax + 1 < self.ndim() {
+                    self.shape()[ax + 1..].iter().product::<usize>()
+                } else {
+                    1
+                };
+                let axis_size = self.shape()[ax];
+
+                for outer in 0..stride_before {
+                    for inner in 0..stride_after {
+                        let mut running = T::one();
+                        for pos in 0..axis_size {
+                            let idx = outer * axis_size * stride_after + pos * stride_after + inner;
+                            if let Some(val) = self.get(idx) {
+                                if !val.is_nan() {
+                                    running = running * val.clone();
+                                }
+                                result.set(idx, running)?;
+                            }
+                        }
+                    }
+                }
+
+                Ok(result)
+            }
+        }
+    }
+
     fn get_mean_for_index(
         mean_array: &Array<f64>,
         linear_idx: usize,
@@ -961,75 +1155,82 @@ where
 {
     pub fn greater(&self, other: &Array<T>) -> Result<Array<bool>> {
         let engine = UfuncEngine::new();
-        engine.execute_comparison("greater", self, other)
+        engine.execute_comparison("greater", self, other, None, crate::dtype::Casting::Safe)
     }
 
     pub fn less(&self, other: &Array<T>) -> Result<Array<bool>> {
         let engine = UfuncEngine::new();
-        engine.execute_comparison("less", self, other)
+        engine.execute_comparison("less", self, other, None, crate::dtype::Casting::Safe)
     }
 
     pub fn greater_equal(&self, other: &Array<T>) -> Result<Array<bool>> {
         let engine = UfuncEngine::new();
-        engine.execute_comparison("greater_equal", self, other)
+        engine.execute_comparison(
+            "greater_equal",
+            self,
+            other,
+            None,
+            crate::dtype::Casting::Safe,
+        )
     }
 
     pub fn less_equal(&self, other: &Array<T>) -> Result<Array<bool>> {
         let engine = UfuncEngine::new();
-        engine.execute_comparison("less_equal", self, other)
+        engine.execute_comparison("less_equal", self, other, None, crate::dtype::Casting::Safe)
     }
 
     pub fn equal(&self, other: &Array<T>) -> Result<Array<bool>> {
         let engine = UfuncEngine::new();
-        engine.execute_comparison("equal", self, other)
+        engine.execute_comparison("equal", self, other, None, crate::dtype::Casting::Safe)
     }
 
     pub fn not_equal(&self, other: &Array<T>) -> Result<Array<bool>> {
         let engine = UfuncEngine::new();
-        engine.execute_comparison("not_equal", self, other)
+        engine.execute_comparison("not_equal", self, other, None, crate::dtype::Casting::Safe)
     }
 
     pub fn maximum(&self, other: &Array<T>) -> Result<Array<T>> {
         let engine = UfuncEngine::new();
-        engine.execute_binary("maximum", self, other)
+        engine.execute_binary("maximum", self, other, None, crate::dtype::Casting::Safe)
     }
 
     pub fn minimum(&self, other: &Array<T>) -> Result<Array<T>> {
         let engine = UfuncEngine::new();
-        engine.execute_binary("minimum", self, other)
+        engine.execute_binary("minimum", self, other, None, crate::dtype::Casting::Safe)
     }
 
     pub fn logical_and(&self, other: &Array<T>) -> Result<Array<bool>> {
         let engine = UfuncEngine::new();
-        engine.execute_comparison("logical_and", self, other)
+        engine.execute_comparison(
+            "logical_and",
+            self,
+            other,
+            None,
+            crate::dtype::Casting::Safe,
+        )
     }
 
     pub fn logical_or(&self, other: &Array<T>) -> Result<Array<bool>> {
         let engine = UfuncEngine::new();
-        engine.execute_comparison("logical_or", self, other)
+        engine.execute_comparison("logical_or", self, other, None, crate::dtype::Casting::Safe)
     }
 
     pub fn logical_xor(&self, other: &Array<T>) -> Result<Array<bool>> {
         let engine = UfuncEngine::new();
-        engine.execute_comparison("logical_xor", self, other)
+        engine.execute_comparison(
+            "logical_xor",
+            self,
+            other,
+            None,
+            crate::dtype::Casting::Safe,
+        )
     }
 
     pub fn logical_not(&self) -> Result<Array<bool>>
     where
         T: PartialEq + Clone + Default + 'static,
     {
-        let _ufunc = get_ufunc("logical_not")
-            .ok_or_else(|| NumPyError::ufunc_error("logical_not", "Function not found"))?;
-
-        let output_shape = self.shape().to_vec();
-        let mut output = Array::<bool>::zeros(output_shape);
-
-        for i in 0..self.size() {
-            if let Some(val) = self.get(i) {
-                output.set(i, val.clone() == T::default())?;
-            }
-        }
-
-        Ok(output)
+        let engine = UfuncEngine::new();
+        engine.execute_unary_bool("logical_not", self, None, crate::dtype::Casting::Safe)
     }
 }

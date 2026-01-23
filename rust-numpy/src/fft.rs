@@ -16,47 +16,8 @@ where
     let axis = normalize_axis(axis, input.ndim())?;
     let n = n.unwrap_or(input.shape()[axis]);
 
-    // For now, simplify to 1D array handle.
-    // Multi-dimensional axis support requires strided iteration or reshaping.
-    if input.ndim() != 1 {
-        return Err(NumPyError::not_implemented(
-            "fft currently only supports 1D arrays",
-        ));
-    }
-
-    let mut data: Vec<Complex64> = input.iter().map(|x| x.clone().into()).collect();
-
-    // Pad or truncate
-    if data.len() < n {
-        data.resize(n, Complex64::new(0.0, 0.0));
-    } else if data.len() > n {
-        data.truncate(n);
-    }
-
-    let mut planner = FftPlanner::new();
-    let fft = planner.plan_fft_forward(n);
-    fft.process(&mut data);
-
-    // Normalization
-    if let Some(norm_str) = norm {
-        match norm_str {
-            "ortho" => {
-                let scale = (n as f64).sqrt();
-                for x in data.iter_mut() {
-                    *x /= scale;
-                }
-            }
-            "forward" => {
-                let scale = n as f64;
-                for x in data.iter_mut() {
-                    *x /= scale;
-                }
-            }
-            _ => {} // default "backward" (no scaling for forward FFT)
-        }
-    }
-
-    Ok(Array::from_data(data, vec![n]))
+    let complex_input = input.clone_to_complex();
+    fft_axis(&complex_input, n, axis, norm)
 }
 
 /// Compute the 1-dimensional inverse discrete Fourier Transform.
@@ -72,39 +33,8 @@ where
     let axis = normalize_axis(axis, input.ndim())?;
     let n = n.unwrap_or(input.shape()[axis]);
 
-    if input.ndim() != 1 {
-        return Err(NumPyError::not_implemented(
-            "ifft currently only supports 1D arrays",
-        ));
-    }
-
-    let mut data: Vec<Complex64> = input.iter().map(|x| x.clone().into()).collect();
-
-    if data.len() < n {
-        data.resize(n, Complex64::new(0.0, 0.0));
-    } else if data.len() > n {
-        data.truncate(n);
-    }
-
-    let mut planner = FftPlanner::new();
-    let fft = planner.plan_fft_inverse(n);
-    fft.process(&mut data);
-
-    // Default normalization for IFFT is 1/n
-    let mut scale = n as f64;
-    if let Some(norm_str) = norm {
-        match norm_str {
-            "ortho" => scale = (n as f64).sqrt(),
-            "forward" => scale = 1.0, // Scale already applied in forward
-            _ => {}                   // "backward"
-        }
-    }
-
-    for x in data.iter_mut() {
-        *x /= scale;
-    }
-
-    Ok(Array::from_data(data, vec![n]))
+    let complex_input = input.clone_to_complex();
+    ifft_axis(&complex_input, n, axis, norm)
 }
 
 /// Shift the zero-frequency component to the center of the spectrum.
@@ -242,51 +172,8 @@ where
     let axis = normalize_axis(axis, input.ndim())?;
     let n = n.unwrap_or(input.shape()[axis]);
 
-    if input.ndim() != 1 {
-        return Err(NumPyError::not_implemented(
-            "rfft currently only supports 1D arrays",
-        ));
-    }
-
-    let mut data: Vec<Complex64> = input
-        .iter()
-        .map(|x| Complex64::new(x.clone().into(), 0.0))
-        .collect();
-
-    if data.len() < n {
-        data.resize(n, Complex64::new(0.0, 0.0));
-    } else if data.len() > n {
-        data.truncate(n);
-    }
-
-    let mut planner = FftPlanner::new();
-    let fft = planner.plan_fft_forward(n);
-    fft.process(&mut data);
-
-    // Truncate for rfft: n/2 + 1 elements
-    let n_out = n / 2 + 1;
-    data.truncate(n_out);
-
-    // Normalization
-    if let Some(norm_str) = norm {
-        match norm_str {
-            "ortho" => {
-                let scale = (n as f64).sqrt();
-                for x in data.iter_mut() {
-                    *x /= scale;
-                }
-            }
-            "forward" => {
-                let scale = n as f64;
-                for x in data.iter_mut() {
-                    *x /= scale;
-                }
-            }
-            _ => {}
-        }
-    }
-
-    Ok(Array::from_data(data, vec![n_out]))
+    let complex_input = input.clone_to_complex_real();
+    rfft_axis(&complex_input, n, axis, norm)
 }
 
 /// Compute the inverse of rfft.
@@ -304,45 +191,19 @@ where
     let m = input.shape()[axis];
     let n = n.unwrap_or(2 * (m - 1));
 
-    if input.ndim() != 1 {
-        return Err(NumPyError::not_implemented(
-            "irfft currently only supports 1D arrays",
-        ));
-    }
+    let complex_input = input.clone_to_complex();
+    irfft_axis(&complex_input, n, axis, norm)
+}
 
-    let data: Vec<Complex64> = input.iter().map(|x| x.clone().into()).collect();
-
-    // Reconstruct full spectrum for inverse FFT
-    let mut full_data = vec![Complex64::new(0.0, 0.0); n];
-    for i in 0..m.min(n / 2 + 1) {
-        full_data[i] = data[i];
-    }
-    // Conjugate symmetry for the rest
-    for i in 1..((n + 1) / 2) {
-        if i < m {
-            let target = n - i;
-            if target < n {
-                full_data[target] = data[i].conj();
-            }
-        }
-    }
-
-    let mut planner = FftPlanner::new();
-    let fft = planner.plan_fft_inverse(n);
-    fft.process(&mut full_data);
-
-    // Default normalization 1/n
-    let mut scale = n as f64;
-    if let Some(norm_str) = norm {
-        match norm_str {
-            "ortho" => scale = (n as f64).sqrt(),
-            "forward" => scale = 1.0,
-            _ => {}
-        }
-    }
-
-    let result_data: Vec<f64> = full_data.into_iter().map(|x| x.re / scale).collect();
-    Ok(Array::from_data(result_data, vec![n]))
+fn irfft_axis(
+    input: &Array<Complex64>,
+    n: usize,
+    axis: usize,
+    norm: Option<&str>,
+) -> Result<Array<f64>> {
+    let complex_res = irfft_axis_complex(input, n, axis, norm)?;
+    let data: Vec<f64> = complex_res.iter().map(|x| x.re).collect();
+    Ok(Array::from_data(data, complex_res.shape().to_vec()))
 }
 
 /// Compute the N-dimensional discrete Fourier Transform.
@@ -375,7 +236,7 @@ where
 
     for (i, &axis) in axes.iter().enumerate() {
         let n = s[i];
-        current = fft_axis(&current, n, axis as isize, norm)?;
+        current = fft_axis(&current, n, axis, norm)?;
     }
 
     Ok(current)
@@ -411,7 +272,7 @@ where
 
     for (i, &axis) in axes.iter().enumerate() {
         let n = s[i];
-        current = ifft_axis(&current, n, axis as isize, norm)?;
+        current = ifft_axis(&current, n, axis, norm)?;
     }
 
     Ok(current)
@@ -420,11 +281,16 @@ where
 fn fft_axis(
     input: &Array<Complex64>,
     n: usize,
-    axis: isize,
+    axis: usize,
     norm: Option<&str>,
 ) -> Result<Array<Complex64>> {
     let ndim = input.ndim();
-    let axis = normalize_axis(axis, ndim)?;
+    if axis >= ndim {
+        return Err(NumPyError::invalid_operation(format!(
+            "Axis {} out of bounds for ndim {}",
+            axis, ndim
+        )));
+    }
     let shape = input.shape();
 
     let mut new_shape = shape.to_vec();
@@ -443,6 +309,9 @@ fn fft_axis(
     // This is a naive implementation for now: extracting slices, transforming, and inserting.
     // Optimization with direct strided access would be better.
     let outer_size: usize = other_axes.iter().map(|&i| shape[i]).product();
+
+    let mut planner = FftPlanner::new();
+    let fft = planner.plan_fft_forward(n);
 
     for i in 0..outer_size {
         // Map linear index to multi-index for other axes
@@ -466,8 +335,6 @@ fn fft_axis(
             line.truncate(n);
         }
 
-        let mut planner = FftPlanner::new();
-        let fft = planner.plan_fft_forward(n);
         fft.process(&mut line);
 
         // Normalization
@@ -501,11 +368,16 @@ fn fft_axis(
 fn ifft_axis(
     input: &Array<Complex64>,
     n: usize,
-    axis: isize,
+    axis: usize,
     norm: Option<&str>,
 ) -> Result<Array<Complex64>> {
     let ndim = input.ndim();
-    let axis = normalize_axis(axis, ndim)?;
+    if axis >= ndim {
+        return Err(NumPyError::invalid_operation(format!(
+            "Axis {} out of bounds for ndim {}",
+            axis, ndim
+        )));
+    }
     let shape = input.shape();
 
     let mut new_shape = shape.to_vec();
@@ -521,6 +393,9 @@ fn ifft_axis(
     }
 
     let outer_size: usize = other_axes.iter().map(|&i| shape[i]).product();
+
+    let mut planner = FftPlanner::new();
+    let fft = planner.plan_fft_inverse(n);
 
     for i in 0..outer_size {
         let mut indices = vec![0; ndim];
@@ -542,8 +417,6 @@ fn ifft_axis(
             line.truncate(n);
         }
 
-        let mut planner = FftPlanner::new();
-        let fft = planner.plan_fft_inverse(n);
         fft.process(&mut line);
 
         let mut scale = n as f64;
@@ -587,12 +460,12 @@ where
 
     // Apply standard FFT on all but the last axis in 'axes'
     for i in 0..(axes.len() - 1) {
-        current = fft_axis(&current, s[i], axes[i] as isize, norm)?;
+        current = fft_axis(&current, s[i], axes[i], norm)?;
     }
 
     // Apply rfft-like transform on the last axis
     let last_ax_idx = axes.len() - 1;
-    rfft_axis(&current, s[last_ax_idx], axes[last_ax_idx] as isize, norm)
+    rfft_axis(&current, s[last_ax_idx], axes[last_ax_idx], norm)
 }
 
 pub fn irfftn<T>(
@@ -626,11 +499,11 @@ where
     // Apply irfft-like on the last axis
     let last_ax_idx = axes.len() - 1;
     let mut current_complex =
-        irfft_axis_complex(&current, s[last_ax_idx], axes[last_ax_idx] as isize, norm)?;
+        irfft_axis_complex(&current, s[last_ax_idx], axes[last_ax_idx], norm)?;
 
     // Apply ifft on remaining axes
     for i in (0..(axes.len() - 1)).rev() {
-        current_complex = ifft_axis(&current_complex, s[i], axes[i] as isize, norm)?;
+        current_complex = ifft_axis(&current_complex, s[i], axes[i], norm)?;
     }
 
     // Convert to real
@@ -641,11 +514,16 @@ where
 fn rfft_axis(
     input: &Array<Complex64>,
     n: usize,
-    axis: isize,
+    axis: usize,
     norm: Option<&str>,
 ) -> Result<Array<Complex64>> {
     let ndim = input.ndim();
-    let axis = normalize_axis(axis, ndim)?;
+    if axis >= ndim {
+        return Err(NumPyError::invalid_operation(format!(
+            "Axis {} out of bounds for ndim {}",
+            axis, ndim
+        )));
+    }
     let shape = input.shape();
 
     let n_out = n / 2 + 1;
@@ -655,6 +533,9 @@ fn rfft_axis(
     let mut result = Array::zeros(new_shape.clone());
     let other_axes = (0..ndim).filter(|&i| i != axis).collect::<Vec<_>>();
     let outer_size: usize = other_axes.iter().map(|&i| shape[i]).product();
+
+    let mut planner = FftPlanner::new();
+    let fft = planner.plan_fft_forward(n);
 
     for i in 0..outer_size {
         let mut indices = vec![0; ndim];
@@ -676,8 +557,6 @@ fn rfft_axis(
             line.truncate(n);
         }
 
-        let mut planner = FftPlanner::new();
-        let fft = planner.plan_fft_forward(n);
         fft.process(&mut line);
 
         line.truncate(n_out);
@@ -706,11 +585,16 @@ fn rfft_axis(
 fn irfft_axis_complex(
     input: &Array<Complex64>,
     n: usize,
-    axis: isize,
+    axis: usize,
     norm: Option<&str>,
 ) -> Result<Array<Complex64>> {
     let ndim = input.ndim();
-    let axis = normalize_axis(axis, ndim)?;
+    if axis >= ndim {
+        return Err(NumPyError::invalid_operation(format!(
+            "Axis {} out of bounds for ndim {}",
+            axis, ndim
+        )));
+    }
     let shape = input.shape();
     let m = shape[axis];
 
@@ -720,6 +604,9 @@ fn irfft_axis_complex(
     let mut result = Array::zeros(new_shape.clone());
     let other_axes = (0..ndim).filter(|&i| i != axis).collect::<Vec<_>>();
     let outer_size: usize = other_axes.iter().map(|&i| shape[i]).product();
+
+    let mut planner = FftPlanner::new();
+    let fft = planner.plan_fft_inverse(n);
 
     for i in 0..outer_size {
         let mut indices = vec![0; ndim];
@@ -748,8 +635,6 @@ fn irfft_axis_complex(
             }
         }
 
-        let mut planner = FftPlanner::new();
-        let fft = planner.plan_fft_inverse(n);
         fft.process(&mut full_data);
 
         let mut scale = n as f64;
@@ -882,45 +767,80 @@ where
     let m = input.shape()[axis];
     let n = n.unwrap_or(2 * (m - 1));
 
-    if input.ndim() != 1 {
-        return Err(NumPyError::not_implemented(
-            "hfft currently only supports 1D arrays",
-        ));
-    }
+    let complex_input = input.clone_to_complex();
+    hfft_axis(&complex_input, n, axis, norm)
+}
 
-    let data: Vec<Complex64> = input.iter().map(|x| x.clone().into()).collect();
+fn hfft_axis(
+    input: &Array<Complex64>,
+    n: usize,
+    axis: usize,
+    norm: Option<&str>,
+) -> Result<Array<f64>> {
+    let ndim = input.ndim();
+    if axis >= ndim {
+        return Err(NumPyError::invalid_operation(format!(
+            "Axis {} out of bounds for ndim {}",
+            axis, ndim
+        )));
+    }
+    let shape = input.shape();
+    let m = shape[axis];
 
-    // Reconstruct full spectrum with Hermitian symmetry
-    let mut full_data = vec![Complex64::new(0.0, 0.0); n];
-    for i in 0..m.min(n / 2 + 1) {
-        full_data[i] = data[i];
-    }
-    // Conjugate symmetry for the rest
-    for i in 1..((n + 1) / 2) {
-        if i < m {
-            let target = n - i;
-            if target < n {
-                full_data[target] = data[i].conj();
-            }
-        }
-    }
+    let mut new_shape = shape.to_vec();
+    new_shape[axis] = n;
+
+    let mut result = Array::zeros(new_shape.clone());
+    let other_axes: Vec<usize> = (0..ndim).filter(|&ax| ax != axis).collect();
+    let outer_size: usize = other_axes.iter().map(|&ax| shape[ax]).product();
 
     let mut planner = FftPlanner::new();
     let fft = planner.plan_fft_inverse(n);
-    fft.process(&mut full_data);
 
-    // Normalization for hfft is special: default is 1.0 (no normalization)
-    let mut scale = 1.0;
-    if let Some(norm_str) = norm {
-        match norm_str {
-            "ortho" => scale = (n as f64).sqrt(),
-            "forward" => scale = n as f64,
-            _ => {} // "backward" - no scaling for hfft
+    for i in 0..outer_size {
+        let mut indices = vec![0; ndim];
+        let mut temp_idx = i;
+        for &ax in other_axes.iter().rev() {
+            indices[ax] = temp_idx % shape[ax];
+            temp_idx /= shape[ax];
+        }
+
+        let mut data = Vec::with_capacity(m);
+        for k in 0..m {
+            indices[axis] = k;
+            data.push(input.get_multi(&indices)?);
+        }
+
+        let mut full_data = vec![Complex64::new(0.0, 0.0); n];
+        for k in 0..m.min(n / 2 + 1) {
+            full_data[k] = data[k];
+        }
+        for k in 1..((n + 1) / 2) {
+            if k < m {
+                let target = n - k;
+                if target < n {
+                    full_data[target] = data[k].conj();
+                }
+            }
+        }
+
+        fft.process(&mut full_data);
+
+        let mut scale = 1.0;
+        if let Some(norm_str) = norm {
+            match norm_str {
+                "ortho" => scale = (n as f64).sqrt(),
+                "forward" => scale = n as f64,
+                _ => {}
+            }
+        }
+
+        for k in 0..n {
+            indices[axis] = k;
+            result.set_multi(&indices, full_data[k].re * scale)?;
         }
     }
-
-    let result_data: Vec<f64> = full_data.into_iter().map(|x| x.re * scale).collect();
-    Ok(Array::from_data(result_data, vec![n]))
+    Ok(result)
 }
 
 /// Compute the inverse FFT of a real signal.
@@ -950,56 +870,65 @@ where
     // For ihfft, n defaults to m/2 + 1 (the rfft output length)
     let n_out = n.unwrap_or(m / 2 + 1);
 
-    if input.ndim() != 1 {
-        return Err(NumPyError::not_implemented(
-            "ihfft currently only supports 1D arrays",
-        ));
-    }
+    let complex_input = input.clone_to_complex_real();
+    ihfft_axis(&complex_input, n_out, axis, norm)
+}
 
-    let mut data: Vec<Complex64> = input
-        .iter()
-        .map(|x| Complex64::new(x.clone().into(), 0.0))
-        .collect();
-
-    // Pad or truncate to m
-    if data.len() < m {
-        data.resize(m, Complex64::new(0.0, 0.0));
-    } else if data.len() > m {
-        data.truncate(m);
+fn ihfft_axis(
+    input: &Array<Complex64>,
+    n_out: usize,
+    axis: usize,
+    norm: Option<&str>,
+) -> Result<Array<Complex64>> {
+    let ndim = input.ndim();
+    if axis >= ndim {
+        return Err(NumPyError::invalid_operation(format!(
+            "Axis {} out of bounds for ndim {}",
+            axis, ndim
+        )));
     }
+    let shape = input.shape();
+    let m = shape[axis];
+
+    let mut new_shape = shape.to_vec();
+    new_shape[axis] = n_out;
+
+    let mut result = Array::zeros(new_shape.clone());
+    let other_axes: Vec<usize> = (0..ndim).filter(|&ax| ax != axis).collect();
+    let outer_size: usize = other_axes.iter().map(|&ax| shape[ax]).product();
 
     let mut planner = FftPlanner::new();
     let fft = planner.plan_fft_forward(m);
-    fft.process(&mut data);
 
-    // Default scaling for ihfft
-    let mut scale = m as f64;
+    for i in 0..outer_size {
+        let mut indices = vec![0; ndim];
+        let mut temp_idx = i;
+        for &ax in other_axes.iter().rev() {
+            indices[ax] = temp_idx % shape[ax];
+            temp_idx /= shape[ax];
+        }
 
-    // Truncate for ihfft: n_out elements
-    data.truncate(n_out);
+        let mut data = Vec::with_capacity(m);
+        for k in 0..m {
+            indices[axis] = k;
+            data.push(input.get_multi(&indices)?);
+        }
 
-    // Normalization for ihfft
-    if let Some(norm_str) = norm {
-        match norm_str {
-            "ortho" => {
-                scale = (m as f64).sqrt();
-                for x in data.iter_mut() {
-                    *x /= scale;
-                }
+        fft.process(&mut data);
+
+        let mut scale = m as f64;
+        if let Some(norm_str) = norm {
+            match norm_str {
+                "ortho" => scale = (m as f64).sqrt(),
+                "forward" => scale = m as f64,
+                _ => {}
             }
-            "forward" => {
-                scale = m as f64;
-                for x in data.iter_mut() {
-                    *x /= scale;
-                }
-            }
-            _ => {} // "backward" - default 1/m scaling already set
+        }
+
+        for k in 0..n_out {
+            indices[axis] = k;
+            result.set_multi(&indices, data[k] / scale)?;
         }
     }
-
-    for x in data.iter_mut() {
-        *x /= scale;
-    }
-
-    Ok(Array::from_data(data, vec![n_out]))
+    Ok(result)
 }

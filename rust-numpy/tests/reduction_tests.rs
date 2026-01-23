@@ -39,7 +39,7 @@ mod tests {
     #[test]
     fn test_product_basic() {
         let arr = array![1, 2, 3, 4];
-        let prod = arr.product(None, false).unwrap();
+        let prod = arr.prod(None, false).unwrap();
         assert_eq!(*prod.get(0).unwrap(), 24);
     }
 

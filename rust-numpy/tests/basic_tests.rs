@@ -3,6 +3,7 @@ use numpy::*;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use numpy::array_manipulation::{apply_along_axis, apply_over_axes, Vectorize};
 
     #[test]
     fn test_array_creation() {
@@ -185,4 +186,100 @@ mod tests {
         assert_eq!(result.inverse.unwrap().to_vec(), vec![0, 0, 1]);
         assert_eq!(result.counts.unwrap().to_vec(), vec![2, 1]);
     }
+}
+
+// ==================== FUNCTION APPLICATION TESTS ====================
+
+#[test]
+fn test_apply_along_axis_1d() {
+    let arr = array2![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
+
+    // Apply sum along axis 0 (column-wise)
+    let result = apply_along_axis(
+        &|slice: &Array<f64>| {
+            let mut sum = 0.0;
+            for i in 0..slice.size() {
+                if let Some(val) = slice.get(i) {
+                    sum += val;
+                }
+            }
+            sum
+        },
+        0,
+        &arr,
+        &[()],
+    )
+    .unwrap();
+
+    assert_eq!(result.shape(), &[3]);
+    assert_eq!(result.get(0), Some(&5.0)); // 1+4
+    assert_eq!(result.get(1), Some(&7.0)); // 2+5
+    assert_eq!(result.get(2), Some(&9.0)); // 3+6
+}
+
+#[test]
+fn test_apply_along_axis_1d_axis1() {
+    let arr = array2![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
+
+    // Apply sum along axis 1 (row-wise)
+    let result = apply_along_axis(
+        &|slice: &Array<f64>| {
+            let mut sum = 0.0;
+            for i in 0..slice.size() {
+                if let Some(val) = slice.get(i) {
+                    sum += val;
+                }
+            }
+            sum
+        },
+        1,
+        &arr,
+        &[()],
+    )
+    .unwrap();
+
+    assert_eq!(result.shape(), &[2]);
+    assert_eq!(result.get(0), Some(&6.0)); // 1+2+3
+    assert_eq!(result.get(1), Some(&15.0)); // 4+5+6
+}
+
+#[test]
+fn test_apply_over_axes() {
+    let arr = array![1.0, 2.0, 3.0, 4.0];
+    let arr_2d = arr.reshape(&[2, 2]).unwrap();
+
+    // Apply a function that calculates mean along axes
+    let result = apply_over_axes(&|a: &Array<f64>, _axis| a.clone(), &arr_2d, &[0]).unwrap();
+
+    // The function just returns the array unchanged, so result should be same shape
+    assert_eq!(result.ndim(), 2);
+}
+
+#[test]
+fn test_vectorize() {
+    let a = array![1.0, 2.0, 3.0];
+    let b = array![10.0, 20.0, 30.0];
+
+    let vfunc = Vectorize::new(|x: &f64, y: &f64| x + y);
+    let result = vfunc.apply(&a, &b).unwrap();
+
+    assert_eq!(result.shape(), &[3]);
+    assert_eq!(result.get(0), Some(&11.0));
+    assert_eq!(result.get(1), Some(&22.0));
+    assert_eq!(result.get(2), Some(&33.0));
+}
+
+#[test]
+fn test_vectorize_broadcasting() {
+    let a = array2![[1.0, 2.0], [3.0, 4.0]];
+    let b = array![10.0, 20.0];
+
+    let vfunc = Vectorize::new(|x: &f64, y: &f64| x * y);
+    let result = vfunc.apply(&a, &b).unwrap();
+
+    assert_eq!(result.shape(), &[2, 2]);
+    assert_eq!(result.get(0), Some(&10.0)); // 1*10
+    assert_eq!(result.get(1), Some(&40.0)); // 2*20
+    assert_eq!(result.get(2), Some(&30.0)); // 3*10
+    assert_eq!(result.get(3), Some(&80.0)); // 4*20
 }

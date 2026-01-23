@@ -1,6 +1,7 @@
 use crate::array::Array;
 use crate::error::NumPyError;
 use crate::linalg::LinalgScalar;
+use num_traits::One;
 
 /// Solve a linear matrix equation, or system of linear scalar equations.
 /// Computes the "exact" solution, x, of the well-determined, i.e., full rank,
@@ -236,11 +237,19 @@ where
 /// Computes the vector x that approximatively solves the equation a @ x = b.
 /// The equation may be under-, well-, or over-determined.
 ///
+/// # Arguments
+///
+/// * `a` - Coefficient matrix (M, N)
+/// * `b` - Ordinate or dependent variable values (M,) or (M, K)
+/// * `rcond` - Cutoff for small singular values.
+///   - Singular values less than or equal to `rcond * largest_singular_value` are set to zero.
+///   - If None, uses default value of `max(M, N) * eps` where eps is machine precision.
+///
 /// Returns (solution, residuals, rank, singular_values)
 pub fn lstsq<T>(
     a: &Array<T>,
     b: &Array<T>,
-    _rcond: Option<f64>,
+    rcond: Option<f64>,
 ) -> Result<(Array<T>, Array<T>, usize, Array<T>), NumPyError>
 where
     T: LinalgScalar,
@@ -260,7 +269,10 @@ where
         return Err(NumPyError::shape_mismatch(vec![m], vec![b.shape()[0]]));
     }
 
-    let (q, r) = qr(a, "reduced")?;
+    let (q, r) = match qr(a, "reduced")? {
+        crate::linalg::decompositions::QRResult::QR(q, r) => (q, r),
+        _ => unreachable!(),
+    };
 
     // Compute d = Q.T @ b
     let q_t = q.transpose();
@@ -342,16 +354,45 @@ where
     let mut rank = 0;
     let machine_eps = <T::Real as num_traits::Float>::epsilon();
 
+    // Determine rcond cutoff
+    // Default rcond is max(M, N) * eps (following NumPy convention)
+    let max_dim = <T::Real as NumCast>::from((m as f64).max(n as f64)).unwrap_or(T::Real::one());
+    let rcond_cutoff = if let Some(rc) = rcond {
+        <T::Real as NumCast>::from(rc).unwrap_or(T::Real::zero())
+    } else {
+        max_dim * machine_eps
+    };
+
+    // Find maximum diagonal element for normalization
+    let mut max_diag = T::Real::zero();
     for i in 0..r_diag_len {
         let val = *r.get_linear(i * r.shape()[1] + i).unwrap();
-        if let Some(threshold) = <T::Real as NumCast>::from(100.0) {
-            if val.abs() > machine_eps * threshold {
-                rank += 1;
-            }
+        let abs_val = val.abs();
+        if abs_val > max_diag {
+            max_diag = abs_val;
         }
     }
 
-    let s = Array::from_data(Vec::new(), vec![0]);
+    // Compute threshold: singular values <= rcond * max_singular_value are treated as zero
+    let threshold = rcond_cutoff * max_diag;
+
+    // Count rank (number of diagonal elements above threshold)
+    for i in 0..r_diag_len {
+        let val = *r.get_linear(i * r.shape()[1] + i).unwrap();
+        if val.abs() > threshold {
+            rank += 1;
+        }
+    }
+
+    // Compute singular values from R diagonal
+    // Note: This is an approximation. For true singular values, SVD decomposition is needed.
+    let mut s_data: Vec<T> = Vec::with_capacity(r_diag_len);
+    for i in 0..r_diag_len {
+        let val = *r.get_linear(i * r.shape()[1] + i).unwrap();
+        let abs_val = LinalgScalar::from_real(val.abs());
+        s_data.push(abs_val);
+    }
+    let s = Array::from_data(s_data, vec![r_diag_len]);
 
     // If input b was 1D, output x should be 1D (N,).
     // Currently x is (N, 1) from solve.

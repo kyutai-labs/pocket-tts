@@ -385,9 +385,56 @@ where
     }
 
     /// Expand ellipsis in indices
-    pub fn ellipsis_index(&self, _indices: &[Index]) -> Result<Self> {
-        // Stub: raise error
-        Err(NumPyError::not_implemented("ellipsis_index"))
+    pub fn ellipsis_index(&self, indices: &[Index]) -> Result<Self> {
+        let mut expanded_slices = Vec::new();
+        let mut ellipsis_found = false;
+
+        // Count non-ellipsis indices
+        let non_ellipsis_count = indices
+            .iter()
+            .filter(|i| !matches!(i, Index::Ellipsis))
+            .count();
+
+        if indices.len() - non_ellipsis_count > 1 {
+            return Err(NumPyError::invalid_operation(
+                "An index can only have one ellipsis (...)",
+            ));
+        }
+
+        let ellipsis_expansion = self.ndim().saturating_sub(non_ellipsis_count);
+
+        for idx in indices {
+            match idx {
+                Index::Ellipsis => {
+                    if ellipsis_found {
+                        // Already handled by check above but for safety
+                        continue;
+                    }
+                    ellipsis_found = true;
+                    for _ in 0..ellipsis_expansion {
+                        expanded_slices.push(Slice::Full);
+                    }
+                }
+                Index::Slice(s) => expanded_slices.push(s.clone()),
+                Index::Integer(i) => expanded_slices.push(Slice::Index(*i)),
+                Index::Boolean(b) => {
+                    if *b {
+                        expanded_slices.push(Slice::Full);
+                    } else {
+                        expanded_slices.push(Slice::Range(0, 0));
+                    }
+                }
+            }
+        }
+
+        // If no ellipsis was found and fewer indices provided, NumPy pads with Full slices at the end
+        if !ellipsis_found && expanded_slices.len() < self.ndim() {
+            for _ in expanded_slices.len()..self.ndim() {
+                expanded_slices.push(Slice::Full);
+            }
+        }
+
+        self.slice(&MultiSlice::new(expanded_slices))
     }
 
     /// Calculate length of a slice for a dimension
@@ -396,9 +443,140 @@ where
     }
 
     /// Extract data using multi-dimensional indices
-    pub fn extract_multidim_data(&self, _indices: &[Index], _result: &mut Vec<T>) -> Result<()> {
-        // Stub
-        Err(NumPyError::not_implemented("extract_multidim_data"))
+    pub fn extract_multidim_data(&self, indices: &[Index], result: &mut Vec<T>) -> Result<()> {
+        // Helper function to expand ellipsis
+        let expand_ellipsis = |indices: &[Index], ndim: usize| -> Vec<Index> {
+            let ellipsis_count = indices
+                .iter()
+                .filter(|i| matches!(i, Index::Ellipsis))
+                .count();
+            if ellipsis_count == 0 {
+                return indices.to_vec();
+            }
+
+            let mut expanded = Vec::new();
+            let mut before_ellipsis = true;
+            for idx in indices {
+                match idx {
+                    Index::Ellipsis => {
+                        if before_ellipsis {
+                            // Calculate how many full slices we need to add
+                            let specified_count = indices.len() - ellipsis_count;
+                            let num_full = ndim.saturating_sub(specified_count);
+                            for _ in 0..num_full {
+                                expanded.push(Index::Slice(Slice::Full));
+                            }
+                            before_ellipsis = false;
+                        }
+                        // Skip subsequent ellipsis
+                    }
+                    _ => {
+                        expanded.push(idx.clone());
+                    }
+                }
+            }
+            expanded
+        };
+
+        let expanded_indices = expand_ellipsis(indices, self.ndim());
+
+        // Validate indices length matches dimensions
+        if expanded_indices.len() != self.ndim() {
+            return Err(NumPyError::index_error(expanded_indices.len(), self.ndim()));
+        }
+
+        // Convert each index to a concrete range of positions
+        let mut index_ranges: Vec<Vec<usize>> = Vec::new();
+        for (dim, idx) in expanded_indices.iter().enumerate() {
+            let dim_size = self.shape()[dim];
+            let positions = match idx {
+                Index::Integer(i) => {
+                    let idx = if *i < 0 {
+                        (dim_size as isize + i) as usize
+                    } else {
+                        *i as usize
+                    };
+                    if idx >= dim_size {
+                        return Err(NumPyError::index_error(idx, dim_size));
+                    }
+                    vec![idx]
+                }
+                Index::Slice(slice) => {
+                    let len = dim_size as isize;
+                    let (start, stop, step) = slice.to_range(len);
+                    let actual_start = start.max(0).min(len) as usize;
+                    let actual_stop = stop.max(0).min(len) as usize;
+                    let step_abs = step.unsigned_abs();
+
+                    if step == 0 {
+                        return Err(NumPyError::invalid_value("slice step cannot be zero"));
+                    }
+
+                    let mut positions = Vec::new();
+                    if step > 0 {
+                        let mut pos = actual_start;
+                        while pos < actual_stop {
+                            positions.push(pos);
+                            pos += step_abs;
+                            if pos >= dim_size {
+                                break;
+                            }
+                        }
+                    } else {
+                        let mut pos = actual_start;
+                        while pos > actual_stop {
+                            positions.push(pos);
+                            if pos < step_abs {
+                                break;
+                            }
+                            pos -= step_abs;
+                        }
+                    }
+                    positions
+                }
+                Index::Ellipsis => {
+                    // Should have been expanded
+                    vec![0]
+                }
+                Index::Boolean(_) => {
+                    // Boolean indexing not yet implemented for multidim extraction
+                    return Err(NumPyError::not_implemented(
+                        "boolean indexing in extract_multidim_data",
+                    ));
+                }
+            };
+            index_ranges.push(positions);
+        }
+
+        // Generate all combinations of indices and extract data
+        let mut current_indices = vec![0usize; self.ndim()];
+
+        // Recursive function to iterate through all combinations
+        fn extract_recursive<T: Clone>(
+            array: &Array<T>,
+            dim: usize,
+            index_ranges: &[Vec<usize>],
+            current_indices: &mut Vec<usize>,
+            result: &mut Vec<T>,
+        ) -> Result<()> {
+            if dim == array.ndim() {
+                // Base case: extract element at current position
+                let linear_idx = compute_linear_index(current_indices, array.strides());
+                if let Some(element) = array.get(linear_idx as usize) {
+                    result.push(element.clone());
+                }
+                return Ok(());
+            }
+
+            for &pos in &index_ranges[dim] {
+                current_indices[dim] = pos;
+                extract_recursive(array, dim + 1, index_ranges, current_indices, result)?;
+            }
+
+            Ok(())
+        }
+
+        extract_recursive(self, 0, &index_ranges, &mut current_indices, result)
     }
 }
 

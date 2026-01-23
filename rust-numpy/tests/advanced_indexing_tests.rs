@@ -45,10 +45,24 @@ fn test_fancy_indexing_2d_broadcast() {
 }
 
 #[test]
-fn test_fancy_indexing_out_of_bounds() {
-    let arr = array![1, 2, 3];
-    let idx = array![3];
+fn test_fancy_indexing_mixed_incomplete() {
+    let arr = array2![[1, 2, 3], [4, 5, 6]];
+    let idx = array![1, 0];
 
-    let res = arr.fancy_index(&[&idx]);
-    assert!(res.is_err());
+    // a[[1, 0]] should return rows 1 and 0: [[4, 5, 6], [1, 2, 3]]
+    let res = arr.fancy_index(&[&idx]).unwrap();
+    assert_eq!(res.shape(), &[2, 3]);
+    assert_eq!(res.to_vec(), vec![4, 5, 6, 1, 2, 3]);
+}
+
+#[test]
+fn test_boolean_indexing_partial() {
+    // 2x3 array
+    let arr = array2![[1, 2, 3], [4, 5, 6]];
+    let mask = array![true, false]; // Boolean index on first dimension
+
+    // a[[True, False]] should return first row: [[1, 2, 3]]
+    let res = arr.get_mask(&mask).unwrap();
+    assert_eq!(res.shape(), &[1, 3]);
+    assert_eq!(res.to_vec(), vec![1, 2, 3]);
 }

@@ -85,6 +85,7 @@ pub trait Ufunc: Send + Sync {
         &self,
         inputs: &[&dyn ArrayView],
         outputs: &mut [&mut dyn ArrayViewMut],
+        where_mask: Option<&Array<bool>>,
     ) -> Result<()>;
 
     /// Check if ufunc supports given dtypes
@@ -213,6 +214,7 @@ where
         &self,
         inputs: &[&dyn ArrayView],
         outputs: &mut [&mut dyn ArrayViewMut],
+        where_mask: Option<&Array<bool>>,
     ) -> Result<()> {
         if inputs.len() != 2 || outputs.len() != 1 {
             return Err(NumPyError::ufunc_error(
@@ -229,12 +231,22 @@ where
         let input1 = unsafe { &*(inputs[1] as *const _ as *const Array<T>) };
         let output = unsafe { &mut *(outputs[0] as *mut _ as *mut Array<T>) };
 
+        // Handle where_mask
+        let mask = if let Some(m) = where_mask {
+            Some(crate::broadcasting::broadcast_to(m, output.shape())?)
+        } else {
+            None
+        };
+
         // Fast path for C-contiguous arrays of same shape
         if input0.is_c_contiguous()
             && input1.is_c_contiguous()
             && output.is_c_contiguous()
             && input0.shape() == input1.shape()
             && input0.shape() == output.shape()
+            && mask
+                .as_ref()
+                .map_or(true, |m| m.is_c_contiguous() && m.shape() == output.shape())
         {
             let d0 = input0.data.as_slice();
             let d1 = input1.data.as_slice();
@@ -243,8 +255,15 @@ where
             };
 
             for i in 0..output.size() {
-                out_slice[i] =
-                    (self.operation)(d0[input0.offset + i].clone(), d1[input1.offset + i].clone());
+                if mask
+                    .as_ref()
+                    .map_or(true, |m| *m.get_linear(i).unwrap_or(&false))
+                {
+                    out_slice[i] = (self.operation)(
+                        d0[input0.offset + i].clone(),
+                        d1[input1.offset + i].clone(),
+                    );
+                }
             }
             return Ok(());
         }
@@ -255,8 +274,13 @@ where
         let arr1 = &broadcasted[1];
 
         for i in 0..output.size() {
-            if let (Some(a), Some(b)) = (arr0.get(i), arr1.get(i)) {
-                output.set(i, (self.operation)(a.clone(), b.clone()))?;
+            if mask
+                .as_ref()
+                .map_or(true, |m| *m.get_linear(i).unwrap_or(&false))
+            {
+                if let (Some(a), Some(b)) = (arr0.get(i), arr1.get(i)) {
+                    output.set(i, (self.operation)(a.clone(), b.clone()))?;
+                }
             }
         }
 
@@ -333,6 +357,7 @@ where
         &self,
         inputs: &[&dyn ArrayView],
         outputs: &mut [&mut dyn ArrayViewMut],
+        where_mask: Option<&Array<bool>>,
     ) -> Result<()> {
         if inputs.len() != 1 || outputs.len() != 1 {
             return Err(NumPyError::ufunc_error(
@@ -348,22 +373,45 @@ where
         let input = unsafe { &*(inputs[0] as *const _ as *const Array<T>) };
         let output = unsafe { &mut *(outputs[0] as *mut _ as *mut Array<T>) };
 
+        // Handle where_mask
+        let mask = if let Some(m) = where_mask {
+            Some(crate::broadcasting::broadcast_to(m, output.shape())?)
+        } else {
+            None
+        };
+
         // Fast path for C-contiguous arrays
-        if input.is_c_contiguous() && output.is_c_contiguous() && input.shape() == output.shape() {
+        if input.is_c_contiguous()
+            && output.is_c_contiguous()
+            && input.shape() == output.shape()
+            && mask
+                .as_ref()
+                .map_or(true, |m| m.is_c_contiguous() && m.shape() == output.shape())
+        {
             let in_slice = input.data.as_slice();
             let out_slice = unsafe {
                 std::slice::from_raw_parts_mut(output.as_mut_ptr() as *mut T, output.size())
             };
 
             for i in 0..output.size() {
-                out_slice[i] = (self.operation)(in_slice[input.offset + i].clone());
+                if mask
+                    .as_ref()
+                    .map_or(true, |m| *m.get_linear(i).unwrap_or(&false))
+                {
+                    out_slice[i] = (self.operation)(in_slice[input.offset + i].clone());
+                }
             }
             return Ok(());
         }
 
         for i in 0..input.size() {
-            if let Some(a) = input.get(i) {
-                output.set(i, (self.operation)(a.clone()))?;
+            if mask
+                .as_ref()
+                .map_or(true, |m| *m.get_linear(i).unwrap_or(&false))
+            {
+                if let Some(a) = input.get(i) {
+                    output.set(i, (self.operation)(a.clone()))?;
+                }
             }
         }
 

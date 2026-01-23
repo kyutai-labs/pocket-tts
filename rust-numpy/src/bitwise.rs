@@ -4,7 +4,7 @@
 //! Supports all integer dtypes with proper broadcasting, type safety, and performance optimizations.
 
 use crate::array::Array;
-use crate::broadcasting::{broadcast_arrays, compute_broadcast_shape};
+use crate::broadcasting::broadcast_arrays;
 use crate::dtype::{Dtype, DtypeKind};
 use crate::error::{NumPyError, Result};
 use crate::ufunc::{Ufunc, UfuncRegistry};
@@ -183,6 +183,7 @@ where
         &self,
         inputs: &[&dyn crate::ufunc::ArrayView],
         outputs: &mut [&mut dyn crate::ufunc::ArrayViewMut],
+        where_mask: Option<&Array<bool>>,
     ) -> Result<()> {
         if inputs.len() != 2 || outputs.len() != 1 {
             return Err(NumPyError::ufunc_error(
@@ -199,30 +200,26 @@ where
         let input1 = unsafe { &*(inputs[1] as *const _ as *const Array<T>) };
         let output = unsafe { &mut *(outputs[0] as *mut _ as *mut Array<T>) };
 
-        // Validate dtypes support bitwise operations
-        if !self.supported_dtypes().contains(&input0.dtype().kind())
-            || !self.supported_dtypes().contains(&input1.dtype().kind())
-        {
-            return Err(NumPyError::dtype_error(format!(
-                "Bitwise operations only support integer types, got {:?} and {:?}",
-                input0.dtype().kind(),
-                input1.dtype().kind()
-            )));
-        }
-
-        let shape0 = input0.shape();
-        let shape1 = input1.shape();
-        let broadcast_shape = compute_broadcast_shape(shape0, shape1);
+        // Handle where_mask
+        let mask = if let Some(m) = where_mask {
+            Some(crate::broadcasting::broadcast_to(m, output.shape())?)
+        } else {
+            None
+        };
 
         let broadcasted = broadcast_arrays(&[input0, input1])?;
-
         let arr0 = &broadcasted[0];
         let arr1 = &broadcasted[1];
 
-        for i in 0..broadcast_shape.iter().product::<usize>() {
-            if let (Some(a), Some(b)) = (arr0.get(i), arr1.get(i)) {
-                let result = (self.operation)(a, b);
-                output.set(i, result)?;
+        for i in 0..output.size() {
+            if mask
+                .as_ref()
+                .map_or(true, |m| *m.get_linear(i).unwrap_or(&false))
+            {
+                if let (Some(a), Some(b)) = (arr0.get(i), arr1.get(i)) {
+                    let result = (self.operation)(a, b);
+                    output.set(i, result)?;
+                }
             }
         }
 
@@ -292,6 +289,7 @@ where
         &self,
         inputs: &[&dyn crate::ufunc::ArrayView],
         outputs: &mut [&mut dyn crate::ufunc::ArrayViewMut],
+        where_mask: Option<&Array<bool>>,
     ) -> Result<()> {
         if inputs.len() != 1 || outputs.len() != 1 {
             return Err(NumPyError::ufunc_error(
@@ -307,6 +305,13 @@ where
         let input = unsafe { &*(inputs[0] as *const _ as *const Array<T>) };
         let output = unsafe { &mut *(outputs[0] as *mut _ as *mut Array<T>) };
 
+        // Handle where_mask
+        let mask = if let Some(m) = where_mask {
+            Some(crate::broadcasting::broadcast_to(m, output.shape())?)
+        } else {
+            None
+        };
+
         if !self.supported_dtypes().contains(&input.dtype().kind()) {
             return Err(NumPyError::dtype_error(format!(
                 "Bitwise operations only support integer types, got {:?}",
@@ -315,9 +320,14 @@ where
         }
 
         for i in 0..input.size() {
-            if let Some(a) = input.get(i) {
-                let result = (self.operation)(a);
-                output.set(i, result)?;
+            if mask
+                .as_ref()
+                .map_or(true, |m| *m.get_linear(i).unwrap_or(&false))
+            {
+                if let Some(a) = input.get(i) {
+                    let result = (self.operation)(a);
+                    output.set(i, result)?;
+                }
             }
         }
 
@@ -461,6 +471,7 @@ where
         &self,
         inputs: &[&dyn crate::ufunc::ArrayView],
         outputs: &mut [&mut dyn crate::ufunc::ArrayViewMut],
+        where_mask: Option<&Array<bool>>,
     ) -> Result<()> {
         if inputs.len() != 2 || outputs.len() != 1 {
             return Err(NumPyError::ufunc_error(
@@ -477,37 +488,29 @@ where
         let input1 = unsafe { &*(inputs[1] as *const _ as *const Array<T>) };
         let output = unsafe { &mut *(outputs[0] as *mut _ as *mut Array<T>) };
 
-        // Validate dtypes
-        if !self.supported_dtypes().contains(&input0.dtype().kind()) {
-            return Err(NumPyError::dtype_error(format!(
-                "Shift operations only support integer types for first argument, got {:?}",
-                input0.dtype().kind()
-            )));
-        }
-
-        if !self.supported_dtypes().contains(&input1.dtype().kind()) {
-            return Err(NumPyError::dtype_error(format!(
-                "Shift operations only support integer types for shift amount, got {:?}",
-                input1.dtype().kind()
-            )));
-        }
-
-        let shape0 = input0.shape();
-        let shape1 = input1.shape();
-        let broadcast_shape = compute_broadcast_shape(shape0, shape1);
+        // Handle where_mask
+        let mask = if let Some(m) = where_mask {
+            Some(crate::broadcasting::broadcast_to(m, output.shape())?)
+        } else {
+            None
+        };
 
         let broadcasted = broadcast_arrays(&[input0, input1])?;
-
         let arr0 = &broadcasted[0];
         let arr1 = &broadcasted[1];
 
-        for i in 0..broadcast_shape.iter().product::<usize>() {
-            if let (Some(a), Some(shift_val)) = (arr0.get(i), arr1.get(i)) {
-                // Convert shift amount to u32, handling different integer types
-                let shift_u32 = self.convert_shift_to_u32(shift_val)?;
+        for i in 0..output.size() {
+            if mask
+                .as_ref()
+                .map_or(true, |m| *m.get_linear(i).unwrap_or(&false))
+            {
+                if let (Some(a), Some(shift_val)) = (arr0.get(i), arr1.get(i)) {
+                    // Convert shift amount to u32, handling different integer types
+                    let shift_u32 = self.convert_shift_to_u32(shift_val)?;
 
-                let result = (self.operation)(a, shift_u32)?;
-                output.set(i, result)?;
+                    let result = (self.operation)(a, shift_u32)?;
+                    output.set(i, result)?;
+                }
             }
         }
 
@@ -590,6 +593,7 @@ where
         &self,
         inputs: &[&dyn crate::ufunc::ArrayView],
         outputs: &mut [&mut dyn crate::ufunc::ArrayViewMut],
+        where_mask: Option<&Array<bool>>,
     ) -> Result<()> {
         if inputs.len() != 2 || outputs.len() != 1 {
             return Err(NumPyError::ufunc_error(
@@ -606,19 +610,26 @@ where
         let input1 = unsafe { &*(inputs[1] as *const _ as *const Array<T>) };
         let output = unsafe { &mut *(outputs[0] as *mut _ as *mut Array<bool>) };
 
-        let shape0 = input0.shape();
-        let shape1 = input1.shape();
-        let broadcast_shape = compute_broadcast_shape(shape0, shape1);
+        // Handle where_mask
+        let mask = if let Some(m) = where_mask {
+            Some(crate::broadcasting::broadcast_to(m, output.shape())?)
+        } else {
+            None
+        };
 
         let broadcasted = broadcast_arrays(&[input0, input1])?;
-
         let arr0 = &broadcasted[0];
         let arr1 = &broadcasted[1];
 
-        for i in 0..broadcast_shape.iter().product::<usize>() {
-            if let (Some(a), Some(b)) = (arr0.get(i), arr1.get(i)) {
-                let result = (self.operation)(a, b);
-                output.set(i, result)?;
+        for i in 0..output.size() {
+            if mask
+                .as_ref()
+                .map_or(true, |m| *m.get_linear(i).unwrap_or(&false))
+            {
+                if let (Some(a), Some(b)) = (arr0.get(i), arr1.get(i)) {
+                    let result = (self.operation)(a, b);
+                    output.set(i, result)?;
+                }
             }
         }
 
@@ -653,7 +664,7 @@ where
     T: Clone + Default + BitwiseOps + 'static,
 {
     let engine = UfuncEngine::new();
-    engine.execute_binary("bitwise_and", x1, x2)
+    engine.execute_binary("bitwise_and", x1, x2, None, crate::dtype::Casting::Safe)
 }
 
 /// Element-wise bitwise OR operation
@@ -665,7 +676,7 @@ where
     T: Clone + Default + BitwiseOps + 'static,
 {
     let engine = UfuncEngine::new();
-    engine.execute_binary("bitwise_or", x1, x2)
+    engine.execute_binary("bitwise_or", x1, x2, None, crate::dtype::Casting::Safe)
 }
 
 /// Element-wise bitwise XOR operation
@@ -677,7 +688,7 @@ where
     T: Clone + Default + BitwiseOps + 'static,
 {
     let engine = UfuncEngine::new();
-    engine.execute_binary("bitwise_xor", x1, x2)
+    engine.execute_binary("bitwise_xor", x1, x2, None, crate::dtype::Casting::Safe)
 }
 
 /// Element-wise bitwise NOT operation
@@ -689,7 +700,7 @@ where
     T: Clone + Default + BitwiseOps + 'static,
 {
     let engine = UfuncEngine::new();
-    engine.execute_unary("bitwise_not", x)
+    engine.execute_unary("bitwise_not", x, None, crate::dtype::Casting::Safe)
 }
 
 /// Alias for bitwise_not for NumPy compatibility
@@ -711,7 +722,7 @@ where
     T: Clone + Default + BitwiseOps + 'static,
 {
     let engine = UfuncEngine::new();
-    engine.execute_binary("left_shift", x1, x2)
+    engine.execute_binary("left_shift", x1, x2, None, crate::dtype::Casting::Safe)
 }
 
 /// Element-wise right shift operation
@@ -728,7 +739,7 @@ where
     T: Clone + Default + BitwiseOps + 'static,
 {
     let engine = UfuncEngine::new();
-    engine.execute_binary("right_shift", x1, x2)
+    engine.execute_binary("right_shift", x1, x2, None, crate::dtype::Casting::Safe)
 }
 
 /// Enhanced element-wise logical AND operation
@@ -740,7 +751,7 @@ where
     T: Clone + PartialEq + Default + 'static,
 {
     let engine = UfuncEngine::new();
-    engine.execute_comparison("logical_and", x1, x2)
+    engine.execute_comparison("logical_and", x1, x2, None, crate::dtype::Casting::Safe)
 }
 
 /// Enhanced element-wise logical OR operation
@@ -752,7 +763,7 @@ where
     T: Clone + PartialEq + Default + 'static,
 {
     let engine = UfuncEngine::new();
-    engine.execute_comparison("logical_or", x1, x2)
+    engine.execute_comparison("logical_or", x1, x2, None, crate::dtype::Casting::Safe)
 }
 
 /// Enhanced element-wise logical XOR operation
@@ -764,7 +775,7 @@ where
     T: Clone + PartialEq + Default + 'static,
 {
     let engine = UfuncEngine::new();
-    engine.execute_comparison("logical_xor", x1, x2)
+    engine.execute_comparison("logical_xor", x1, x2, None, crate::dtype::Casting::Safe)
 }
 
 /// Enhanced element-wise logical NOT operation

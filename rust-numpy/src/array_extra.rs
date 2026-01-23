@@ -703,11 +703,42 @@ where
     Ok(())
 }
 
+/// Generate a Vandermonde matrix.
+///
+/// The columns of the output matrix are powers of the input vector. The order
+/// of the powers is determined by the `increasing` parameter.
+pub fn vander<T>(x: &Array<T>, n: Option<usize>, increasing: bool) -> Result<Array<T>>
+where
+    T: Clone + Default + num_traits::Num + num_traits::Pow<u32, Output = T> + Send + Sync + 'static,
+{
+    if x.ndim() != 1 {
+        return Err(NumPyError::invalid_value("vander requires 1D array"));
+    }
+
+    let m = x.shape()[0];
+    let n_val = n.unwrap_or(m);
+    let mut data = vec![T::default(); m * n_val];
+
+    for i in 0..m {
+        let val = x.get_linear(i).cloned().unwrap_or_default();
+        for j in 0..n_val {
+            let power = if increasing {
+                j as u32
+            } else {
+                (n_val - 1 - j) as u32
+            };
+            data[i * n_val + j] = val.clone().pow(power);
+        }
+    }
+
+    Ok(Array::from_shape_vec(vec![m, n_val], data))
+}
+
 pub mod exports {
     pub use super::{
         array_split, block, column_stack, concatenate, diag, diagonal, dsplit, dstack, hsplit,
-        hstack, place, put, put_along_axis, putmask, row_stack, split, stack, tril, triu, vsplit,
-        vstack,
+        hstack, place, put, put_along_axis, putmask, row_stack, split, stack, tril, triu, vander,
+        vsplit, vstack,
     };
 }
 

@@ -102,7 +102,7 @@ pub type Int = i64;
 pub type Complex = num_complex::Complex<f64>;
 
 // Re-export common constants
-pub use array_creation::{copy, frombuffer, fromfunction, fromiter};
+pub use array_creation::{copy, frombuffer, fromfunction, fromiter, vander};
 pub use constants::*;
 /// Create array macro for convenient array creation
 #[macro_export]

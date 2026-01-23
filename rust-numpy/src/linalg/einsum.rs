@@ -389,7 +389,10 @@ where
 ///
 /// # Returns
 /// A list of tuples indicating the contraction order
-pub fn einsum_path<T>(subscripts: &str, _operands: &[&Array<T>]) -> Result<Vec<(String, Vec<usize>)>>
+pub fn einsum_path<T>(
+    subscripts: &str,
+    _operands: &[&Array<T>],
+) -> Result<Vec<(String, Vec<usize>)>>
 where
     T: Copy + 'static,
 {

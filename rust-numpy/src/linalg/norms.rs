@@ -1145,7 +1145,9 @@ where
         // If inverse norm is effectively zero, matrix is singular
         let eps = LinalgScalar::from_real(T::Real::epsilon());
         if num_traits::Float::abs(norm_inv_a_val) <= eps {
-            return Ok(Array::from_vec(vec![LinalgScalar::from_real(T::Real::infinity())]));
+            return Ok(Array::from_vec(vec![LinalgScalar::from_real(
+                T::Real::infinity(),
+            )]));
         }
 
         let condition_number = norm_a_val * norm_inv_a_val;

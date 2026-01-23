@@ -191,6 +191,8 @@ fn normalize_axes(axes: &[isize], ndim: usize) -> Result<Vec<usize>, NumPyError>
 }
 
 /// Compute matrix or vector norm.
+<<<<<<< HEAD
+=======
 ///
 /// # Arguments
 ///
@@ -208,6 +210,7 @@ fn normalize_axes(axes: &[isize], ndim: usize) -> Result<Vec<usize>, NumPyError>
 /// # Returns
 ///
 /// * `Result<Array<T>, NumPyError>` - The norm value(s)
+>>>>>>> origin/main
 pub fn norm<T>(
     x: &Array<T>,
     ord: Option<&str>,
@@ -226,7 +229,10 @@ where
         Some("inf") => NormType::Linf,
         Some("-inf") => NormType::LNegInf,
         Some(s) => {
+<<<<<<< HEAD
+=======
             // Try to parse as integer for Lp norm
+>>>>>>> origin/main
             if let Ok(p) = s.parse::<i32>() {
                 if p > 0 {
                     NormType::Lp(p as u32)
@@ -300,7 +306,10 @@ fn compute_output_shape(shape: &[usize], axes: Option<&[usize]>, keepdims: bool)
                 shape.to_vec()
             } else {
                 let mut temp = shape.to_vec();
+<<<<<<< HEAD
+=======
                 // Sort axes in descending order for removal
+>>>>>>> origin/main
                 let mut sorted_axes: Vec<usize> = axes_to_reduce.to_vec();
                 sorted_axes.sort_unstable_by(|a, b| b.cmp(a));
                 for &ax in &sorted_axes {
@@ -334,20 +343,58 @@ where
     let output_size: usize = output_shape.iter().product();
 
     // Handle scalar output case
+<<<<<<< HEAD
+    if output_shape.is_empty() || (output_size == 1 && axes.is_none()) {
+=======
     if output_shape.is_empty() || output_size == 1 {
+>>>>>>> origin/main
         return compute_lp_norm(x, p);
     }
 
     let mut result = vec![T::Real::zero(); output_size];
+<<<<<<< HEAD
+    let shape = x.shape();
+    let ndim = shape.len();
+
+=======
     let strides = x.strides();
     let shape = x.shape();
     let ndim = shape.len();
 
     // Generate all indices in the output array
+>>>>>>> origin/main
     let mut output_idx = vec![0usize; output_shape.len()];
     let mut output_flat = 0usize;
 
     loop {
+<<<<<<< HEAD
+        let mut sum_abs_p = T::Real::zero();
+        let mut input_base = vec![0usize; ndim];
+        if let Some(axes_to_reduce) = axes {
+            let mut out_ax_ptr = 0;
+            for dim in 0..ndim {
+                if axes_to_reduce.contains(&dim) {
+                    if keepdims {
+                        input_base[dim] = 0;
+                        out_ax_ptr += 1;
+                    } else {
+                        input_base[dim] = 0;
+                    }
+                } else {
+                    input_base[dim] = output_idx[out_ax_ptr];
+                    out_ax_ptr += 1;
+                }
+            }
+        }
+
+        if let Some(axes_to_reduce) = axes {
+            let reduced_dims: Vec<(usize, usize)> =
+                axes_to_reduce.iter().map(|&ax| (ax, shape[ax])).collect();
+
+            let mut reduced_iter = vec![0usize; reduced_dims.len()];
+            loop {
+                let mut input_idx = input_base.clone();
+=======
         // Compute norm for this output position
         let mut sum_abs_p = T::Real::zero();
 
@@ -380,10 +427,18 @@ where
             loop {
                 // Build complete index by combining base_idx and reduced_iter
                 let mut input_idx = base_idx.clone();
+>>>>>>> origin/main
                 for (i, &(dim, _)) in reduced_dims.iter().enumerate() {
                     input_idx[dim] = reduced_iter[i];
                 }
 
+<<<<<<< HEAD
+                if let Ok(val) = x.get_multi(&input_idx) {
+                    let abs_val = LinalgScalar::abs(val);
+                    sum_abs_p = sum_abs_p + num_traits::Float::powi(abs_val, p as i32);
+                }
+
+=======
                 // Compute linear index and accumulate
                 let linear_idx = input_idx.iter().enumerate().fold(0usize, |acc, (i, &idx)| {
                     acc + idx as usize * strides[i] as usize
@@ -395,6 +450,7 @@ where
                 }
 
                 // Increment reduced_iter (like a multi-digit counter)
+>>>>>>> origin/main
                 let mut carry = true;
                 for (i, &(_, max_val)) in reduced_dims.iter().enumerate() {
                     if carry {
@@ -406,6 +462,12 @@ where
                         }
                     }
                 }
+<<<<<<< HEAD
+                if carry { break; }
+            }
+        }
+
+=======
 
                 if carry {
                     break; // All combinations exhausted
@@ -414,6 +476,7 @@ where
         }
 
         // Compute p-th root
+>>>>>>> origin/main
         result[output_flat] = if p == 1 {
             sum_abs_p
         } else if p == 2 {
@@ -424,9 +487,14 @@ where
             num_traits::Float::exp(log_sum * inv_p)
         };
 
+<<<<<<< HEAD
+        let mut carry = true;
+        for dim in (0..output_shape.len()).rev() {
+=======
         // Increment output_idx
         let mut carry = true;
         for dim in 0..output_shape.len() {
+>>>>>>> origin/main
             if carry {
                 if output_idx[dim] + 1 < output_shape[dim] {
                     output_idx[dim] += 1;
@@ -438,12 +506,19 @@ where
         }
 
         output_flat += 1;
+<<<<<<< HEAD
+        if carry || output_flat >= output_size {
+=======
         if carry {
+>>>>>>> origin/main
             break;
         }
     }
 
+<<<<<<< HEAD
+=======
     // Convert Real type back to T
+>>>>>>> origin/main
     let result_t: Vec<T> = result.into_iter().map(|r| T::from(r).unwrap()).collect();
     Ok(Array::from_shape_vec(output_shape, result_t))
 }
@@ -461,6 +536,11 @@ where
     let output_shape = compute_output_shape(x.shape(), axes, keepdims);
     let output_size: usize = output_shape.iter().product();
 
+<<<<<<< HEAD
+    let mut result = vec![
+        if max_norm {
+            T::Real::neg_infinity()
+=======
     // Handle scalar output case
     if output_shape.is_empty() || output_size == 1 {
         let mut result = if max_norm {
@@ -486,27 +566,53 @@ where
     let mut result = vec![
         if max_norm {
             T::Real::zero()
+>>>>>>> origin/main
         } else {
             T::Real::infinity()
         };
         output_size
     ];
+<<<<<<< HEAD
+    let shape = x.shape();
+    let ndim = shape.len();
+
+=======
     let strides = x.strides();
     let shape = x.shape();
     let ndim = shape.len();
 
     // Generate all indices in the output array
+>>>>>>> origin/main
     let mut output_idx = vec![0usize; output_shape.len()];
     let mut output_flat = 0usize;
 
     loop {
+<<<<<<< HEAD
+        let mut current_result = if max_norm {
+            T::Real::neg_infinity()
+=======
         // Compute norm for this output position
         let mut current_result = if max_norm {
             T::Real::zero()
+>>>>>>> origin/main
         } else {
             T::Real::infinity()
         };
 
+<<<<<<< HEAD
+        let mut input_base = vec![0usize; ndim];
+        if let Some(axes_to_reduce) = axes {
+            let mut out_ax_ptr = 0;
+            for dim in 0..ndim {
+                if axes_to_reduce.contains(&dim) {
+                    if keepdims {
+                        input_base[dim] = 0;
+                        out_ax_ptr += 1;
+                    }
+                } else {
+                    input_base[dim] = output_idx[out_ax_ptr];
+                    out_ax_ptr += 1;
+=======
         // Build the base index from output_idx (non-reduced dimensions)
         let mut base_idx = vec![0usize; ndim];
         if let Some(axes_to_reduce) = axes {
@@ -515,15 +621,24 @@ where
                 if !axes_to_reduce.contains(&dim) {
                     base_idx[dim] = output_idx[out_idx];
                     out_idx += 1;
+>>>>>>> origin/main
                 }
             }
         }
 
+<<<<<<< HEAD
+=======
         // Iterate over all combinations of reduced axes
+>>>>>>> origin/main
         if let Some(axes_to_reduce) = axes {
             let reduced_dims: Vec<(usize, usize)> =
                 axes_to_reduce.iter().map(|&ax| (ax, shape[ax])).collect();
 
+<<<<<<< HEAD
+            let mut reduced_iter = vec![0usize; reduced_dims.len()];
+            loop {
+                let mut input_idx = input_base.clone();
+=======
             let mut reduced_iter = reduced_dims
                 .iter()
                 .map(|&(_dim, _)| 0usize)
@@ -531,10 +646,15 @@ where
             loop {
                 // Build complete index
                 let mut input_idx = base_idx.clone();
+>>>>>>> origin/main
                 for (i, &(dim, _)) in reduced_dims.iter().enumerate() {
                     input_idx[dim] = reduced_iter[i];
                 }
 
+<<<<<<< HEAD
+                if let Ok(val) = x.get_multi(&input_idx) {
+                    let abs_val = LinalgScalar::abs(val);
+=======
                 // Compute linear index
                 let linear_idx = input_idx.iter().enumerate().fold(0usize, |acc, (i, &idx)| {
                     acc + idx as usize * strides[i] as usize
@@ -542,6 +662,7 @@ where
 
                 if let Some(val) = x.get(linear_idx) {
                     let abs_val = LinalgScalar::abs(*val);
+>>>>>>> origin/main
                     current_result = if max_norm {
                         current_result.max(abs_val)
                     } else {
@@ -549,7 +670,10 @@ where
                     };
                 }
 
+<<<<<<< HEAD
+=======
                 // Increment reduced_iter
+>>>>>>> origin/main
                 let mut carry = true;
                 for (i, &(_, max_val)) in reduced_dims.iter().enumerate() {
                     if carry {
@@ -561,18 +685,37 @@ where
                         }
                     }
                 }
+<<<<<<< HEAD
+                if carry { break; }
+            }
+        } else {
+            for i in 0..x.size() {
+                if let Some(val) = x.get_linear(i) {
+                    let abs_val = LinalgScalar::abs(*val);
+                    current_result = if max_norm {
+                        current_result.max(abs_val)
+                    } else {
+                        current_result.min(abs_val)
+                    };
+=======
 
                 if carry {
                     break;
+>>>>>>> origin/main
                 }
             }
         }
 
         result[output_flat] = current_result;
 
+<<<<<<< HEAD
+        let mut carry = true;
+        for dim in (0..output_shape.len()).rev() {
+=======
         // Increment output_idx
         let mut carry = true;
         for dim in 0..output_shape.len() {
+>>>>>>> origin/main
             if carry {
                 if output_idx[dim] + 1 < output_shape[dim] {
                     output_idx[dim] += 1;
@@ -584,7 +727,11 @@ where
         }
 
         output_flat += 1;
+<<<<<<< HEAD
+        if carry || output_flat >= output_size {
+=======
         if carry {
+>>>>>>> origin/main
             break;
         }
     }
@@ -606,6 +753,29 @@ where
     let output_shape = compute_output_shape(x.shape(), axes, keepdims);
     let output_size: usize = output_shape.iter().product();
 
+<<<<<<< HEAD
+    let mut result = vec![T::Real::zero(); output_size];
+    let shape = x.shape();
+    let ndim = shape.len();
+
+    let mut output_idx = vec![0usize; output_shape.len()];
+    let mut output_flat = 0usize;
+
+    loop {
+        let mut sum_abs_neg_p = T::Real::zero();
+        let mut input_base = vec![0usize; ndim];
+        if let Some(axes_to_reduce) = axes {
+            let mut out_ax_ptr = 0;
+            for dim in 0..ndim {
+                if axes_to_reduce.contains(&dim) {
+                    if keepdims {
+                        input_base[dim] = 0;
+                        out_ax_ptr += 1;
+                    }
+                } else {
+                    input_base[dim] = output_idx[out_ax_ptr];
+                    out_ax_ptr += 1;
+=======
     // Handle scalar output case
     if output_shape.is_empty() || output_size == 1 {
         let mut sum_abs_neg_p = T::Real::zero();
@@ -615,10 +785,13 @@ where
                 let abs_val = LinalgScalar::abs(*val);
                 if abs_val > T::Real::zero() {
                     sum_abs_neg_p = sum_abs_neg_p + num_traits::Float::powi(abs_val, -(p as i32));
+>>>>>>> origin/main
                 }
             }
         }
 
+<<<<<<< HEAD
+=======
         let result = if sum_abs_neg_p > T::Real::zero() {
             num_traits::Float::powi(sum_abs_neg_p, -(1 as i32))
         } else {
@@ -654,10 +827,16 @@ where
         }
 
         // Iterate over all combinations of reduced axes
+>>>>>>> origin/main
         if let Some(axes_to_reduce) = axes {
             let reduced_dims: Vec<(usize, usize)> =
                 axes_to_reduce.iter().map(|&ax| (ax, shape[ax])).collect();
 
+<<<<<<< HEAD
+            let mut reduced_iter = vec![0usize; reduced_dims.len()];
+            loop {
+                let mut input_idx = input_base.clone();
+=======
             let mut reduced_iter = reduced_dims
                 .iter()
                 .map(|&(_dim, _)| 0usize)
@@ -665,10 +844,20 @@ where
             loop {
                 // Build complete index
                 let mut input_idx = base_idx.clone();
+>>>>>>> origin/main
                 for (i, &(dim, _)) in reduced_dims.iter().enumerate() {
                     input_idx[dim] = reduced_iter[i];
                 }
 
+<<<<<<< HEAD
+                if let Ok(val) = x.get_multi(&input_idx) {
+                    let abs_val = LinalgScalar::abs(val);
+                    if abs_val > T::Real::zero() {
+                        sum_abs_neg_p = sum_abs_neg_p + num_traits::Float::powi(abs_val, -(p as i32));
+                    }
+                }
+
+=======
                 // Compute linear index
                 let linear_idx = input_idx.iter().enumerate().fold(0usize, |acc, (i, &idx)| {
                     acc + idx as usize * strides[i] as usize
@@ -683,6 +872,7 @@ where
                 }
 
                 // Increment reduced_iter
+>>>>>>> origin/main
                 let mut carry = true;
                 for (i, &(_, max_val)) in reduced_dims.iter().enumerate() {
                     if carry {
@@ -694,6 +884,12 @@ where
                         }
                     }
                 }
+<<<<<<< HEAD
+                if carry { break; }
+            }
+        }
+
+=======
 
                 if carry {
                     break;
@@ -702,15 +898,21 @@ where
         }
 
         // Compute negative p-th root
+>>>>>>> origin/main
         result[output_flat] = if sum_abs_neg_p > T::Real::zero() {
             num_traits::Float::powi(sum_abs_neg_p, -(1 as i32))
         } else {
             T::Real::infinity()
         };
 
+<<<<<<< HEAD
+        let mut carry = true;
+        for dim in (0..output_shape.len()).rev() {
+=======
         // Increment output_idx
         let mut carry = true;
         for dim in 0..output_shape.len() {
+>>>>>>> origin/main
             if carry {
                 if output_idx[dim] + 1 < output_shape[dim] {
                     output_idx[dim] += 1;
@@ -722,7 +924,11 @@ where
         }
 
         output_flat += 1;
+<<<<<<< HEAD
+        if carry || output_flat >= output_size {
+=======
         if carry {
+>>>>>>> origin/main
             break;
         }
     }
@@ -732,199 +938,52 @@ where
 }
 
 /// Compute nuclear norm (sum of singular values)
-///
-/// Computes singular values via eigenvalues of A^T * A, then sums them.
 fn compute_nuclear_norm<T>(x: &Array<T>) -> Result<Array<T>, NumPyError>
 where
     T: LinalgScalar + num_traits::Float,
 {
     if x.ndim() != 2 {
-        return Err(NumPyError::value_error(
-            "nuclear norm requires 2D array",
-            "linalg",
-        ));
+        return Err(NumPyError::value_error("nuclear norm requires 2D array", "linalg"));
     }
-
-    let m = x.shape()[0];
-    let n = x.shape()[1];
-
-    if m == 0 || n == 0 {
-        return Ok(Array::from_vec(vec![T::zero()]));
-    }
-
-    // Compute singular values using the svdvals helper
     let singular_values = compute_singular_values(x)?;
-
-    // Nuclear norm is sum of singular values
     let mut sum = T::Real::zero();
-    for sv in &singular_values {
-        sum = sum + *sv;
-    }
-
+    for sv in &singular_values { sum = sum + *sv; }
     Ok(Array::from_vec(vec![T::from(sum).unwrap()]))
 }
 
-/// Compute singular values of a matrix via eigenvalues of A^T * A
-///
-/// For an m×n matrix A, the singular values are the square roots of the
-/// eigenvalues of A^T * A (an n×n matrix).
 fn compute_singular_values<T>(a: &Array<T>) -> Result<Vec<T::Real>, NumPyError>
 where
     T: LinalgScalar + num_traits::Float,
 {
     let m = a.shape()[0];
     let n = a.shape()[1];
-    let strides = a.strides();
-
-    let idx = |row: usize, col: usize, strides: &[isize]| -> usize {
-        (row as isize * strides[0] + col as isize * strides[1]) as usize
-    };
-
-    // Compute A^T * A (n×n matrix)
-    // (A^T * A)_{ij} = sum_k A_{ki} * A_{kj}
     let mut ata = vec![T::Real::zero(); n * n];
-
     for i in 0..n {
         for j in 0..n {
             let mut sum = T::Real::zero();
             for k in 0..m {
-                let a_ki = a.get(idx(k, i, strides)).ok_or_else(|| {
-                    NumPyError::invalid_operation("singular values index out of bounds")
-                })?;
-                let a_kj = a.get(idx(k, j, strides)).ok_or_else(|| {
-                    NumPyError::invalid_operation("singular values index out of bounds")
-                })?;
-                // For real matrices: (A^T * A)_{ij} = sum_k a_ki * a_kj
-                // Use T::to_real() to convert to Real type for the sum
-                // For floating types, abs() × abs() equals value × value only for positive values
-                // We actually need the real product. For Float types (which LinalgScalar requires),
-                // we need to extract the real part properly.
-                let val_ki = LinalgScalar::abs(*a_ki);
-                let val_kj = LinalgScalar::abs(*a_kj);
-                // Check signs: if both have same sign, product is positive
-                // This simplified approach uses |a_ki| * |a_kj| * sign
-                // Actually for SVD of real matrices, A^T*A is always positive semi-definite
-                // so we should just compute the proper dot product.
-                // Since T implements Float, we can convert directly:
+                let val_ki = LinalgScalar::abs(a.get_multi(&[k, i])?);
+                let val_kj = LinalgScalar::abs(a.get_multi(&[k, j])?);
                 sum = sum + val_ki * val_kj;
             }
             ata[i * n + j] = sum;
         }
     }
-
-    // Since A^T * A is symmetric positive semi-definite, its eigenvalues are real and non-negative
-    // We use power iteration combined with deflation to compute eigenvalues
-    let eigenvalues = compute_eigenvalues_symmetric_real(&ata, n)?;
-
-    // Singular values are square roots of eigenvalues
-    let mut singular_values: Vec<T::Real> = eigenvalues
-        .into_iter()
-        .map(|ev| {
-            if ev > T::Real::zero() {
-                Float::sqrt(ev)
-            } else {
-                T::Real::zero()
-            }
-        })
-        .collect();
-
-    // Sort in descending order (standard convention for SVD)
-    singular_values.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
-
-    Ok(singular_values)
+    compute_eigenvalues_symmetric_real(&ata, n)
+        .map(|evs| evs.into_iter().map(|ev| if ev > T::Real::zero() { ev.sqrt() } else { T::Real::zero() }).collect())
 }
 
-/// Compute eigenvalues of a symmetric positive semi-definite real matrix
-/// using QR iteration with shifts (simplified version for the nuclear norm use case)
 fn compute_eigenvalues_symmetric_real<R>(a: &[R], n: usize) -> Result<Vec<R>, NumPyError>
 where
     R: num_traits::Float + Clone,
 {
-    if n == 0 {
-        return Ok(vec![]);
-    }
-
-    if n == 1 {
-        return Ok(vec![a[0].clone()]);
-    }
-
-    // Copy matrix for working
+    if n == 0 { return Ok(vec![]); }
+    if n == 1 { return Ok(vec![a[0].clone()]); }
     let mut h: Vec<R> = a.to_vec();
     let eps = R::epsilon() * num_traits::cast(1000.0).unwrap();
-    let max_iter = 100 * n;
-
-    // Reduce to tridiagonal form via Householder transformations
-    for k in 0..n.saturating_sub(2) {
-        // Build Householder vector from column k, rows k+1..n
-        let mut col_norm_sq = R::zero();
-        for i in k + 1..n {
-            let val = h[i * n + k];
-            col_norm_sq = col_norm_sq + val * val;
-        }
-        let col_norm = col_norm_sq.sqrt();
-
-        if col_norm <= eps {
-            continue;
-        }
-
-        let pivot = h[(k + 1) * n + k];
-        let alpha = if pivot >= R::zero() {
-            -col_norm
-        } else {
-            col_norm
-        };
-
-        let mut v = vec![R::zero(); n - k - 1];
-        for i in 0..v.len() {
-            v[i] = h[(k + 1 + i) * n + k];
-        }
-        v[0] = v[0] - alpha;
-
-        let mut v_norm_sq = R::zero();
-        for val in &v {
-            v_norm_sq = v_norm_sq + *val * *val;
-        }
-        let v_norm = v_norm_sq.sqrt();
-
-        if v_norm <= eps {
-            continue;
-        }
-
-        for val in v.iter_mut() {
-            *val = *val / v_norm;
-        }
-
-        // Apply P = I - 2vv^T to H from left: H = P * H
-        for j in k..n {
-            let mut dot = R::zero();
-            for i in 0..v.len() {
-                dot = dot + v[i] * h[(k + 1 + i) * n + j];
-            }
-            let two: R = num_traits::cast(2.0).unwrap();
-            for i in 0..v.len() {
-                h[(k + 1 + i) * n + j] = h[(k + 1 + i) * n + j] - two * v[i] * dot;
-            }
-        }
-
-        // Apply P to H from right: H = H * P
-        for i in 0..n {
-            let mut dot = R::zero();
-            for j in 0..v.len() {
-                dot = dot + h[i * n + (k + 1 + j)] * v[j];
-            }
-            let two: R = num_traits::cast(2.0).unwrap();
-            for j in 0..v.len() {
-                h[i * n + (k + 1 + j)] = h[i * n + (k + 1 + j)] - two * dot * v[j];
-            }
-        }
-    }
-
-    // Now H is tridiagonal. Apply QR iteration to find eigenvalues.
     let mut m = n;
     let mut iter = 0;
-
-    while m > 1 && iter < max_iter {
-        // Find deflation point (check subdiagonal elements)
+    while m > 1 && iter < 100 * n {
         let mut k = m - 1;
         while k > 0 {
             let off_diag = h[k * n + (k - 1)].abs();
@@ -936,119 +995,45 @@ where
             }
             k -= 1;
         }
-
-        if k == m - 1 {
-            // Deflate
-            m -= 1;
-            continue;
-        }
-
-        // Wilkinson shift
-        let d =
-            (h[(m - 2) * n + (m - 2)] - h[(m - 1) * n + (m - 1)]) / num_traits::cast(2.0).unwrap();
+        if k == m - 1 { m -= 1; continue; }
+        let d = (h[(m - 2) * n + (m - 2)] - h[(m - 1) * n + (m - 1)]) / num_traits::cast(2.0).unwrap();
         let t_sq = h[(m - 1) * n + (m - 2)] * h[(m - 1) * n + (m - 2)];
-        let shift = h[(m - 1) * n + (m - 1)]
-            - t_sq
-                / (d + if d >= R::zero() { R::one() } else { -R::one() } * (d * d + t_sq).sqrt());
-
-        // Implicit QR step with shift
-        let mut x = h[k * n + k] - shift;
-        let mut z = h[(k + 1) * n + k];
-
-        for i in k..m - 1 {
-            // Givens rotation to zero h[i+1, i]
+        let shift = h[(m - 1) * n + (m - 1)] - t_sq / (d + if d >= R::zero() { R::one() } else { -R::one() } * (d * d + t_sq).sqrt());
+        let mut x = h[0 * n + 0] - shift;
+        let mut z = h[1 * n + 0];
+        for i in 0..m - 1 {
             let r = (x * x + z * z).sqrt();
             if r > eps {
-                let c = x / r;
-                let s = z / r;
-
-                // Apply rotation to rows i and i+1
-                for j in if i > 0 { i - 1 } else { 0 }..n {
-                    let temp1 = h[i * n + j];
-                    let temp2 = h[(i + 1) * n + j];
-                    h[i * n + j] = c * temp1 + s * temp2;
-                    h[(i + 1) * n + j] = -s * temp1 + c * temp2;
+                let c = x / r; let s = z / r;
+                for j in i..n {
+                    let t1 = h[i * n + j]; let t2 = h[(i + 1) * n + j];
+                    h[i * n + j] = c * t1 + s * t2; h[(i + 1) * n + j] = -s * t1 + c * t2;
                 }
-
-                // Apply rotation to columns i and i+1
-                let upper = if i + 3 < n { i + 3 } else { n };
-                for j in 0..upper {
-                    let temp1 = h[j * n + i];
-                    let temp2 = h[j * n + (i + 1)];
-                    h[j * n + i] = c * temp1 + s * temp2;
-                    h[j * n + (i + 1)] = -s * temp1 + c * temp2;
-                }
-
-                if i < m - 2 {
-                    x = h[(i + 1) * n + i];
-                    z = h[(i + 2) * n + i];
+                for j in 0..std::cmp::min(i + 3, n) {
+                    let t1 = h[j * n + i]; let t2 = h[j * n + (i + 1)];
+                    h[j * n + i] = c * t1 + s * t2; h[j * n + (i + 1)] = -s * t1 + c * t2;
                 }
             }
+            if i < m - 2 { x = h[(i + 1) * n + i]; z = h[(i + 2) * n + i]; }
         }
-
         iter += 1;
     }
-
-    // Extract eigenvalues from diagonal
-    let eigenvalues: Vec<R> = (0..n).map(|i| h[i * n + i]).collect();
-    Ok(eigenvalues)
+    Ok((0..n).map(|i| h[i * n + i]).collect())
 }
 
-/// Compute Frobenius norm (sqrt of sum of squared absolute values)
-fn compute_frobenius_norm<T>(x: &Array<T>) -> Result<Array<T>, NumPyError>
-where
-    T: LinalgScalar + num_traits::Float,
-{
-    let mut sum_sq = T::Real::zero();
-
-    for i in 0..x.size() {
-        if let Some(val) = x.get_linear(i) {
-            let abs_val = LinalgScalar::abs(*val);
-            sum_sq = sum_sq + abs_val * abs_val;
-        }
-    }
-
-    let result = Float::sqrt(sum_sq);
-    Ok(Array::from_vec(vec![T::from(result).unwrap()]))
-}
-
-/// Compute Lp norm: (sum(|x|^p))^(1/p)
 fn compute_lp_norm<T>(x: &Array<T>, p: u32) -> Result<Array<T>, NumPyError>
 where
     T: LinalgScalar + num_traits::Float,
 {
-    if p == 0 {
-        return Err(NumPyError::value_error(
-            "p must be positive for Lp norms",
-            "linalg",
-        ));
-    }
-
+    if p == 0 { return Err(NumPyError::value_error("p must be positive", "linalg")); }
     let mut sum_abs_p = T::Real::zero();
-
     for i in 0..x.size() {
         if let Some(val) = x.get_linear(i) {
-            let abs_val = LinalgScalar::abs(*val);
-            sum_abs_p = sum_abs_p + Float::powi(abs_val, p as i32);
+            sum_abs_p = sum_abs_p + LinalgScalar::abs(*val).powi(p as i32);
         }
     }
-
-    // Compute Lp norm: (sum(|x|^p))^(1/p)
-    let result = if p == 1 {
-        T::from(sum_abs_p).unwrap()
-    } else if p == 2 {
-        // For L2 norm, use sqrt for better precision
-        T::from(Float::sqrt(sum_abs_p)).unwrap()
-    } else {
-        // For other p values, use exp(ln(x)/p) to compute pth root
-        let log_sum = Float::ln(sum_abs_p);
-        // Convert p to the Real type
-        let inv_p = T::Real::one() / num_traits::cast(p as f64).unwrap();
-        let root = Float::exp(log_sum * inv_p);
-        T::from(root).unwrap()
-    };
-
-    Ok(Array::from_vec(vec![result]))
+    let res = if p == 1 { sum_abs_p } else if p == 2 { sum_abs_p.sqrt() } else { sum_abs_p.powf(T::Real::one() / num_traits::cast(p).unwrap()) };
+    Ok(Array::from_vec(vec![T::from(res).unwrap()]))
 }
 
 /// Compute the condition number of a matrix

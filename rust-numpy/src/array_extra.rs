@@ -417,16 +417,22 @@ where
 }
 
 /// Extract a diagonal or construct a diagonal array.
+<<<<<<< HEAD
+=======
 ///
 /// If `array` is 2-D, return the diagonal elements (main or offset diagonal).
 /// If `array` is 1-D, return a 2-D array with the input as diagonal.
+>>>>>>> origin/main
 pub fn diag<T>(array: &Array<T>, k: isize) -> Result<Array<T>>
 where
     T: Clone + Default + Send + Sync + 'static,
 {
     let ndim = array.ndim();
     if ndim == 1 {
+<<<<<<< HEAD
+=======
         // Construct a 2D array with array on the k-th diagonal
+>>>>>>> origin/main
         let n = array.shape()[0];
         let size = n + k.unsigned_abs();
         let mut data = vec![T::default(); size * size];
@@ -440,7 +446,10 @@ where
         }
         Ok(Array::from_shape_vec(vec![size, size], data))
     } else if ndim == 2 {
+<<<<<<< HEAD
+=======
         // Extract the k-th diagonal
+>>>>>>> origin/main
         diagonal(array, k, 0, 1)
     } else {
         Err(NumPyError::invalid_value("diag requires 1D or 2D array"))
@@ -498,9 +507,12 @@ where
 }
 
 /// Stack 1-D arrays as columns into a 2-D array.
+<<<<<<< HEAD
+=======
 ///
 /// Takes a sequence of 1-D arrays and stacks them as columns to make a single 2-D array.
 /// 2-D arrays are stacked as-is, just like with hstack.
+>>>>>>> origin/main
 pub fn column_stack<T>(arrays: &[&Array<T>]) -> Result<Array<T>>
 where
     T: Clone + Default + Send + Sync + 'static,
@@ -514,7 +526,10 @@ where
     let mut promoted = Vec::new();
     for arr in arrays {
         if arr.ndim() == 1 {
+<<<<<<< HEAD
+=======
             // Reshape 1-D to (n, 1)
+>>>>>>> origin/main
             let n = arr.shape()[0];
             promoted.push(arr.reshape(&[n, 1])?);
         } else {
@@ -526,9 +541,12 @@ where
 }
 
 /// Stack arrays in sequence vertically (row wise).
+<<<<<<< HEAD
+=======
 ///
 /// This is equivalent to concatenation along the first axis.
 /// row_stack is an alias for vstack.
+>>>>>>> origin/main
 pub fn row_stack<T>(arrays: &[&Array<T>]) -> Result<Array<T>>
 where
     T: Clone + Default + Send + Sync + 'static,
@@ -537,9 +555,12 @@ where
 }
 
 /// Assemble an nd-array from nested sequences of blocks.
+<<<<<<< HEAD
+=======
 ///
 /// Blocks in the innermost lists are concatenated along the last axis (-1),
 /// then these are concatenated along the second-last axis (-2), etc.
+>>>>>>> origin/main
 pub fn block<T>(arrays: &[&[&Array<T>]]) -> Result<Array<T>>
 where
     T: Clone + Default + Send + Sync + 'static,
@@ -550,7 +571,10 @@ where
         ));
     }
 
+<<<<<<< HEAD
+=======
     // First, concatenate each row along axis 1 (horizontally)
+>>>>>>> origin/main
     let mut rows = Vec::new();
     for row in arrays {
         if row.is_empty() {
@@ -562,14 +586,20 @@ where
         rows.push(row_result);
     }
 
+<<<<<<< HEAD
+=======
     // Then concatenate all rows along axis 0 (vertically)
+>>>>>>> origin/main
     let refs: Vec<&Array<T>> = rows.iter().collect();
     vstack(&refs)
 }
 
 /// Replaces specified elements of an array with given values.
+<<<<<<< HEAD
+=======
 ///
 /// The indexing works on the flattened target array.
+>>>>>>> origin/main
 pub fn put<T>(array: &mut Array<T>, indices: &[usize], values: &[T], mode: &str) -> Result<()>
 where
     T: Clone + Default + Send + Sync + 'static,
@@ -598,8 +628,11 @@ where
 }
 
 /// Change elements of an array based on conditional and input values.
+<<<<<<< HEAD
+=======
 ///
 /// Sets a.flat[n] = values[n] for each n where mask.flat[n]==True.
+>>>>>>> origin/main
 pub fn putmask<T>(array: &mut Array<T>, mask: &Array<bool>, values: &Array<T>) -> Result<()>
 where
     T: Clone + Default + Send + Sync + 'static,
@@ -627,8 +660,11 @@ where
 }
 
 /// Change elements of an array based on conditional and input values.
+<<<<<<< HEAD
+=======
 ///
 /// Similar to np.putmask, but the indexing is different.
+>>>>>>> origin/main
 pub fn place<T>(array: &mut Array<T>, mask: &Array<bool>, values: &[T]) -> Result<()>
 where
     T: Clone + Default + Send + Sync + 'static,
@@ -653,9 +689,12 @@ where
 }
 
 /// Put values into the destination array by matching 1d index and data slices.
+<<<<<<< HEAD
+=======
 ///
 /// This iterates over matching 1d slices oriented along the specified axis in the index
 /// and data arrays, and uses the former to place values into the latter.
+>>>>>>> origin/main
 pub fn put_along_axis<T>(
     array: &mut Array<T>,
     indices: &Array<usize>,
@@ -667,9 +706,14 @@ where
 {
     let ndim = array.ndim();
     let axis = normalize_axis(axis, ndim)?;
+<<<<<<< HEAD
+    let shape = array.shape().to_vec();
+
+=======
     let shape = array.shape().to_vec(); // Clone to owned to avoid borrow issues
 
     // Indices and values must have the same shape
+>>>>>>> origin/main
     if indices.shape() != values.shape() {
         return Err(NumPyError::shape_mismatch(
             indices.shape().to_vec(),
@@ -677,12 +721,17 @@ where
         ));
     }
 
+<<<<<<< HEAD
+    for i in 0..indices.size() {
+        let mut idx = crate::strides::compute_multi_indices(i, indices.shape());
+=======
     // Iterate over all positions in the indices/values array
     for i in 0..indices.size() {
         // Compute multi-index from linear index
         let mut idx = crate::strides::compute_multi_indices(i, indices.shape());
 
         // Get the index value along the axis
+>>>>>>> origin/main
         let axis_idx = *indices
             .get_linear(i)
             .ok_or_else(|| NumPyError::index_error(i, indices.size()))?;
@@ -691,6 +740,10 @@ where
             return Err(NumPyError::index_error(axis_idx, shape[axis]));
         }
 
+<<<<<<< HEAD
+        idx[axis] = axis_idx;
+        let val = values.get_linear(i).cloned().unwrap_or_default();
+=======
         // Replace the axis dimension with the actual index value
         idx[axis] = axis_idx;
 
@@ -698,15 +751,19 @@ where
         let val = values.get_linear(i).cloned().unwrap_or_default();
 
         // Set the value in the target array
+>>>>>>> origin/main
         array.set_multi(&idx, val)?;
     }
     Ok(())
 }
 
 /// Generate a Vandermonde matrix.
+<<<<<<< HEAD
+=======
 ///
 /// The columns of the output matrix are powers of the input vector. The order
 /// of the powers is determined by the `increasing` parameter.
+>>>>>>> origin/main
 pub fn vander<T>(x: &Array<T>, n: Option<usize>, increasing: bool) -> Result<Array<T>>
 where
     T: Clone + Default + num_traits::Num + num_traits::Pow<u32, Output = T> + Send + Sync + 'static,
@@ -754,6 +811,8 @@ fn normalize_axis(axis: isize, ndim: usize) -> Result<usize> {
             return Err(NumPyError::invalid_value("axis out of bounds"));
         }
         Ok(axis as usize)
+<<<<<<< HEAD
+=======
     }
 }
 
@@ -809,5 +868,6 @@ mod extra_tests {
         let result = triu(&arr, 0).unwrap();
         // Each 2x2 matrix should be triu
         assert_eq!(result.data(), &[1, 2, 0, 4, 5, 6, 0, 8]);
+>>>>>>> origin/main
     }
 }

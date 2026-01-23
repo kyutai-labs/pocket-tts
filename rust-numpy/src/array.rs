@@ -106,9 +106,7 @@ impl<T> Array<T> {
     pub fn iter(&self) -> crate::iterator::ArrayIter<'_, T> {
         crate::iterator::ArrayIter::new(self)
     }
-    ///
-    /// Note: Returns a Vec by copying the array data.
-    /// For non-consuming access, use as_slice() instead to avoid allocation.
+
     pub fn to_vec(&self) -> Vec<T>
     where
         T: Clone,
@@ -171,11 +169,6 @@ impl<T> Array<T> {
         self.get_linear(index)
     }
 
-    /// Get element at physical index (direct access to data buffer)
-    pub fn get_linear_physical(&self, physical_index: usize) -> Option<&T> {
-        self.data.get(physical_index)
-    }
-
     /// Set element at linear index with Result
     pub fn set(&mut self, index: usize, value: T) -> Result<(), NumPyError> {
         if index >= self.size() {
@@ -183,23 +176,6 @@ impl<T> Array<T> {
         }
         self.set_linear(index, value);
         Ok(())
-    }
-
-    /// Set element at physical index (direct access to data buffer)
-    pub fn set_linear_physical(
-        &mut self,
-        physical_index: usize,
-        value: T,
-    ) -> Result<(), NumPyError> {
-        if physical_index >= self.data.len() {
-            return Err(NumPyError::index_error(physical_index, self.data.len()));
-        }
-        if let Some(elem) = self.data.get_mut(physical_index) {
-            *elem = value;
-            Ok(())
-        } else {
-            Err(NumPyError::index_error(physical_index, self.data.len()))
-        }
     }
 
     /// Create 2D array from matrix
@@ -244,8 +220,6 @@ impl<T> Array<T> {
         let (rows, cols) = (self.shape()[0], self.shape()[1]);
         let data = self.data.as_ref().as_vec();
 
-        // Create ndarray2 with proper shape
-
         let array2 = ndarray::Array2::from_shape_vec((rows, cols), data.to_vec())
             .map_err(|e| NumPyError::invalid_operation(e.to_string()))?;
 
@@ -258,7 +232,6 @@ impl<T> Array<T> {
         T: Clone,
     {
         if self.ndim() != 2 {
-            // For higher dimensions, just return clone (proper transpose requires more work)
             return self.clone();
         }
 
@@ -285,14 +258,11 @@ impl<T> Array<T> {
     }
 
     /// Transpose array view (non-consuming, shares data)
-    /// For 2D arrays, returns a view with swapped axes
-    /// For higher dimensions, reverses the axes
     pub fn transpose_view(&self, _axes: Option<&[usize]>) -> Result<Self, NumPyError>
     where
         T: Clone,
     {
         if self.ndim() != 2 {
-            // For higher dimensions, reverse axes
             let new_shape: Vec<usize> = self.shape.iter().rev().cloned().collect();
             let new_strides: Vec<isize> = self.strides.iter().rev().cloned().collect();
             return Ok(Self {
@@ -304,7 +274,6 @@ impl<T> Array<T> {
             });
         }
 
-        // For 2D arrays, swap the two axes
         let new_shape = vec![self.shape[1], self.shape[0]];
         let new_strides = vec![self.strides[1], self.strides[0]];
 
@@ -385,46 +354,24 @@ impl<T> Array<T> {
     where
         T: Clone + Default + 'static,
     {
-        if mask.ndim() > self.ndim() {
+        if self.shape() != mask.shape() {
             return Err(NumPyError::invalid_operation(format!(
-                "Mask ndim {} exceeds array ndim {}",
-                mask.ndim(),
-                self.ndim()
+                "Mask shape {:?} must match array shape {:?}",
+                mask.shape(),
+                self.shape()
             )));
         }
 
-        for (i, &dim) in mask.shape().iter().enumerate() {
-            if dim != self.shape[i] {
-                return Err(NumPyError::invalid_operation(format!(
-                    "Mask shape {:?} must match the beginning of array shape {:?}",
-                    mask.shape(),
-                    self.shape()
-                )));
-            }
-        }
-
-        let mask_size = mask.size();
-        let _remaining_ndim = self.ndim() - mask.ndim();
-        let remaining_shape = &self.shape[mask.ndim()..];
-        let sub_array_size: usize = remaining_shape.iter().product();
-
         let mut extracted = Vec::new();
-        for i in 0..mask_size {
-            if let Some(&is_true) = mask.get_linear(i) {
-                if is_true {
-                    for j in 0..sub_array_size {
-                        if let Some(val) = self.get_linear(i * sub_array_size + j) {
-                            extracted.push(val.clone());
-                        }
-                    }
+        for (i, &is_true) in mask.iter().enumerate() {
+            if is_true {
+                if let Some(val) = self.get_linear(i) {
+                    extracted.push(val.clone());
                 }
             }
         }
 
-        let mut result_shape = vec![extracted.len() / sub_array_size];
-        result_shape.extend_from_slice(remaining_shape);
-
-        Ok(Array::from_data(extracted, result_shape))
+        Ok(Array::from_vec(extracted))
     }
 
     /// Take elements along an axis (Fancy Indexing)
@@ -432,9 +379,8 @@ impl<T> Array<T> {
     where
         T: Clone + Default + 'static,
     {
-        let axis = match axis {
+        match axis {
             None => {
-                // Flat indexing
                 let mut data = Vec::with_capacity(indices.size());
                 for &idx in indices.iter() {
                     if let Some(val) = self.get_linear(idx) {
@@ -443,48 +389,49 @@ impl<T> Array<T> {
                         return Err(NumPyError::index_error(idx, self.size()));
                     }
                 }
-                return Ok(Array::from_data(data, indices.shape().to_vec()));
+                Ok(Array::from_data(data, indices.shape().to_vec()))
             }
-            Some(ax) => normalize_axis(ax as isize, self.ndim())?,
-        };
+            Some(ax) => {
+                let ax = normalize_axis(ax as isize, self.ndim())?;
+                let shape = self.shape();
+                let mut new_shape = shape.to_vec();
+                new_shape[ax] = indices.size();
 
-        let shape = self.shape();
-        let mut new_shape = shape.to_vec();
-        new_shape[axis] = indices.size();
+                let mut result = Array::zeros(new_shape);
+                let outer_size: usize = shape[..ax].iter().product();
+                let inner_size: usize = shape[ax + 1..].iter().product();
+                let axis_len = shape[ax];
 
-        let mut result = Array::zeros(new_shape);
-        let outer_size: usize = shape[..axis].iter().product();
-        let inner_size: usize = shape[axis + 1..].iter().product();
-        let axis_len = shape[axis];
+                for i in 0..outer_size {
+                    for (j, &idx) in indices.iter().enumerate() {
+                        if idx >= axis_len {
+                            return Err(NumPyError::index_error(idx, axis_len));
+                        }
+                        for k in 0..inner_size {
+                            let mut src_idx = vec![0; self.ndim()];
+                            let mut temp_i = i;
+                            for d in (0..ax).rev() {
+                                src_idx[d] = temp_i % shape[d];
+                                temp_i /= shape[d];
+                            }
+                            src_idx[ax] = idx;
+                            let mut temp_k = k;
+                            for d in (ax + 1..self.ndim()).rev() {
+                                src_idx[d] = temp_k % shape[d];
+                                temp_k /= shape[d];
+                            }
 
-        for i in 0..outer_size {
-            for (j, &idx) in indices.iter().enumerate() {
-                if idx >= axis_len {
-                    return Err(NumPyError::index_error(idx, axis_len));
-                }
-                for k in 0..inner_size {
-                    let mut src_idx = vec![0; self.ndim()];
-                    let mut temp_i = i;
-                    for d in (0..axis).rev() {
-                        src_idx[d] = temp_i % shape[d];
-                        temp_i /= shape[d];
+                            let mut dst_idx = src_idx.clone();
+                            dst_idx[ax] = j;
+
+                            let val = self.get_multi(&src_idx)?;
+                            result.set_multi(&dst_idx, val)?;
+                        }
                     }
-                    src_idx[axis] = idx;
-                    let mut temp_k = k;
-                    for d in (axis + 1..self.ndim()).rev() {
-                        src_idx[d] = temp_k % shape[d];
-                        temp_k /= shape[d];
-                    }
-
-                    let mut dst_idx = src_idx.clone();
-                    dst_idx[axis] = j;
-
-                    let val = self.get_multi(&src_idx)?;
-                    result.set_multi(&dst_idx, val)?;
                 }
+                Ok(result)
             }
         }
-        Ok(result)
     }
 
     /// Fancy indexing with multiple integer arrays (Fancy Indexing)
@@ -504,32 +451,22 @@ impl<T> Array<T> {
             )));
         }
 
-        // 1. Determine broadcasted shape of index arrays
         let mut broadcast_shape = indices[0].shape().to_vec();
         for idx in indices.iter().skip(1) {
             broadcast_shape =
                 crate::broadcasting::compute_broadcast_shape(&broadcast_shape, idx.shape());
         }
 
-        // 2. Broadcast all index arrays to the common shape
         let mut broadcasted_indices = Vec::with_capacity(indices.len());
         for idx in indices {
             broadcasted_indices.push(idx.broadcast_to(&broadcast_shape)?);
         }
 
-        // 3. Create result array
-        let total_broadcast_elements = broadcast_shape.iter().product::<usize>();
-        let remaining_shape = &self.shape[indices.len()..];
-        let sub_array_size: usize = remaining_shape.iter().product();
+        let total_elements = broadcast_shape.iter().product();
+        let mut result_data = Vec::with_capacity(total_elements);
 
-        let mut result_shape = broadcast_shape.clone();
-        result_shape.extend_from_slice(remaining_shape);
-
-        let mut result_data = Vec::with_capacity(total_broadcast_elements * sub_array_size);
-
-        // 4. Iterate over indices and extract data
-        for i in 0..total_broadcast_elements {
-            let mut base_coords = vec![0; indices.len()];
+        for i in 0..total_elements {
+            let mut coords = vec![0; self.ndim()];
 
             for (dim, b_idx) in broadcasted_indices.iter().enumerate() {
                 let idx_val = *b_idx
@@ -539,20 +476,20 @@ impl<T> Array<T> {
                 if idx_val >= self.shape[dim] {
                     return Err(NumPyError::index_error(idx_val, self.shape[dim]));
                 }
-                base_coords[dim] = idx_val;
+                coords[dim] = idx_val;
             }
 
-            for j in 0..sub_array_size {
-                let mut full_coords = base_coords.clone();
-                let remaining_coords = crate::strides::compute_multi_indices(j, remaining_shape);
-                full_coords.extend(remaining_coords);
-
-                let val = self.get_multi(&full_coords)?;
-                result_data.push(val);
+            if indices.len() < self.ndim() {
+                return Err(NumPyError::not_implemented(
+                    "Mixed fancy and basic indexing",
+                ));
             }
+
+            let val = self.get_multi(&coords)?;
+            result_data.push(val);
         }
 
-        Ok(Array::from_data(result_data, result_shape))
+        Ok(Array::from_data(result_data, broadcast_shape))
     }
 
     /// Reshape array
@@ -691,13 +628,11 @@ pub fn compute_strides(shape: &[usize]) -> Vec<isize> {
     let mut strides = Vec::with_capacity(shape.len());
     let mut stride = 1;
 
-    // Compute strides in reverse order
     for &dim in shape.iter().rev() {
         strides.push(stride as isize);
         stride *= dim;
     }
 
-    // Reverse to get correct order
     strides.reverse();
     strides
 }

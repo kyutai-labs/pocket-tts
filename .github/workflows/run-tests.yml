@@ -31,8 +31,5 @@ jobs:
     - name: Install dependencies
       run: uv sync --dev -p ${{ matrix.python-version }}
     - name: Run pytest
-      env:
-        HF_TOKEN: ${{ secrets.HF_TOKEN }}
       run: |
-        uvx hf auth login --token $HF_TOKEN
         uv run -p ${{ matrix.python-version }} pytest -v ./tests

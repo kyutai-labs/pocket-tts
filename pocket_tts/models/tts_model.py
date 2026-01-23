@@ -23,6 +23,7 @@ from pocket_tts.default_parameters import (
     DEFAULT_NOISE_CLAMP,
     DEFAULT_TEMPERATURE,
     DEFAULT_VARIANT,
+    MAX_TOKEN_PER_CHUNK,
 )
 from pocket_tts.models.flow_lm import FlowLMModel
 from pocket_tts.models.mimi import MimiModel
@@ -290,6 +291,66 @@ class TTSModel(nn.Module):
         conditioning = F.linear(latents, self.flow_lm.speaker_proj_weight)
         return conditioning
 
+    def _slice_kv_cache(self, model_state: dict, num_frames: int) -> None:
+        """Slice KV cache to only keep the first num_frames elements.
+
+        This optimizes memory usage when caching voice states by discarding
+        unused cache capacity beyond the actual audio prompt length.
+
+        Args:
+            model_state: The model state dict containing KV caches for all modules
+            num_frames: Number of frames to keep in the KV cache
+        """
+        original_size = 0
+        sliced_size = 0
+        for module_name, module_state in model_state.items():
+            if "cache" in module_state:
+                # KV cache has shape [2, batch_size, sequence_length, num_heads, dim_per_head]
+                cache = module_state["cache"]
+                original_size += cache.numel() * cache.element_size()
+                # Slice to keep only the first num_frames positions
+                module_state["cache"] = cache[:, :, :num_frames, :, :].clone()
+                sliced_size += module_state["cache"].numel() * module_state["cache"].element_size()
+
+        memory_saved_mb = (original_size - sliced_size) / (1024 * 1024)
+        logger.info(
+            f"Sliced KV cache from {original_size / (1024 * 1024):.1f} MB to {sliced_size / (1024 * 1024):.1f} MB "
+            f"(saved {memory_saved_mb:.1f} MB)"
+        )
+
+    def _expand_kv_cache(self, model_state: dict, sequence_length: int) -> None:
+        """Expand KV cache back to full sequence_length for generation.
+
+        When a model state is retrieved from cache with sliced KV caches,
+        this method expands them back to the full size needed for generation.
+
+        Args:
+            model_state: The model state dict containing potentially sliced KV caches
+            sequence_length: Target sequence length to expand caches to
+        """
+        for module_name, module_state in model_state.items():
+            if "cache" in module_state:
+                cache = module_state["cache"]
+                # KV cache has shape [2, batch_size, current_length, num_heads, dim_per_head]
+                current_length = cache.shape[2]
+                if current_length < sequence_length:
+                    # Create expanded cache filled with NaN for unused positions
+                    expanded_cache = torch.full(
+                        (
+                            cache.shape[0],
+                            cache.shape[1],
+                            sequence_length,
+                            cache.shape[3],
+                            cache.shape[4],
+                        ),
+                        float("NaN"),
+                        device=cache.device,
+                        dtype=cache.dtype,
+                    )
+                    # Copy existing data to the beginning
+                    expanded_cache[:, :, :current_length, :, :] = cache
+                    module_state["cache"] = expanded_cache
+
     @torch.no_grad
     def _decode_audio_worker(self, latents_queue: queue.Queue, result_queue: queue.Queue):
         """Worker thread function for decoding audio latents from queue with immediate streaming."""
@@ -333,6 +394,7 @@ class TTSModel(nn.Module):
         self,
         model_state: dict,
         text_to_generate: str,
+        max_tokens: int = MAX_TOKEN_PER_CHUNK,
         frames_after_eos: int | None = None,
         copy_state: bool = True,
     ) -> torch.Tensor:
@@ -375,6 +437,7 @@ class TTSModel(nn.Module):
             text_to_generate=text_to_generate,
             frames_after_eos=frames_after_eos,
             copy_state=copy_state,
+            max_tokens=max_tokens,
         ):
             audio_chunks.append(chunk)
         return torch.cat(audio_chunks, dim=0)
@@ -384,6 +447,7 @@ class TTSModel(nn.Module):
         self,
         model_state: dict,
         text_to_generate: str,
+        max_tokens: int = MAX_TOKEN_PER_CHUNK,
         frames_after_eos: int | None = None,
         copy_state: bool = True,
     ):
@@ -428,15 +492,20 @@ class TTSModel(nn.Module):
         # by using teacher forcing, but it would be a bit slower.
         # TODO: add the teacher forcing method for long texts where we use the audio of one chunk
         # as conditioning for the next chunk.
-        chunks = split_into_best_sentences(self.flow_lm.conditioner.tokenizer, text_to_generate)
+        chunks = split_into_best_sentences(
+            self.flow_lm.conditioner.tokenizer, text_to_generate, max_tokens
+        )
 
         for chunk in chunks:
             text_to_generate, frames_after_eos_guess = prepare_text_prompt(chunk)
             frames_after_eos_guess += 2
+            effective_frames = (
+                frames_after_eos if frames_after_eos is not None else frames_after_eos_guess
+            )
             yield from self._generate_audio_stream_short_text(
                 model_state=model_state,
                 text_to_generate=chunk,
-                frames_after_eos=frames_after_eos_guess,
+                frames_after_eos=effective_frames,
                 copy_state=copy_state,
             )
 
@@ -446,6 +515,9 @@ class TTSModel(nn.Module):
     ):
         if copy_state:
             model_state = copy.deepcopy(model_state)
+
+        # Expand sliced KV caches back to full size for generation
+        self._expand_kv_cache(model_state, sequence_length=1000)
 
         # Set up multithreaded generation and decoding
         latents_queue = queue.Queue()
@@ -667,6 +739,10 @@ class TTSModel(nn.Module):
         with display_execution_time("Prompting audio"):
             self._run_flow_lm_and_increment_step(model_state=model_state, audio_conditioning=prompt)
 
+        # Optimize memory by slicing KV cache to only keep frames from the audio prompt
+        num_audio_frames = prompt.shape[1]
+        self._slice_kv_cache(model_state, num_audio_frames)
+
         return model_state
 
 
@@ -698,7 +774,7 @@ def prepare_text_prompt(text: str) -> tuple[str, int]:
     return text, frames_after_eos_guess
 
 
-def split_into_best_sentences(tokenizer, text_to_generate: str) -> list[str]:
+def split_into_best_sentences(tokenizer, text_to_generate: str, max_tokens: int) -> list[str]:
     text_to_generate, _ = prepare_text_prompt(text_to_generate)
     text_to_generate = text_to_generate.strip()
     tokens = tokenizer(text_to_generate)
@@ -726,7 +802,7 @@ def split_into_best_sentences(tokenizer, text_to_generate: str) -> list[str]:
         text = tokenizer.sp.decode(list_of_tokens[start:end])
         nb_tokens_and_sentences.append((end - start, text))
 
-    max_nb_tokens_in_a_chunk = 50
+    max_nb_tokens_in_a_chunk = max_tokens
     chunks = []
     current_chunk = ""
     current_nb_of_tokens_in_chunk = 0

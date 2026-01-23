@@ -22,6 +22,7 @@ from pocket_tts.default_parameters import (
     DEFAULT_NOISE_CLAMP,
     DEFAULT_TEMPERATURE,
     DEFAULT_VARIANT,
+    MAX_TOKEN_PER_CHUNK,
 )
 from pocket_tts.models.tts_model import TTSModel
 from pocket_tts.utils.logging_utils import enable_logging
@@ -39,7 +40,7 @@ cli_app = typer.Typer(
 # ------------------------------------------------------
 
 # Global model instance
-tts_model = None
+tts_model: TTSModel | None = None
 global_model_state = None
 
 web_app = FastAPI(
@@ -142,21 +143,22 @@ def text_to_speech(
             raise HTTPException(
                 status_code=400, detail="voice_url must start with http://, https://, or hf://"
             )
-        model_state = tts_model._cached_get_state_for_audio_prompt(voice_url, truncate=True)
+        model_state = tts_model._cached_get_state_for_audio_prompt(voice_url)
         logging.warning("Using voice from URL: %s", voice_url)
     elif voice_wav is not None:
-        # Use uploaded voice file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
+        # Use uploaded voice file - preserve extension for format detection
+        suffix = Path(voice_wav.filename).suffix if voice_wav.filename else ".wav"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
             content = voice_wav.file.read()
             temp_file.write(content)
             temp_file.flush()
+            temp_file_path = temp_file.name
 
-            try:
-                model_state = tts_model.get_state_for_audio_prompt(
-                    Path(temp_file.name), truncate=True
-                )
-            finally:
-                os.unlink(temp_file.name)
+        # Close the file before reading it back (required on Windows)
+        try:
+            model_state = tts_model.get_state_for_audio_prompt(Path(temp_file_path), truncate=True)
+        finally:
+            os.unlink(temp_file_path)
     else:
         # Use default global model state
         model_state = global_model_state
@@ -222,6 +224,9 @@ def generate(
         str, typer.Option(help="Output path for generated audio")
     ] = "./tts_output.wav",
     device: Annotated[str, typer.Option(help="Device to use")] = "cpu",
+    max_tokens: Annotated[
+        int, typer.Option(help="Maximum number of tokens per chunk.")
+    ] = MAX_TOKEN_PER_CHUNK,
 ):
     """Generate speech using Kyutai Pocket TTS."""
     if "cuda" in device:
@@ -241,6 +246,7 @@ def generate(
             model_state=model_state_for_voice,
             text_to_generate=text,
             frames_after_eos=frames_after_eos,
+            max_tokens=max_tokens,
         )
 
         stream_audio_chunks(output_path, audio_chunks, tts_model.config.mimi.sample_rate)
@@ -248,8 +254,12 @@ def generate(
         # Only print the result message if not writing to stdout
         if output_path != "-":
             logger.info("Results written in %s", output_path)
+        logger.info("-" * 20)
         logger.info(
             "If you want to try multiple voices and prompts quickly, try the `serve` command."
+        )
+        logger.info(
+            "If you like Kyutai projects, comment, like, subscribe at https://x.com/kyutai_labs"
         )
 
 

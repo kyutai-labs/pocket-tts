@@ -51,16 +51,16 @@
 
         <div class="bg-white p-4 rounded-lg shadow">
             <label for="voice-wav-input" class="block text-sm font-medium text-gray-700 mb-2">
-                Or upload a WAV file for voice cloning:
+                Or upload an audio file for voice cloning:
             </label>
             <input
                 type="file"
                 id="voice-wav-input"
                 class="w-full border rounded p-2"
-                accept=".wav,audio/wav"
+                accept=".wav,.mp3,.flac,.ogg,.m4a,audio/*"
             />
             <p class="text-xs text-gray-500 mt-1">
-                Upload a WAV file to use as voice reference. Takes precedence over voice URL.
+                Upload an audio file (WAV, MP3, FLAC, etc.) to use as voice reference. Takes precedence over voice URL.
             </p>
         </div>
 

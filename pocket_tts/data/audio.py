@@ -21,17 +21,35 @@ FIRST_CHUNK_LENGTH_SECONDS = float(os.environ.get("FIRST_CHUNK_LENGTH_SECONDS", 
 
 
 def audio_read(filepath: str | Path) -> tuple[torch.Tensor, int]:
-    """Read audio using Python's wave module."""
-    with wave.open(str(filepath), "rb") as wav_file:
-        sample_rate = wav_file.getframerate()
+    """Read audio file. WAV uses built-in wave module; other formats require soundfile."""
+    filepath = Path(filepath)
 
-        # Read all audio data as 16-bit signed integers
-        raw_data = wav_file.readframes(-1)
-        samples = np.frombuffer(raw_data, dtype=np.int16).astype(np.float32) / 32768.0
+    if filepath.suffix.lower() == ".wav":
+        # Use built-in wave module for WAV files
+        with wave.open(str(filepath), "rb") as wav_file:
+            sample_rate = wav_file.getframerate()
+            n_channels = wav_file.getnchannels()
+            raw_data = wav_file.readframes(-1)
+            samples = np.frombuffer(raw_data, dtype=np.int16).astype(np.float32) / 32768.0
+            if n_channels > 1:
+                samples = samples.reshape(-1, n_channels).mean(axis=1)
+            return torch.from_numpy(samples).unsqueeze(0), sample_rate
 
-        # Return as mono tensor (channels, samples)
-        wav = torch.from_numpy(samples.reshape(1, -1))
-        return wav, sample_rate
+    # For non-WAV formats, use soundfile (optional dependency)
+    try:
+        import soundfile as sf
+    except ImportError as e:
+        raise ImportError(
+            "soundfile is required to read non-WAV audio files. "
+            "Install with: `pip install soundfile` or `uvx --with soundfile`"
+        ) from e
+
+    data, sample_rate = sf.read(str(filepath), dtype="float32")
+    if data.ndim == 1:
+        wav = torch.from_numpy(data).unsqueeze(0)
+    else:
+        wav = torch.from_numpy(data.mean(axis=1)).unsqueeze(0)
+    return wav, sample_rate
 
 
 class StreamingWAVWriter:

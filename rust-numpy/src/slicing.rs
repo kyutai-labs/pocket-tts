@@ -385,9 +385,56 @@ where
     }
 
     /// Expand ellipsis in indices
-    pub fn ellipsis_index(&self, _indices: &[Index]) -> Result<Self> {
-        // Stub: raise error
-        Err(NumPyError::not_implemented("ellipsis_index"))
+    pub fn ellipsis_index(&self, indices: &[Index]) -> Result<Self> {
+        let mut expanded_slices = Vec::new();
+        let mut ellipsis_found = false;
+
+        // Count non-ellipsis indices
+        let non_ellipsis_count = indices
+            .iter()
+            .filter(|i| !matches!(i, Index::Ellipsis))
+            .count();
+
+        if indices.len() - non_ellipsis_count > 1 {
+            return Err(NumPyError::invalid_operation(
+                "An index can only have one ellipsis (...)",
+            ));
+        }
+
+        let ellipsis_expansion = self.ndim().saturating_sub(non_ellipsis_count);
+
+        for idx in indices {
+            match idx {
+                Index::Ellipsis => {
+                    if ellipsis_found {
+                        // Already handled by check above but for safety
+                        continue;
+                    }
+                    ellipsis_found = true;
+                    for _ in 0..ellipsis_expansion {
+                        expanded_slices.push(Slice::Full);
+                    }
+                }
+                Index::Slice(s) => expanded_slices.push(s.clone()),
+                Index::Integer(i) => expanded_slices.push(Slice::Index(*i)),
+                Index::Boolean(b) => {
+                    if *b {
+                        expanded_slices.push(Slice::Full);
+                    } else {
+                        expanded_slices.push(Slice::Range(0, 0));
+                    }
+                }
+            }
+        }
+
+        // If no ellipsis was found and fewer indices provided, NumPy pads with Full slices at the end
+        if !ellipsis_found && expanded_slices.len() < self.ndim() {
+            for _ in expanded_slices.len()..self.ndim() {
+                expanded_slices.push(Slice::Full);
+            }
+        }
+
+        self.slice(&MultiSlice::new(expanded_slices))
     }
 
     /// Calculate length of a slice for a dimension

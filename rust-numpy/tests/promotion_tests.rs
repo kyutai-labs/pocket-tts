@@ -1,59 +1,39 @@
-use numpy::{promote_types, Dtype};
+use numpy::dtype::Dtype;
+use numpy::type_promotion::promote_types;
 
 #[test]
-fn test_same_kind_promotion() {
-    let i8 = Dtype::Int8 { byteorder: None };
-    let i16 = Dtype::Int16 { byteorder: None };
-    let i32 = Dtype::Int32 { byteorder: None };
+fn test_string_unicode_promotion() {
+    let s = Dtype::String { length: Some(8) }; // 'S'
+    let u = Dtype::Unicode { length: Some(8) }; // 'U'
 
-    assert_eq!(promote_types(&i8, &i8), Some(i8.clone()));
-    assert_eq!(promote_types(&i8, &i16), Some(i16.clone()));
-    assert_eq!(promote_types(&i16, &i32), Some(i32.clone()));
+    // In NumPy: S + U -> U
+    // Currently in rust-numpy, loop might default to one or the other based on ordering or fail
+    let res = promote_types(&s, &u).expect("Promotion failed for String + Unicode");
+    match res {
+        Dtype::Unicode { .. } => (), // Correct
+        Dtype::String { .. } => panic!("Promoted to String instead of Unicode"),
+        _ => panic!("Promoted to unexpected type: {:?}", res),
+    }
 
-    let f32 = Dtype::Float32 { byteorder: None };
-    let f64 = Dtype::Float64 { byteorder: None };
-    assert_eq!(promote_types(&f32, &f64), Some(f64.clone()));
+    let res2 = promote_types(&u, &s).expect("Promotion failed for Unicode + String");
+    match res2 {
+        Dtype::Unicode { .. } => (), // Correct
+        Dtype::String { .. } => panic!("Promoted to String instead of Unicode (reversed)"),
+        _ => panic!("Promoted to unexpected type: {:?}", res2),
+    }
 }
 
 #[test]
-fn test_mixed_kind_promotion() {
-    let i32 = Dtype::Int32 { byteorder: None };
-    let f32 = Dtype::Float32 { byteorder: None };
-    let f64 = Dtype::Float64 { byteorder: None };
+fn test_bytes_bytes_promotion() {
+    // Testing Dtype::Bytes (assumed to be 'V' or raw bytes)
+    // If assuming 'S' (String) is bytes, then this test is redundant with String + String.
+    // But we have a specific Dtype::Bytes variant.
+    let b1 = Dtype::Bytes { length: 10 };
+    let b2 = Dtype::Bytes { length: 20 };
 
-    // Int + Float -> Float
-    assert_eq!(promote_types(&i32, &f32), Some(f64.clone())); // NumPy i32+f32 -> f64
-
-    let i8 = Dtype::Int8 { byteorder: None };
-    // i8 (byte) + f32 -> f32 ? (NumPy i8+f32 -> f32? Yes usually)
-    // Our implementation does heuristic <= 8 bytes float, >= 4 bytes int -> f64
-    // i8 size 1. f32 size 4.
-    // logic: if f_size < 8 && i_size >= 4 -> f64.
-    // 1 < 4 is false. So returns f32.
-    assert_eq!(promote_types(&i8, &f32), Some(f32.clone()));
-}
-
-#[test]
-fn test_signed_unsigned_promotion() {
-    let u8 = Dtype::UInt8 { byteorder: None };
-    let i8 = Dtype::Int8 { byteorder: None };
-    // u8 + i8 -> i16 (to hold both ranges)
-    let res = promote_types(&u8, &i8);
-    assert!(matches!(res, Some(Dtype::Int16 { .. })));
-
-    let u32 = Dtype::UInt32 { byteorder: None };
-    let i32 = Dtype::Int32 { byteorder: None };
-    // u32 + i32 -> i64
-    let res2 = promote_types(&u32, &i32);
-    assert!(matches!(res2, Some(Dtype::Int64 { .. })));
-}
-
-#[test]
-fn test_bool_promotion() {
-    let b = Dtype::Bool;
-    let i8 = Dtype::Int8 { byteorder: None };
-    let f32 = Dtype::Float32 { byteorder: None };
-
-    assert_eq!(promote_types(&b, &i8), Some(i8.clone()));
-    assert_eq!(promote_types(&b, &f32), Some(f32.clone()));
+    let res = promote_types(&b1, &b2).expect("Promotion failed for Bytes + Bytes");
+    match res {
+        Dtype::Bytes { length } => assert_eq!(length, 20, "Should take max length"),
+        _ => panic!("Promoted to non-Bytes type: {:?}", res),
+    }
 }

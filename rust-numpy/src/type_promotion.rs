@@ -68,18 +68,43 @@ pub fn promote_types(t1: &Dtype, t2: &Dtype) -> Option<Dtype> {
         (Complex, Complex) => promote_complex(t1, t2),
         (Datetime, Datetime) => promote_datetime(t1, t2),
         (String, String) => {
-            // Pick larger length
+            // Check if either is Unicode
+            let is_unicode =
+                matches!(t1, Dtype::Unicode { .. }) || matches!(t2, Dtype::Unicode { .. });
+
             let l1 = match t1 {
                 Dtype::String { length } => length.unwrap_or(0),
+                Dtype::Unicode { length } => length.unwrap_or(0),
                 _ => 0,
             };
             let l2 = match t2 {
                 Dtype::String { length } => length.unwrap_or(0),
+                Dtype::Unicode { length } => length.unwrap_or(0),
                 _ => 0,
             };
-            Some(Dtype::String {
-                length: Some(l1.max(l2)),
-            })
+
+            let max_len = l1.max(l2);
+
+            if is_unicode {
+                Some(Dtype::Unicode {
+                    length: Some(max_len),
+                })
+            } else {
+                Some(Dtype::String {
+                    length: Some(max_len),
+                })
+            }
+        }
+        (Bytes, Bytes) => {
+            let l1 = match t1 {
+                Dtype::Bytes { length } => *length,
+                _ => 0,
+            };
+            let l2 = match t2 {
+                Dtype::Bytes { length } => *length,
+                _ => 0,
+            };
+            Some(Dtype::Bytes { length: l1.max(l2) })
         }
         _ => {
             if t1 == t2 {

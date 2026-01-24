@@ -696,6 +696,117 @@ pub fn compute_strides(shape: &[usize]) -> Vec<isize> {
     strides
 }
 
+impl<T> Array<T> {
+    /// Create a view of the array (shares data)
+    pub fn view(&self) -> Self
+    where
+        T: Clone,
+    {
+        Self {
+            data: Arc::clone(&self.data),
+            shape: self.shape.clone(),
+            strides: self.strides.clone(),
+            dtype: self.dtype.clone(),
+            offset: self.offset,
+        }
+    }
+
+    /// Cast array to new dtype
+    pub fn astype<U>(&self) -> Result<Array<U>, NumPyError>
+    where
+        T: Clone + Default + 'static + num_traits::NumCast + Copy,
+        U: Clone + Default + 'static + num_traits::NumCast + Copy,
+    {
+        let mut new_data = Vec::with_capacity(self.size());
+        for item in self.iter() {
+            let cast_val = num_traits::cast::<T, U>(*item)
+                .ok_or_else(|| NumPyError::invalid_operation("Failed to cast value"))?;
+            new_data.push(cast_val);
+        }
+        Ok(Array::from_shape_vec(self.shape.clone(), new_data))
+    }
+
+    /// Return complex conjugate (element-wise).
+    pub fn conj(&self) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + 'static + ElementConj,
+    {
+        let mut new_data = Vec::with_capacity(self.size());
+        for item in self.iter() {
+            new_data.push(item.element_conj());
+        }
+        Ok(Array::from_shape_vec(self.shape.clone(), new_data))
+    }
+
+    /// Return complex conjugate (alias).
+    pub fn conjugate(&self) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + 'static + ElementConj,
+    {
+        self.conj()
+    }
+
+    /// Move array to device (Stub)
+    pub fn to_device(&self, device: &str) -> Result<Self, NumPyError>
+    where
+        T: Clone,
+    {
+        if device == "cpu" {
+            Ok(self.clone())
+        } else {
+            Err(NumPyError::not_implemented("GPU support not enabled"))
+        }
+    }
+
+    /// Construct bytes containing raw data
+    pub fn tobytes(&self) -> Result<Vec<u8>, NumPyError>
+    where
+        T: Clone + Copy + 'static,
+    {
+        // Require contiguous
+        if !self.is_contiguous() {
+            return Err(NumPyError::invalid_operation(
+                "tobytes requires contiguous array",
+            ));
+        }
+
+        let slice = self.as_slice();
+        // unsafe reinterpretation
+        let len = slice.len() * std::mem::size_of::<T>();
+        let ptr = slice.as_ptr() as *const u8;
+        let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
+        Ok(bytes.to_vec())
+    }
+
+    /// Write array to file
+    pub fn tofile<P: AsRef<std::path::Path>>(&self, path: P) -> Result<(), NumPyError>
+    where
+        T: Clone + Copy + 'static,
+    {
+        let bytes = self.tobytes()?;
+        std::fs::write(path, bytes).map_err(|e| NumPyError::invalid_operation(e.to_string()))
+    }
+
+    /// Return array as a list (Vec)
+    pub fn tolist(&self) -> Vec<T>
+    where
+        T: Clone,
+    {
+        // For 1D, simple vec. For n-D, flat vec for now.
+        self.to_vec()
+    }
+
+    /// Swap bytes
+    pub fn byteswap(&self, _inplace: bool) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + 'static,
+    {
+        Err(NumPyError::not_implemented(
+            "byteswap requires trait specialization",
+        ))
+    }
+}
+
 impl<T> Clone for Array<T> {
     fn clone(&self) -> Self {
         Self {
@@ -727,5 +838,76 @@ pub fn normalize_axis(axis: isize, ndim: usize) -> Result<usize, NumPyError> {
             )));
         }
         Ok(axis as usize)
+    }
+}
+
+/// Trait for element-wise complex conjugate
+pub trait ElementConj {
+    fn element_conj(&self) -> Self;
+}
+
+impl ElementConj for f32 {
+    fn element_conj(&self) -> Self {
+        *self
+    }
+}
+impl ElementConj for f64 {
+    fn element_conj(&self) -> Self {
+        *self
+    }
+}
+impl ElementConj for i8 {
+    fn element_conj(&self) -> Self {
+        *self
+    }
+}
+impl ElementConj for i16 {
+    fn element_conj(&self) -> Self {
+        *self
+    }
+}
+impl ElementConj for i32 {
+    fn element_conj(&self) -> Self {
+        *self
+    }
+}
+impl ElementConj for i64 {
+    fn element_conj(&self) -> Self {
+        *self
+    }
+}
+impl ElementConj for u8 {
+    fn element_conj(&self) -> Self {
+        *self
+    }
+}
+impl ElementConj for u16 {
+    fn element_conj(&self) -> Self {
+        *self
+    }
+}
+impl ElementConj for u32 {
+    fn element_conj(&self) -> Self {
+        *self
+    }
+}
+impl ElementConj for u64 {
+    fn element_conj(&self) -> Self {
+        *self
+    }
+}
+impl ElementConj for bool {
+    fn element_conj(&self) -> Self {
+        *self
+    }
+}
+impl ElementConj for Complex64 {
+    fn element_conj(&self) -> Self {
+        self.conj()
+    }
+}
+impl ElementConj for num_complex::Complex<f32> {
+    fn element_conj(&self) -> Self {
+        self.conj()
     }
 }

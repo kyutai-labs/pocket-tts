@@ -132,7 +132,15 @@ pub fn compute_broadcast_shape(shape1: &[usize], shape2: &[usize]) -> Vec<usize>
             1
         };
 
-        result[i] = std::cmp::max(dim1, dim2);
+        result[i] = if dim1 == 1 {
+            dim2
+        } else if dim2 == 1 {
+            dim1
+        } else {
+            // Dimensions match (e.g., 0 and 0, or 3 and 3)
+            // Note: Incompatible shapes should be checked via are_shapes_broadcastable before calling this
+            dim1
+        };
     }
 
     result

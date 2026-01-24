@@ -433,6 +433,365 @@ impl RandomState {
         Ok(Array::from_data(data, output_shape))
     }
 
+    pub fn geometric<T>(&mut self, p: T, size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
+    where
+        T: Clone + Into<f64> + From<f64> + Default + 'static,
+    {
+        let p_f64 = p.into();
+        if !(0.0..=1.0).contains(&p_f64) {
+            return Err(NumPyError::value_error("p must be in [0, 1]", "geometric"));
+        }
+
+        let shape = size.unwrap_or(&[1]);
+        let total_size = shape.iter().product();
+        let mut data = Vec::with_capacity(total_size);
+
+        for _ in 0..total_size {
+            let u: f64 = self.rng.gen();
+            let sample = (1.0 - u).ln() / (1.0 - p_f64).ln();
+            let count = sample.ceil() as u64;
+            data.push(T::from(count as f64));
+        }
+
+        Ok(Array::from_data(data, shape.to_vec()))
+    }
+
+    pub fn negative_binomial<T>(
+        &mut self,
+        n: isize,
+        p: T,
+        size: Option<&[usize]>,
+    ) -> Result<Array<T>, NumPyError>
+    where
+        T: Clone + Into<f64> + From<f64> + Default + 'static,
+    {
+        if n < 0 {
+            return Err(NumPyError::invalid_value("n must be non-negative"));
+        }
+        let p_f64 = p.into();
+        if !(0.0..=1.0).contains(&p_f64) {
+            return Err(NumPyError::value_error("p must be in [0, 1]", "negative_binomial"));
+        }
+
+        let shape = size.unwrap_or(&[1]);
+        let total_size = shape.iter().product();
+        let mut data = Vec::with_capacity(total_size);
+
+        for _ in 0..total_size {
+            let geom_p = 1.0 - p_f64;
+            let u: f64 = self.rng.gen();
+            let sample = (1.0 - u).ln() / geom_p.ln();
+            let geom_count = sample.ceil() as u64;
+            let result = geom_count + n as u64 - 1;
+            data.push(T::from(result as f64));
+        }
+
+        Ok(Array::from_data(data, shape.to_vec()))
+    }
+
+    pub fn hypergeometric<T>(
+        &mut self,
+        ngood: isize,
+        nbad: isize,
+        nsample: isize,
+        size: Option<&[usize]>,
+    ) -> Result<Array<T>, NumPyError>
+    where
+        T: Clone + Into<f64> + From<f64> + Default + 'static,
+    {
+        if ngood < 0 || nbad < 0 || nsample < 0 {
+            return Err(NumPyError::invalid_value("parameters must be non-negative"));
+        }
+
+        let total = ngood + nbad;
+        if nsample > total {
+            return Err(NumPyError::invalid_value("nsample must not exceed population size"));
+        }
+
+        let shape = size.unwrap_or(&[1]);
+        let total_size = shape.iter().product();
+        let mut data = Vec::with_capacity(total_size);
+
+        let mut population: Vec<bool> = (0..ngood).map(|_| true).collect();
+        population.extend((0..nbad).map(|_| false));
+
+        for _ in 0..total_size {
+            let mut sample_pop = population.clone();
+            sample_pop.shuffle(&mut self.rng);
+            let good_count = sample_pop.iter().take(nsample as usize).filter(|&&x| x).count();
+            data.push(T::from(good_count as f64));
+        }
+
+        Ok(Array::from_data(data, shape.to_vec()))
+    }
+
+    pub fn logseries<T>(&mut self, p: T, size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
+    where
+        T: Clone + Into<f64> + From<f64> + Default + 'static,
+    {
+        let p_f64 = p.into();
+        if !(0.0..1.0).contains(&p_f64) {
+            return Err(NumPyError::value_error("p must be in (0, 1)", "logseries"));
+        }
+
+        let shape = size.unwrap_or(&[1]);
+        let total_size = shape.iter().product();
+        let mut data = Vec::with_capacity(total_size);
+
+        for _ in 0..total_size {
+            let u: f64 = self.rng.gen();
+            let q = 1.0 - p_f64;
+            let sample = (1.0 - q.powf(1.0 - u)) / (1.0 - q);
+            let count = sample.log(1.0 / q).floor() as u64 + 1;
+            data.push(T::from(count as f64));
+        }
+
+        Ok(Array::from_data(data, shape.to_vec()))
+    }
+
+    pub fn rayleigh<T>(&mut self, scale: T, size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
+    where
+        T: Clone + Into<f64> + From<f64> + Default + 'static,
+    {
+        let scale_f64 = scale.into();
+        if scale_f64 <= 0.0 {
+            return Err(NumPyError::invalid_value("scale must be positive"));
+        }
+
+        let shape = size.unwrap_or(&[1]);
+        let total_size = shape.iter().product();
+        let mut data = Vec::with_capacity(total_size);
+
+        for _ in 0..total_size {
+            let u: f64 = self.rng.gen();
+            let sample = scale_f64 * (-2.0 * u.ln()).sqrt();
+            data.push(T::from(sample));
+        }
+
+        Ok(Array::from_data(data, shape.to_vec()))
+    }
+
+    pub fn wald<T>(&mut self, mean: T, scale: T, size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
+    where
+        T: Clone + Into<f64> + From<f64> + Default + 'static,
+    {
+        let mean_f64 = mean.into();
+        let scale_f64 = scale.into();
+
+        if mean_f64 <= 0.0 {
+            return Err(NumPyError::invalid_value("mean must be positive"));
+        }
+        if scale_f64 <= 0.0 {
+            return Err(NumPyError::invalid_value("scale must be positive"));
+        }
+
+        let shape = size.unwrap_or(&[1]);
+        let total_size = shape.iter().product();
+        let mut data = Vec::with_capacity(total_size);
+
+        for _ in 0..total_size {
+            // Use inverse Gaussian transformation
+            let y: f64 = Normal::new(0.0, 1.0)
+                .map_err(|e| NumPyError::invalid_value(e.to_string()))?
+                .sample(&mut self.rng);
+            let y2 = y * y;
+
+            let mu_y = mean_f64 * y;
+            let x = mean_f64 + (mu_y * mu_y) / (2.0 * scale_f64) - (mu_y / (2.0 * scale_f64)) * ((4.0 * scale_f64) + mu_y).sqrt();
+
+            let u: f64 = self.rng.gen();
+            let sample = if u <= mean_f64 / (mean_f64 + x) {
+                x.max(0.0) // Ensure non-negative
+            } else {
+                let mu2_div_x = (mean_f64 * mean_f64) / x.max(f64::EPSILON);
+                if mu2_div_x.is_finite() && mu2_div_x > 0.0 {
+                    mu2_div_x
+                } else {
+                    mean_f64 // Fallback to mean if computation fails
+                }
+            };
+            data.push(T::from(sample));
+        }
+
+        Ok(Array::from_data(data, shape.to_vec()))
+    }
+
+    pub fn weibull<T>(&mut self, a: T, size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
+    where
+        T: Clone + Into<f64> + From<f64> + Default + 'static,
+    {
+        let a_f64 = a.into();
+        if a_f64 <= 0.0 {
+            return Err(NumPyError::invalid_value("shape parameter must be positive"));
+        }
+
+        let shape = size.unwrap_or(&[1]);
+        let total_size = shape.iter().product();
+        let mut data = Vec::with_capacity(total_size);
+
+        for _ in 0..total_size {
+            let u: f64 = self.rng.gen();
+            let sample = (-u.ln()).powf(1.0 / a_f64);
+            data.push(T::from(sample));
+        }
+
+        Ok(Array::from_data(data, shape.to_vec()))
+    }
+
+    pub fn triangular<T>(
+        &mut self,
+        left: T,
+        mode: T,
+        right: T,
+        size: Option<&[usize]>,
+    ) -> Result<Array<T>, NumPyError>
+    where
+        T: Clone + Into<f64> + From<f64> + Default + 'static,
+    {
+        let left_f64 = left.into();
+        let mode_f64 = mode.into();
+        let right_f64 = right.into();
+
+        if left_f64 >= right_f64 {
+            return Err(NumPyError::invalid_value("left must be less than right"));
+        }
+        if mode_f64 < left_f64 || mode_f64 > right_f64 {
+            return Err(NumPyError::invalid_value("mode must be between left and right"));
+        }
+
+        let shape = size.unwrap_or(&[1]);
+        let total_size = shape.iter().product();
+        let mut data = Vec::with_capacity(total_size);
+
+        for _ in 0..total_size {
+            let u: f64 = self.rng.gen();
+            let sample = if u <= (mode_f64 - left_f64) / (right_f64 - left_f64) {
+                left_f64 + (u * (right_f64 - left_f64) * (mode_f64 - left_f64)).sqrt()
+            } else {
+                right_f64 - ((1.0 - u) * (right_f64 - left_f64) * (right_f64 - mode_f64)).sqrt()
+            };
+            data.push(T::from(sample));
+        }
+
+        Ok(Array::from_data(data, shape.to_vec()))
+    }
+
+    pub fn pareto<T>(&mut self, a: T, size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
+    where
+        T: Clone + Into<f64> + From<f64> + Default + 'static,
+    {
+        let a_f64 = a.into();
+        if a_f64 <= 0.0 {
+            return Err(NumPyError::invalid_value("shape parameter must be positive"));
+        }
+
+        let shape = size.unwrap_or(&[1]);
+        let total_size = shape.iter().product();
+        let mut data = Vec::with_capacity(total_size);
+
+        for _ in 0..total_size {
+            let u: f64 = self.rng.gen();
+            let sample = (1.0 - u).powf(-1.0 / a_f64) - 1.0;
+            data.push(T::from(sample));
+        }
+
+        Ok(Array::from_data(data, shape.to_vec()))
+    }
+
+    pub fn zipf<T>(&mut self, a: T, size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
+    where
+        T: Clone + Into<f64> + From<f64> + Default + 'static,
+    {
+        let a_f64 = a.into();
+        if a_f64 <= 1.0 {
+            return Err(NumPyError::invalid_value("exponent must be greater than 1"));
+        }
+
+        let shape = size.unwrap_or(&[1]);
+        let total_size = shape.iter().product();
+        let mut data = Vec::with_capacity(total_size);
+
+        for _ in 0..total_size {
+            let u: f64 = self.rng.gen();
+            let sample = (1.0 - u).powf(-1.0 / (a_f64 - 1.0)).floor() as u64;
+            data.push(T::from(sample as f64));
+        }
+
+        Ok(Array::from_data(data, shape.to_vec()))
+    }
+
+    pub fn standard_cauchy<T>(&mut self, size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
+    where
+        T: Clone + Into<f64> + From<f64> + Default + 'static,
+    {
+        let shape = size.unwrap_or(&[1]);
+        let total_size = shape.iter().product();
+        let mut data = Vec::with_capacity(total_size);
+
+        for _ in 0..total_size {
+            let u: f64 = self.rng.gen();
+            let sample = (std::f64::consts::PI * (u - 0.5)).tan();
+            data.push(T::from(sample));
+        }
+
+        Ok(Array::from_data(data, shape.to_vec()))
+    }
+
+    pub fn standard_exponential<T>(&mut self, size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
+    where
+        T: Clone + Into<f64> + From<f64> + Default + 'static,
+    {
+        let shape = size.unwrap_or(&[1]);
+        let total_size = shape.iter().product();
+        let mut data = Vec::with_capacity(total_size);
+
+        let dist = Exp::new(1.0).map_err(|e| NumPyError::invalid_value(e.to_string()))?;
+
+        for _ in 0..total_size {
+            let sample = dist.sample(&mut self.rng);
+            data.push(T::from(sample));
+        }
+
+        Ok(Array::from_data(data, shape.to_vec()))
+    }
+
+    pub fn standard_gamma<T>(
+        &mut self,
+        shape: T,
+        size: Option<&[usize]>,
+    ) -> Result<Array<T>, NumPyError>
+    where
+        T: Clone + Into<f64> + From<f64> + Default + 'static,
+    {
+        let shape_f64 = shape.into();
+        if shape_f64 <= 0.0 {
+            return Err(NumPyError::invalid_value("shape must be positive"));
+        }
+
+        let shape_arr = size.unwrap_or(&[1]);
+        let total_size = shape_arr.iter().product();
+        let mut data = Vec::with_capacity(total_size);
+
+        let dist = Gamma::new(shape_f64, 1.0)
+            .map_err(|e| NumPyError::invalid_value(e.to_string()))?;
+
+        for _ in 0..total_size {
+            let sample = dist.sample(&mut self.rng);
+            data.push(T::from(sample));
+        }
+
+        Ok(Array::from_data(data, shape_arr.to_vec()))
+    }
+
+    pub fn shuffle<T: Clone + Default + 'static>(
+        &mut self,
+        arr: &mut Array<T>,
+    ) -> Result<(), NumPyError> {
+        let data = arr.data.as_slice_mut();
+        data.shuffle(&mut self.rng);
+        Ok(())
+    }
+
     // --- Legacy methods moved here ---
 
     pub fn rand<T>(&mut self, d0: usize, d1: Option<usize>) -> Result<Array<T>, NumPyError>

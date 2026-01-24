@@ -29,6 +29,10 @@ path = "tests/linalg_conformance.rs"
 name = "nd_fft_tests"
 path = "tests/nd_fft_tests.rs"
 
+[[test]]
+name = "random_tests"
+path = "tests/random_tests.rs"
+
 [lib]
 name = "numpy"
 crate-type = ["cdylib", "rlib"]

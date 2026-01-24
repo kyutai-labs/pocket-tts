@@ -132,6 +132,10 @@ path = "tests/lstsq_tests.rs"
 name = "pad_tests"
 path = "tests/pad_tests.rs"
 
+[[test]]
+name = "ma_parity_tests"
+path = "tests/ma_parity_tests.rs"
+
 [[example]]
 name = "test_log"
 path = "examples/test_log.rs"

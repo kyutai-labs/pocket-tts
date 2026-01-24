@@ -29,7 +29,7 @@ pub fn promote_types(t1: &Dtype, t2: &Dtype) -> Option<Dtype> {
         Float => 2,
         Complex => 3,
         Datetime => 4,
-        String => 5,
+        String => 7, // String > Bytes for promotion (e.g. U + S -> U)
         Bytes => 6,
         Object => 10,
         _ => 20,

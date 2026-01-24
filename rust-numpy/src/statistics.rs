@@ -299,18 +299,12 @@ where
     }
 }
 
-pub fn correlate<T>(
-    a: &Array<T>,
-    v: &Array<T>,
-    _mode: &str,
-) -> Result<Array<T>, NumPyError>
+pub fn correlate<T>(a: &Array<T>, v: &Array<T>, _mode: &str) -> Result<Array<T>, NumPyError>
 where
     T: Clone + Default + AsF64 + FromF64 + 'static,
 {
     if a.is_empty() || v.is_empty() {
-        return Err(NumPyError::invalid_value(
-            "Cannot correlate empty arrays",
-        ));
+        return Err(NumPyError::invalid_value("Cannot correlate empty arrays"));
     }
 
     let a_data = a.to_vec();
@@ -333,7 +327,9 @@ where
         result[k] = sum;
     }
 
-    Ok(Array::from_vec(result.into_iter().map(T::from_f64).collect()))
+    Ok(Array::from_vec(
+        result.into_iter().map(T::from_f64).collect(),
+    ))
 }
 
 pub fn cov<T>(
@@ -847,7 +843,7 @@ where
 
 pub mod exports {
     pub use super::{
-        average, bincount, correlate, corrcoef, cov, digitize, histogram, histogram2d, histogramdd,
+        average, bincount, corrcoef, correlate, cov, digitize, histogram, histogram2d, histogramdd,
         median, nanmax, nanmean, nanmedian, nanmin, nanpercentile, nanprod, nanquantile, nanstd,
         nansum, nanvar, percentile, ptp, quantile, std, var,
     };

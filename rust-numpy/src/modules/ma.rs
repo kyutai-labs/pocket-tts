@@ -320,6 +320,101 @@ where
             Array::from_data(unique_mask, vec![len]),
         )?)
     }
+    /// Mask values equal to a given value.
+    pub fn masked_values(data: Array<T>, value: T) -> Result<Self>
+    where
+        T: PartialEq + Clone + Default + Debug + 'static,
+    {
+        let mask_data: Vec<bool> = data.data().iter().map(|x| *x == value).collect();
+        let mask = Array::from_data(mask_data, data.shape().to_vec());
+        let mut ma = Self::new(data, mask)?;
+        ma.set_fill_value(value);
+        Ok(ma)
+    }
+
+    /// Mask values outside a given range [min, max].
+    pub fn masked_outside(data: Array<T>, min: T, max: T) -> Result<Self>
+    where
+        T: PartialOrd + Clone + Default + Debug + 'static,
+    {
+        let mask_data: Vec<bool> = data.data().iter().map(|x| *x < min || *x > max).collect();
+        let mask = Array::from_data(mask_data, data.shape().to_vec());
+        Self::new(data, mask)
+    }
+
+    /// Mask values inside a given range [min, max].
+    pub fn masked_inside(data: Array<T>, min: T, max: T) -> Result<Self>
+    where
+        T: PartialOrd + Clone + Default + Debug + 'static,
+    {
+        let mask_data: Vec<bool> = data.data().iter().map(|x| *x >= min && *x <= max).collect();
+        let mask = Array::from_data(mask_data, data.shape().to_vec());
+        Self::new(data, mask)
+    }
+
+    /// Count the non-masked elements of the array.
+    pub fn count(&self) -> usize {
+        self.mask.data().iter().filter(|&&m| !m).count()
+    }
+
+    /// Return list of slices corresponding to clustered masked values (1D only).
+    pub fn clump_masked(&self) -> Result<Vec<std::ops::Range<usize>>> {
+        if self.ndim() != 1 {
+            return Err(NumPyError::invalid_value(
+                "clump_masked is only supported for 1D arrays",
+            ));
+        }
+        let mask = self.mask.data();
+        let mut slices = Vec::new();
+        let mut in_clump = false;
+        let mut start = 0;
+
+        for (i, &m) in mask.iter().enumerate() {
+            if m {
+                if !in_clump {
+                    in_clump = true;
+                    start = i;
+                }
+            } else if in_clump {
+                in_clump = false;
+                slices.push(start..i);
+            }
+        }
+        if in_clump {
+            slices.push(start..mask.len());
+        }
+        Ok(slices)
+    }
+
+    /// Return list of slices corresponding to clustered unmasked values (1D only).
+    pub fn clump_unmasked(&self) -> Result<Vec<std::ops::Range<usize>>> {
+        if self.ndim() != 1 {
+            return Err(NumPyError::invalid_value(
+                "clump_unmasked is only supported for 1D arrays",
+            ));
+        }
+        let mask = self.mask.data();
+        let mut slices = Vec::new();
+        let mut in_clump = false; // "clump" of UNmasked values
+        let mut start = 0;
+
+        for (i, &m) in mask.iter().enumerate() {
+            if !m {
+                // Unmasked
+                if !in_clump {
+                    in_clump = true;
+                    start = i;
+                }
+            } else if in_clump {
+                in_clump = false;
+                slices.push(start..i);
+            }
+        }
+        if in_clump {
+            slices.push(start..mask.len());
+        }
+        Ok(slices)
+    }
 }
 
 pub mod exports {

@@ -399,11 +399,7 @@ mod tests {
         "L1 norm should compute sum of absolute values",
         {
             let arr = Array::from_vec(vec![1.0f64, -2.0, 3.0, -4.0]);
-<<<<<<< HEAD
-            let result = numpy::norm(&arr, Some("1"), None as Option<&[isize]>, false).unwrap();
-=======
             let result = numpy::norm(&arr, Some("1"), None::<&[isize]>, false).unwrap();
->>>>>>> origin/main
             assert_eq!(result.to_vec(), vec![10.0]); // |1| + |-2| + |3| + |-4| = 10
         }
     );
@@ -528,7 +524,7 @@ pub fn run_conformance_suite() -> ConformanceTestResult {
     tests::test_norm_nuclear();
     tests::test_norm_default();
 
-    let passed = 39; 
+    let passed = 39;
     let failed = 0;
     let skipped = 0;
 

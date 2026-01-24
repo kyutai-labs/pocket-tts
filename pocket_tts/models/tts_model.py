@@ -178,12 +178,8 @@ class TTSModel(nn.Module):
         with the specified generation parameters and ready for inference.
 
         Args:
-            variant: Model variant identifier corresponding to a config file name
-                (e.g., '610b0b2c'; must match a YAML file in the config directory)
-                or a path to a custom YAML config file saved locally 
-                (e.g., C://pocket_tts/pocket_tts_config.yaml). If a custom .yaml is
-                used, the models at weight_path, weights_path_without_voice_cloning,
-                and flow.lm.lookup_table.tokenizer_path will be used for loading.
+            variant: Model variant identifier (e.g., '610b0b2c'; must match a YAML file in the config directory)
+                or a path to a custom YAML config file saved locally (e.g., C://pocket_tts/pocket_tts_config.yaml).
             temp: Sampling temperature for generation. Higher values produce more
                 diverse but potentially lower quality output.
             lsd_decode_steps: Number of steps for Lagrangian Self Distillation

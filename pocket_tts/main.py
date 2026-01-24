@@ -182,7 +182,10 @@ def serve(
     port: Annotated[int, typer.Option(help="Port to bind to")] = 8000,
     reload: Annotated[bool, typer.Option(help="Enable auto-reload")] = False,
     config: Annotated[
-        str, typer.Option(help="Model variant signature or path to locally-saved model config .yaml file")
+        str,
+        typer.Option(
+            help="Model variant signature or path to locally-saved model config .yaml file"
+        ),
     ] = DEFAULT_VARIANT,
 ):
     """Start the FastAPI server."""
@@ -211,7 +214,9 @@ def generate(
         str, typer.Option(help="Path to audio conditioning file (voice to clone)")
     ] = DEFAULT_AUDIO_PROMPT,
     quiet: Annotated[bool, typer.Option("-q", "--quiet", help="Disable logging output")] = False,
-    config: Annotated[str, typer.Option(help="Model signature or path to config .yaml file")] = DEFAULT_VARIANT,
+    config: Annotated[
+        str, typer.Option(help="Model signature or path to config .yaml file")
+    ] = DEFAULT_VARIANT,
     lsd_decode_steps: Annotated[
         int, typer.Option(help="Number of generation steps")
     ] = DEFAULT_LSD_DECODE_STEPS,

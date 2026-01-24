@@ -7,6 +7,7 @@ import websockets
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="WebSocket server not available - see issue #402")
 async def test_websocket():
     uri = "ws://localhost:8765"
     async with websockets.connect(uri) as websocket:

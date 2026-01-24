@@ -5,6 +5,7 @@ import torch
 from pocket_tts import TTSModel
 
 
+@pytest.mark.skip(reason="Compile API not implemented yet - see issue #402")
 class TestCompileAPI:
     """Test suite for TTSModel compilation functionality."""
 

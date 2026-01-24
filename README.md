@@ -65,6 +65,10 @@ You can use your own or check out our [voice repository](https://huggingface.co/
 Feel free to check out the [generate documentation](https://github.com/kyutai-labs/pocket-tts/tree/main/docs/generate.md) for more details and examples.
 For trying multiple voices and prompts quickly, prefer using the `serve` command.
 
+The optional `--config` argument can take either the name of a pocket-tts model variant (e.g., b6369a24) or a path to a locally-saved pocket-tts model config file in .yaml format,
+e.g., C://pocket-tts/my_pocket_tts_config.yaml.  If a path to a .yaml is used, then the models located at the paths in
+`weights_path:`, `weights_path_without_voice_cloning:` and `tokenizer_path` will be used for loading the model files. 
+
 ### The `serve` command
 
 You can also run a local server to generate audio via HTTP requests.
@@ -109,6 +113,10 @@ You can have multiple voice states around if
 you have multiple voices you want to use. `load_model()` 
 and `get_state_for_audio_prompt()` are relatively slow operations,
 so we recommend to keep the model and voice states in memory if you can.
+
+As above, you can also load a pocket-tts model using custom paths in a locally-saved .yaml file by passing
+the path to the .yaml file as an argument for TTSModel.loadmodel:
+`tts_model = TTSModel.load_model("path/to/config.yaml")`
 
 You can check out the [Python API documentation](https://github.com/kyutai-labs/pocket-tts/tree/main/docs/python-api.md) for more details and examples.
 

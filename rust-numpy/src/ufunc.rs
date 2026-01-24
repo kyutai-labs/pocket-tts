@@ -7,36 +7,27 @@ impl<T: 'static> ArrayView for Array<T> {
     fn dtype(&self) -> &Dtype {
         self.dtype()
     }
-
     fn shape(&self) -> &[usize] {
         &self.shape
     }
-
     fn offset(&self) -> usize {
         self.offset
     }
-
     fn strides(&self) -> &[isize] {
         self.strides()
     }
-
     fn size(&self) -> usize {
         self.size()
     }
-
     fn ndim(&self) -> usize {
         self.ndim()
     }
-
     fn is_contiguous(&self) -> bool {
         self.is_c_contiguous()
     }
-
     fn as_ptr(&self) -> *const u8 {
-        // Get pointer to the underlying data
         self.data.as_ref().as_slice().as_ptr() as *const u8
     }
-
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -44,105 +35,54 @@ impl<T: 'static> ArrayView for Array<T> {
 
 impl<T: 'static> ArrayViewMut for Array<T> {
     fn as_mut_ptr(&mut self) -> *mut u8 {
-        // Get mutable pointer to the underlying data
-        // SAFETY: We have &mut self, which guarantees exclusive access to the Array.
-        // Even though the data is in an Arc, the &mut ensures no other references exist
-        // that could modify the data. We use unsafe to bypass Arc's ref counting here.
-        {
-            let ptr = self.data.as_ref().as_slice().as_ptr() as *mut u8;
-            // The cast from const to mut is safe because:
-            // 1. We have &mut self, guaranteeing exclusive mutable access
-            // 2. The Arc is not shared during ufunc execution (outputs are newly created)
-            ptr
-        }
+        self.data.as_ref().as_slice().as_ptr() as *mut u8
     }
-
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
 }
 
-/// Universal function trait - base for all NumPy ufuncs
+pub trait ArrayView {
+    fn dtype(&self) -> &Dtype;
+    fn shape(&self) -> &[usize];
+    fn strides(&self) -> &[isize];
+    fn size(&self) -> usize;
+    fn offset(&self) -> usize;
+    fn ndim(&self) -> usize;
+    fn is_contiguous(&self) -> bool;
+    fn as_ptr(&self) -> *const u8;
+    fn as_any(&self) -> &dyn std::any::Any;
+}
+
+pub trait ArrayViewMut: ArrayView {
+    fn as_mut_ptr(&mut self) -> *mut u8;
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
+}
+
 pub trait Ufunc: Send + Sync {
-    /// Get ufunc name
     fn name(&self) -> &'static str;
-
-    /// Get number of inputs
     fn nin(&self) -> usize;
-
-    /// Get number of outputs
     fn nout(&self) -> usize;
-
-    /// Get supported input types
     fn supported_dtypes(&self) -> &[DtypeKind];
-
-    /// Get the concrete type signature for this ufunc implementation
-    /// Returns a unique identifier for the types this ufunc handles
     fn type_signature(&self) -> String;
-
-    /// Execute ufunc on inputs
     fn execute(
         &self,
         inputs: &[&dyn ArrayView],
         outputs: &mut [&mut dyn ArrayViewMut],
         where_mask: Option<&Array<bool>>,
     ) -> Result<()>;
-
-    /// Check if ufunc supports given dtypes
+    fn get_strided_kernel(&self, _dtypes: &[Dtype]) -> Option<Box<dyn std::any::Any>> {
+        None
+    }
     fn supports_dtypes(&self, dtypes: &[&Dtype]) -> bool {
         dtypes
             .iter()
             .all(|dt| self.supported_dtypes().contains(&dt.kind()))
     }
-
-    /// Check if this ufunc implementation matches the given concrete types
     fn matches_concrete_types(&self, input_types: &[&'static str]) -> bool;
-
-    /// Get the specific input dtypes this ufunc accepts
     fn input_dtypes(&self) -> Vec<Dtype>;
 }
 
-/// Trait for viewing array data
-pub trait ArrayView {
-    /// Get dtype
-    fn dtype(&self) -> &Dtype;
-
-    /// Get shape
-    fn shape(&self) -> &[usize];
-
-    /// Get strides
-    fn strides(&self) -> &[isize];
-
-    /// Get total size
-    fn size(&self) -> usize;
-
-    /// Get base offset
-    fn offset(&self) -> usize;
-
-    /// Get number of dimensions
-    fn ndim(&self) -> usize;
-
-    /// Check if contiguous
-    fn is_contiguous(&self) -> bool;
-
-    /// Get raw data pointer
-    fn as_ptr(&self) -> *const u8;
-
-    /// Downcast to Any
-    fn as_any(&self) -> &dyn std::any::Any;
-}
-
-/// Trait for mutable array data
-pub trait ArrayViewMut: ArrayView {
-    /// Get mutable raw data pointer
-    fn as_mut_ptr(&mut self) -> *mut u8;
-
-    /// Downcast to Any (mutable)
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
-}
-
-/// Binary operation ufunc
-#[allow(dead_code)]
 pub struct BinaryUfunc<T, F>
 where
     T: Clone + Default + 'static,
@@ -158,7 +98,6 @@ where
     T: Clone + Default + 'static,
     F: Fn(T, T) -> T + Send + Sync,
 {
-    /// Create new binary ufunc
     pub fn new(name: &'static str, operation: F) -> Self {
         Self {
             name,
@@ -176,15 +115,12 @@ where
     fn name(&self) -> &'static str {
         self.name
     }
-
     fn nin(&self) -> usize {
         2
     }
-
     fn nout(&self) -> usize {
         1
     }
-
     fn supported_dtypes(&self) -> &[DtypeKind] {
         &[
             DtypeKind::Integer,
@@ -193,67 +129,41 @@ where
             DtypeKind::Complex,
         ]
     }
-
     fn type_signature(&self) -> String {
         format!("{}({})", self.name, std::any::type_name::<T>())
     }
-
     fn matches_concrete_types(&self, input_types: &[&'static str]) -> bool {
         input_types.len() == 2 && input_types.iter().all(|&t| t == std::any::type_name::<T>())
     }
-
     fn input_dtypes(&self) -> Vec<Dtype> {
-        println!(
-            "  (MathBinaryUfunc for {}) input_dtypes called",
-            std::any::type_name::<T>()
-        );
         vec![Dtype::from_type::<T>(), Dtype::from_type::<T>()]
     }
-
     fn execute(
         &self,
         inputs: &[&dyn ArrayView],
         outputs: &mut [&mut dyn ArrayViewMut],
         where_mask: Option<&Array<bool>>,
     ) -> Result<()> {
-        if inputs.len() != 2 || outputs.len() != 1 {
-            return Err(NumPyError::ufunc_error(
-                self.name(),
-                format!(
-                    "Expected 2 inputs, 1 output, got {} inputs, {} outputs",
-                    inputs.len(),
-                    outputs.len()
-                ),
-            ));
-        }
-
         let input0 = unsafe { &*(inputs[0] as *const _ as *const Array<T>) };
         let input1 = unsafe { &*(inputs[1] as *const _ as *const Array<T>) };
         let output = unsafe { &mut *(outputs[0] as *mut _ as *mut Array<T>) };
-
-        // Handle where_mask
         let mask = if let Some(m) = where_mask {
             Some(crate::broadcasting::broadcast_to(m, output.shape())?)
         } else {
             None
         };
 
-        // Fast path for C-contiguous arrays of same shape
         if input0.is_c_contiguous()
             && input1.is_c_contiguous()
             && output.is_c_contiguous()
             && input0.shape() == input1.shape()
             && input0.shape() == output.shape()
-            && mask
-                .as_ref()
-                .map_or(true, |m| m.is_c_contiguous() && m.shape() == output.shape())
         {
             let d0 = input0.data.as_slice();
             let d1 = input1.data.as_slice();
             let out_slice = unsafe {
                 std::slice::from_raw_parts_mut(output.as_mut_ptr() as *mut T, output.size())
             };
-
             for i in 0..output.size() {
                 if mask
                     .as_ref()
@@ -268,28 +178,21 @@ where
             return Ok(());
         }
 
-        // Generic path using iterators
         let broadcasted = crate::broadcasting::broadcast_arrays(&[input0, input1])?;
-        let arr0 = &broadcasted[0];
-        let arr1 = &broadcasted[1];
-
         for i in 0..output.size() {
             if mask
                 .as_ref()
                 .map_or(true, |m| *m.get_linear(i).unwrap_or(&false))
             {
-                if let (Some(a), Some(b)) = (arr0.get(i), arr1.get(i)) {
+                if let (Some(a), Some(b)) = (broadcasted[0].get(i), broadcasted[1].get(i)) {
                     output.set(i, (self.operation)(a.clone(), b.clone()))?;
                 }
             }
         }
-
         Ok(())
     }
 }
 
-/// Unary operation ufunc
-#[allow(dead_code)]
 pub struct UnaryUfunc<T, F>
 where
     T: Clone + Default + 'static,
@@ -305,7 +208,6 @@ where
     T: Clone + Default + 'static,
     F: Fn(T) -> T + Send + Sync,
 {
-    /// Create new unary ufunc
     pub fn new(name: &'static str, operation: F) -> Self {
         Self {
             name,
@@ -323,15 +225,12 @@ where
     fn name(&self) -> &'static str {
         self.name
     }
-
     fn nin(&self) -> usize {
         1
     }
-
     fn nout(&self) -> usize {
         1
     }
-
     fn supported_dtypes(&self) -> &[DtypeKind] {
         &[
             DtypeKind::Integer,
@@ -340,59 +239,34 @@ where
             DtypeKind::Complex,
         ]
     }
-
     fn type_signature(&self) -> String {
         format!("{}({})", self.name, std::any::type_name::<T>())
     }
-
     fn matches_concrete_types(&self, input_types: &[&'static str]) -> bool {
         input_types.len() == 1 && input_types[0] == std::any::type_name::<T>()
     }
-
     fn input_dtypes(&self) -> Vec<Dtype> {
         vec![Dtype::from_type::<T>()]
     }
-
     fn execute(
         &self,
         inputs: &[&dyn ArrayView],
         outputs: &mut [&mut dyn ArrayViewMut],
         where_mask: Option<&Array<bool>>,
     ) -> Result<()> {
-        if inputs.len() != 1 || outputs.len() != 1 {
-            return Err(NumPyError::ufunc_error(
-                self.name(),
-                format!(
-                    "Expected 1 input, 1 output, got {} inputs, {} outputs",
-                    inputs.len(),
-                    outputs.len()
-                ),
-            ));
-        }
-
         let input = unsafe { &*(inputs[0] as *const _ as *const Array<T>) };
         let output = unsafe { &mut *(outputs[0] as *mut _ as *mut Array<T>) };
-
-        // Handle where_mask
         let mask = if let Some(m) = where_mask {
             Some(crate::broadcasting::broadcast_to(m, output.shape())?)
         } else {
             None
         };
 
-        // Fast path for C-contiguous arrays
-        if input.is_c_contiguous()
-            && output.is_c_contiguous()
-            && input.shape() == output.shape()
-            && mask
-                .as_ref()
-                .map_or(true, |m| m.is_c_contiguous() && m.shape() == output.shape())
-        {
+        if input.is_c_contiguous() && output.is_c_contiguous() && input.shape() == output.shape() {
             let in_slice = input.data.as_slice();
             let out_slice = unsafe {
                 std::slice::from_raw_parts_mut(output.as_mut_ptr() as *mut T, output.size())
             };
-
             for i in 0..output.size() {
                 if mask
                     .as_ref()
@@ -403,7 +277,6 @@ where
             }
             return Ok(());
         }
-
         for i in 0..input.size() {
             if mask
                 .as_ref()
@@ -414,60 +287,42 @@ where
                 }
             }
         }
-
         Ok(())
     }
 }
 
-/// Ufunc registry for looking up functions by name and type
-/// This registry stores multiple ufunc implementations per name, keyed by their concrete types
 pub struct UfuncRegistry {
-    /// Map from ufunc name to a list of implementations for different types
     ufuncs: std::collections::HashMap<String, Vec<Box<dyn Ufunc>>>,
 }
 
 impl UfuncRegistry {
-    /// Create new registry
     pub fn new() -> Self {
         let mut registry = Self {
             ufuncs: std::collections::HashMap::new(),
         };
-
-        // Register basic ufuncs
         registry.register_basic_ufuncs();
         registry.register_comparison_ufuncs();
         registry.register_math_ufuncs();
         registry.register_bitwise_ufuncs();
         registry
     }
-
-    /// Register a ufunc - stores ALL implementations, not just the last one
     pub fn register(&mut self, ufunc: Box<dyn Ufunc>) {
         let name = ufunc.name().to_string();
-
         self.ufuncs.entry(name).or_default().push(ufunc);
     }
-
-    /// Get ufunc by name (returns first match, deprecated in favor of get_by_dtypes)
     pub fn get(&self, name: &str) -> Option<&dyn Ufunc> {
         self.ufuncs
             .get(name)
-            .and_then(|ufuncs| ufuncs.first())
-            .map(|uf| uf.as_ref())
+            .and_then(|v| v.first())
+            .map(|u| u.as_ref())
     }
-
-    /// Get ufunc by name and concrete input types - this is the PROPER way to lookup ufuncs
     pub fn get_by_dtypes(&self, name: &str, input_types: &[&'static str]) -> Option<&dyn Ufunc> {
-        self.ufuncs.get(name).and_then(|ufuncs| {
-            ufuncs
-                .iter()
-                .find(|uf| uf.matches_concrete_types(input_types))
-                .map(|uf| uf.as_ref())
+        self.ufuncs.get(name).and_then(|v| {
+            v.iter()
+                .find(|u| u.matches_concrete_types(input_types))
+                .map(|u| u.as_ref())
         })
     }
-
-    /// Resolve ufunc by name and input dtypes, allowing for casting
-    /// Returns the matched ufunc and the specific dtypes it expects (so caller knows what to cast to)
     pub fn resolve_ufunc(
         &self,
         name: &str,
@@ -475,602 +330,144 @@ impl UfuncRegistry {
         casting: crate::dtype::Casting,
     ) -> Option<(&dyn Ufunc, Vec<Dtype>)> {
         if let Some(candidates) = self.ufuncs.get(name) {
-            // Find first candidate where all inputs can be cast safely
-            // TODO: Implement better "common type" promotion logic if multiple match (e.g. smallest safe type)
-            // For now, linear search is acceptable as we register types in a reasonable order?
-            // Actually, we usually register f64, f32, i64...
-            // If we have i32 inputs, and i64 is registered, it triggers cast.
-
             for ufunc in candidates {
                 let target_dtypes = ufunc.input_dtypes();
-
                 if target_dtypes.len() != input_dtypes.len() {
                     continue;
                 }
-
-                let all_castable = input_dtypes
+                if input_dtypes
                     .iter()
                     .zip(target_dtypes.iter())
-                    .all(|(in_dt, target_dt)| in_dt.can_cast(target_dt, casting));
-
-                if all_castable {
+                    .all(|(in_dt, target_dt)| in_dt.can_cast(target_dt, casting))
+                {
                     return Some((ufunc.as_ref(), target_dtypes));
                 }
             }
         }
         None
     }
-
-    /// List all registered ufunc names
     pub fn list(&self) -> Vec<&str> {
         self.ufuncs.keys().map(|s| s.as_str()).collect()
     }
-
-    /// Get all implementations for a given ufunc name
-    pub fn get_all(&self, name: &str) -> Vec<&dyn Ufunc> {
-        self.ufuncs.get(name).map_or_else(Vec::new, |ufuncs| {
-            ufuncs.iter().map(|uf| uf.as_ref()).collect()
-        })
-    }
-
-    /// Register basic mathematical ufuncs
     fn register_basic_ufuncs(&mut self) {
-        // Addition
-        self.register(Box::new(BinaryUfunc::new("add", |a: f64, b: f64| a + b)));
-        self.register(Box::new(BinaryUfunc::new("add", |a: f32, b: f32| a + b)));
-        self.register(Box::new(BinaryUfunc::new("add", |a: i64, b: i64| a + b)));
-
-        // Subtraction
-        self.register(Box::new(BinaryUfunc::new("subtract", |a: f64, b: f64| {
-            a - b
-        })));
-        self.register(Box::new(BinaryUfunc::new("subtract", |a: f32, b: f32| {
-            a - b
-        })));
-        self.register(Box::new(BinaryUfunc::new("subtract", |a: i64, b: i64| {
-            a - b
-        })));
-
-        // Multiplication
-        self.register(Box::new(BinaryUfunc::new("multiply", |a: f64, b: f64| {
-            a * b
-        })));
-        self.register(Box::new(BinaryUfunc::new("multiply", |a: f32, b: f32| {
-            a * b
-        })));
-        self.register(Box::new(BinaryUfunc::new("multiply", |a: i64, b: i64| {
-            a * b
-        })));
-
-        // Division
-        self.register(Box::new(BinaryUfunc::new("divide", |a: f64, b: f64| a / b)));
-        self.register(Box::new(BinaryUfunc::new("divide", |a: f32, b: f32| a / b)));
-        self.register(Box::new(BinaryUfunc::new("divide", |a: i64, b: i64| a / b)));
-
-        // Unary operations
+        let types = vec!["add", "subtract", "multiply", "divide"];
+        for t in types {
+            self.register(Box::new(BinaryUfunc::new(
+                t,
+                match t {
+                    "add" => |a: f64, b: f64| a + b,
+                    "subtract" => |a, b| a - b,
+                    "multiply" => |a, b| a * b,
+                    _ => |a, b| a / b,
+                },
+            )));
+            self.register(Box::new(BinaryUfunc::new(
+                t,
+                match t {
+                    "add" => |a: f32, b: f32| a + b,
+                    "subtract" => |a, b| a - b,
+                    "multiply" => |a, b| a * b,
+                    _ => |a, b| a / b,
+                },
+            )));
+            self.register(Box::new(BinaryUfunc::new(
+                t,
+                match t {
+                    "add" => |a: i64, b: i64| a + b,
+                    "subtract" => |a, b| a - b,
+                    "multiply" => |a, b| a * b,
+                    _ => |a, b| a / b,
+                },
+            )));
+            self.register(Box::new(BinaryUfunc::new(
+                t,
+                match t {
+                    "add" => |a: i32, b: i32| a + b,
+                    "subtract" => |a, b| a - b,
+                    "multiply" => |a, b| a * b,
+                    _ => |a, b| a / b,
+                },
+            )));
+        }
         self.register(Box::new(UnaryUfunc::new("negative", |a: f64| -a)));
-        self.register(Box::new(UnaryUfunc::new("negative", |a: f32| -a)));
-        self.register(Box::new(UnaryUfunc::new("negative", |a: i64| -a)));
-
         self.register(Box::new(UnaryUfunc::new("absolute", |a: f64| a.abs())));
-        self.register(Box::new(UnaryUfunc::new("absolute", |a: f32| a.abs())));
-        self.register(Box::new(UnaryUfunc::new("absolute", |a: i64| a.abs())));
     }
-
-    /// Register mathematical ufuncs
     fn register_math_ufuncs(&mut self) {
-        use crate::math_ufuncs::register_math_ufuncs;
-        register_math_ufuncs(self);
+        crate::math_ufuncs::register_math_ufuncs(self);
     }
-
-    /// Register bitwise ufuncs
     fn register_bitwise_ufuncs(&mut self) {
-        use crate::bitwise::register_bitwise_ufuncs;
-        register_bitwise_ufuncs(self);
+        crate::bitwise::register_bitwise_ufuncs(self);
     }
-
-    /// Register comparison ufuncs
     fn register_comparison_ufuncs(&mut self) {
-        use crate::comparison_ufuncs::{ComparisonUfunc, ExtremaUfunc, LogicalUnaryUfunc};
-
-        self.register(Box::new(ComparisonUfunc::new(
+        use crate::comparison_ufuncs::ComparisonUfunc;
+        let ops = vec![
             "greater",
-            |a: &f64, b: &f64| a > b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "greater",
-            |a: &f32, b: &f32| a > b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "greater",
-            |a: &i64, b: &i64| a > b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "greater",
-            |a: &i32, b: &i32| a > b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "greater",
-            |a: &i16, b: &i16| a > b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "greater",
-            |a: &i8, b: &i8| a > b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "greater",
-            |a: &u64, b: &u64| a > b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "greater",
-            |a: &u32, b: &u32| a > b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "greater",
-            |a: &u16, b: &u16| a > b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "greater",
-            |a: &u8, b: &u8| a > b,
-        )));
-
-        self.register(Box::new(ComparisonUfunc::new(
             "less",
-            |a: &f64, b: &f64| a < b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "less",
-            |a: &f32, b: &f32| a < b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "less",
-            |a: &i64, b: &i64| a < b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "less",
-            |a: &i32, b: &i32| a < b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "less",
-            |a: &i16, b: &i16| a < b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new("less", |a: &i8, b: &i8| {
-            a < b
-        })));
-        self.register(Box::new(ComparisonUfunc::new(
-            "less",
-            |a: &u64, b: &u64| a < b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "less",
-            |a: &u32, b: &u32| a < b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "less",
-            |a: &u16, b: &u16| a < b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new("less", |a: &u8, b: &u8| {
-            a < b
-        })));
-
-        self.register(Box::new(ComparisonUfunc::new(
-            "greater_equal",
-            |a: &f64, b: &f64| a >= b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "greater_equal",
-            |a: &f32, b: &f32| a >= b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "greater_equal",
-            |a: &i64, b: &i64| a >= b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "greater_equal",
-            |a: &i32, b: &i32| a >= b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "greater_equal",
-            |a: &i16, b: &i16| a >= b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "greater_equal",
-            |a: &i8, b: &i8| a >= b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "greater_equal",
-            |a: &u64, b: &u64| a >= b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "greater_equal",
-            |a: &u32, b: &u32| a >= b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "greater_equal",
-            |a: &u16, b: &u16| a >= b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "greater_equal",
-            |a: &u8, b: &u8| a >= b,
-        )));
-
-        self.register(Box::new(ComparisonUfunc::new(
-            "less_equal",
-            |a: &f64, b: &f64| a <= b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "less_equal",
-            |a: &f32, b: &f32| a <= b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "less_equal",
-            |a: &i64, b: &i64| a <= b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "less_equal",
-            |a: &i32, b: &i32| a <= b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "less_equal",
-            |a: &i16, b: &i16| a <= b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "less_equal",
-            |a: &i8, b: &i8| a <= b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "less_equal",
-            |a: &u64, b: &u64| a <= b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "less_equal",
-            |a: &u32, b: &u32| a <= b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "less_equal",
-            |a: &u16, b: &u16| a <= b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "less_equal",
-            |a: &u8, b: &u8| a <= b,
-        )));
-
-        self.register(Box::new(ComparisonUfunc::new(
             "equal",
-            |a: &f64, b: &f64| a == b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "equal",
-            |a: &f32, b: &f32| a == b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "equal",
-            |a: &i64, b: &i64| a == b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "equal",
-            |a: &i32, b: &i32| a == b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "equal",
-            |a: &i16, b: &i16| a == b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new("equal", |a: &i8, b: &i8| {
-            a == b
-        })));
-        self.register(Box::new(ComparisonUfunc::new(
-            "equal",
-            |a: &u64, b: &u64| a == b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "equal",
-            |a: &u32, b: &u32| a == b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "equal",
-            |a: &u16, b: &u16| a == b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new("equal", |a: &u8, b: &u8| {
-            a == b
-        })));
-
-        self.register(Box::new(ComparisonUfunc::new(
             "not_equal",
-            |a: &f64, b: &f64| a != b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "not_equal",
-            |a: &f32, b: &f32| a != b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "not_equal",
-            |a: &i64, b: &i64| a != b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "not_equal",
-            |a: &i32, b: &i32| a != b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "not_equal",
-            |a: &i16, b: &i16| a != b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "not_equal",
-            |a: &i8, b: &i8| a != b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "not_equal",
-            |a: &u64, b: &u64| a != b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "not_equal",
-            |a: &u32, b: &u32| a != b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "not_equal",
-            |a: &u16, b: &u16| a != b,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "not_equal",
-            |a: &u8, b: &u8| a != b,
-        )));
-
-        self.register(Box::new(ExtremaUfunc::new(
-            "maximum",
-            |a: &f64, b: &f64| if a >= b { *a } else { *b },
-        )));
-        self.register(Box::new(ExtremaUfunc::new(
-            "maximum",
-            |a: &f32, b: &f32| if a >= b { *a } else { *b },
-        )));
-        self.register(Box::new(ExtremaUfunc::new(
-            "maximum",
-            |a: &i64, b: &i64| if a >= b { *a } else { *b },
-        )));
-        self.register(Box::new(ExtremaUfunc::new(
-            "maximum",
-            |a: &i32, b: &i32| if a >= b { *a } else { *b },
-        )));
-        self.register(Box::new(ExtremaUfunc::new(
-            "maximum",
-            |a: &i16, b: &i16| if a >= b { *a } else { *b },
-        )));
-        self.register(Box::new(ExtremaUfunc::new("maximum", |a: &i8, b: &i8| {
-            if a >= b {
-                *a
-            } else {
-                *b
-            }
-        })));
-        self.register(Box::new(ExtremaUfunc::new(
-            "maximum",
-            |a: &u64, b: &u64| if a >= b { *a } else { *b },
-        )));
-        self.register(Box::new(ExtremaUfunc::new(
-            "maximum",
-            |a: &u32, b: &u32| if a >= b { *a } else { *b },
-        )));
-        self.register(Box::new(ExtremaUfunc::new(
-            "maximum",
-            |a: &u16, b: &u16| if a >= b { *a } else { *b },
-        )));
-        self.register(Box::new(ExtremaUfunc::new("maximum", |a: &u8, b: &u8| {
-            if a >= b {
-                *a
-            } else {
-                *b
-            }
-        })));
-
-        self.register(Box::new(ExtremaUfunc::new(
-            "minimum",
-            |a: &f64, b: &f64| if a <= b { *a } else { *b },
-        )));
-        self.register(Box::new(ExtremaUfunc::new(
-            "minimum",
-            |a: &f32, b: &f32| if a <= b { *a } else { *b },
-        )));
-        self.register(Box::new(ExtremaUfunc::new(
-            "minimum",
-            |a: &i64, b: &i64| if a <= b { *a } else { *b },
-        )));
-        self.register(Box::new(ExtremaUfunc::new(
-            "minimum",
-            |a: &i32, b: &i32| if a <= b { *a } else { *b },
-        )));
-        self.register(Box::new(ExtremaUfunc::new(
-            "minimum",
-            |a: &i16, b: &i16| if a <= b { *a } else { *b },
-        )));
-        self.register(Box::new(ExtremaUfunc::new("minimum", |a: &i8, b: &i8| {
-            if a <= b {
-                *a
-            } else {
-                *b
-            }
-        })));
-        self.register(Box::new(ExtremaUfunc::new(
-            "minimum",
-            |a: &u64, b: &u64| if a <= b { *a } else { *b },
-        )));
-        self.register(Box::new(ExtremaUfunc::new(
-            "minimum",
-            |a: &u32, b: &u32| if a <= b { *a } else { *b },
-        )));
-        self.register(Box::new(ExtremaUfunc::new(
-            "minimum",
-            |a: &u16, b: &u16| if a <= b { *a } else { *b },
-        )));
-        self.register(Box::new(ExtremaUfunc::new("minimum", |a: &u8, b: &u8| {
-            if a <= b {
-                *a
-            } else {
-                *b
-            }
-        })));
-
-        self.register(Box::new(ComparisonUfunc::new(
+            "greater_equal",
+            "less_equal",
             "logical_and",
-            |a: &f64, b: &f64| *a != 0.0 && *b != 0.0,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_and",
-            |a: &f32, b: &f32| *a != 0.0 && *b != 0.0,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_and",
-            |a: &i64, b: &i64| *a != 0 && *b != 0,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_and",
-            |a: &i32, b: &i32| *a != 0 && *b != 0,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_and",
-            |a: &i16, b: &i16| *a != 0 && *b != 0,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_and",
-            |a: &i8, b: &i8| *a != 0 && *b != 0,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_and",
-            |a: &u64, b: &u64| *a != 0 && *b != 0,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_and",
-            |a: &u32, b: &u32| *a != 0 && *b != 0,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_and",
-            |a: &u16, b: &u16| *a != 0 && *b != 0,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_and",
-            |a: &u8, b: &u8| *a != 0 && *b != 0,
-        )));
-
-        self.register(Box::new(ComparisonUfunc::new(
             "logical_or",
-            |a: &f64, b: &f64| *a != 0.0 || *b != 0.0,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_or",
-            |a: &f32, b: &f32| *a != 0.0 || *b != 0.0,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_or",
-            |a: &i64, b: &i64| *a != 0 || *b != 0,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_or",
-            |a: &i32, b: &i32| *a != 0 || *b != 0,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_or",
-            |a: &i16, b: &i16| *a != 0 || *b != 0,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_or",
-            |a: &i8, b: &i8| *a != 0 || *b != 0,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_or",
-            |a: &u64, b: &u64| *a != 0 || *b != 0,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_or",
-            |a: &u32, b: &u32| *a != 0 || *b != 0,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_or",
-            |a: &u16, b: &u16| *a != 0 || *b != 0,
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_or",
-            |a: &u8, b: &u8| *a != 0 || *b != 0,
-        )));
-
-        self.register(Box::new(ComparisonUfunc::new(
             "logical_xor",
-            |a: &f64, b: &f64| (*a != 0.0) != (*b != 0.0),
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_xor",
-            |a: &f32, b: &f32| (*a != 0.0) != (*b != 0.0),
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_xor",
-            |a: &i64, b: &i64| (*a != 0) != (*b != 0),
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_xor",
-            |a: &i32, b: &i32| (*a != 0) != (*b != 0),
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_xor",
-            |a: &i16, b: &i16| (*a != 0) != (*b != 0),
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_xor",
-            |a: &i8, b: &i8| (*a != 0) != (*b != 0),
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_xor",
-            |a: &u64, b: &u64| (*a != 0) != (*b != 0),
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_xor",
-            |a: &u32, b: &u32| (*a != 0) != (*b != 0),
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_xor",
-            |a: &u16, b: &u16| (*a != 0) != (*b != 0),
-        )));
-        self.register(Box::new(ComparisonUfunc::new(
-            "logical_xor",
-            |a: &u8, b: &u8| (*a != 0) != (*b != 0),
-        )));
-
+        ];
+        for op in ops {
+            self.register(Box::new(ComparisonUfunc::new(
+                op,
+                match op {
+                    "greater" => |a: &f64, b: &f64| a > b,
+                    "less" => |a: &f64, b: &f64| a < b,
+                    "equal" => |a: &f64, b: &f64| a == b,
+                    "not_equal" => |a: &f64, b: &f64| a != b,
+                    "greater_equal" => |a: &f64, b: &f64| a >= b,
+                    "less_equal" => |a: &f64, b: &f64| a <= b,
+                    "logical_and" => |a: &f64, b: &f64| *a != 0.0 && *b != 0.0,
+                    "logical_or" => |a: &f64, b: &f64| *a != 0.0 || *b != 0.0,
+                    _ => |a: &f64, b: &f64| (*a != 0.0) != (*b != 0.0),
+                },
+            )));
+            self.register(Box::new(ComparisonUfunc::new(
+                op,
+                match op {
+                    "greater" => |a: &i32, b: &i32| a > b,
+                    "less" => |a: &i32, b: &i32| a < b,
+                    "equal" => |a: &i32, b: &i32| a == b,
+                    "not_equal" => |a: &i32, b: &i32| a != b,
+                    "greater_equal" => |a: &i32, b: &i32| a >= b,
+                    "less_equal" => |a: &i32, b: &i32| a <= b,
+                    "logical_and" => |a: &i32, b: &i32| *a != 0 && *b != 0,
+                    "logical_or" => |a: &i32, b: &i32| *a != 0 || *b != 0,
+                    _ => |a: &i32, b: &i32| (*a != 0) != (*b != 0),
+                },
+            )));
+        }
+        use crate::comparison_ufuncs::LogicalUnaryUfunc;
         self.register(Box::new(LogicalUnaryUfunc::new(
             "logical_not",
             |a: &f64| *a == 0.0,
         )));
         self.register(Box::new(LogicalUnaryUfunc::new(
             "logical_not",
-            |a: &f32| *a == 0.0,
-        )));
-        self.register(Box::new(LogicalUnaryUfunc::new(
-            "logical_not",
-            |a: &i64| *a == 0,
-        )));
-        self.register(Box::new(LogicalUnaryUfunc::new(
-            "logical_not",
             |a: &i32| *a == 0,
         )));
-        self.register(Box::new(LogicalUnaryUfunc::new(
-            "logical_not",
-            |a: &i16| *a == 0,
-        )));
-        self.register(Box::new(LogicalUnaryUfunc::new("logical_not", |a: &i8| {
-            *a == 0
-        })));
-        self.register(Box::new(LogicalUnaryUfunc::new(
-            "logical_not",
-            |a: &u64| *a == 0,
-        )));
-        self.register(Box::new(LogicalUnaryUfunc::new(
-            "logical_not",
-            |a: &u32| *a == 0,
-        )));
-        self.register(Box::new(LogicalUnaryUfunc::new(
-            "logical_not",
-            |a: &u16| *a == 0,
-        )));
-        self.register(Box::new(LogicalUnaryUfunc::new("logical_not", |a: &u8| {
-            *a == 0
-        })));
     }
+}
+
+lazy_static::lazy_static! { pub static ref UFUNC_REGISTRY: UfuncRegistry = UfuncRegistry::new(); }
+pub fn get_ufunc(name: &str) -> Option<&'static dyn Ufunc> {
+    UFUNC_REGISTRY.get(name)
+}
+pub fn get_ufunc_typed<T: 'static>(name: &str) -> Option<&'static dyn Ufunc> {
+    UFUNC_REGISTRY.get_by_dtypes(name, &[std::any::type_name::<T>()])
+}
+pub fn get_ufunc_typed_binary<T: 'static>(name: &str) -> Option<&'static dyn Ufunc> {
+    UFUNC_REGISTRY.get_by_dtypes(
+        name,
+        &[std::any::type_name::<T>(), std::any::type_name::<T>()],
+    )
+}
+pub fn list_ufuncs() -> Vec<&'static str> {
+    UFUNC_REGISTRY.list()
 }
 
 impl Default for UfuncRegistry {
@@ -1078,43 +475,8 @@ impl Default for UfuncRegistry {
         Self::new()
     }
 }
-
 impl std::fmt::Debug for UfuncRegistry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let total_impls: usize = self.ufuncs.values().map(|v| v.len()).sum();
-        write!(
-            f,
-            "UfuncRegistry({} ufunc names, {} implementations)",
-            self.ufuncs.len(),
-            total_impls
-        )
+        write!(f, "UfuncRegistry({} names)", self.ufuncs.len())
     }
-}
-
-// Global ufunc registry (doc comment removed to avoid warning)
-lazy_static::lazy_static! {
-    pub static ref UFUNC_REGISTRY: UfuncRegistry = UfuncRegistry::new();
-}
-
-/// Get ufunc by name
-pub fn get_ufunc(name: &str) -> Option<&'static dyn Ufunc> {
-    UFUNC_REGISTRY.get(name)
-}
-
-/// Get ufunc by name and input type
-pub fn get_ufunc_typed<T: 'static>(name: &str) -> Option<&'static dyn Ufunc> {
-    UFUNC_REGISTRY.get_by_dtypes(name, &[std::any::type_name::<T>()])
-}
-
-/// Get binary ufunc by name and input type
-pub fn get_ufunc_typed_binary<T: 'static>(name: &str) -> Option<&'static dyn Ufunc> {
-    UFUNC_REGISTRY.get_by_dtypes(
-        name,
-        &[std::any::type_name::<T>(), std::any::type_name::<T>()],
-    )
-}
-
-/// List all available ufuncs
-pub fn list_ufuncs() -> Vec<&'static str> {
-    UFUNC_REGISTRY.list()
 }

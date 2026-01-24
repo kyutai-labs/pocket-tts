@@ -267,9 +267,13 @@ where
         NormType::L1 => compute_norm_with_axis(x, 1, selected_axes.as_deref(), keepdims),
         NormType::L2 => compute_norm_with_axis(x, 2, selected_axes.as_deref(), keepdims),
         NormType::Linf => compute_norm_inf_with_axis(x, true, selected_axes.as_deref(), keepdims),
-        NormType::LNegInf => compute_norm_inf_with_axis(x, false, selected_axes.as_deref(), keepdims),
+        NormType::LNegInf => {
+            compute_norm_inf_with_axis(x, false, selected_axes.as_deref(), keepdims)
+        }
         NormType::Lp(p) => compute_norm_with_axis(x, p, selected_axes.as_deref(), keepdims),
-        NormType::LNegP(p) => compute_norm_neg_p_with_axis(x, p, selected_axes.as_deref(), keepdims),
+        NormType::LNegP(p) => {
+            compute_norm_neg_p_with_axis(x, p, selected_axes.as_deref(), keepdims)
+        }
     }
 }
 
@@ -832,6 +836,48 @@ where
     singular_values.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
 
     Ok(singular_values)
+}
+
+/// Compute the singular values of a matrix.
+pub fn svdvals<T>(a: &Array<T>) -> Result<Array<T::Real>, NumPyError>
+where
+    T: LinalgScalar + num_traits::Float,
+    T::Real: Default,
+{
+    let sv = compute_singular_values(a)?;
+    Ok(Array::from_vec(sv))
+}
+
+/// Compute the matrix norm.
+pub fn matrix_norm<T>(
+    x: &Array<T>,
+    ord: Option<&str>,
+    axis: Option<&[isize]>,
+    keepdims: bool,
+) -> Result<Array<T>, NumPyError>
+where
+    T: LinalgScalar + num_traits::Float,
+{
+    if x.ndim() < 2 {
+        return Err(NumPyError::value_error(
+            "matrix_norm requires at least 2 dimensions",
+            "linalg",
+        ));
+    }
+    norm(x, ord, axis, keepdims)
+}
+
+/// Compute the vector norm.
+pub fn vector_norm<T>(
+    x: &Array<T>,
+    ord: Option<&str>,
+    axis: Option<&[isize]>,
+    keepdims: bool,
+) -> Result<Array<T>, NumPyError>
+where
+    T: LinalgScalar + num_traits::Float,
+{
+    norm(x, ord, axis, keepdims)
 }
 
 /// Compute eigenvalues of a symmetric positive semi-definite real matrix

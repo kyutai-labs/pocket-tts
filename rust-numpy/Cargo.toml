@@ -135,3 +135,6 @@ path = "tests/pad_tests.rs"
 [[example]]
 name = "test_log"
 path = "examples/test_log.rs"
+[[test]]
+name = "linalg_parity_tests"
+path = "tests/linalg_parity_tests.rs"

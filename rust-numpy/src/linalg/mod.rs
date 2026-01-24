@@ -138,6 +138,10 @@ pub use eigen::*;
 pub use einsum::{einsum, einsum_path};
 pub use norms::*;
 pub use products::{
-    cross, dot, dot_nd, inner, kron, matmul, matrix_power, multi_dot, outer, trace, vdot,
+    cross, diagonal, dot, dot_nd, inner, kron, matmul, matrix_power, matrix_transpose, multi_dot,
+    outer, tensordot, trace, vdot, vecdot,
 };
 pub use solvers::{det, inv, lstsq, pinv, solve, tensor_inv, tensor_solve};
+
+/// Alias for NumPyError used in linear algebra operations.
+pub use crate::error::NumPyError as LinAlgError;

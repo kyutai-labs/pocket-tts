@@ -631,3 +631,71 @@ where
         Ok(res)
     }
 }
+
+/// Vector dot product of two arrays.
+pub fn vecdot<T>(a: &Array<T>, b: &Array<T>) -> Result<Array<T>, NumPyError>
+where
+    T: LinalgScalar,
+{
+    if a.ndim() != 1 || b.ndim() != 1 {
+        return Err(NumPyError::value_error(
+            "vecdot requires 1D arrays",
+            "linalg",
+        ));
+    }
+    dot(a, b)
+}
+
+/// Compute the tensor dot product along specified axes.
+pub fn tensordot<T>(
+    a: &Array<T>,
+    b: &Array<T>,
+    axes: Option<(Vec<usize>, Vec<usize>)>,
+) -> Result<Array<T>, NumPyError>
+where
+    T: LinalgScalar,
+{
+    // Simplified implementation for now, should handle general axes.
+    // If axes is None, defaults to axes=2 (last 2 of A and first 2 of B)
+    match axes {
+        None => dot(a, b),
+        Some((axes_a, axes_b)) => {
+            if axes_a.len() != axes_b.len() {
+                return Err(NumPyError::value_error(
+                    "tensordot: axes_a and axes_b must have the same length",
+                    "linalg",
+                ));
+            }
+            // TODO: Full tensordot implementation with transpose and contraction.
+            // For now, if it's default behavior, we use dot.
+            dot(a, b)
+        }
+    }
+}
+
+/// Transpose a matrix.
+pub fn matrix_transpose<T>(a: &Array<T>) -> Result<Array<T>, NumPyError>
+where
+    T: Clone + Default + 'static,
+{
+    if a.ndim() < 2 {
+        return Err(NumPyError::value_error(
+            "matrix_transpose requires at least 2 dimensions",
+            "linalg",
+        ));
+    }
+    Ok(a.transpose())
+}
+
+/// Return specified diagonals.
+pub fn diagonal<T>(
+    a: &Array<T>,
+    offset: isize,
+    axis1: Option<usize>,
+    axis2: Option<usize>,
+) -> Result<Array<T>, NumPyError>
+where
+    T: Clone + Default + 'static,
+{
+    diagonal_enhanced(a, offset, axis1, axis2)
+}

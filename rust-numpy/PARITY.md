@@ -2,11 +2,13 @@
 
 **Last Updated:** 2026-01-21
 **Status:** In Progress
-**Completion:** ~75% estimated
+**Completion:** ~75% estimated (See [INVENTORY.md](INVENTORY.md) for details)
 
 ## Executive Summary
 
 This document provides a comprehensive analysis of rust-numpy's implementation status compared to NumPy 1.26+ API, identifying gaps and providing a prioritized roadmap for achieving 100% parity.
+
+For a detailed list of all implemented functions, see [INVENTORY.md](INVENTORY.md).
 
 ---
 

@@ -392,17 +392,32 @@ For a detailed list of all implemented functions, see [INVENTORY.md](INVENTORY.m
    - Complete arithmetic
    - Fitting methods
 
-8. **Advanced Indexing** (Week 12) - Issue #51
-   - Integer array indexing
-   - Boolean array indexing
-   - Fancy indexing
+6.  **Complete FFT Module** (Week 9-10)
+    - 2D/N-D FFT
+    - Real FFT variants
+    - Frequency utilities
+
+7.  **Complete Polynomial Module** (Week 11) - Issue #53
+    - All polynomial classes
+    - Complete arithmetic
+    - Fitting methods
+
+8.  **Advanced Indexing** (Week 12) - Issue #51
+    - Integer array indexing
+    - Boolean array indexing
+    - Fancy indexing
+
+### Dist (Distance Matrix)
+| Function | Status | Notes |
+| --- | --- | --- |
+| pdist | Implemented | |
+| cdist | Implemented | |
+| squareform | Implemented | |
 
 ### Phase 4: Performance & Polish (Weeks 13-16)
 
 **Goal:** Optimization and 100% parity
 
-9. **Performance Optimization** (Weeks 13-14) - Issues #45-47
-   - SIMD kernels (#46)
    - Dimension coalescing (#45)
    - Multi-threading policy (#47)
    - Runtime dispatch
@@ -640,4 +655,3 @@ Issue #89 (Gap analysis) - Depends on most other issues
    - 100% API parity with NumPy 2.x
    - Performance parity or better
    - Complete validation suite
-

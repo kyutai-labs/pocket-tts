@@ -6,6 +6,21 @@ import threading
 import time
 from pathlib import Path
 
+# Import progress monitoring
+try:
+    from progress_monitor import SimpleHeartbeat
+except ImportError:
+    # Fallback if progress_monitor is not available
+    class SimpleHeartbeat:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            pass
+
+        def stop(self, *args, **kwargs):
+            pass
+
 
 def generate(dashboard_py: Path, log_dir: Path, out_md: Path):
     # Call the generator script as a module-less subprocess replacement by importing it is messy;
@@ -117,6 +132,9 @@ def main():
     ap.add_argument(
         "--port", type=int, default=8735, help="HTTP port when --serve is set"
     )
+    ap.add_argument(
+        "--no-heartbeat", action="store_true", help="Disable heartbeat indicators"
+    )
     args = ap.parse_args()
 
     repo_root = Path(".").resolve()
@@ -133,28 +151,52 @@ def main():
             f"Serving {docs_dir} at http://localhost:{args.port}/status-dashboard.html"
         )
 
-    last_sig = None
-    while True:
-        # Compute signature from mtimes + sizes
-        sig_parts = []
-        if log_dir.exists():
-            for p in sorted(log_dir.glob("*.jsonl")):
-                st = p.stat()
-                sig_parts.append((p.name, int(st.st_mtime), st.st_size))
-        sig = tuple(sig_parts)
-        if sig != last_sig:
-            generate(dashboard_py, log_dir, out_md)
-            md = (
-                out_md.read_text(encoding="utf-8")
-                if out_md.exists()
-                else "# Ralph Status Dashboard\n\nNo logs.\n"
-            )
-            html = md_to_html(md, args.refresh)
-            out_html.parent.mkdir(parents=True, exist_ok=True)
-            out_html.write_text(html, encoding="utf-8")
-            print(f"updated: {out_md} and {out_html} (logs changed)")
-            last_sig = sig
-        time.sleep(args.interval)
+    # Start heartbeat monitoring
+    heartbeat = None
+    if not args.no_heartbeat:
+        heartbeat = SimpleHeartbeat(interval=30.0, message="Monitoring Ralph logs")
+        heartbeat.start()
+
+    try:
+        print(f"Starting Ralph dashboard monitoring...")
+        print(f"Log directory: {log_dir}")
+        print(f"Output files: {out_md}, {out_html}")
+        print(f"Polling interval: {args.interval}s")
+        print("Press Ctrl+C to stop")
+
+        last_sig = None
+        update_count = 0
+        while True:
+            # Compute signature from mtimes + sizes
+            sig_parts = []
+            if log_dir.exists():
+                for p in sorted(log_dir.glob("*.jsonl")):
+                    st = p.stat()
+                    sig_parts.append((p.name, int(st.st_mtime), st.st_size))
+            sig = tuple(sig_parts)
+            if sig != last_sig:
+                update_count += 1
+                print(
+                    f"\n📊 Update #{update_count}: Changes detected, regenerating dashboard..."
+                )
+                generate(dashboard_py, log_dir, out_md)
+                md = (
+                    out_md.read_text(encoding="utf-8")
+                    if out_md.exists()
+                    else "# Ralph Status Dashboard\n\nNo logs.\n"
+                )
+                html = md_to_html(md, args.refresh)
+                out_html.parent.mkdir(parents=True, exist_ok=True)
+                out_html.write_text(html, encoding="utf-8")
+                print(f"✅ Updated: {out_md} and {out_html}")
+                last_sig = sig
+            time.sleep(args.interval)
+
+    except KeyboardInterrupt:
+        print("\n🛑 Stopping dashboard monitoring...")
+    finally:
+        if heartbeat:
+            heartbeat.stop(f"Dashboard monitoring stopped after {update_count} updates")
 
 
 if __name__ == "__main__":

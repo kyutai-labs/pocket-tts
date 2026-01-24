@@ -13,6 +13,34 @@ from pathlib import Path
 from typing import Dict, Any, List, Tuple
 import sys
 
+# Import progress monitoring
+try:
+    from progress_monitor import TaskProgress, SimpleHeartbeat
+except ImportError:
+    # Fallback if progress_monitor is not available
+    class TaskProgress:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args, **kwargs):
+            pass
+
+        def step(self, *args, **kwargs):
+            pass
+
+    class SimpleHeartbeat:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            pass
+
+        def stop(self, *args, **kwargs):
+            pass
+
 
 def generate_random_arrays(
     rng: np.random.Generator, shapes: List[Tuple[int, ...]], dtypes: List[str]
@@ -192,25 +220,54 @@ def generate_test_cases(
         "complex128",
     ]
 
-    # Generate arrays
-    arrays = generate_random_arrays(rng, shapes, dtypes)
+    # Generate arrays with progress tracking
+    arrays = []
+    with TaskProgress("Generating arrays", len(shapes) * len(dtypes)) as task:
+        for i, shape in enumerate(shapes):
+            for j, dtype in enumerate(dtypes):
+                step_num = i * len(dtypes) + j + 1
+                task.step(step_num, f"Creating {dtype} array with shape {shape}")
 
-    for i, arr in enumerate(arrays[:num_cases]):
-        case = {"id": i, "input": array_to_dict(arr), "operations": {}}
+                if dtype == "bool":
+                    arr = rng.random(shape) > 0.5
+                elif dtype in ["int8", "int16", "int32", "int64"]:
+                    info = np.iinfo(dtype)
+                    arr = rng.integers(info.min, info.max + 1, shape, dtype=dtype)
+                elif dtype in ["uint8", "uint16", "uint32", "uint64"]:
+                    info = np.iinfo(dtype)
+                    arr = rng.integers(0, info.max + 1, shape, dtype=dtype)
+                elif dtype in ["float32", "float64"]:
+                    arr = rng.random(shape).astype(dtype)
+                elif dtype == "complex64":
+                    arr = rng.random(shape) + 1j * rng.random(shape)
+                    arr = arr.astype("complex64")
+                elif dtype == "complex128":
+                    arr = rng.random(shape) + 1j * rng.random(shape)
+                else:
+                    continue
 
-        # Test basic operations
-        case["operations"]["basic"] = test_basic_operations(arr)
+                arrays.append(arr)
 
-        # Test reduction operations
-        case["operations"]["reductions"] = test_reduction_operations(arr)
+    # Process arrays with progress tracking
+    with TaskProgress("Processing test cases", min(len(arrays), num_cases)) as task:
+        for i, arr in enumerate(arrays[:num_cases]):
+            task.step(i + 1, f"Processing case {i + 1}/{min(len(arrays), num_cases)}")
 
-        # Test with another array of same shape
-        if i > 0:
-            prev_arr = arrays[i - 1]
-            if prev_arr.shape == arr.shape:
-                case["operations"]["ufuncs"] = test_ufunc_operations(arr, prev_arr)
+            case = {"id": i, "input": array_to_dict(arr), "operations": {}}
 
-        test_cases.append(case)
+            # Test basic operations
+            case["operations"]["basic"] = test_basic_operations(arr)
+
+            # Test reduction operations
+            case["operations"]["reductions"] = test_reduction_operations(arr)
+
+            # Test with another array of same shape
+            if i > 0:
+                prev_arr = arrays[i - 1]
+                if prev_arr.shape == arr.shape:
+                    case["operations"]["ufuncs"] = test_ufunc_operations(arr, prev_arr)
+
+            test_cases.append(case)
 
     return test_cases
 
@@ -231,6 +288,9 @@ def main():
     parser.add_argument(
         "--output-dir", "-d", help="Output directory (defaults to same as output file)"
     )
+    parser.add_argument(
+        "--no-progress", action="store_true", help="Disable progress bars"
+    )
 
     args = parser.parse_args()
 
@@ -246,29 +306,41 @@ def main():
     rng = np.random.default_rng(args.seed)
 
     print(f"Generating {args.cases} test cases with seed {args.seed}...")
+    print(f"Output will be saved to: {output_path}")
 
-    # Generate test cases
-    test_cases = generate_test_cases(rng, args.cases)
+    # Use simple heartbeat if progress bars are disabled
+    if args.no_progress:
+        heartbeat = SimpleHeartbeat(interval=10.0, message="Generating golden data")
+        heartbeat.start()
 
-    # Create metadata
-    metadata = {
-        "version": "1.0.0",
-        "numpy_version": np.__version__,
-        "seed": args.seed,
-        "num_cases": len(test_cases),
-        "generated_at": str(np.datetime64("now")),
-        "description": "Golden data for rust-numpy conformance testing",
-    }
+    try:
+        # Generate test cases
+        test_cases = generate_test_cases(rng, args.cases)
 
-    # Combine and save
-    golden_data = {"metadata": metadata, "test_cases": test_cases}
+        # Create metadata
+        metadata = {
+            "version": "1.0.0",
+            "numpy_version": np.__version__,
+            "seed": args.seed,
+            "num_cases": len(test_cases),
+            "generated_at": str(np.datetime64("now")),
+            "description": "Golden data for rust-numpy conformance testing",
+        }
 
-    with open(output_path, "w") as f:
-        json.dump(golden_data, f, indent=2)
+        # Combine and save
+        golden_data = {"metadata": metadata, "test_cases": test_cases}
 
-    print(f"Generated {len(test_cases)} test cases")
-    print(f"Output saved to: {output_path}")
-    print(f"File size: {output_path.stat().st_size / 1024:.1f} KB")
+        print("Saving data...")
+        with open(output_path, "w") as f:
+            json.dump(golden_data, f, indent=2)
+
+        print(f"Generated {len(test_cases)} test cases")
+        print(f"Output saved to: {output_path}")
+        print(f"File size: {output_path.stat().st_size / 1024:.1f} KB")
+
+    finally:
+        if args.no_progress:
+            heartbeat.stop("Golden data generation complete!")
 
     return 0
 

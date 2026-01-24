@@ -100,8 +100,25 @@ pub use statistics::{
 pub use type_promotion::promote_types;
 // Complex utility functions
 pub use math_ufuncs::{
-    absolute, angle, angle32, conj, conj32, conjugate, conjugate32, copysign, fabs, imag, imag32,
-    real, real32, real_if_close, real_if_close32, sign, signbit,
+    abs,
+    absolute,
+    angle,
+    angle32,
+    conj,
+    conj32,
+    conjugate,
+    conjugate32,
+    copysign,
+    fabs,
+    imag,
+    imag32,
+    real,
+    real32,
+    real_if_close,
+    real_if_close32,
+    // Sign and absolute value functions
+    sign,
+    signbit,
 };
 pub use ufunc_ops::UfuncEngine;
 

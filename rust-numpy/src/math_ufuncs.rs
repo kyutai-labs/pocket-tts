@@ -2345,6 +2345,91 @@ pub fn register_math_ufuncs(registry: &mut crate::ufunc::UfuncRegistry) {
         "isposinf",
         |x: &num_complex::Complex64| x.re == f64::INFINITY,
     )));
+
+    // Sign and absolute value functions
+    registry.register(Box::new(MathUnaryUfunc::new("sign", |x: &f32| {
+        if x.is_nan() {
+            f32::NAN
+        } else if *x == 0.0 {
+            0.0
+        } else if x.is_sign_negative() {
+            -1.0
+        } else {
+            1.0
+        }
+    })));
+    registry.register(Box::new(MathUnaryUfunc::new("sign", |x: &f64| {
+        if x.is_nan() {
+            f64::NAN
+        } else if *x == 0.0 {
+            0.0
+        } else if x.is_sign_negative() {
+            -1.0
+        } else {
+            1.0
+        }
+    })));
+
+    registry.register(Box::new(MathUnaryUfunc::new("signbit", |x: &f32| {
+        if x.is_nan() || x.is_sign_negative() {
+            1.0
+        } else {
+            0.0
+        }
+    })));
+    registry.register(Box::new(MathUnaryUfunc::new("signbit", |x: &f64| {
+        if x.is_nan() || x.is_sign_negative() {
+            1.0
+        } else {
+            0.0
+        }
+    })));
+
+    registry.register(Box::new(MathBinaryUfunc::new(
+        "copysign",
+        |x: &f32, y: &f32| {
+            if y.is_nan() {
+                f32::NAN
+            } else {
+                x.abs() * y.signum()
+            }
+        },
+    )));
+    registry.register(Box::new(MathBinaryUfunc::new(
+        "copysign",
+        |x: &f64, y: &f64| {
+            if y.is_nan() {
+                f64::NAN
+            } else {
+                x.abs() * y.signum()
+            }
+        },
+    )));
+
+    registry.register(Box::new(MathUnaryUfunc::new("absolute", |x: &f32| x.abs())));
+    registry.register(Box::new(MathUnaryUfunc::new("absolute", |x: &f64| x.abs())));
+    registry.register(Box::new(MathUnaryUfunc::new(
+        "absolute",
+        |x: &num_complex::Complex32| num_complex::Complex32::new(x.re.abs(), x.im.abs()),
+    )));
+    registry.register(Box::new(MathUnaryUfunc::new(
+        "absolute",
+        |x: &num_complex::Complex64| num_complex::Complex64::new(x.re.abs(), x.im.abs()),
+    )));
+
+    registry.register(Box::new(MathUnaryUfunc::new("abs", |x: &f32| x.abs())));
+    registry.register(Box::new(MathUnaryUfunc::new("abs", |x: &f64| x.abs())));
+    registry.register(Box::new(MathUnaryUfunc::new(
+        "abs",
+        |x: &num_complex::Complex32| num_complex::Complex32::new(x.re.abs(), x.im.abs()),
+    )));
+    registry.register(Box::new(MathUnaryUfunc::new(
+        "abs",
+        |x: &num_complex::Complex64| num_complex::Complex64::new(x.re.abs(), x.im.abs()),
+    )));
+
+    registry.register(Box::new(MathUnaryUfunc::new("fabs", |x: &f32| x.abs())));
+    registry.register(Box::new(MathUnaryUfunc::new("fabs", |x: &f64| x.abs())));
 }
 
 /// Compute sinc function: sin(pi*x) / (pi*x)
@@ -2907,4 +2992,268 @@ mod tests {
             &num_complex::Complex64::new(7.0, -8.0)
         );
     }
+}
+
+// Sign and absolute value functions
+
+/// Compute sign of each element (-1, 0, or 1)
+pub fn sign<T>(x: &Array<T>) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+{
+    if let Some(ufunc) = get_ufunc("sign") {
+        let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
+        ufunc.execute(&[x], &mut [&mut output], None)?;
+        Ok(output)
+    } else {
+        Err(NumPyError::ufunc_error(
+            "sign",
+            "Ufunc not found".to_string(),
+        ))
+    }
+}
+
+/// Test if sign bit is set in each element (true for negative numbers, -0.0, and NaN)
+pub fn signbit<T>(x: &Array<T>) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+{
+    if let Some(ufunc) = get_ufunc("signbit") {
+        let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
+        ufunc.execute(&[x], &mut [&mut output], None)?;
+        Ok(output)
+    } else {
+        Err(NumPyError::ufunc_error(
+            "signbit",
+            "Ufunc not found".to_string(),
+        ))
+    }
+}
+
+/// Copy sign of x2 to x1
+pub fn copysign<T>(x1: &Array<T>, x2: &Array<T>) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+{
+    if let Some(ufunc) = get_ufunc("copysign") {
+        let mut output = Array::from_data(vec![T::default(); x1.size()], x1.shape().to_vec());
+        ufunc.execute(&[x1, x2], &mut [&mut output], None)?;
+        Ok(output)
+    } else {
+        Err(NumPyError::ufunc_error(
+            "copysign",
+            "Ufunc not found".to_string(),
+        ))
+    }
+}
+
+/// Compute absolute value element-wise
+pub fn absolute<T>(x: &Array<T>) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+{
+    if let Some(ufunc) = get_ufunc("absolute") {
+        let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
+        ufunc.execute(&[x], &mut [&mut output], None)?;
+        Ok(output)
+    } else {
+        Err(NumPyError::ufunc_error(
+            "absolute",
+            "Ufunc not found".to_string(),
+        ))
+    }
+}
+
+/// Compute absolute value element-wise (alias for absolute)
+pub fn abs<T>(x: &Array<T>) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+{
+    absolute(x)
+}
+
+/// Compute absolute value for float types
+pub fn fabs<T>(x: &Array<T>) -> Result<Array<T>>
+where
+    T: Clone + Default + 'static,
+{
+    if let Some(ufunc) = get_ufunc("fabs") {
+        let mut output = Array::from_data(vec![T::default(); x.size()], x.shape().to_vec());
+        ufunc.execute(&[x], &mut [&mut output], None)?;
+        Ok(output)
+    } else {
+        Err(NumPyError::ufunc_error(
+            "fabs",
+            "Ufunc not found".to_string(),
+        ))
+    }
+}
+
+/// Unwrap phase angles by changing absolute jumps greater than discont to their 2π complement
+///
+/// This transforms phase angles to eliminate large jumps, which is critical for
+/// signal processing applications, particularly when working with phase data from FFTs.
+///
+/// # Arguments
+/// * `p` - Input array of phase angles
+/// * `discont` - Maximum discontinuity between values (default: π)
+/// * `axis` - Axis along which to unwrap (default: -1, last axis)
+/// * `period` - Period of the input (default: 2π)
+///
+/// # Returns
+/// Unwrapped phase angles
+///
+/// # Example
+/// ```ignore
+/// use numpy::{array, unwrap};
+/// let phases = array![0.0, 6.0, 0.0, 6.0];
+/// let unwrapped = unwrap(&phases.view(), None, None, -1).unwrap();
+/// // Results in: [0.0, 6.0, 6.283..., 12.283...]
+/// ```
+///
+/// # Notes
+/// This is a non-generic implementation for f64 to avoid circular dependencies
+/// with Float and FromPrimitive traits. For other types, use the generic version
+/// when the trait dependency issue is resolved.
+pub fn unwrap(
+    p: &ArrayView<f64>,
+    discont: Option<f64>,
+    axis: Option<isize>,
+    period: Option<f64>,
+) -> Result<Array<f64>> {
+    use std::f64::consts::PI;
+
+    let discont_val = discont.unwrap_or(PI);
+    let period_val = period.unwrap_or(2.0 * PI);
+    let axis_val = axis.unwrap_or(-1);
+
+    // Handle axis parameter (normalize negative indices)
+    let ndim = p.ndim();
+    let normalized_axis = if axis_val < 0 {
+        ndim as isize + axis_val
+    } else {
+        axis_val
+    };
+
+    if ndim == 0 || normalized_axis < 0 || normalized_axis >= ndim as isize {
+        return Err(NumPyError::value_error(
+            &format!("axis {} is out of bounds for array of dimension {}", axis_val, ndim),
+            "unwrap",
+        ));
+    }
+
+    let axis_usize = normalized_axis as usize;
+
+    // Get the data and shape
+    let input_data = p.data();
+    let input_shape = p.shape();
+
+    // For 1D arrays, simple case
+    if ndim == 1 {
+        let mut result = Vec::with_capacity(input_data.len());
+        if input_data.is_empty() {
+            return Ok(Array::from_vec(result));
+        }
+
+        result.push(input_data[0]);
+
+        for i in 1..input_data.len() {
+            let prev = result[i - 1];
+            let curr = input_data[i];
+            let diff = curr - prev;
+
+            // Check for discontinuity and correct
+            let diff_corrected = (diff + period_val / 2.0).rem_euclid(period_val) - period_val / 2.0;
+            
+            // Determine how many periods to correct
+            let mut cum_correction = 0.0;
+            if diff > discont_val {
+                cum_correction = -period_val * ((diff - discont_val) / period_val).ceil();
+            } else if diff < -discont_val {
+                cum_correction = period_val * ((-diff - discont_val) / period_val).ceil();
+            }
+
+            result.push(curr + cum_correction);
+        }
+
+        return Ok(Array::from_vec(result));
+    }
+
+    // For multi-dimensional arrays, process along the specified axis
+    let mut result = input_data.to_vec();
+
+    // Calculate stride and dimensions
+    let axis_length = input_shape[axis_usize];
+    
+    // Calculate total elements and number of slices along the axis
+    let total_elements: usize = input_shape.iter().product();
+    let num_slices = total_elements / axis_length;
+
+    // Calculate stride in the input data for moving along axis
+    let mut stride = 1usize;
+    for i in (axis_usize + 1)..ndim {
+        stride *= input_shape[i];
+    }
+
+    // Process each 1D slice along the axis
+    for slice_idx in 0..num_slices {
+        let base_offset = (slice_idx / stride) * stride * axis_length + (slice_idx % stride);
+
+        for i in 1..axis_length {
+            let curr_idx = base_offset + i * stride;
+            let prev_idx = base_offset + (i - 1) * stride;
+
+            let prev = result[prev_idx];
+            let curr = input_data[curr_idx];
+            let diff = curr - prev;
+
+            // Check for discontinuity
+            if diff > discont_val {
+                let correction = period_val * ((diff - discont_val) / period_val).ceil();
+                result[curr_idx] = curr - correction;
+            } else if diff < -discont_val {
+                let correction = period_val * ((-diff - discont_val) / period_val).ceil();
+                result[curr_idx] = curr + correction;
+            } else {
+                result[curr_idx] = curr;
+            }
+        }
+    }
+
+    Ok(Array::from_data(result, input_shape.to_vec()))
+}
+
+/// Unwrap phase angles (f32 version)
+///
+/// See the f64 version documentation for details. This is provided for
+/// consistency with NumPy's API which supports multiple float types.
+pub fn unwrap_f32(
+    p: &ArrayView<f32>,
+    discont: Option<f32>,
+    axis: Option<isize>,
+    period: Option<f32>,
+) -> Result<Array<f32>> {
+    use std::f32::consts::PI;
+
+    let discont_val = discont.unwrap_or(PI);
+    let period_val = period.unwrap_or(2.0 * PI);
+    
+    // Convert to f64, process, then convert back
+    let p_f64: Vec<f64> = p.data().iter().map(|&x| x as f64).collect();
+    let shape_f64 = p.shape().to_vec();
+    let strides = p.strides().to_vec();
+    
+    // Create ArrayView for f64
+    let array_view_f64 = ArrayView::from_data(&p_f64, &shape_f64, &strides);
+    
+    let result_f64 = unwrap(
+        &array_view_f64, 
+        Some(discont_val as f64), 
+        axis.map(|a| a as isize), 
+        Some(period_val as f64)
+    )?;
+
+    // Convert back to f32
+    let result_f32: Vec<f32> = result_f64.data().iter().map(|&x| x as f32).collect();
+    Ok(Array::from_vec(result_f32))
 }

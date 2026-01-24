@@ -15,4 +15,5 @@ pub mod expand_dims_tests;
 pub mod fft_tests;
 pub mod random_tests;
 pub mod reduction_tests;
+pub mod sign_tests;
 pub mod statistics_tests;

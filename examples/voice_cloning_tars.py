@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import scipy.io.wavfile
+import torch
 
 from pocket_tts import TTSModel
 
@@ -19,7 +20,9 @@ def main() -> None:
     audio = model.generate_audio(voice_state, text)
 
     OUTPUT_WAV.parent.mkdir(parents=True, exist_ok=True)
-    scipy.io.wavfile.write(OUTPUT_WAV, model.sample_rate, audio.numpy())
+    # Convert to 16-bit PCM to ensure compatibility with all players
+    audio_int16 = (audio.clamp(-1, 1) * 32767).to(torch.int16).cpu().numpy()
+    scipy.io.wavfile.write(OUTPUT_WAV, model.sample_rate, audio_int16)
     print(f"Wrote {OUTPUT_WAV}")
 
 

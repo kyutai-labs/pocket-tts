@@ -127,3 +127,5 @@ onnx_export_*/
 # Windows WSL Zone.Identifier files
 *:Zone.Identifier
 **/*:Zone.Identifier
+
+numpy-resources/

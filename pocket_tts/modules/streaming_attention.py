@@ -290,8 +290,8 @@ class StreamingMultiheadAttention(StatefulModule):
         k_out, v_out = kv_result.keys, kv_result.values
         pos_k = kv_result.positions
 
-        k = k_out.transpose(1, 2)
-        v = v_out.transpose(1, 2)
+        k = k_out
+        v = v_out
 
         # Build attention bias for sliding window
         pos_k = pos_k[:, None]

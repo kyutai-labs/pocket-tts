@@ -30,7 +30,9 @@ def audio_read(filepath: str | Path) -> tuple[torch.Tensor, int]:
             sample_rate = wav_file.getframerate()
             n_channels = wav_file.getnchannels()
             raw_data = wav_file.readframes(-1)
-            samples = np.frombuffer(raw_data, dtype=np.int16).astype(np.float32) / 32768.0
+            samples = (
+                np.frombuffer(raw_data, dtype=np.int16).astype(np.float32) / 32768.0
+            )
             if n_channels > 1:
                 samples = samples.reshape(-1, n_channels).mean(axis=1)
             return torch.from_numpy(samples).unsqueeze(0), sample_rate
@@ -50,6 +52,9 @@ def audio_read(filepath: str | Path) -> tuple[torch.Tensor, int]:
     else:
         wav = torch.from_numpy(data.mean(axis=1)).unsqueeze(0)
     return wav, sample_rate
+
+
+load_wav = audio_read
 
 
 class StreamingWAVWriter:
@@ -118,7 +123,9 @@ def is_file_like(obj):
 
 
 def stream_audio_chunks(
-    path: str | Path | None | Any, audio_chunks: Iterator[torch.Tensor], sample_rate: int
+    path: str | Path | None | Any,
+    audio_chunks: Iterator[torch.Tensor],
+    sample_rate: int,
 ):
     """Stream audio chunks to a WAV file or stdout, optionally playing them."""
     if path == "-":

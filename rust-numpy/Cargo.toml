@@ -135,3 +135,7 @@ path = "tests/pad_tests.rs"
 [[example]]
 name = "test_log"
 path = "examples/test_log.rs"
+
+[[test]]
+name = "dist_tests"
+path = "tests/dist_tests.rs"

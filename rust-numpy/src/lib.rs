@@ -124,6 +124,7 @@ mod char_tests;
 pub mod comparison_ufuncs;
 pub mod constants;
 pub mod datetime;
+pub mod dist;
 pub mod dtype;
 #[cfg(test)]
 mod dtype_tests;
@@ -168,6 +169,7 @@ pub use char::exports::{
     lstrip_chars, multiply as char_multiply, replace, rfind, rindex, rstrip, rstrip_chars,
     split as char_split, startswith, strip, strip_chars, upper, zfill,
 };
+pub use dist::{cdist, pdist, squareform};
 pub use dtype::{Casting, Dtype, DtypeKind};
 pub use error::{NumPyError, Result};
 pub use linalg::norm;

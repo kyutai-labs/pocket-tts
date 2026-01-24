@@ -86,6 +86,25 @@ mod tests {
         assert_eq!(trimmed.to_vec(), vec![1.5f64, 2.5]);
     }
 
+    // ==================== gradient tests ====================
+
+    #[test]
+    fn test_gradient_1d() {
+        let arr = Array::from_vec(vec![1.0, 2.0, 4.0, 7.0]);
+        let gradients = array_extra::gradient(&arr).unwrap();
+        assert_eq!(gradients.len(), 1);
+        assert_eq!(gradients[0].to_vec(), vec![1.0, 1.5, 2.5, 3.0]);
+    }
+
+    #[test]
+    fn test_gradient_2d() {
+        let arr = Array::from_shape_vec(vec![2, 3], vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+        let gradients = array_extra::gradient(&arr).unwrap();
+        assert_eq!(gradients.len(), 2);
+        assert_eq!(gradients[0].to_vec(), vec![3.0, 3.0, 3.0, 3.0, 3.0, 3.0]);
+        assert_eq!(gradients[1].to_vec(), vec![1.0, 1.0, 1.0, 1.0, 1.0, 1.0]);
+    }
+
     // ==================== ediff1d tests ====================
 
     #[test]

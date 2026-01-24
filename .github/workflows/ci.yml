@@ -1,0 +1,139 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - stable
+          - beta
+          - nightly
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ matrix.rust }}
+        components: rustfmt, clippy
+
+    - name: Cache cargo registry
+      uses: actions/cache@v3
+      with:
+        path: ~/.cargo/registry
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Cache cargo index
+      uses: actions/cache@v3
+      with:
+        path: ~/.cargo/git
+        key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Cache cargo build
+      uses: actions/cache@v3
+      with:
+        path: target
+        key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install numpy
+
+    - name: Generate golden data
+      run: |
+        cd rust-numpy
+        python ../scripts/generate_golden_data.py --output-dir tests --cases 10
+
+    - name: Check formatting
+      run: cargo fmt --all -- --check
+
+    - name: Run clippy
+      run: cargo clippy --all-targets --all-features -- -D warnings
+
+    - name: Build
+      run: cargo build --verbose --all-features
+
+    - name: Run tests
+      run: cargo test --verbose --all-features --features serde
+
+    - name: Run golden tests specifically
+      run: |
+        cd rust-numpy
+        cargo test --test golden_tests --features serde --verbose
+
+  golden-data-fuzzing:
+    name: Golden Data Fuzzing
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install numpy
+
+    - name: Generate extensive golden data
+      run: |
+        cd rust-numpy
+        python ../scripts/generate_golden_data.py --output-dir tests --cases 100 --seed ${{ github.run_id }}
+
+    - name: Run golden tests with extensive data
+      run: |
+        cd rust-numpy
+        cargo test --test golden_tests --features serde --verbose
+
+  verify-intentional-mismatch:
+    name: Verify Intentional Mismatch Detection
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install numpy
+
+    - name: Generate golden data
+      run: |
+        cd rust-numpy
+        python ../scripts/generate_golden_data.py --output-dir tests --cases 5
+
+    - name: Corrupt golden data to test mismatch detection
+      run: |
+        cd rust-numpy/tests
+        # Corrupt the golden data file slightly to test mismatch detection
+        sed -i 's/"data": \[1.0/"data": \[999.0/' golden_data.json
+
+    - name: Verify test detects mismatch
+      run: |
+        cd rust-numpy
+        # This should fail due to the corrupted data
+        if cargo test --test golden_tests --features serde; then
+          echo "ERROR: Golden tests should have failed with corrupted data"
+          exit 1
+        else
+          echo "SUCCESS: Golden tests correctly detected data mismatch"
+        fi

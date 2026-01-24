@@ -62,6 +62,7 @@ half = { version = "2.4", features = ["num-traits", "serde"] }
 
 # Serialization for testing/serialization
 serde = { version = "1.0", features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
 
 # CUDA backend (optional)
 cudarc = { version = "0.11", optional = true }
@@ -91,9 +92,9 @@ csv = "1.3"
 encoding_rs = "0.8"
 
 [features]
-default = ["std", "rayon", "datetime", "pure-linalg"]
+default = ["std", "rayon", "datetime", "pure-linalg", "serde"]
 std = []
-serde = ["dep:serde"]
+serde = ["dep:serde", "dep:serde_json"]
 simd = ["stdsimd"]
 cuda = ["cudarc"]
 metal = []
@@ -106,6 +107,10 @@ datetime = ["chrono"]
 criterion = { version = "0.5", features = ["html_reports"] }
 tempfile = "3.8"
 approx = "0.5"
+
+[[test]]
+name = "golden_tests"
+path = "tests/golden_tests.rs"
 
 [[test]]
 name = "linalg_qr_tests"

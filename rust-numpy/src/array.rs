@@ -621,6 +621,65 @@ impl<T> Array<T> {
         }
         Self::from_data(data, vec![size, size])
     }
+
+    // ===== Sorting Methods =====
+
+    /// Sort array in-place or return a sorted copy
+    pub fn sort(&mut self, axis: Option<isize>, kind: &str, order: &str) -> Result<Self, NumPyError>
+    where
+        T: Clone + PartialOrd + crate::sorting::ComparisonOps<T> + Default + Send + Sync + 'static,
+    {
+        crate::sorting::sort(self, axis, kind, order)
+    }
+
+    /// Return indices that would sort the array
+    pub fn argsort(&self, axis: Option<isize>, kind: &str, order: &str) -> Result<Array<isize>, NumPyError>
+    where
+        T: Clone + PartialOrd + crate::sorting::ComparisonOps<T> + Default + Send + Sync + 'static,
+    {
+        crate::sorting::argsort(self, axis, kind, order)
+    }
+
+    /// Find insertion points for elements in a sorted array
+    pub fn searchsorted(
+        &self,
+        v: &Array<T>,
+        side: &str,
+        sorter: Option<&Array<isize>>,
+    ) -> Result<Array<isize>, NumPyError>
+    where
+        T: Clone + PartialOrd + crate::sorting::ComparisonOps<T> + Default + Send + Sync + 'static,
+    {
+        crate::sorting::searchsorted(self, v, side, sorter)
+    }
+
+    /// Return the indices that would partition an array
+    pub fn argpartition(
+        &self,
+        kth: crate::sorting::ArrayOrInt,
+        axis: Option<isize>,
+        kind: &str,
+        order: &str,
+    ) -> Result<Array<isize>, NumPyError>
+    where
+        T: Clone + PartialOrd + crate::sorting::ComparisonOps<T> + Default + Send + Sync + 'static,
+    {
+        crate::sorting::argpartition(self, kth, axis, kind, order)
+    }
+
+    /// Partition array in-place
+    pub fn partition(
+        &mut self,
+        kth: crate::sorting::ArrayOrInt,
+        axis: Option<isize>,
+        kind: &str,
+        order: &str,
+    ) -> Result<Self, NumPyError>
+    where
+        T: Clone + PartialOrd + crate::sorting::ComparisonOps<T> + Default + Send + Sync + 'static,
+    {
+        crate::sorting::partition(self, kth, axis, kind, order)
+    }
 }
 
 /// Compute strides from shape

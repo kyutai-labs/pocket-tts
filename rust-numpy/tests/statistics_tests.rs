@@ -142,3 +142,115 @@ fn test_correlate_identical() {
         .unwrap();
     assert_eq!(max_idx, 2); // Center position
 }
+
+#[test]
+fn test_nancumsum_basic() {
+    use numpy::array;
+    let arr = array![1.0, f64::NAN, 3.0, f64::NAN, 5.0];
+    let result = arr.nancumsum(None).unwrap();
+
+    // NaNs treated as zero: [1, 1+0, 1+0+3, 1+0+3+0, 1+0+3+0+5] = [1, 1, 4, 4, 9]
+    assert_eq!(result.get(0).unwrap(), &1.0);
+    assert_eq!(result.get(1).unwrap(), &1.0);
+    assert_eq!(result.get(2).unwrap(), &4.0);
+    assert_eq!(result.get(3).unwrap(), &4.0);
+    assert_eq!(result.get(4).unwrap(), &9.0);
+}
+
+#[test]
+fn test_nancumsum_no_nan() {
+    use numpy::array;
+    let arr = array![1.0, 2.0, 3.0, 4.0];
+    let result = arr.nancumsum(None).unwrap();
+
+    // Same as regular cumsum: [1, 3, 6, 10]
+    assert_eq!(result.get(0).unwrap(), &1.0);
+    assert_eq!(result.get(1).unwrap(), &3.0);
+    assert_eq!(result.get(2).unwrap(), &6.0);
+    assert_eq!(result.get(3).unwrap(), &10.0);
+}
+
+#[test]
+fn test_nancumsum_axis() {
+    use numpy::{array, array2};
+    let arr = array2![[1.0, f64::NAN, 3.0], [f64::NAN, 5.0, 6.0]];
+    let result = arr.nancumsum(Some(1)).unwrap();
+
+    // Along axis 1, NaNs treated as zero
+    // Row 0: [1, 1+0, 1+0+3] = [1, 1, 4]
+    // Row 1: [0, 0+5, 0+5+6] = [0, 5, 11]
+    assert_eq!(result.get(0).unwrap(), &1.0);
+    assert_eq!(result.get(1).unwrap(), &1.0);
+    assert_eq!(result.get(2).unwrap(), &4.0);
+    assert_eq!(result.get(3).unwrap(), &0.0);
+    assert_eq!(result.get(4).unwrap(), &5.0);
+    assert_eq!(result.get(5).unwrap(), &11.0);
+}
+
+#[test]
+fn test_nancumprod_basic() {
+    use numpy::array;
+    let arr = array![2.0, f64::NAN, 3.0, f64::NAN, 4.0];
+    let result = arr.nancumprod(None).unwrap();
+
+    // NaNs treated as one: [2, 2*1, 2*1*3, 2*1*3*1, 2*1*3*1*4] = [2, 2, 6, 6, 24]
+    assert_eq!(result.get(0).unwrap(), &2.0);
+    assert_eq!(result.get(1).unwrap(), &2.0);
+    assert_eq!(result.get(2).unwrap(), &6.0);
+    assert_eq!(result.get(3).unwrap(), &6.0);
+    assert_eq!(result.get(4).unwrap(), &24.0);
+}
+
+#[test]
+fn test_nancumprod_no_nan() {
+    use numpy::array;
+    let arr = array![2.0, 3.0, 4.0];
+    let result = arr.nancumprod(None).unwrap();
+
+    // Same as regular cumprod: [2, 6, 24]
+    assert_eq!(result.get(0).unwrap(), &2.0);
+    assert_eq!(result.get(1).unwrap(), &6.0);
+    assert_eq!(result.get(2).unwrap(), &24.0);
+}
+
+#[test]
+fn test_nancumprod_axis() {
+    use numpy::{array, array2};
+    let arr = array2![[2.0, f64::NAN, 3.0], [f64::NAN, 5.0, 2.0]];
+    let result = arr.nancumprod(Some(1)).unwrap();
+
+    // Along axis 1, NaNs treated as one
+    // Row 0: [2, 2*1, 2*1*3] = [2, 2, 6]
+    // Row 1: [1, 1*5, 1*5*2] = [1, 5, 10]
+    assert_eq!(result.get(0).unwrap(), &2.0);
+    assert_eq!(result.get(1).unwrap(), &2.0);
+    assert_eq!(result.get(2).unwrap(), &6.0);
+    assert_eq!(result.get(3).unwrap(), &1.0);
+    assert_eq!(result.get(4).unwrap(), &5.0);
+    assert_eq!(result.get(5).unwrap(), &10.0);
+}
+
+#[test]
+fn test_nancumsum_all_nan() {
+    use numpy::array;
+    let arr = array![f64::NAN, f64::NAN, f64::NAN];
+    let result = arr.nancumsum(None).unwrap();
+
+    // All NaNs treated as zero: [0, 0, 0]
+    assert_eq!(result.get(0).unwrap(), &0.0);
+    assert_eq!(result.get(1).unwrap(), &0.0);
+    assert_eq!(result.get(2).unwrap(), &0.0);
+}
+
+#[test]
+fn test_nancumprod_all_nan() {
+    use numpy::array;
+    let arr = array![f64::NAN, f64::NAN, f64::NAN];
+    let result = arr.nancumprod(None).unwrap();
+
+    // All NaNs treated as one: [1, 1, 1]
+    assert_eq!(result.get(0).unwrap(), &1.0);
+    assert_eq!(result.get(1).unwrap(), &1.0);
+    assert_eq!(result.get(2).unwrap(), &1.0);
+}
+

@@ -627,7 +627,7 @@ impl<T> Array<T> {
     /// Sort array in-place or return a sorted copy
     pub fn sort(&mut self, axis: Option<isize>, kind: &str, order: &str) -> Result<Self, NumPyError>
     where
-        T: Clone + PartialOrd + crate::sorting::ComparisonOps<T> + Default + Send + Sync + 'static,
+        T: Clone + PartialOrd + crate::comparison_ufuncs::ComparisonOps<T> + Default + Send + Sync + 'static,
     {
         crate::sorting::sort(self, axis, kind, order)
     }
@@ -635,7 +635,7 @@ impl<T> Array<T> {
     /// Return indices that would sort the array
     pub fn argsort(&self, axis: Option<isize>, kind: &str, order: &str) -> Result<Array<isize>, NumPyError>
     where
-        T: Clone + PartialOrd + crate::sorting::ComparisonOps<T> + Default + Send + Sync + 'static,
+        T: Clone + PartialOrd + crate::comparison_ufuncs::ComparisonOps<T> + Default + Send + Sync + 'static,
     {
         crate::sorting::argsort(self, axis, kind, order)
     }
@@ -648,7 +648,7 @@ impl<T> Array<T> {
         sorter: Option<&Array<isize>>,
     ) -> Result<Array<isize>, NumPyError>
     where
-        T: Clone + PartialOrd + crate::sorting::ComparisonOps<T> + Default + Send + Sync + 'static,
+        T: Clone + PartialOrd + crate::comparison_ufuncs::ComparisonOps<T> + Default + Send + Sync + 'static,
     {
         crate::sorting::searchsorted(self, v, side, sorter)
     }
@@ -662,7 +662,7 @@ impl<T> Array<T> {
         order: &str,
     ) -> Result<Array<isize>, NumPyError>
     where
-        T: Clone + PartialOrd + crate::sorting::ComparisonOps<T> + Default + Send + Sync + 'static,
+        T: Clone + PartialOrd + crate::comparison_ufuncs::ComparisonOps<T> + Default + Send + Sync + 'static,
     {
         crate::sorting::argpartition(self, kth, axis, kind, order)
     }
@@ -676,9 +676,180 @@ impl<T> Array<T> {
         order: &str,
     ) -> Result<Self, NumPyError>
     where
-        T: Clone + PartialOrd + crate::sorting::ComparisonOps<T> + Default + Send + Sync + 'static,
+        T: Clone + PartialOrd + crate::comparison_ufuncs::ComparisonOps<T> + Default + Send + Sync + 'static,
     {
         crate::sorting::partition(self, kth, axis, kind, order)
+    }
+
+    // ===== Array Manipulation Methods =====
+
+    /// Flatten array to 1D (always returns a copy)
+    pub fn flatten(&self, order: &str) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + 'static,
+    {
+        crate::array_manipulation::flatten(self, order)
+    }
+
+    /// Return flattened array (contiguous if possible)
+    pub fn ravel(&self, order: &str) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + 'static,
+    {
+        crate::array_manipulation::ravel(self, order)
+    }
+
+    /// Repeat elements of array
+    pub fn repeat(&self, repeats: usize, axis: Option<isize>) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + 'static,
+    {
+        crate::array_manipulation::repeat(self, repeats, axis)
+    }
+
+    /// Interchange two axes
+    pub fn swapaxes(&self, axis1: isize, axis2: isize) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + 'static,
+    {
+        crate::array_manipulation::swapaxes(self, axis1, axis2)
+    }
+
+    /// Remove single-dimensional entries
+    pub fn squeeze(&self, axis: Option<&[isize]>) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + 'static,
+    {
+        crate::array_manipulation::squeeze(self, axis)
+    }
+
+    /// Clip values to interval [min, max]
+    pub fn clip(&self, min: T, max: T) -> Result<Self, NumPyError>
+    where
+        T: Clone + PartialOrd + Default + 'static,
+    {
+        if self.is_empty() {
+            return Ok(self.clone());
+        }
+
+        let mut result_data = Vec::with_capacity(self.size());
+        for i in 0..self.size() {
+            if let Some(val) = self.get_linear(i) {
+                let clipped = if *val < min {
+                    min.clone()
+                } else if *val > max {
+                    max.clone()
+                } else {
+                    val.clone()
+                };
+                result_data.push(clipped);
+            }
+        }
+
+        Ok(Self::from_shape_vec(self.shape().to_vec(), result_data))
+    }
+
+    /// Compress array using boolean mask
+    pub fn compress(&self, condition: &Array<bool>) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + 'static,
+    {
+        if condition.ndim() != 1 {
+            return Err(NumPyError::invalid_operation(
+                "compress condition must be 1-dimensional",
+            ));
+        }
+
+        if self.ndim() != 1 {
+            return Err(NumPyError::invalid_operation(
+                "compress only supports 1D arrays",
+            ));
+        }
+
+        let mut result_data = Vec::new();
+        for i in 0..self.size().min(condition.size()) {
+            if let Some(cond_val) = condition.get_linear(i) {
+                if *cond_val {
+                    if let Some(val) = self.get_linear(i) {
+                        result_data.push(val.clone());
+                    }
+                }
+            }
+        }
+
+        Ok(Self::from_shape_vec(vec![result_data.len()], result_data))
+    }
+
+    /// Return specified diagonals
+    pub fn diagonal(&self, offset: isize, axis1: isize, axis2: isize) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + 'static,
+    {
+        let ndim = self.ndim();
+        if ndim < 2 {
+            return Err(NumPyError::invalid_operation(
+                "diagonal requires at least 2D array",
+            ));
+        }
+
+        let axis1 = normalize_axis(axis1, ndim)?;
+        let axis2 = normalize_axis(axis2, ndim)?;
+
+        if axis1 == axis2 {
+            return Err(NumPyError::invalid_operation(
+                "axis1 and axis2 cannot be the same",
+            ));
+        }
+
+        // For 2D arrays, extract diagonal with offset
+        if ndim == 2 {
+            let rows = self.shape()[axis1];
+            let cols = self.shape()[axis2];
+
+            let diag_size = if offset >= 0 {
+                rows.saturating_sub(offset as usize)
+            } else {
+                cols.saturating_sub(offset.unsigned_abs())
+            };
+
+            let mut result_data = Vec::new();
+            for i in 0..diag_size {
+                let row = if offset >= 0 { i } else { i.saturating_sub(offset.unsigned_abs()) };
+                let col = if offset >= 0 { i + offset as usize } else { i };
+
+                if row < rows && col < cols {
+                    let val = self.get_multi(&[row, col])?;
+                    result_data.push(val.clone());
+                }
+            }
+
+            return Ok(Self::from_shape_vec(vec![diag_size], result_data));
+        }
+
+        // For higher dimensions, return error (not implemented)
+        Err(NumPyError::not_implemented(
+            "diagonal for arrays with more than 2 dimensions",
+        ))
+    }
+
+    /// Resize array in-place (returns new array with resized data)
+    pub fn resize(&self, newshape: &[usize]) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + 'static,
+    {
+        let new_size: usize = newshape.iter().product();
+        let current_data = self.to_vec();
+
+        let mut result_data = Vec::with_capacity(new_size);
+        for i in 0..new_size {
+            if i < current_data.len() {
+                result_data.push(current_data[i].clone());
+            } else {
+                result_data.push(T::default());
+            }
+        }
+
+        Ok(Self::from_shape_vec(newshape.to_vec(), result_data))
     }
 }
 

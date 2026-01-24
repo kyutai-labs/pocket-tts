@@ -1,0 +1,11 @@
+{
+  "name": "linear_trend",
+  "shape": [
+    252
+  ],
+  "dtype": "float64",
+  "size": 252,
+  "description": "Test data for linear_trend",
+  "generated_at": "2026-01-23 22:24:26",
+  "seed": 42
+}

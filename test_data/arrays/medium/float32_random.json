@@ -1,0 +1,43 @@
+{
+  "description": "Medium arrays with random values",
+  "dtype": "float32",
+  "arrays": {
+    "size_100": {
+      "shape": [
+        100
+      ],
+      "dtype": "float32",
+      "size": 100
+    },
+    "size_250": {
+      "shape": [
+        250
+      ],
+      "dtype": "float32",
+      "size": 250
+    },
+    "size_500": {
+      "shape": [
+        500
+      ],
+      "dtype": "float32",
+      "size": 500
+    },
+    "size_750": {
+      "shape": [
+        750
+      ],
+      "dtype": "float32",
+      "size": 750
+    },
+    "size_1000": {
+      "shape": [
+        1000
+      ],
+      "dtype": "float32",
+      "size": 1000
+    }
+  },
+  "generated_at": "2026-01-23 22:20:27",
+  "generator_version": "1.0.0"
+}

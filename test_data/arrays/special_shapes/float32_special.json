@@ -1,0 +1,43 @@
+{
+  "description": "Special shape arrays for edge case testing",
+  "dtype": "float32",
+  "arrays": {
+    "empty": {
+      "shape": [
+        0
+      ],
+      "dtype": "float32",
+      "size": 0
+    },
+    "single_element": {
+      "shape": [
+        1
+      ],
+      "dtype": "float32",
+      "size": 1
+    },
+    "zero_dim": {
+      "shape": [],
+      "dtype": "float32",
+      "size": 1
+    },
+    "broadcast_1x5": {
+      "shape": [
+        1,
+        5
+      ],
+      "dtype": "float32",
+      "size": 5
+    },
+    "broadcast_5x1": {
+      "shape": [
+        5,
+        1
+      ],
+      "dtype": "float32",
+      "size": 5
+    }
+  },
+  "generated_at": "2026-01-23 22:20:27",
+  "generator_version": "1.0.0"
+}

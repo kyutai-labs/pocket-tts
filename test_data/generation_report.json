@@ -1,0 +1,269 @@
+{
+  "generation_info": {
+    "total_datasets": 23,
+    "generated_at": "2026-01-23 22:24:26",
+    "seed": 42,
+    "generator_version": "1.0.0"
+  },
+  "datasets": {
+    "arrays/size_tests_10.parquet": {
+      "name": "size_10",
+      "shape": [
+        10
+      ],
+      "dtype": "float32",
+      "size": 10,
+      "description": "Test data for size_10",
+      "generated_at": "2026-01-23 22:24:26",
+      "seed": 42
+    },
+    "arrays/size_tests_100.parquet": {
+      "name": "size_100",
+      "shape": [
+        100
+      ],
+      "dtype": "float32",
+      "size": 100,
+      "description": "Test data for size_100",
+      "generated_at": "2026-01-23 22:24:26",
+      "seed": 42
+    },
+    "arrays/size_tests_1000.parquet": {
+      "name": "size_1000",
+      "shape": [
+        1000
+      ],
+      "dtype": "float32",
+      "size": 1000,
+      "description": "Test data for size_1000",
+      "generated_at": "2026-01-23 22:24:26",
+      "seed": 42
+    },
+    "arrays/multidim_0.parquet": {
+      "name": "multidim_0_shape_(5, 4)",
+      "shape": [
+        5,
+        4
+      ],
+      "dtype": "float32",
+      "size": 20,
+      "description": "Test data for multidim_0_shape_(5, 4)",
+      "generated_at": "2026-01-23 22:24:26",
+      "seed": 42
+    },
+    "arrays/multidim_1.parquet": {
+      "name": "multidim_1_shape_(3, 3, 3)",
+      "shape": [
+        3,
+        3,
+        3
+      ],
+      "dtype": "float32",
+      "size": 27,
+      "description": "Test data for multidim_1_shape_(3, 3, 3)",
+      "generated_at": "2026-01-23 22:24:26",
+      "seed": 42
+    },
+    "arrays/multidim_2.parquet": {
+      "name": "multidim_2_shape_(2, 2, 2, 2)",
+      "shape": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "dtype": "float32",
+      "size": 16,
+      "description": "Test data for multidim_2_shape_(2, 2, 2, 2)",
+      "generated_at": "2026-01-23 22:24:26",
+      "seed": 42
+    },
+    "mathematical/sine_wave.parquet": {
+      "name": "sine_wave",
+      "shape": [
+        100
+      ],
+      "dtype": "float32",
+      "size": 100,
+      "description": "Test data for sine_wave",
+      "generated_at": "2026-01-23 22:24:26",
+      "seed": 42
+    },
+    "mathematical/cosine_wave.parquet": {
+      "name": "cosine_wave",
+      "shape": [
+        100
+      ],
+      "dtype": "float32",
+      "size": 100,
+      "description": "Test data for cosine_wave",
+      "generated_at": "2026-01-23 22:24:26",
+      "seed": 42
+    },
+    "mathematical/exponential.parquet": {
+      "name": "exponential",
+      "shape": [
+        100
+      ],
+      "dtype": "float32",
+      "size": 100,
+      "description": "Test data for exponential",
+      "generated_at": "2026-01-23 22:24:26",
+      "seed": 42
+    },
+    "mathematical/logarithmic.parquet": {
+      "name": "logarithmic",
+      "shape": [
+        100
+      ],
+      "dtype": "float32",
+      "size": 100,
+      "description": "Test data for logarithmic",
+      "generated_at": "2026-01-23 22:24:26",
+      "seed": 42
+    },
+    "mathematical/random_normal.parquet": {
+      "name": "random_normal",
+      "shape": [
+        1000
+      ],
+      "dtype": "float32",
+      "size": 1000,
+      "description": "Test data for random_normal",
+      "generated_at": "2026-01-23 22:24:26",
+      "seed": 42
+    },
+    "mathematical/random_uniform.parquet": {
+      "name": "random_uniform",
+      "shape": [
+        1000
+      ],
+      "dtype": "float32",
+      "size": 1000,
+      "description": "Test data for random_uniform",
+      "generated_at": "2026-01-23 22:24:26",
+      "seed": 42
+    },
+    "edge_cases/with_nan.parquet": {
+      "name": "with_nan",
+      "shape": [
+        4
+      ],
+      "dtype": "float32",
+      "size": 4,
+      "description": "Test data for with_nan",
+      "generated_at": "2026-01-23 22:24:26",
+      "seed": 42
+    },
+    "edge_cases/with_inf.parquet": {
+      "name": "with_inf",
+      "shape": [
+        4
+      ],
+      "dtype": "float32",
+      "size": 4,
+      "description": "Test data for with_inf",
+      "generated_at": "2026-01-23 22:24:26",
+      "seed": 42
+    },
+    "edge_cases/very_large.parquet": {
+      "name": "very_large",
+      "shape": [
+        3
+      ],
+      "dtype": "float32",
+      "size": 3,
+      "description": "Test data for very_large",
+      "generated_at": "2026-01-23 22:24:26",
+      "seed": 42
+    },
+    "edge_cases/very_small.parquet": {
+      "name": "very_small",
+      "shape": [
+        3
+      ],
+      "dtype": "float32",
+      "size": 3,
+      "description": "Test data for very_small",
+      "generated_at": "2026-01-23 22:24:26",
+      "seed": 42
+    },
+    "edge_cases/near_zero.parquet": {
+      "name": "near_zero",
+      "shape": [
+        3
+      ],
+      "dtype": "float32",
+      "size": 3,
+      "description": "Test data for near_zero",
+      "generated_at": "2026-01-23 22:24:26",
+      "seed": 42
+    },
+    "real_world/audio_speech_signal.parquet": {
+      "name": "speech_signal",
+      "shape": [
+        2000
+      ],
+      "dtype": "float32",
+      "size": 2000,
+      "description": "Test data for speech_signal",
+      "generated_at": "2026-01-23 22:24:26",
+      "seed": 42
+    },
+    "real_world/audio_musical_note.parquet": {
+      "name": "musical_note",
+      "shape": [
+        2000
+      ],
+      "dtype": "float32",
+      "size": 2000,
+      "description": "Test data for musical_note",
+      "generated_at": "2026-01-23 22:24:26",
+      "seed": 42
+    },
+    "real_world/audio_noise_signal.parquet": {
+      "name": "noise_signal",
+      "shape": [
+        2000
+      ],
+      "dtype": "float32",
+      "size": 2000,
+      "description": "Test data for noise_signal",
+      "generated_at": "2026-01-23 22:24:26",
+      "seed": 42
+    },
+    "real_world/timeseries_linear_trend.parquet": {
+      "name": "linear_trend",
+      "shape": [
+        252
+      ],
+      "dtype": "float64",
+      "size": 252,
+      "description": "Test data for linear_trend",
+      "generated_at": "2026-01-23 22:24:26",
+      "seed": 42
+    },
+    "real_world/timeseries_seasonal_pattern.parquet": {
+      "name": "seasonal_pattern",
+      "shape": [
+        252
+      ],
+      "dtype": "float32",
+      "size": 252,
+      "description": "Test data for seasonal_pattern",
+      "generated_at": "2026-01-23 22:24:26",
+      "seed": 42
+    },
+    "real_world/timeseries_random_walk.parquet": {
+      "name": "random_walk",
+      "shape": [
+        252
+      ],
+      "dtype": "float32",
+      "size": 252,
+      "description": "Test data for random_walk",
+      "generated_at": "2026-01-23 22:24:26",
+      "seed": 42
+    }
+  }
+}

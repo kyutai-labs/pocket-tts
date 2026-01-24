@@ -1,0 +1,11 @@
+{
+  "name": "very_small",
+  "shape": [
+    3
+  ],
+  "dtype": "float32",
+  "size": 3,
+  "description": "Test data for very_small",
+  "generated_at": "2026-01-23 22:24:26",
+  "seed": 42
+}

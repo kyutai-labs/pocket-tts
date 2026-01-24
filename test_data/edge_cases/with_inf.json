@@ -1,0 +1,11 @@
+{
+  "name": "with_inf",
+  "shape": [
+    4
+  ],
+  "dtype": "float32",
+  "size": 4,
+  "description": "Test data for with_inf",
+  "generated_at": "2026-01-23 22:24:26",
+  "seed": 42
+}

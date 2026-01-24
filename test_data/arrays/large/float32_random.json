@@ -1,0 +1,43 @@
+{
+  "description": "Large arrays with random values",
+  "dtype": "float32",
+  "arrays": {
+    "size_10000": {
+      "shape": [
+        10000
+      ],
+      "dtype": "float32",
+      "size": 10000
+    },
+    "size_25000": {
+      "shape": [
+        25000
+      ],
+      "dtype": "float32",
+      "size": 25000
+    },
+    "size_50000": {
+      "shape": [
+        50000
+      ],
+      "dtype": "float32",
+      "size": 50000
+    },
+    "size_75000": {
+      "shape": [
+        75000
+      ],
+      "dtype": "float32",
+      "size": 75000
+    },
+    "size_100000": {
+      "shape": [
+        100000
+      ],
+      "dtype": "float32",
+      "size": 100000
+    }
+  },
+  "generated_at": "2026-01-23 22:20:27",
+  "generator_version": "1.0.0"
+}

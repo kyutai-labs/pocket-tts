@@ -1,0 +1,74 @@
+{
+  "description": "Multi-dimensional arrays with various shapes",
+  "dtype": "float32",
+  "arrays": {
+    "dim_0_shape_(10,)": {
+      "shape": [
+        10
+      ],
+      "dtype": "float32",
+      "size": 10
+    },
+    "dim_1_shape_(5, 4)": {
+      "shape": [
+        5,
+        4
+      ],
+      "dtype": "float32",
+      "size": 20
+    },
+    "dim_2_shape_(3, 3, 3)": {
+      "shape": [
+        3,
+        3,
+        3
+      ],
+      "dtype": "float32",
+      "size": 27
+    },
+    "dim_3_shape_(2, 2, 2, 2)": {
+      "shape": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "dtype": "float32",
+      "size": 16
+    },
+    "dim_4_shape_(2, 3, 4)": {
+      "shape": [
+        2,
+        3,
+        4
+      ],
+      "dtype": "float32",
+      "size": 24
+    },
+    "dim_5_shape_(2, 2, 2, 2, 2)": {
+      "shape": [
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "dtype": "float32",
+      "size": 32
+    },
+    "dim_6_shape_(2, 2, 2, 2, 2, 2)": {
+      "shape": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "dtype": "float32",
+      "size": 64
+    }
+  },
+  "generated_at": "2026-01-23 22:20:27",
+  "generator_version": "1.0.0"
+}

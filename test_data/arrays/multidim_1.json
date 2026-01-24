@@ -1,0 +1,13 @@
+{
+  "name": "multidim_1_shape_(3, 3, 3)",
+  "shape": [
+    3,
+    3,
+    3
+  ],
+  "dtype": "float32",
+  "size": 27,
+  "description": "Test data for multidim_1_shape_(3, 3, 3)",
+  "generated_at": "2026-01-23 22:24:26",
+  "seed": 42
+}

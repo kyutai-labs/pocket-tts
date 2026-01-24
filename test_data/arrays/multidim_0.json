@@ -1,0 +1,12 @@
+{
+  "name": "multidim_0_shape_(5, 4)",
+  "shape": [
+    5,
+    4
+  ],
+  "dtype": "float32",
+  "size": 20,
+  "description": "Test data for multidim_0_shape_(5, 4)",
+  "generated_at": "2026-01-23 22:24:26",
+  "seed": 42
+}

@@ -1,0 +1,439 @@
+{
+  "validation_summary": {
+    "total_datasets": 67,
+    "successful_datasets": 21,
+    "failed_datasets": 46,
+    "total_issues": 46,
+    "issues_fixed": 0,
+    "validation_time": "2026-01-23T22:25:27.296782"
+  },
+  "dataset_results": {
+    "arrays/dtype_coverage_float64_uniform.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/small_arrays.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/multidim_1.parquet": {
+      "success": true,
+      "issues": [],
+      "issue_count": 0
+    },
+    "arrays/dtype_coverage_float32_uniform.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/size_tests_100.parquet": {
+      "success": true,
+      "issues": [],
+      "issue_count": 0
+    },
+    "arrays/dtype_coverage_uint64_random.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/size_tests_10.parquet": {
+      "success": true,
+      "issues": [],
+      "issue_count": 0
+    },
+    "arrays/dtype_coverage_float16_uniform.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/dtype_coverage_float32_random.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/large_arrays.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/dtype_coverage_int64_random.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/dtype_coverage_int8_random.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/dtype_coverage_uint32_random.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/dtype_coverage_int16_random.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/multidim_0.parquet": {
+      "success": true,
+      "issues": [],
+      "issue_count": 0
+    },
+    "arrays/dtype_coverage_uint16_random.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/dtype_coverage_uint8_random.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/multidim_2.parquet": {
+      "success": true,
+      "issues": [],
+      "issue_count": 0
+    },
+    "arrays/dtype_coverage_float16_random.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/dtype_coverage_float64_random.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/size_tests_1000.parquet": {
+      "success": true,
+      "issues": [],
+      "issue_count": 0
+    },
+    "arrays/medium_arrays.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/dtype_coverage_int32_random.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/small/float32_random_size_3.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/small/float32_random_size_5.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/small/float32_random_size_10.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/small/float32_random_size_1.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/small/float32_random_size_7.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/large/float32_random_size_50000.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/large/float32_random_size_10000.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/large/float32_random_size_75000.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/large/float32_random_size_100000.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/large/float32_random_size_25000.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/medium/float32_random_size_750.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/medium/float32_random_size_100.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/medium/float32_random_size_1000.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/medium/float32_random_size_500.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/medium/float32_random_size_250.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/special_shapes/float32_special_empty.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/special_shapes/float32_special_broadcast_1x5.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/special_shapes/float32_special_broadcast_5x1.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/special_shapes/float32_special_single_element.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/special_shapes/float32_special_zero_dim.parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/multidimensional/float32_random_dim_6_shape_(2, 2, 2, 2, 2, 2).parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/multidimensional/float32_random_dim_5_shape_(2, 2, 2, 2, 2).parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/multidimensional/float32_random_dim_1_shape_(5, 4).parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/multidimensional/float32_random_dim_0_shape_(10,).parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/multidimensional/float32_random_dim_2_shape_(3, 3, 3).parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/multidimensional/float32_random_dim_4_shape_(2, 3, 4).parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "arrays/multidimensional/float32_random_dim_3_shape_(2, 2, 2, 2).parquet": {
+      "success": false,
+      "issues": [
+        "Missing metadata file"
+      ],
+      "issue_count": 1
+    },
+    "mathematical/random_normal.parquet": {
+      "success": true,
+      "issues": [],
+      "issue_count": 0
+    },
+    "mathematical/cosine_wave.parquet": {
+      "success": true,
+      "issues": [],
+      "issue_count": 0
+    },
+    "mathematical/logarithmic.parquet": {
+      "success": true,
+      "issues": [],
+      "issue_count": 0
+    },
+    "mathematical/random_uniform.parquet": {
+      "success": true,
+      "issues": [],
+      "issue_count": 0
+    },
+    "mathematical/exponential.parquet": {
+      "success": true,
+      "issues": [],
+      "issue_count": 0
+    },
+    "mathematical/sine_wave.parquet": {
+      "success": true,
+      "issues": [],
+      "issue_count": 0
+    },
+    "edge_cases/near_zero.parquet": {
+      "success": true,
+      "issues": [],
+      "issue_count": 0
+    },
+    "edge_cases/very_small.parquet": {
+      "success": true,
+      "issues": [],
+      "issue_count": 0
+    },
+    "edge_cases/very_large.parquet": {
+      "success": false,
+      "issues": [
+        "Suspiciously large values in data: max=1.0000000200408773e+20"
+      ],
+      "issue_count": 1
+    },
+    "edge_cases/with_inf.parquet": {
+      "success": false,
+      "issues": [
+        "Unexpected Inf values in data"
+      ],
+      "issue_count": 1
+    },
+    "edge_cases/with_nan.parquet": {
+      "success": true,
+      "issues": [],
+      "issue_count": 0
+    },
+    "real_world/timeseries_random_walk.parquet": {
+      "success": true,
+      "issues": [],
+      "issue_count": 0
+    },
+    "real_world/audio_noise_signal.parquet": {
+      "success": true,
+      "issues": [],
+      "issue_count": 0
+    },
+    "real_world/timeseries_linear_trend.parquet": {
+      "success": true,
+      "issues": [],
+      "issue_count": 0
+    },
+    "real_world/audio_speech_signal.parquet": {
+      "success": true,
+      "issues": [],
+      "issue_count": 0
+    },
+    "real_world/audio_musical_note.parquet": {
+      "success": true,
+      "issues": [],
+      "issue_count": 0
+    },
+    "real_world/timeseries_seasonal_pattern.parquet": {
+      "success": true,
+      "issues": [],
+      "issue_count": 0
+    }
+  }
+}

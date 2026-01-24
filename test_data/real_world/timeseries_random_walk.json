@@ -1,0 +1,11 @@
+{
+  "name": "random_walk",
+  "shape": [
+    252
+  ],
+  "dtype": "float32",
+  "size": 252,
+  "description": "Test data for random_walk",
+  "generated_at": "2026-01-23 22:24:26",
+  "seed": 42
+}

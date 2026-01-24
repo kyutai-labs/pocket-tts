@@ -1,0 +1,11 @@
+{
+  "name": "seasonal_pattern",
+  "shape": [
+    252
+  ],
+  "dtype": "float32",
+  "size": 252,
+  "description": "Test data for seasonal_pattern",
+  "generated_at": "2026-01-23 22:24:26",
+  "seed": 42
+}

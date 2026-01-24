@@ -1,0 +1,11 @@
+{
+  "name": "random_uniform",
+  "shape": [
+    1000
+  ],
+  "dtype": "float32",
+  "size": 1000,
+  "description": "Test data for random_uniform",
+  "generated_at": "2026-01-23 22:24:26",
+  "seed": 42
+}

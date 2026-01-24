@@ -1,0 +1,43 @@
+{
+  "description": "Small arrays with random values",
+  "dtype": "float32",
+  "arrays": {
+    "size_1": {
+      "shape": [
+        1
+      ],
+      "dtype": "float32",
+      "size": 1
+    },
+    "size_3": {
+      "shape": [
+        3
+      ],
+      "dtype": "float32",
+      "size": 3
+    },
+    "size_5": {
+      "shape": [
+        5
+      ],
+      "dtype": "float32",
+      "size": 5
+    },
+    "size_7": {
+      "shape": [
+        7
+      ],
+      "dtype": "float32",
+      "size": 7
+    },
+    "size_10": {
+      "shape": [
+        10
+      ],
+      "dtype": "float32",
+      "size": 10
+    }
+  },
+  "generated_at": "2026-01-23 22:20:27",
+  "generator_version": "1.0.0"
+}

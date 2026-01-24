@@ -1,0 +1,7 @@
+{
+  "dataset": "test_data/mathematical/sine_wave.parquet",
+  "arrays_tested": 1,
+  "numpy_tests_passed": false,
+  "rust_available": false,
+  "test_time": "2026-01-23 22:37:31"
+}

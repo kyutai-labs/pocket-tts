@@ -34,7 +34,9 @@ def lsd_decode(v_t: FlowNet2, x_0: torch.Tensor, num_steps: int = 1) -> torch.Te
         s = i / num_steps
         t = (i + 1) / num_steps
         flow_dir = v_t(
-            s * torch.ones_like(x_0[..., :1]), t * torch.ones_like(x_0[..., :1]), current
+            s * torch.ones_like(x_0[..., :1]),
+            t * torch.ones_like(x_0[..., :1]),
+            current,
         )
         current += flow_dir / num_steps
     return current
@@ -116,21 +118,29 @@ class FlowLMModel(nn.Module):
         sequence = torch.where(torch.isnan(sequence), self.bos_emb, sequence)
         input_ = self.input_linear(sequence)
 
-        transformer_out = self.backbone(input_, text_embeddings, sequence, model_state=model_state)
+        transformer_out = self.backbone(
+            input_, text_embeddings, sequence, model_state=model_state
+        )
         transformer_out = transformer_out.to(torch.float32)
         if lsd_decode_steps <= 0:
-            raise ValueError(f"lsd_decode_steps must be positive, got {lsd_decode_steps}")
+            raise ValueError(
+                f"lsd_decode_steps must be positive, got {lsd_decode_steps}"
+            )
 
         transformer_out = transformer_out[:, -1]
         out_eos = self.out_eos(transformer_out) > eos_threshold
 
         noise_shape = transformer_out.shape[:-1] + (self.ldim,)
         std = temp**0.5
-        noise = torch.empty(noise_shape, dtype=transformer_out.dtype, device=transformer_out.device)
+        noise = torch.empty(
+            noise_shape, dtype=transformer_out.dtype, device=transformer_out.device
+        )
         if noise_clamp is None:
             torch.nn.init.normal_(noise, mean=0.0, std=std)
         else:
-            torch.nn.init.trunc_normal_(noise, mean=0.0, std=std, a=-noise_clamp, b=noise_clamp)
+            torch.nn.init.trunc_normal_(
+                noise, mean=0.0, std=std, a=-noise_clamp, b=noise_clamp
+            )
         conditioned_flow = partial(self.flow_net, transformer_out)
         return lsd_decode(conditioned_flow, noise, lsd_decode_steps), out_eos
 

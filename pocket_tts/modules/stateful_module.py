@@ -19,7 +19,9 @@ def init_states(
 
 
 def increment_steps(
-    module: nn.Module, model_state: dict[str, dict[str, torch.Tensor]], increment: int = 1
+    module: nn.Module,
+    model_state: dict[str, dict[str, torch.Tensor]],
+    increment: int = 1,
 ):
     # print("incrementing steps by", increment)
     for module_name, module in module.named_modules():
@@ -86,10 +88,14 @@ class StatefulModule(ABC, nn.Module):
         pass
 
     # Remove type hints to prevent beartype wrapping
-    def get_state(self, model_state: Dict[str, Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
+    def get_state(
+        self, model_state: Dict[str, Dict[str, torch.Tensor]]
+    ) -> Dict[str, torch.Tensor]:
         """Get the state for this module from the model state."""
         if self._module_absolute_name is None:
-            raise RuntimeError("Module absolute name not set. Ensure init_states() was called.")
+            raise RuntimeError(
+                "Module absolute name not set. Ensure init_states() was called."
+            )
         return model_state[self._module_absolute_name]
 
     # End of class

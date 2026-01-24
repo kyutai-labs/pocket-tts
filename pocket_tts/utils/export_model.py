@@ -74,7 +74,8 @@ def export_flow_lm_to_torchscript(model: TTSModel, output_dir: Path) -> Path:
 
         logger.error("TorchScript export failed: %s\n%s", e, traceback.format_exc())
         logger.warning(
-            "Skipping FlowLM export due to error: Could not export FlowLM to TorchScript: %s", e
+            "Skipping FlowLM export due to error: Could not export FlowLM to TorchScript: %s",
+            e,
         )
         return None
 
@@ -232,13 +233,18 @@ def export_mimi_decoder_to_onnx(model: TTSModel, output_dir: Path) -> Path:
     # Use tracing to bypass Dynamo-based exporter issues with multiple inputs
     # This also helps with JIT-compatible state handling
     with torch.no_grad():
-        traced_wrapper = torch.jit.trace(wrapper, (dummy_latent, *state_tensors), strict=False)
+        traced_wrapper = torch.jit.trace(
+            wrapper, (dummy_latent, *state_tensors), strict=False
+        )
 
     input_names = ["latent"] + state_keys
     output_names = ["audio"] + [f"new_{k}" for k in state_keys]
 
     # Dynamic axes for latent length and batch
-    dynamic_axes = {"latent": {0: "batch", 2: "seq_len"}, "audio": {0: "batch", 2: "audio_len"}}
+    dynamic_axes = {
+        "latent": {0: "batch", 2: "seq_len"},
+        "audio": {0: "batch", 2: "audio_len"},
+    }
     # Note: State tensors are usually fixed size once initialized for a given batch
     # but we can make the batch dimension dynamic.
     for name in state_keys:
@@ -323,7 +329,15 @@ def export_flow_lm_to_onnx(model: TTSModel, output_dir: Path) -> Path:
 
     torch.onnx.export(
         traced_wrapper,
-        (dummy_seq, dummy_text, dummy_steps, dummy_temp, dummy_clamp, dummy_thresh, *state_tensors),
+        (
+            dummy_seq,
+            dummy_text,
+            dummy_steps,
+            dummy_temp,
+            dummy_clamp,
+            dummy_thresh,
+            *state_tensors,
+        ),
         output_path,
         input_names=input_names,
         output_names=output_names,
@@ -337,7 +351,10 @@ def export_flow_lm_to_onnx(model: TTSModel, output_dir: Path) -> Path:
 
 
 def export_model(
-    model: TTSModel, output_dir: str | Path, components: str = "all", format: str = "torchscript"
+    model: TTSModel,
+    output_dir: str | Path,
+    components: str = "all",
+    format: str = "torchscript",
 ) -> dict[str, Path]:
     """Export model to TorchScript or ONNX.
 
@@ -377,6 +394,8 @@ def export_model(
         except Exception as e:
             import traceback
 
-            logger.error("Failed to export %s to ONNX: %s\n%s", comp, e, traceback.format_exc())
+            logger.error(
+                "Failed to export %s to ONNX: %s\n%s", comp, e, traceback.format_exc()
+            )
 
     return results

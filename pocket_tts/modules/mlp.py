@@ -19,7 +19,9 @@ def modulate(x, shift, scale):
 
 def _rms_norm(x: torch.Tensor, alpha: torch.Tensor, eps: float):
     if x.dim() < alpha.dim():
-        raise ValueError(f"Input dimension {x.dim()} must be at least alpha dimension {alpha.dim()}")
+        raise ValueError(
+            f"Input dimension {x.dim()} must be at least alpha dimension {alpha.dim()}"
+        )
     x_dtype = x.dtype
     var = eps + x.var(dim=-1, keepdim=True)
     y = (x * (alpha.to(var) * torch.rsqrt(var))).to(x_dtype)
@@ -73,7 +75,10 @@ class TimestepEmbedder(nn.Module):
     """Embeds scalar timesteps into vector representations."""
 
     def __init__(
-        self, hidden_size: int, frequency_embedding_size: int = 256, max_period: int = 10000
+        self,
+        hidden_size: int,
+        frequency_embedding_size: int = 256,
+        max_period: int = 10000,
     ):
         super().__init__()
         blocks = [
@@ -86,14 +91,17 @@ class TimestepEmbedder(nn.Module):
         self.frequency_embedding_size = frequency_embedding_size
         half = frequency_embedding_size // 2
         self.register_buffer(
-            "freqs", torch.exp(-math.log(max_period) * torch.arange(start=0, end=half) / half)
+            "freqs",
+            torch.exp(-math.log(max_period) * torch.arange(start=0, end=half) / half),
         )
 
     def forward(self, t):
         args = t * self.freqs.to(t.dtype)
         embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
         if self.frequency_embedding_size % 2 != 0:
-            raise ValueError(f"frequency_embedding_size must be even, got {self.frequency_embedding_size}")
+            raise ValueError(
+                f"frequency_embedding_size must be even, got {self.frequency_embedding_size}"
+            )
         t_emb = self.mlp(embedding)
         return t_emb
 
@@ -193,14 +201,21 @@ class SimpleMLPAdaLN(nn.Module):
         self.final_layer = FinalLayer(model_channels, out_channels)
 
     @classmethod
-    def from_pydantic_config(cls, cfg: FlowLMConfig, latent_dim: int, cond_dim: int) -> Self:
+    def from_pydantic_config(
+        cls, cfg: FlowLMConfig, latent_dim: int, cond_dim: int
+    ) -> Self:
         config = cfg.flow
 
         flow_dim = config.dim
         flow_depth = config.depth
         num_time_conds = 2
         return SimpleMLPAdaLN(
-            latent_dim, flow_dim, latent_dim, cond_dim, flow_depth, num_time_conds=num_time_conds
+            latent_dim,
+            flow_dim,
+            latent_dim,
+            cond_dim,
+            flow_depth,
+            num_time_conds=num_time_conds,
         )
 
     def forward(
@@ -218,7 +233,9 @@ class SimpleMLPAdaLN(nn.Module):
         ts = [s, t]
         x = self.input_proj(x)
         if len(ts) != self.num_time_conds:
-            raise ValueError(f"Expected {self.num_time_conds} time conditions, got {len(ts)}")
+            raise ValueError(
+                f"Expected {self.num_time_conds} time conditions, got {len(ts)}"
+            )
         if self.num_time_conds == 1:
             raise ValueError("num_time_conds must not be 1")
 

@@ -18,7 +18,9 @@ def get_extra_padding_for_conv1d(
     return ideal_length - length
 
 
-def pad_for_conv1d(x: torch.Tensor, kernel_size: int, stride: int, padding_total: int = 0):
+def pad_for_conv1d(
+    x: torch.Tensor, kernel_size: int, stride: int, padding_total: int = 0
+):
     """Pad for a convolution to make sure that the last window is full.
     Extra padding is added at the end. This is required to ensure that we can rebuild
     an output of the same length, as otherwise, even with padding, some time steps
@@ -51,7 +53,9 @@ class StreamingConv1d(StatefulModule):
     ):
         super().__init__()
         if pad_mode not in ["constant", "replicate"]:
-            raise ValueError(f"pad_mode must be 'constant' or 'replicate', got {pad_mode}")
+            raise ValueError(
+                f"pad_mode must be 'constant' or 'replicate', got {pad_mode}"
+            )
         self.pad_mode = pad_mode
         # warn user on unusual setup between dilation and stride
         if stride > 1 and dilation > 1:
@@ -80,9 +84,13 @@ class StreamingConv1d(StatefulModule):
     @property
     def _effective_kernel_size(self) -> int:
         dilation = self.conv.dilation[0]
-        return (self._kernel_size - 1) * dilation + 1  # effective kernel size with dilations
+        return (
+            self._kernel_size - 1
+        ) * dilation + 1  # effective kernel size with dilations
 
-    def init_state(self, batch_size: int, sequence_length: int) -> dict[str, torch.Tensor]:
+    def init_state(
+        self, batch_size: int, sequence_length: int
+    ) -> dict[str, torch.Tensor]:
         stride = self._stride
         # Effective kernel size accounting for dilation.
         kernel = self._effective_kernel_size
@@ -95,11 +103,17 @@ class StreamingConv1d(StatefulModule):
         S = self._stride
         if T == 0 or T % S != 0:
             raise ValueError(f"Steps must be multiple of stride {S}, got {T}")
-        state = self.init_state(B, 0) if model_state is None else self.get_state(model_state)
+        state = (
+            self.init_state(B, 0)
+            if model_state is None
+            else self.get_state(model_state)
+        )
         TP = state["previous"].shape[-1]
         if TP and self.pad_mode == "replicate":
             if T < TP:
-                raise ValueError(f"Not enough content to pad streaming: got {T} steps, need {TP}")
+                raise ValueError(
+                    f"Not enough content to pad streaming: got {T} steps, need {TP}"
+                )
             init = x[..., :1]
             state["previous"][:] = torch.where(
                 state["first"].view(-1, 1, 1), init, state["previous"]
@@ -141,7 +155,9 @@ class StreamingConvTranspose1d(StatefulModule):
     def _kernel_size(self) -> int:
         return self.convtr.kernel_size[0]
 
-    def init_state(self, batch_size: int, sequence_length: int) -> dict[str, torch.Tensor]:
+    def init_state(
+        self, batch_size: int, sequence_length: int
+    ) -> dict[str, torch.Tensor]:
         K = self._kernel_size
         S = self._stride
         return dict(partial=torch.zeros(batch_size, self.convtr.out_channels, K - S))

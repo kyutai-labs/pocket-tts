@@ -13,7 +13,10 @@ async def test_websocket():
         print(f"Connected to {uri}")
 
         # Send request
-        request = {"text": "Hello! The WebSocket server is working correctly.", "voice": "javert"}
+        request = {
+            "text": "Hello! The WebSocket server is working correctly.",
+            "voice": "javert",
+        }
         await websocket.send(json.dumps(request))
         print(f"Sent: {request['text']}")
 

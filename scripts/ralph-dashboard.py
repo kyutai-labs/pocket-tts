@@ -24,9 +24,13 @@ def main():
         description="Generate a Markdown status dashboard from Ralph JSONL logs."
     )
     ap.add_argument(
-        "--log-dir", default=".ralph/logs", help="Directory containing <run_id>.jsonl files"
+        "--log-dir",
+        default=".ralph/logs",
+        help="Directory containing <run_id>.jsonl files",
     )
-    ap.add_argument("--out", default="docs/status-dashboard.md", help="Output Markdown file")
+    ap.add_argument(
+        "--out", default="docs/status-dashboard.md", help="Output Markdown file"
+    )
     args = ap.parse_args()
 
     log_dir = Path(args.log_dir)
@@ -37,13 +41,22 @@ def main():
     issues = defaultdict(lambda: {"events": [], "last": None})
 
     if not log_dir.exists():
-        out_path.write_text("# Ralph Status Dashboard\n\nNo logs found.\n", encoding="utf-8")
+        out_path.write_text(
+            "# Ralph Status Dashboard\n\nNo logs found.\n", encoding="utf-8"
+        )
         return 0
 
     for p in sorted(log_dir.glob("*.jsonl")):
         run_id = p.stem
         runs.setdefault(
-            run_id, {"events": [], "first": None, "last": None, "agents": set(), "issues": set()}
+            run_id,
+            {
+                "events": [],
+                "first": None,
+                "last": None,
+                "agents": set(),
+                "issues": set(),
+            },
         )
         for line in p.read_text(encoding="utf-8").splitlines():
             line = line.strip()
@@ -72,7 +85,9 @@ def main():
     lines = []
     lines.append("# Ralph Status Dashboard")
     lines.append("")
-    lines.append(f"_Generated: {datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')}_")
+    lines.append(
+        f"_Generated: {datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')}_"
+    )
     lines.append("")
     lines.append("## Runs")
     lines.append("")
@@ -83,17 +98,23 @@ def main():
         key=lambda kv: (kv[1]["first"] or datetime.min.replace(tzinfo=timezone.utc)),
         reverse=True,
     ):
-        start = meta["first"].isoformat().replace("+00:00", "Z") if meta["first"] else ""
+        start = (
+            meta["first"].isoformat().replace("+00:00", "Z") if meta["first"] else ""
+        )
         end = meta["last"].isoformat().replace("+00:00", "Z") if meta["last"] else ""
         agents = ", ".join(sorted(meta["agents"])) if meta["agents"] else ""
         issue_count = len(meta["issues"])
         last_event = meta["events"][-1]["event"] if meta["events"] else ""
-        lines.append(f"| `{run_id}` | {start} | {end} | {agents} | {issue_count} | {last_event} |")
+        lines.append(
+            f"| `{run_id}` | {start} | {end} | {agents} | {issue_count} | {last_event} |"
+        )
 
     lines.append("")
     lines.append("## Issues")
     lines.append("")
-    lines.append("| Issue | Last event | Last status | Last run | Last timestamp (UTC) |")
+    lines.append(
+        "| Issue | Last event | Last status | Last run | Last timestamp (UTC) |"
+    )
     lines.append("|---:|---|---|---|---|")
     for issue, meta in sorted(issues.items(), key=lambda kv: kv[0]):
         last = meta["last"] or {}
@@ -105,7 +126,9 @@ def main():
     lines.append("")
     lines.append("## Notes")
     lines.append("")
-    lines.append("- This dashboard is log-derived. If you want it updated automatically, run:")
+    lines.append(
+        "- This dashboard is log-derived. If you want it updated automatically, run:"
+    )
     lines.append("  ```bash")
     lines.append("  ./scripts/ralph-dashboard.py")
     lines.append("  ```")

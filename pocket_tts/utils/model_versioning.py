@@ -105,7 +105,9 @@ class ModelMetadata:
             }
 
             return cls(
-                format_version=metadata_dict.get("format_version", ModelFormatVersion.V1.value),
+                format_version=metadata_dict.get(
+                    "format_version", ModelFormatVersion.V1.value
+                ),
                 model_version=metadata_dict.get("model_version", "unknown"),
                 pocket_tts_version=metadata_dict.get("pocket_tts_version"),
                 created_at=metadata_dict.get("created_at"),
@@ -171,7 +173,9 @@ class ModelVersionManager:
                     description="Legacy model without version metadata",
                 )
         except Exception as e:
-            logger.warning(f"Error detecting model version: {e}, assuming legacy format")
+            logger.warning(
+                f"Error detecting model version: {e}, assuming legacy format"
+            )
             return ModelMetadata(
                 format_version=ModelFormatVersion.V1.value,
                 model_version="legacy",
@@ -194,7 +198,10 @@ class ModelVersionManager:
 
         # V1 models are compatible but may lack features
         if metadata.format_version == ModelFormatVersion.V1.value:
-            return True, "Loading legacy v1.0 model - some features may not be available"
+            return (
+                True,
+                "Loading legacy v1.0 model - some features may not be available",
+            )
 
         # Future versions are not compatible
         try:
@@ -241,7 +248,9 @@ class ModelVersionManager:
         return state_dict
 
     @classmethod
-    def _transform_v1_to_v2(cls, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    def _transform_v1_to_v2(
+        cls, state_dict: dict[str, torch.Tensor]
+    ) -> dict[str, torch.Tensor]:
         """Transform v1 state dict to v2 format.
 
         This handles legacy models that were saved before versioning was introduced.
@@ -269,7 +278,9 @@ def get_model_version_manager() -> ModelVersionManager:
     return ModelVersionManager()
 
 
-def load_model_with_versioning(weights_path: Path) -> tuple[dict[str, torch.Tensor], ModelMetadata]:
+def load_model_with_versioning(
+    weights_path: Path,
+) -> tuple[dict[str, torch.Tensor], ModelMetadata]:
     """Load model weights with version detection and compatibility handling.
 
     Args:

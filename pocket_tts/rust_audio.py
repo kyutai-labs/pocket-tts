@@ -37,7 +37,10 @@ class RustAudioProcessor:
         for path in search_paths:
             if path.exists():
                 # Look for the library
-                for name in ["libpocket_tts_audio_ds.so", "libpocket_tts_audio_ds.dylib"]:
+                for name in [
+                    "libpocket_tts_audio_ds.so",
+                    "libpocket_tts_audio_ds.dylib",
+                ]:
                     lib_file = path / name
                     if lib_file.exists():
                         return str(lib_file)
@@ -102,11 +105,17 @@ class RustAudioProcessor:
         self._lib.resample_sinc.restype = ctypes.POINTER(ctypes.c_float)
 
         # int16_to_float32
-        self._lib.int16_to_float32.argtypes = [ctypes.POINTER(ctypes.c_int16), ctypes.c_size_t]
+        self._lib.int16_to_float32.argtypes = [
+            ctypes.POINTER(ctypes.c_int16),
+            ctypes.c_size_t,
+        ]
         self._lib.int16_to_float32.restype = ctypes.POINTER(ctypes.c_float)
 
         # float32_to_int16
-        self._lib.float32_to_int16.argtypes = [ctypes.POINTER(ctypes.c_float), ctypes.c_size_t]
+        self._lib.float32_to_int16.argtypes = [
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.c_size_t,
+        ]
         self._lib.float32_to_int16.restype = ctypes.POINTER(ctypes.c_int16)
 
         # apply_fade
@@ -119,7 +128,10 @@ class RustAudioProcessor:
         self._lib.apply_fade.restype = ctypes.POINTER(ctypes.c_float)
 
         # free_audio_buffer
-        self._lib.free_audio_buffer.argtypes = [ctypes.POINTER(ctypes.c_float), ctypes.c_size_t]
+        self._lib.free_audio_buffer.argtypes = [
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.c_size_t,
+        ]
         self._lib.free_audio_buffer.restype = None
 
         # log10_vec
@@ -127,11 +139,17 @@ class RustAudioProcessor:
         self._lib.log10_vec.restype = ctypes.POINTER(ctypes.c_float)
 
         # compute_rms
-        self._lib.compute_rms.argtypes = [ctypes.POINTER(ctypes.c_float), ctypes.c_size_t]
+        self._lib.compute_rms.argtypes = [
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.c_size_t,
+        ]
         self._lib.compute_rms.restype = ctypes.c_float
 
         # compute_peak
-        self._lib.compute_peak.argtypes = [ctypes.POINTER(ctypes.c_float), ctypes.c_size_t]
+        self._lib.compute_peak.argtypes = [
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.c_size_t,
+        ]
         self._lib.compute_peak.restype = ctypes.c_float
 
     def _to_c_array(
@@ -207,7 +225,9 @@ class RustAudioProcessor:
             # Fallback to numpy interpolation
             original_length = len(samples)
             indices = np.linspace(0, original_length - 1, target_length)
-            return np.interp(indices, np.arange(original_length), samples).astype(np.float32)
+            return np.interp(indices, np.arange(original_length), samples).astype(
+                np.float32
+            )
 
         c_array, size = self._to_c_array(samples)
         result_ptr = self._lib.resample_linear(c_array, size, target_length)
@@ -239,7 +259,11 @@ class RustAudioProcessor:
         return result
 
     def apply_fade(
-        self, samples: np.ndarray, fade_in_ms: float, fade_out_ms: float, sample_rate: int = 24000
+        self,
+        samples: np.ndarray,
+        fade_in_ms: float,
+        fade_out_ms: float,
+        sample_rate: int = 24000,
     ) -> np.ndarray:
         """Apply fade in/out to audio.
 
@@ -267,7 +291,9 @@ class RustAudioProcessor:
             return faded
 
         c_array, size = self._to_c_array(samples)
-        result_ptr = self._lib.apply_fade(c_array, size, fade_in_samples, fade_out_samples)
+        result_ptr = self._lib.apply_fade(
+            c_array, size, fade_in_samples, fade_out_samples
+        )
         result = self._from_c_array(result_ptr, size)
         self._lib.free_audio_buffer(result_ptr, size)
         return result
@@ -347,7 +373,9 @@ def apply_gain(samples: np.ndarray, gain: float) -> np.ndarray:
     return processor.apply_gain(samples, gain)
 
 
-def resample_audio(samples: np.ndarray, target_length: int, method: str = "linear") -> np.ndarray:
+def resample_audio(
+    samples: np.ndarray, target_length: int, method: str = "linear"
+) -> np.ndarray:
     """Resample audio to target length.
 
     Args:
@@ -366,7 +394,10 @@ def resample_audio(samples: np.ndarray, target_length: int, method: str = "linea
 
 
 def apply_fade(
-    samples: np.ndarray, fade_in_ms: float = 10, fade_out_ms: float = 10, sample_rate: int = 24000
+    samples: np.ndarray,
+    fade_in_ms: float = 10,
+    fade_out_ms: float = 10,
+    sample_rate: int = 24000,
 ) -> np.ndarray:
     """Apply fade in/out to audio.
 

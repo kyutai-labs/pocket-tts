@@ -40,17 +40,27 @@ class MimiModel(nn.Module):
         # which exposes a `dimension` attribute.
         dimension = encoder.dimension
         if not isinstance(dimension, int):
-            raise TypeError(f"Dimension should be int, got {dimension} of type {type(dimension)}.")
+            raise TypeError(
+                f"Dimension should be int, got {dimension} of type {type(dimension)}."
+            )
         self.dimension = dimension
 
         if encoder_frame_rate != frame_rate:
             if self.encoder_frame_rate <= self.frame_rate:
-                raise ValueError(f"Cannot upsample with conv: encoder_frame_rate {self.encoder_frame_rate} <= frame_rate {self.frame_rate}")
+                raise ValueError(
+                    f"Cannot upsample with conv: encoder_frame_rate {self.encoder_frame_rate} <= frame_rate {self.frame_rate}"
+                )
             downsample_stride = self.encoder_frame_rate / self.frame_rate
             if downsample_stride != int(downsample_stride):
-                raise ValueError(f"Only integer strides are supported, got {downsample_stride}")
-            self.downsample = ConvDownsample1d(int(downsample_stride), dimension=dimension)
-            self.upsample = ConvTrUpsample1d(int(downsample_stride), dimension=dimension)
+                raise ValueError(
+                    f"Only integer strides are supported, got {downsample_stride}"
+                )
+            self.downsample = ConvDownsample1d(
+                int(downsample_stride), dimension=dimension
+            )
+            self.upsample = ConvTrUpsample1d(
+                int(downsample_stride), dimension=dimension
+            )
 
     @property
     def frame_size(self) -> int:
@@ -94,7 +104,9 @@ class MimiModel(nn.Module):
             Unquantized embeddings.
         """
         if x.dim() != 3:
-            raise ValueError(f"CompressionModel._encode_to_unquantized_latent expects audio of shape [B, C, T] but got {x.shape}")
+            raise ValueError(
+                f"CompressionModel._encode_to_unquantized_latent expects audio of shape [B, C, T] but got {x.shape}"
+            )
 
         frame_size = self.frame_size
 

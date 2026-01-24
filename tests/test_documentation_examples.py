@@ -104,7 +104,9 @@ def test_generate_audio():
     )
 
     # Generate audio
-    audio = model.generate_audio(voice_state, "Hello world!", frames_after_eos=2, copy_state=True)
+    audio = model.generate_audio(
+        voice_state, "Hello world!", frames_after_eos=2, copy_state=True
+    )
 
     print(f"Generated audio shape: {audio.shape}")
     print(f"Audio duration: {audio.shape[-1] / model.sample_rate:.2f} seconds")

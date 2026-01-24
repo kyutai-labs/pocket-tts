@@ -36,7 +36,10 @@ def run_sox_stat(path: Path) -> dict[str, Any]:
         return {"error": "sox not found"}
     try:
         result = subprocess.run(  # noqa: S603 - executable validated with shutil.which
-            [sox_path, str(path), "-n", "stat"], check=True, capture_output=True, text=True
+            [sox_path, str(path), "-n", "stat"],
+            check=True,
+            capture_output=True,
+            text=True,
         )
     except subprocess.CalledProcessError as exc:
         return {"error": "sox failed", "stderr": exc.stderr}
@@ -99,7 +102,9 @@ def compute_python_metrics(path: Path) -> dict[str, Any]:
         "f0_hz_mean": float(np_rs.mean(voiced_f0)) if voiced_f0.size else None,
         "f0_hz_min": float(np_rs.min(voiced_f0)) if voiced_f0.size else None,
         "f0_hz_max": float(np_rs.max(voiced_f0)) if voiced_f0.size else None,
-        "voiced_frame_ratio": float(np_rs.mean(voiced_mask)) if voiced_mask.size else None,
+        "voiced_frame_ratio": float(np_rs.mean(voiced_mask))
+        if voiced_mask.size
+        else None,
         "spectral_centroid_hz_mean": float(np_rs.mean(centroid)),
         "spectral_centroid_hz_median": float(np_rs.median(centroid)),
         "spectral_rolloff_hz_mean": float(np_rs.mean(rolloff)),

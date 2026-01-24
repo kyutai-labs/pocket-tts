@@ -26,7 +26,11 @@ class BaseConditioner(nn.Module, Generic[Prepared]):
     """
 
     def __init__(
-        self, dim: int, output_dim: int, output_bias: bool = False, force_linear: bool = True
+        self,
+        dim: int,
+        output_dim: int,
+        output_bias: bool = False,
+        force_linear: bool = True,
     ):
         super().__init__()
         self.dim = dim

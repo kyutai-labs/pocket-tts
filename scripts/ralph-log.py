@@ -11,16 +11,26 @@ def utc_now_iso():
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Append a structured Ralph event to a JSONL log.")
-    ap.add_argument(
-        "--run-id", required=True, help="Run identifier (e.g., 20260121T120102Z-windsurf)"
+    ap = argparse.ArgumentParser(
+        description="Append a structured Ralph event to a JSONL log."
     )
     ap.add_argument(
-        "--event", required=True, help="Event name (e.g., run_start, issue_selected, lock_acquired)"
+        "--run-id",
+        required=True,
+        help="Run identifier (e.g., 20260121T120102Z-windsurf)",
     )
-    ap.add_argument("--issue", type=int, default=None, help="Issue number, if applicable")
     ap.add_argument(
-        "--agent", default=None, help="Agent identifier (e.g., windsurf, claude, orchestrator)"
+        "--event",
+        required=True,
+        help="Event name (e.g., run_start, issue_selected, lock_acquired)",
+    )
+    ap.add_argument(
+        "--issue", type=int, default=None, help="Issue number, if applicable"
+    )
+    ap.add_argument(
+        "--agent",
+        default=None,
+        help="Agent identifier (e.g., windsurf, claude, orchestrator)",
     )
     ap.add_argument("--status", default=None, help="Optional status string")
     ap.add_argument("--data", default=None, help="Optional JSON string payload")

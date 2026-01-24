@@ -16,7 +16,9 @@ def apply_rope(q, k, offset, max_period):
     B, T, H, D = q.shape
     Bk, Tk, Hk, Dk = k.shape
     if (Bk, Tk, Dk) != (B, T, D):
-        raise ValueError(f"Query and Key shapes must match except for head dimension: q={(B, T, D)}, k={(Bk, Tk, Dk)}")
+        raise ValueError(
+            f"Query and Key shapes must match except for head dimension: q={(B, T, D)}, k={(Bk, Tk, Dk)}"
+        )
     if D <= 0:
         raise ValueError(f"Dimension D must be positive, got {D}")
     if D % 2 != 0:

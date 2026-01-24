@@ -11,7 +11,16 @@ from torch import nn
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 
-_voices_names = ["alba", "marius", "javert", "jean", "fantine", "cosette", "eponine", "azelma"]
+_voices_names = [
+    "alba",
+    "marius",
+    "javert",
+    "jean",
+    "fantine",
+    "cosette",
+    "eponine",
+    "azelma",
+]
 PREDEFINED_VOICES = {
     # don't forget to change this
     x: f"hf://kyutai/pocket-tts-without-voice-cloning/embeddings/{x}.safetensors@d4fdd22ae8c8e1cb3634e150ebeff1dab2d16df3"
@@ -69,7 +78,9 @@ def download_if_necessary(file_path: str) -> Path:
     if file_path.startswith("http://") or file_path.startswith("https://"):
         cache_dir = make_cache_directory()
         cached_file = cache_dir / (
-            hashlib.sha256(file_path.encode()).hexdigest() + "." + file_path.split(".")[-1]
+            hashlib.sha256(file_path.encode()).hexdigest()
+            + "."
+            + file_path.split(".")[-1]
         )
         if not cached_file.exists():
             response = requests.get(file_path, timeout=30)
@@ -86,7 +97,9 @@ def download_if_necessary(file_path: str) -> Path:
             filename, revision = filename.split("@")
         else:
             revision = None
-        cached_file = hf_hub_download(repo_id=repo_id, filename=filename, revision=revision)
+        cached_file = hf_hub_download(
+            repo_id=repo_id, filename=filename, revision=revision
+        )
         return Path(cached_file)
     else:
         return Path(file_path)

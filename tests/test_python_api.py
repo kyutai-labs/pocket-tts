@@ -22,17 +22,22 @@ class TestCompileAPI:
         model._cached_get_state_for_audio_prompt.cache_clear()
 
     @pytest.mark.skipif(
-        not hasattr(torch, "compile"), reason="torch.compile not available (requires PyTorch 2.0+)"
+        not hasattr(torch, "compile"),
+        reason="torch.compile not available (requires PyTorch 2.0+)",
     )
     def test_load_model_with_compile_true(self):
         """Test that load_model with compile=True compiles the model."""
         model = TTSModel.load_model(compile=True)
         assert len(model._compiled_targets) > 0
-        assert "flow-lm" in model._compiled_targets or "mimi-decoder" in model._compiled_targets
+        assert (
+            "flow-lm" in model._compiled_targets
+            or "mimi-decoder" in model._compiled_targets
+        )
         model._cached_get_state_for_audio_prompt.cache_clear()
 
     @pytest.mark.skipif(
-        not hasattr(torch, "compile"), reason="torch.compile not available (requires PyTorch 2.0+)"
+        not hasattr(torch, "compile"),
+        reason="torch.compile not available (requires PyTorch 2.0+)",
     )
     def test_load_model_with_compile_targets_flow_lm(self):
         """Test compile with flow-lm target only."""
@@ -42,7 +47,8 @@ class TestCompileAPI:
         model._cached_get_state_for_audio_prompt.cache_clear()
 
     @pytest.mark.skipif(
-        not hasattr(torch, "compile"), reason="torch.compile not available (requires PyTorch 2.0+)"
+        not hasattr(torch, "compile"),
+        reason="torch.compile not available (requires PyTorch 2.0+)",
     )
     def test_load_model_with_compile_targets_all(self):
         """Test compile with all targets."""
@@ -87,7 +93,8 @@ class TestCompileAPI:
         model._cached_get_state_for_audio_prompt.cache_clear()
 
     @pytest.mark.skipif(
-        not hasattr(torch, "compile"), reason="torch.compile not available (requires PyTorch 2.0+)"
+        not hasattr(torch, "compile"),
+        reason="torch.compile not available (requires PyTorch 2.0+)",
     )
     def test_compilation_idempotent(self):
         """Test that compiling twice doesn't duplicate targets."""

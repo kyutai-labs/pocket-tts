@@ -28,7 +28,9 @@ class RustLibraryLoader:
                         self._lib = ctypes.CDLL(str(lib_path))
                         return
                     except Exception as exc:
-                        logger.debug("Failed to load library from %s: %s", lib_path, exc)
+                        logger.debug(
+                            "Failed to load library from %s: %s", lib_path, exc
+                        )
                         continue
 
 

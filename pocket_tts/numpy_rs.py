@@ -34,11 +34,16 @@ class LibraryLoader:
             / "audio_ds"
             / "target"
             / "release",
+            Path(__file__).parent.parent / "target" / "release",
             Path("/usr/local/lib"),
         ]
 
         for path in search_paths:
-            for name in ["libpocket_tts_audio_ds.so", "libpocket_tts_audio_ds.dylib"]:
+            for name in [
+                "libnumpy.so",
+                "libpocket_tts_audio_ds.so",
+                "libpocket_tts_audio_ds.dylib",
+            ]:
                 lib_path = path / name
                 if lib_path.exists():
                     _LIB = ctypes.CDLL(str(lib_path))
@@ -110,7 +115,11 @@ def clip_vec(samples, a_min, a_max):
 def power_vec(samples, exponent):
     if _AVAILABLE:
         size = samples.size
-        _LIB.power_vec.argtypes = [ctypes.POINTER(ctypes.c_float), ctypes.c_size_t, ctypes.c_float]
+        _LIB.power_vec.argtypes = [
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.c_size_t,
+            ctypes.c_float,
+        ]
         _LIB.power_vec.restype = ctypes.POINTER(ctypes.c_float)
         c_array, size = _to_c_array(samples)
         ptr = _LIB.power_vec(c_array, size, exponent)
@@ -264,7 +273,9 @@ def reshape_vec(data, new_shape):
         size = data.size
         new_size = int(new_shape[0]) * int(new_shape[1])
         if size != new_size:
-            raise ValueError(f"cannot reshape array of size {size} into shape {new_shape}")
+            raise ValueError(
+                f"cannot reshape array of size {size} into shape {new_shape}"
+            )
         _LIB.reshape_vec.argtypes = [
             ctypes.POINTER(ctypes.c_float),
             ctypes.c_size_t,
@@ -272,7 +283,9 @@ def reshape_vec(data, new_shape):
         ]
         _LIB.reshape_vec.restype = ctypes.POINTER(ctypes.c_float)
         c_data, size = _to_c_array(data)
-        c_shape = (ctypes.c_size_t * 2)(*(ctypes.c_size_t.from_buffer(new_shape.encode(), 8)))
+        c_shape = (ctypes.c_size_t * 2)(
+            *(ctypes.c_size_t.from_buffer(new_shape.encode(), 8))
+        )
         ptr = _LIB.reshape_vec(c_data, size, c_shape, ctypes.size_t(c_shape))
         result = _from_c_array(ptr, size)
         _LIB.free_float_buffer(c_data, size)
@@ -431,6 +444,7 @@ def clip(a, a_min, a_max):
         except Exception:
             # Fallback to numpy if rust-numpy clip fails
             from pocket_tts.numpy_rs import logger
+
             logger.debug("rust-numpy clip failing, falling back to numpy")
     return _np.clip(a, a_min, a_max)
 

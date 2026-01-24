@@ -36,7 +36,10 @@ def audio_read(filepath: str | Path) -> tuple[torch.Tensor, int]:
 
         # Read all audio data as 16-bit signed integers
         raw_data = wav_file.readframes(-1)
-        samples = np_rs.frombuffer(raw_data, dtype=np_rs.int16).astype(np_rs.float32) / 32768.0
+        samples = (
+            np_rs.frombuffer(raw_data, dtype=np_rs.int16).astype(np_rs.float32)
+            / 32768.0
+        )
 
         # Return as mono tensor (channels, samples)
         wav = torch.from_numpy(samples.reshape(1, -1))
@@ -130,7 +133,9 @@ def is_file_like(obj):
 
 
 def stream_audio_chunks(
-    path: str | Path | None | Any, audio_chunks: Iterator[torch.Tensor], sample_rate: int
+    path: str | Path | None | Any,
+    audio_chunks: Iterator[torch.Tensor],
+    sample_rate: int,
 ):
     """Stream audio chunks to a WAV file or stdout, optionally playing them."""
     # Handle file path case separately to use context manager directly

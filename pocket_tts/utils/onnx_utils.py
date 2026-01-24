@@ -60,7 +60,9 @@ class ONNXStateWrapper(torch.nn.Module):
         state = unflatten_state(list(state_tensors), self.state_keys)
 
         # 2. Call model
-        outputs = self.model(x, state) if self.model_takes_x_first else self.model(state, x)
+        outputs = (
+            self.model(x, state) if self.model_takes_x_first else self.model(state, x)
+        )
 
         # 3. Re-flatten updated state
         new_state_tensors, _ = flatten_state(state)

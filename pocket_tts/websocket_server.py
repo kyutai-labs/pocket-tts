@@ -27,7 +27,11 @@ class TTSWebSocketServer:
     """
 
     def __init__(
-        self, tts_model, default_model_state: dict, host: str = "localhost", port: int = 8765
+        self,
+        tts_model,
+        default_model_state: dict,
+        host: str = "localhost",
+        port: int = 8765,
     ):
         """Initialize the WebSocket server.
 
@@ -51,8 +55,10 @@ class TTSWebSocketServer:
 
         if voice not in self._voice_cache:
             try:
-                self._voice_cache[voice] = self.tts_model.get_state_for_audio_prompt_cached(
-                    voice, truncate=True
+                self._voice_cache[voice] = (
+                    self.tts_model.get_state_for_audio_prompt_cached(
+                        voice, truncate=True
+                    )
                 )
             except Exception as e:
                 logger.warning("Failed to load voice %s: %s, using default", voice, e)
@@ -106,7 +112,9 @@ class TTSWebSocketServer:
             Server sends: {"type": "done", "total_chunks": N}
         """
         client_addr = (
-            websocket.remote_address if hasattr(websocket, "remote_address") else "unknown"
+            websocket.remote_address
+            if hasattr(websocket, "remote_address")
+            else "unknown"
         )
         logger.info("Client connected: %s", client_addr)
 
@@ -120,11 +128,15 @@ class TTSWebSocketServer:
 
                     if not text.strip():
                         await websocket.send(
-                            json.dumps({"type": "error", "message": "Text cannot be empty"})
+                            json.dumps(
+                                {"type": "error", "message": "Text cannot be empty"}
+                            )
                         )
                         continue
 
-                    logger.info("Generating speech for: %s (voice: %s)", text[:50], voice)
+                    logger.info(
+                        "Generating speech for: %s (voice: %s)", text[:50], voice
+                    )
 
                     # Get the model state for the voice
                     model_state = self._get_voice_state(voice)
@@ -147,7 +159,9 @@ class TTSWebSocketServer:
                     for audio_chunk in audio_chunks:
                         # Convert to WAV/PCM bytes
                         is_first = chunk_idx == 0
-                        audio_bytes = self._audio_chunk_to_wav_bytes(audio_chunk, is_first=is_first)
+                        audio_bytes = self._audio_chunk_to_wav_bytes(
+                            audio_chunk, is_first=is_first
+                        )
 
                         # Base64 encode for JSON transport
                         audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
@@ -168,15 +182,21 @@ class TTSWebSocketServer:
                         chunk_idx += 1
 
                     # Send completion message
-                    await websocket.send(json.dumps({"type": "done", "total_chunks": chunk_idx}))
+                    await websocket.send(
+                        json.dumps({"type": "done", "total_chunks": chunk_idx})
+                    )
 
                     logger.info("Completed generation: %d chunks", chunk_idx)
 
                 except json.JSONDecodeError:
-                    await websocket.send(json.dumps({"type": "error", "message": "Invalid JSON"}))
+                    await websocket.send(
+                        json.dumps({"type": "error", "message": "Invalid JSON"})
+                    )
                 except Exception as e:
                     logger.exception("Error processing request")
-                    await websocket.send(json.dumps({"type": "error", "message": str(e)}))
+                    await websocket.send(
+                        json.dumps({"type": "error", "message": str(e)})
+                    )
 
         except Exception as e:
             logger.info("Client disconnected: %s (%s)", client_addr, e)
@@ -194,7 +214,11 @@ class TTSWebSocketServer:
         logger.info("Starting WebSocket TTS server on ws://%s:%d", self.host, self.port)
 
         async with websockets.serve(
-            self.handle_connection, self.host, self.port, ping_interval=30, ping_timeout=10
+            self.handle_connection,
+            self.host,
+            self.port,
+            ping_interval=30,
+            ping_timeout=10,
         ):
             logger.info("WebSocket server running. Press Ctrl+C to stop.")
             await asyncio.Future()  # Run forever

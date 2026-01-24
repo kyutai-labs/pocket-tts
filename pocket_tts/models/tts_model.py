@@ -31,7 +31,11 @@ from pocket_tts.models.mimi import MimiModel
 from pocket_tts.modules import mimi_transformer
 from pocket_tts.modules.dummy_quantizer import DummyQuantizer
 from pocket_tts.modules.seanet import SEANetDecoder, SEANetEncoder
-from pocket_tts.modules.stateful_module import increment_steps, init_states, trim_model_state
+from pocket_tts.modules.stateful_module import (
+    increment_steps,
+    init_states,
+    trim_model_state,
+)
 from pocket_tts.utils.config import Config, load_config
 from pocket_tts.utils.model_versioning import load_model_with_versioning
 from pocket_tts.utils.pause_handler import parse_pause_tags
@@ -52,7 +56,9 @@ if interop_threads:
     try:
         torch.set_num_interop_threads(int(interop_threads))
     except ValueError:
-        logger.warning("Invalid POCKET_TTS_INTEROP_THREADS=%s; expected integer.", interop_threads)
+        logger.warning(
+            "Invalid POCKET_TTS_INTEROP_THREADS=%s; expected integer.", interop_threads
+        )
 
 PROMPT_CACHE_SIZE = max(1, int(os.environ.get("POCKET_TTS_PROMPT_CACHE_SIZE", "2")))
 
@@ -88,17 +94,29 @@ class TTSModel(nn.Module):
 
     @classmethod
     def _from_pydantic_config(
-        cls, config: Config, temp, lsd_decode_steps, noise_clamp: float | None, eos_threshold
+        cls,
+        config: Config,
+        temp,
+        lsd_decode_steps,
+        noise_clamp: float | None,
+        eos_threshold,
     ) -> Self:
         flow_lm = FlowLMModel.from_pydantic_config(
             config.flow_lm, latent_dim=config.mimi.quantizer.dimension
         )
-        tts_model = cls(flow_lm, temp, lsd_decode_steps, noise_clamp, eos_threshold, config)
+        tts_model = cls(
+            flow_lm, temp, lsd_decode_steps, noise_clamp, eos_threshold, config
+        )
         return tts_model
 
     @classmethod
     def _from_pydantic_config_with_weights(
-        cls, config: Config, temp, lsd_decode_steps, noise_clamp: float | None, eos_threshold
+        cls,
+        config: Config,
+        temp,
+        lsd_decode_steps,
+        noise_clamp: float | None,
+        eos_threshold,
     ) -> Self:
         tts_model = cls._from_pydantic_config(
             config, temp, lsd_decode_steps, noise_clamp, eos_threshold
@@ -125,8 +143,12 @@ class TTSModel(nn.Module):
         encoder = SEANetEncoder(**mimi_config["seanet"])
         decoder = SEANetDecoder(**mimi_config["seanet"])
 
-        encoder_transformer = mimi_transformer.ProjectedTransformer(**mimi_config["transformer"])
-        decoder_transformer = mimi_transformer.ProjectedTransformer(**mimi_config["transformer"])
+        encoder_transformer = mimi_transformer.ProjectedTransformer(
+            **mimi_config["transformer"]
+        )
+        decoder_transformer = mimi_transformer.ProjectedTransformer(
+            **mimi_config["transformer"]
+        )
         quantizer = DummyQuantizer(**mimi_config["quantizer"])
 
         tts_model.mimi = MimiModel(
@@ -149,7 +171,9 @@ class TTSModel(nn.Module):
                     "If you specify mimi.weights_path you should specify flow_lm.weights_path"
                 )
             logger.info(f"Loading Mimi weights from {config.mimi.weights_path}")
-            mimi_state = get_mimi_state_dict(download_if_necessary(config.mimi.weights_path))
+            mimi_state = get_mimi_state_dict(
+                download_if_necessary(config.mimi.weights_path)
+            )
             tts_model.mimi.load_state_dict(mimi_state, strict=True)
 
         tts_model.mimi.eval()
@@ -164,7 +188,9 @@ class TTSModel(nn.Module):
                 weights_file = download_if_necessary(config.weights_path)
             except Exception:
                 tts_model.has_voice_cloning = False
-                weights_file = download_if_necessary(config.weights_path_without_voice_cloning)
+                weights_file = download_if_necessary(
+                    config.weights_path_without_voice_cloning
+                )
 
             # Load with versioning support
             state_dict, metadata = load_model_with_versioning(weights_file)
@@ -263,7 +289,9 @@ class TTSModel(nn.Module):
             logger.info("Converting model to bfloat16 for reduced memory")
             tts_model = tts_model.to(dtype=torch.bfloat16)
         elif dtype != "float32":
-            raise ValueError(f"Unsupported dtype: {dtype}. Use 'float32' or 'bfloat16'.")
+            raise ValueError(
+                f"Unsupported dtype: {dtype}. Use 'float32' or 'bfloat16'."
+            )
 
         # Apply int8 quantization if requested
         if quantize:
@@ -274,7 +302,9 @@ class TTSModel(nn.Module):
 
         if compile:
             if not hasattr(torch, "compile"):
-                raise RuntimeError("torch.compile is not available. Requires PyTorch 2.0+.")
+                raise RuntimeError(
+                    "torch.compile is not available. Requires PyTorch 2.0+."
+                )
             tts_model.compile_for_inference(
                 backend=compile_backend,
                 mode=compile_mode,
@@ -287,9 +317,13 @@ class TTSModel(nn.Module):
 
     def _normalize_compile_targets(self, targets: Iterable[str] | str) -> set[str]:
         if isinstance(targets, str):
-            raw_targets = [target.strip() for target in targets.split(",") if target.strip()]
+            raw_targets = [
+                target.strip() for target in targets.split(",") if target.strip()
+            ]
         else:
-            raw_targets = [str(target).strip() for target in targets if str(target).strip()]
+            raw_targets = [
+                str(target).strip() for target in targets if str(target).strip()
+            ]
 
         normalized = {target.replace("_", "-") for target in raw_targets}
         if not normalized:
@@ -353,14 +387,20 @@ class TTSModel(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """First one is the backbone output, second one is the audio decoding output."""
         if text_tokens is None:
-            text_tokens = torch.zeros((1, 0), dtype=torch.int64, device=self.flow_lm.device)
+            text_tokens = torch.zeros(
+                (1, 0), dtype=torch.int64, device=self.flow_lm.device
+            )
         if backbone_input_latents is None:
             backbone_input_latents = torch.empty(
-                (1, 0, self.flow_lm.ldim), dtype=self.flow_lm.dtype, device=self.flow_lm.device
+                (1, 0, self.flow_lm.ldim),
+                dtype=self.flow_lm.dtype,
+                device=self.flow_lm.device,
             )
         if audio_conditioning is None:
             audio_conditioning = torch.empty(
-                (1, 0, self.flow_lm.dim), dtype=self.flow_lm.dtype, device=self.flow_lm.device
+                (1, 0, self.flow_lm.dim),
+                dtype=self.flow_lm.dtype,
+                device=self.flow_lm.device,
             )
 
         output = self._run_flow_lm(
@@ -370,7 +410,9 @@ class TTSModel(nn.Module):
             audio_conditioning=audio_conditioning,
         )
         increment_by = (
-            text_tokens.shape[1] + backbone_input_latents.shape[1] + audio_conditioning.shape[1]
+            text_tokens.shape[1]
+            + backbone_input_latents.shape[1]
+            + audio_conditioning.shape[1]
         )
         increment_steps(self.flow_lm, model_state, increment=increment_by)
         return output
@@ -538,7 +580,9 @@ class TTSModel(nn.Module):
 
         for chunk_idx, text_chunk in enumerate(text_chunks):
             # Further split long chunks into sentences
-            sentences = split_into_best_sentences(self.flow_lm.conditioner.tokenizer, text_chunk)
+            sentences = split_into_best_sentences(
+                self.flow_lm.conditioner.tokenizer, text_chunk
+            )
 
             for sentence in sentences:
                 text_to_generate, frames_after_eos_guess = prepare_text_prompt(sentence)
@@ -563,11 +607,17 @@ class TTSModel(nn.Module):
                 pause_ms = pause_after_chunk[chunk_idx]
                 silence_samples = int(pause_ms * self.sample_rate / 1000)
                 yield torch.zeros(silence_samples)
-                logger.debug("Inserted %d ms of silence (%d samples)", pause_ms, silence_samples)
+                logger.debug(
+                    "Inserted %d ms of silence (%d samples)", pause_ms, silence_samples
+                )
 
     @torch.inference_mode
     def _generate_audio_stream_short_text(
-        self, model_state: dict, text_to_generate: str, frames_after_eos: int, copy_state: bool
+        self,
+        model_state: dict,
+        text_to_generate: str,
+        frames_after_eos: int,
+        copy_state: bool,
     ):
         if copy_state:
             model_state = copy.deepcopy(model_state)
@@ -576,7 +626,9 @@ class TTSModel(nn.Module):
         result_queue: queue.SimpleQueue = queue.SimpleQueue()
 
         decoder_thread = threading.Thread(
-            target=self._decode_audio_worker, args=(latents_queue, result_queue), daemon=True
+            target=self._decode_audio_worker,
+            args=(latents_queue, result_queue),
+            daemon=True,
         )
         logger.info("starting timer now!")
         t_generating = time.monotonic()
@@ -633,14 +685,18 @@ class TTSModel(nn.Module):
                 latent = latents_queue.get()
                 if latent is None:
                     break
-                mimi_decoding_input = latent * self.flow_lm.emb_std + self.flow_lm.emb_mean
+                mimi_decoding_input = (
+                    latent * self.flow_lm.emb_std + self.flow_lm.emb_mean
+                )
                 transposed = mimi_decoding_input.transpose(-1, -2)
                 quantized = self.mimi.quantizer(transposed)
 
                 t = time.monotonic()
                 audio_frame = self.mimi.decode_from_latent(quantized, mimi_state)
                 increment_steps(self.mimi, mimi_state, increment=16)
-                audio_frame_duration = audio_frame.shape[2] / self.config.mimi.sample_rate
+                audio_frame_duration = (
+                    audio_frame.shape[2] / self.config.mimi.sample_rate
+                )
                 logger.debug(
                     " " * 30 + "Decoded %d ms of audio with mimi in %d ms",
                     int(audio_frame_duration * 1000),
@@ -706,13 +762,18 @@ class TTSModel(nn.Module):
         steps_times = []
         eos_step = None
         for generation_step in range(max_gen_len):
-            with display_execution_time("Generating latent", print_output=False) as timer:
+            with display_execution_time(
+                "Generating latent", print_output=False
+            ) as timer:
                 next_latent, is_eos = self._run_flow_lm_and_increment_step(
                     model_state=model_state, backbone_input_latents=backbone_input
                 )
                 if is_eos.item() and eos_step is None:
                     eos_step = generation_step
-                if eos_step is not None and generation_step >= eos_step + frames_after_eos:
+                if (
+                    eos_step is not None
+                    and generation_step >= eos_step + frames_after_eos
+                ):
                     break
 
                 # Add generated latent to queue for immediate decoding
@@ -728,7 +789,9 @@ class TTSModel(nn.Module):
 
         # Add sentinel value to signal end of generation
         latents_queue.put(None)
-        logger.info("Average generation step time: %d ms", int(statistics.mean(steps_times)))
+        logger.info(
+            "Average generation step time: %d ms", int(statistics.mean(steps_times))
+        )
 
     def clear_prompt_cache(self) -> None:
         self._cached_get_state_for_audio_prompt.cache_clear()
@@ -844,7 +907,9 @@ class TTSModel(nn.Module):
         stats["model_size_mb"] = model_size_bytes / (1024 * 1024)
 
         # Prompt cache size
-        stats["cache_entries"] = self._cached_get_state_for_audio_prompt.cache_info().currsize
+        stats["cache_entries"] = (
+            self._cached_get_state_for_audio_prompt.cache_info().currsize
+        )
 
         # PyTorch memory (if CUDA is available)
         if hasattr(torch.cuda, "memory_allocated"):
@@ -923,11 +988,16 @@ class TTSModel(nn.Module):
             - Processing time is logged for performance monitoring
             - The state preserves speaker characteristics for voice cloning
         """
-        if isinstance(audio_conditioning, str) and audio_conditioning in PREDEFINED_VOICES:
+        if (
+            isinstance(audio_conditioning, str)
+            and audio_conditioning in PREDEFINED_VOICES
+        ):
             # We get the audio conditioning directly from the safetensors file.
             prompt = load_predefined_voice(audio_conditioning)
         else:
-            if not self.has_voice_cloning and isinstance(audio_conditioning, (str, Path)):
+            if not self.has_voice_cloning and isinstance(
+                audio_conditioning, (str, Path)
+            ):
                 raise ValueError(
                     f"We could not download the weights for the model with voice cloning, "
                     f"but you're trying to use voice cloning. "
@@ -943,17 +1013,23 @@ class TTSModel(nn.Module):
                 audio, conditioning_sample_rate = audio_read(audio_conditioning)
 
                 if truncate:
-                    max_samples = int(30 * conditioning_sample_rate)  # 30 seconds of audio
+                    max_samples = int(
+                        30 * conditioning_sample_rate
+                    )  # 30 seconds of audio
                     if audio.shape[-1] > max_samples:
                         audio = audio[..., :max_samples]
-                        logger.info(f"Audio truncated to first 30 seconds ({max_samples} samples)")
+                        logger.info(
+                            f"Audio truncated to first 30 seconds ({max_samples} samples)"
+                        )
 
                 audio_conditioning = convert_audio(
                     audio, conditioning_sample_rate, self.config.mimi.sample_rate, 1
                 )
 
             with display_execution_time("Encoding audio prompt"):
-                prompt = self._encode_audio(audio_conditioning.unsqueeze(0).to(self.device))
+                prompt = self._encode_audio(
+                    audio_conditioning.unsqueeze(0).to(self.device)
+                )
                 # import safetensors.torch
                 # safetensors.torch.save_file(
                 #     {"audio_prompt": prompt},
@@ -963,7 +1039,9 @@ class TTSModel(nn.Module):
         model_state = init_states(self.flow_lm, batch_size=1, sequence_length=1000)
 
         with display_execution_time("Prompting audio"):
-            self._run_flow_lm_and_increment_step(model_state=model_state, audio_conditioning=prompt)
+            self._run_flow_lm_and_increment_step(
+                model_state=model_state, audio_conditioning=prompt
+            )
 
         # Trim KV caches to actual used length to reduce memory for cached states
         # This is especially important when caching multiple voice prompts

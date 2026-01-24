@@ -13,7 +13,15 @@ from queue import Queue
 
 import typer
 import uvicorn
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from typing_extensions import Annotated
@@ -35,7 +43,8 @@ from pocket_tts.utils.utils import PREDEFINED_VOICES, size_of_dict
 logger = logging.getLogger(__name__)
 
 cli_app = typer.Typer(
-    help="Kyutai Pocket TTS - Text-to-Speech generation tool", pretty_exceptions_show_locals=False
+    help="Kyutai Pocket TTS - Text-to-Speech generation tool",
+    pretty_exceptions_show_locals=False,
 )
 
 
@@ -49,7 +58,9 @@ global_model_state = None
 websocket_generation_lock = asyncio.Lock()
 
 web_app = FastAPI(
-    title="Kyutai Pocket TTS API", description="Text-to-Speech generation API", version="1.0.0"
+    title="Kyutai Pocket TTS API",
+    description="Text-to-Speech generation API",
+    version="1.0.0",
 )
 allowed_origins = [
     origin.strip()
@@ -104,14 +115,18 @@ def write_to_queue(queue, text_to_generate, model_state):
     audio_chunks = model.generate_audio_stream(
         model_state=model_state, text_to_generate=text_to_generate
     )
-    stream_audio_chunks(FileLikeToQueue(queue), audio_chunks, model.config.mimi.sample_rate)
+    stream_audio_chunks(
+        FileLikeToQueue(queue), audio_chunks, model.config.mimi.sample_rate
+    )
 
 
 def generate_data_with_state(text_to_generate: str, model_state: dict):
     queue = Queue()
 
     # Run your function in a thread
-    thread = threading.Thread(target=write_to_queue, args=(queue, text_to_generate, model_state))
+    thread = threading.Thread(
+        target=write_to_queue, args=(queue, text_to_generate, model_state)
+    )
     thread.start()
 
     # Yield data as it becomes available
@@ -131,7 +146,9 @@ def resolve_model_state(voice_url: str | None, voice_wav: UploadFile | None) -> 
         raise HTTPException(status_code=503, detail="Model is not loaded")
 
     if voice_url is not None and voice_wav is not None:
-        raise HTTPException(status_code=400, detail="Cannot provide both voice_url and voice_wav")
+        raise HTTPException(
+            status_code=400, detail="Cannot provide both voice_url and voice_wav"
+        )
 
     if voice_url is not None:
         if not (
@@ -141,9 +158,12 @@ def resolve_model_state(voice_url: str | None, voice_wav: UploadFile | None) -> 
             or voice_url in PREDEFINED_VOICES
         ):
             raise HTTPException(
-                status_code=400, detail="voice_url must start with http://, https://, or hf://"
+                status_code=400,
+                detail="voice_url must start with http://, https://, or hf://",
             )
-        model_state = tts_model.get_state_for_audio_prompt_cached(voice_url, truncate=True)
+        model_state = tts_model.get_state_for_audio_prompt_cached(
+            voice_url, truncate=True
+        )
         logging.warning("Using voice from URL: %s", voice_url)
         return model_state
 
@@ -154,7 +174,9 @@ def resolve_model_state(voice_url: str | None, voice_wav: UploadFile | None) -> 
             temp_file.flush()
 
             try:
-                return tts_model.get_state_for_audio_prompt(Path(temp_file.name), truncate=True)
+                return tts_model.get_state_for_audio_prompt(
+                    Path(temp_file.name), truncate=True
+                )
             finally:
                 os.unlink(temp_file.name)
 
@@ -229,7 +251,9 @@ async def websocket_tts(websocket: WebSocket):
     try:
         while True:
             if tts_model is None or global_model_state is None:
-                await websocket.send_json({"type": "error", "message": "Model is not loaded"})
+                await websocket.send_json(
+                    {"type": "error", "message": "Model is not loaded"}
+                )
                 await asyncio.sleep(0.1)
                 continue
 
@@ -247,7 +271,9 @@ async def websocket_tts(websocket: WebSocket):
             voice = request.get("voice")
 
             if not text.strip():
-                await websocket.send_json({"type": "error", "message": "Text cannot be empty"})
+                await websocket.send_json(
+                    {"type": "error", "message": "Text cannot be empty"}
+                )
                 continue
 
             try:
@@ -300,12 +326,23 @@ def serve(
     compile_model: Annotated[
         bool, typer.Option("--compile", help="Enable torch.compile for inference")
     ] = False,
-    compile_backend: Annotated[str, typer.Option(help="torch.compile backend")] = "inductor",
-    compile_mode: Annotated[str, typer.Option(help="torch.compile mode")] = "reduce-overhead",
-    compile_fullgraph: Annotated[bool, typer.Option(help="torch.compile fullgraph")] = False,
-    compile_dynamic: Annotated[bool, typer.Option(help="torch.compile dynamic")] = False,
+    compile_backend: Annotated[
+        str, typer.Option(help="torch.compile backend")
+    ] = "inductor",
+    compile_mode: Annotated[
+        str, typer.Option(help="torch.compile mode")
+    ] = "reduce-overhead",
+    compile_fullgraph: Annotated[
+        bool, typer.Option(help="torch.compile fullgraph")
+    ] = False,
+    compile_dynamic: Annotated[
+        bool, typer.Option(help="torch.compile dynamic")
+    ] = False,
     compile_targets: Annotated[
-        str, typer.Option(help="Compile targets: all, flow-lm, mimi-decoder (comma-separated).")
+        str,
+        typer.Option(
+            help="Compile targets: all, flow-lm, mimi-decoder (comma-separated)."
+        ),
     ] = "all",
 ):
     global tts_model, global_model_state
@@ -320,7 +357,9 @@ def serve(
         )
 
     global_model_state = tts_model.get_state_for_audio_prompt(voice)
-    logger.info(f"The size of the model state is {size_of_dict(global_model_state) // 1e6} MB")
+    logger.info(
+        f"The size of the model state is {size_of_dict(global_model_state) // 1e6} MB"
+    )
 
     uvicorn.run("pocket_tts.main:web_app", host=host, port=port, reload=reload)
 
@@ -336,12 +375,23 @@ def websocket(
     compile_model: Annotated[
         bool, typer.Option("--compile", help="Enable torch.compile for inference")
     ] = False,
-    compile_backend: Annotated[str, typer.Option(help="torch.compile backend")] = "inductor",
-    compile_mode: Annotated[str, typer.Option(help="torch.compile mode")] = "reduce-overhead",
-    compile_fullgraph: Annotated[bool, typer.Option(help="torch.compile fullgraph")] = False,
-    compile_dynamic: Annotated[bool, typer.Option(help="torch.compile dynamic")] = False,
+    compile_backend: Annotated[
+        str, typer.Option(help="torch.compile backend")
+    ] = "inductor",
+    compile_mode: Annotated[
+        str, typer.Option(help="torch.compile mode")
+    ] = "reduce-overhead",
+    compile_fullgraph: Annotated[
+        bool, typer.Option(help="torch.compile fullgraph")
+    ] = False,
+    compile_dynamic: Annotated[
+        bool, typer.Option(help="torch.compile dynamic")
+    ] = False,
     compile_targets: Annotated[
-        str, typer.Option(help="Compile targets: all, flow-lm, mimi-decoder (comma-separated).")
+        str,
+        typer.Option(
+            help="Compile targets: all, flow-lm, mimi-decoder (comma-separated)."
+        ),
     ] = "all",
 ):
     """Start a WebSocket server for real-time TTS streaming.
@@ -388,7 +438,9 @@ def generate(
     voice: Annotated[
         str, typer.Option(help="Path to audio conditioning file (voice to clone)")
     ] = DEFAULT_AUDIO_PROMPT,
-    quiet: Annotated[bool, typer.Option("-q", "--quiet", help="Disable logging output")] = False,
+    quiet: Annotated[
+        bool, typer.Option("-q", "--quiet", help="Disable logging output")
+    ] = False,
     variant: Annotated[str, typer.Option(help="Model signature")] = DEFAULT_VARIANT,
     lsd_decode_steps: Annotated[
         int, typer.Option(help="Number of generation steps")
@@ -396,8 +448,12 @@ def generate(
     temperature: Annotated[
         float, typer.Option(help="Temperature for generation")
     ] = DEFAULT_TEMPERATURE,
-    noise_clamp: Annotated[float, typer.Option(help="Noise clamp value")] = DEFAULT_NOISE_CLAMP,
-    eos_threshold: Annotated[float, typer.Option(help="EOS threshold")] = DEFAULT_EOS_THRESHOLD,
+    noise_clamp: Annotated[
+        float, typer.Option(help="Noise clamp value")
+    ] = DEFAULT_NOISE_CLAMP,
+    eos_threshold: Annotated[
+        float, typer.Option(help="EOS threshold")
+    ] = DEFAULT_EOS_THRESHOLD,
     frames_after_eos: Annotated[
         int, typer.Option(help="Number of frames to generate after EOS")
     ] = DEFAULT_FRAMES_AFTER_EOS,
@@ -408,12 +464,23 @@ def generate(
     compile_model: Annotated[
         bool, typer.Option("--compile", help="Enable torch.compile for inference")
     ] = False,
-    compile_backend: Annotated[str, typer.Option(help="torch.compile backend")] = "inductor",
-    compile_mode: Annotated[str, typer.Option(help="torch.compile mode")] = "reduce-overhead",
-    compile_fullgraph: Annotated[bool, typer.Option(help="torch.compile fullgraph")] = False,
-    compile_dynamic: Annotated[bool, typer.Option(help="torch.compile dynamic")] = False,
+    compile_backend: Annotated[
+        str, typer.Option(help="torch.compile backend")
+    ] = "inductor",
+    compile_mode: Annotated[
+        str, typer.Option(help="torch.compile mode")
+    ] = "reduce-overhead",
+    compile_fullgraph: Annotated[
+        bool, typer.Option(help="torch.compile fullgraph")
+    ] = False,
+    compile_dynamic: Annotated[
+        bool, typer.Option(help="torch.compile dynamic")
+    ] = False,
     compile_targets: Annotated[
-        str, typer.Option(help="Compile targets: all, flow-lm, mimi-decoder (comma-separated).")
+        str,
+        typer.Option(
+            help="Compile targets: all, flow-lm, mimi-decoder (comma-separated)."
+        ),
     ] = "all",
 ):
     """Generate speech using Kyutai Pocket TTS."""
@@ -443,7 +510,9 @@ def generate(
             frames_after_eos=frames_after_eos,
         )
 
-        stream_audio_chunks(output_path, audio_chunks, tts_model.config.mimi.sample_rate)
+        stream_audio_chunks(
+            output_path, audio_chunks, tts_model.config.mimi.sample_rate
+        )
 
         if output_path != "-":
             logger.info("Results written in %s", output_path)
@@ -460,7 +529,9 @@ def benchmark(
     voice: Annotated[
         str, typer.Option(help="Path to audio conditioning file (voice to clone)")
     ] = DEFAULT_AUDIO_PROMPT,
-    quiet: Annotated[bool, typer.Option("-q", "--quiet", help="Disable logging output")] = False,
+    quiet: Annotated[
+        bool, typer.Option("-q", "--quiet", help="Disable logging output")
+    ] = False,
     variant: Annotated[str, typer.Option(help="Model signature")] = DEFAULT_VARIANT,
     lsd_decode_steps: Annotated[
         int, typer.Option(help="Number of generation steps")
@@ -468,8 +539,12 @@ def benchmark(
     temperature: Annotated[
         float, typer.Option(help="Temperature for generation")
     ] = DEFAULT_TEMPERATURE,
-    noise_clamp: Annotated[float, typer.Option(help="Noise clamp value")] = DEFAULT_NOISE_CLAMP,
-    eos_threshold: Annotated[float, typer.Option(help="EOS threshold")] = DEFAULT_EOS_THRESHOLD,
+    noise_clamp: Annotated[
+        float, typer.Option(help="Noise clamp value")
+    ] = DEFAULT_NOISE_CLAMP,
+    eos_threshold: Annotated[
+        float, typer.Option(help="EOS threshold")
+    ] = DEFAULT_EOS_THRESHOLD,
     frames_after_eos: Annotated[
         int, typer.Option(help="Number of frames to generate after EOS")
     ] = DEFAULT_FRAMES_AFTER_EOS,
@@ -479,12 +554,23 @@ def benchmark(
     compile_model: Annotated[
         bool, typer.Option("--compile", help="Enable torch.compile for inference")
     ] = False,
-    compile_backend: Annotated[str, typer.Option(help="torch.compile backend")] = "inductor",
-    compile_mode: Annotated[str, typer.Option(help="torch.compile mode")] = "reduce-overhead",
-    compile_fullgraph: Annotated[bool, typer.Option(help="torch.compile fullgraph")] = False,
-    compile_dynamic: Annotated[bool, typer.Option(help="torch.compile dynamic")] = False,
+    compile_backend: Annotated[
+        str, typer.Option(help="torch.compile backend")
+    ] = "inductor",
+    compile_mode: Annotated[
+        str, typer.Option(help="torch.compile mode")
+    ] = "reduce-overhead",
+    compile_fullgraph: Annotated[
+        bool, typer.Option(help="torch.compile fullgraph")
+    ] = False,
+    compile_dynamic: Annotated[
+        bool, typer.Option(help="torch.compile dynamic")
+    ] = False,
     compile_targets: Annotated[
-        str, typer.Option(help="Compile targets: all, flow-lm, mimi-decoder (comma-separated).")
+        str,
+        typer.Option(
+            help="Compile targets: all, flow-lm, mimi-decoder (comma-separated)."
+        ),
     ] = "all",
 ):
     if "cuda" in device:
@@ -509,7 +595,10 @@ def benchmark(
 
         for _ in range(max(warmup_runs, 0)):
             tts_model.generate_audio(
-                model_state_for_voice, text, frames_after_eos=frames_after_eos, copy_state=True
+                model_state_for_voice,
+                text,
+                frames_after_eos=frames_after_eos,
+                copy_state=True,
             )
 
         elapsed_times = []
@@ -518,7 +607,10 @@ def benchmark(
         for _ in range(max(runs, 1)):
             start = time.monotonic()
             audio = tts_model.generate_audio(
-                model_state_for_voice, text, frames_after_eos=frames_after_eos, copy_state=True
+                model_state_for_voice,
+                text,
+                frames_after_eos=frames_after_eos,
+                copy_state=True,
             )
             elapsed = time.monotonic() - start
             duration = audio.shape[-1] / tts_model.sample_rate
@@ -550,9 +642,14 @@ def export(
         str, typer.Option(help="Output directory for exported model files")
     ] = "./exported_model",
     components: Annotated[
-        str, typer.Option(help="Components to export: all, flow-lm, mimi-decoder, conditioner")
+        str,
+        typer.Option(
+            help="Components to export: all, flow-lm, mimi-decoder, conditioner"
+        ),
     ] = "all",
-    format: Annotated[str, typer.Option(help="Export format: torchscript, onnx")] = "torchscript",
+    format: Annotated[
+        str, typer.Option(help="Export format: torchscript, onnx")
+    ] = "torchscript",
     variant: Annotated[str, typer.Option(help="Model variant")] = DEFAULT_VARIANT,
 ):
     """Export model to TorchScript or ONNX for faster inference.
@@ -568,7 +665,9 @@ def export(
     logger.info(f"Loading model variant: {variant}")
     tts_model = TTSModel.load_model(variant)
 
-    logger.info(f"Exporting components: {components} to {output_dir} (format: {format})")
+    logger.info(
+        f"Exporting components: {components} to {output_dir} (format: {format})"
+    )
     results = export_model(tts_model, output_dir, components=components, format=format)
 
     if results:

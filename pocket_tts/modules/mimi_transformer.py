@@ -88,7 +88,9 @@ class StreamingTransformer(nn.Module):
     ):
         super().__init__()
         if d_model % num_heads != 0:
-            raise ValueError(f"d_model {d_model} must be divisible by num_heads {num_heads}")
+            raise ValueError(
+                f"d_model {d_model} must be divisible by num_heads {num_heads}"
+            )
         self.max_period = max_period
 
         self.rope = RotaryEmbedding(max_period=max_period)
@@ -138,7 +140,9 @@ class StreamingTransformer(nn.Module):
 
         return state
 
-    def forward(self, x: torch.Tensor, model_state: Optional[Dict[str, Dict[str, torch.Tensor]]]):
+    def forward(
+        self, x: torch.Tensor, model_state: Optional[Dict[str, Dict[str, torch.Tensor]]]
+    ):
         for layer in self.layers:
             x = layer(x, model_state)
         return x
@@ -178,7 +182,9 @@ class ProjectedTransformer(nn.Module):
             if d_model == output_dimension:
                 self.output_projs.append(nn.Identity())
             else:
-                self.output_projs.append(nn.Linear(d_model, output_dimension, bias=False))
+                self.output_projs.append(
+                    nn.Linear(d_model, output_dimension, bias=False)
+                )
 
     def forward(self, x, model_state: Optional[Dict[str, Dict[str, torch.Tensor]]]):
         x = x.transpose(1, 2)

@@ -97,14 +97,26 @@ def main():
         description="Watch Ralph logs and regenerate dashboard in near real-time."
     )
     ap.add_argument(
-        "--log-dir", default=".ralph/logs", help="Directory containing <run_id>.jsonl files"
+        "--log-dir",
+        default=".ralph/logs",
+        help="Directory containing <run_id>.jsonl files",
     )
-    ap.add_argument("--out-md", default="docs/status-dashboard.md", help="Output markdown path")
-    ap.add_argument("--out-html", default="docs/status-dashboard.html", help="Output HTML path")
-    ap.add_argument("--interval", type=float, default=1.0, help="Polling interval seconds")
+    ap.add_argument(
+        "--out-md", default="docs/status-dashboard.md", help="Output markdown path"
+    )
+    ap.add_argument(
+        "--out-html", default="docs/status-dashboard.html", help="Output HTML path"
+    )
+    ap.add_argument(
+        "--interval", type=float, default=1.0, help="Polling interval seconds"
+    )
     ap.add_argument("--refresh", type=int, default=2, help="HTML meta-refresh seconds")
-    ap.add_argument("--serve", action="store_true", help="Serve docs/ over HTTP for live viewing")
-    ap.add_argument("--port", type=int, default=8735, help="HTTP port when --serve is set")
+    ap.add_argument(
+        "--serve", action="store_true", help="Serve docs/ over HTTP for live viewing"
+    )
+    ap.add_argument(
+        "--port", type=int, default=8735, help="HTTP port when --serve is set"
+    )
     args = ap.parse_args()
 
     repo_root = Path(".").resolve()
@@ -117,7 +129,9 @@ def main():
         docs_dir = out_html.parent
         t = threading.Thread(target=serve_dir, args=(docs_dir, args.port), daemon=True)
         t.start()
-        print(f"Serving {docs_dir} at http://localhost:{args.port}/status-dashboard.html")
+        print(
+            f"Serving {docs_dir} at http://localhost:{args.port}/status-dashboard.html"
+        )
 
     last_sig = None
     while True:

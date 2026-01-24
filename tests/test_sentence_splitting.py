@@ -24,6 +24,7 @@ class MockTokenizedText:
         self.text = text
         # Simple mock: 1 token per word. Use torch.tensor to satisfy tolist() expectation.
         import torch
+
         self.tokens = [torch.tensor([1] * len(text.split()))]
 
 
@@ -127,7 +128,8 @@ def test_content_preservation():
             return ""
         # Remove trailing punctuation
         import re
-        return re.sub(r'[.!?…]+$', '', text.strip())
+
+        return re.sub(r"[.!?…]+$", "", text.strip())
 
     combined_unprepared = " ".join([unprepare(c) for c in result])
     # Also strip from original for fair comparison
@@ -137,7 +139,9 @@ def test_content_preservation():
     result_words = set(combined_unprepared.lower().split())
 
     # All original words should be in result
-    assert original_words.issubset(result_words), f"Missing words: {original_words - result_words}"
+    assert original_words.issubset(result_words), (
+        f"Missing words: {original_words - result_words}"
+    )
 
 
 def test_long_text_chunking():

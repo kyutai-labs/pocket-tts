@@ -21,7 +21,9 @@ from torch import nn
 logger = logging.getLogger(__name__)
 
 
-def quantize_linear_layers(module: nn.Module, dtype: torch.dtype = torch.qint8) -> nn.Module:
+def quantize_linear_layers(
+    module: nn.Module, dtype: torch.dtype = torch.qint8
+) -> nn.Module:
     """Apply dynamic int8 quantization to all Linear layers in a module.
 
     Uses PyTorch's dynamic quantization which quantizes weights to int8
@@ -35,14 +37,18 @@ def quantize_linear_layers(module: nn.Module, dtype: torch.dtype = torch.qint8) 
         Quantized module (modified in-place for efficiency).
     """
     try:
-        quantized = torch.quantization.quantize_dynamic(module, {nn.Linear}, dtype=dtype)
+        quantized = torch.quantization.quantize_dynamic(
+            module, {nn.Linear}, dtype=dtype
+        )
         return quantized
     except Exception as e:
         logger.warning("Dynamic quantization failed: %s", e)
         return module
 
 
-def quantize_model(model, components: Literal["all", "flow-lm", "mimi"] = "all") -> nn.Module:
+def quantize_model(
+    model, components: Literal["all", "flow-lm", "mimi"] = "all"
+) -> nn.Module:
     """Quantize pocket-tts model components to int8 for reduced memory.
 
     This applies dynamic int8 quantization to the specified components,
@@ -76,8 +82,12 @@ def quantize_model(model, components: Literal["all", "flow-lm", "mimi"] = "all")
     if components in ("all", "mimi"):
         logger.info("Quantizing Mimi to int8...")
         # Only quantize the transformer parts, not the audio codec
-        model.mimi.encoder_transformer = quantize_linear_layers(model.mimi.encoder_transformer)
-        model.mimi.decoder_transformer = quantize_linear_layers(model.mimi.decoder_transformer)
+        model.mimi.encoder_transformer = quantize_linear_layers(
+            model.mimi.encoder_transformer
+        )
+        model.mimi.decoder_transformer = quantize_linear_layers(
+            model.mimi.decoder_transformer
+        )
         logger.info("Mimi transformers quantized")
 
     return model
@@ -135,7 +145,9 @@ def estimate_memory_savings(
         "original_bytes": original_bytes,
         "estimated_quantized_bytes": estimated_bytes,
         "savings_bytes": original_bytes - estimated_bytes,
-        "savings_percent": round((original_bytes - estimated_bytes) / original_bytes * 100, 1)
+        "savings_percent": round(
+            (original_bytes - estimated_bytes) / original_bytes * 100, 1
+        )
         if original_bytes > 0
         else 0,
     }

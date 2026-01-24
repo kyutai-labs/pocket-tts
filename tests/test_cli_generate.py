@@ -17,7 +17,13 @@ def test_generate_basic_usage(tmp_path):
 
     result = runner.invoke(
         cli_app,
-        ["generate", "--text", "Hello world, this is a test.", "--output-path", str(output_file)],
+        [
+            "generate",
+            "--text",
+            "Hello world, this is a test.",
+            "--output-path",
+            str(output_file),
+        ],
     )
 
     assert result.exit_code == 0
@@ -99,7 +105,14 @@ def test_generate_verbose_mode(tmp_path):
 
     result = runner.invoke(
         cli_app,
-        ["generate", "--text", "Testing verbose mode.", "-q", "--output-path", str(output_file)],
+        [
+            "generate",
+            "--text",
+            "Testing verbose mode.",
+            "-q",
+            "--output-path",
+            str(output_file),
+        ],
     )
 
     assert result.exit_code == 0

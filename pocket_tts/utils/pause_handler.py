@@ -82,7 +82,9 @@ def parse_pause_tags(text: str) -> tuple[list[str], list[PauseMarker]]:
 
         # Record pause position (after the chunk we just added)
         if chunks:
-            pauses.append(PauseMarker(position=len(chunks) - 1, duration_ms=duration_ms))
+            pauses.append(
+                PauseMarker(position=len(chunks) - 1, duration_ms=duration_ms)
+            )
 
         last_end = match.end()
 

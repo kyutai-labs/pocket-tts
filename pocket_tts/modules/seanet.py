@@ -15,7 +15,9 @@ class SEANetResnetBlock(nn.Module):
     ):
         super().__init__()
         if len(kernel_sizes) != len(dilations):
-            raise ValueError(f"Number of kernel sizes {len(kernel_sizes)} should match number of dilations {len(dilations)}")
+            raise ValueError(
+                f"Number of kernel sizes {len(kernel_sizes)} should match number of dilations {len(dilations)}"
+            )
         hidden = dim // compress
         block = nn.ModuleList([])
         for i, (kernel_size, dilation) in enumerate(zip(kernel_sizes, dilations)):
@@ -24,7 +26,11 @@ class SEANetResnetBlock(nn.Module):
             block += [
                 nn.ELU(alpha=1.0),
                 StreamingConv1d(
-                    in_chs, out_chs, kernel_size=kernel_size, dilation=dilation, pad_mode=pad_mode
+                    in_chs,
+                    out_chs,
+                    kernel_size=kernel_size,
+                    dilation=dilation,
+                    pad_mode=pad_mode,
                 ),
             ]
         self.block = block
@@ -32,9 +38,15 @@ class SEANetResnetBlock(nn.Module):
     def forward(self, x, model_state: dict | None):
         v = x
         for layer in self.block:
-            v = layer(v, model_state) if isinstance(layer, StreamingConv1d) else layer(v)
+            v = (
+                layer(v, model_state)
+                if isinstance(layer, StreamingConv1d)
+                else layer(v)
+            )
         if x.shape != v.shape:
-            raise ValueError(f"Residual connection shape mismatch: x={x.shape}, v={v.shape}")
+            raise ValueError(
+                f"Residual connection shape mismatch: x={x.shape}, v={v.shape}"
+            )
         return x + v
 
 
@@ -65,7 +77,11 @@ class SEANetEncoder(nn.Module):
 
         mult = 1
         model = nn.ModuleList(
-            [StreamingConv1d(channels, mult * n_filters, kernel_size, pad_mode=pad_mode)]
+            [
+                StreamingConv1d(
+                    channels, mult * n_filters, kernel_size, pad_mode=pad_mode
+                )
+            ]
         )
         # Downsample to raw audio scale
         for i, ratio in enumerate(self.ratios):
@@ -96,7 +112,9 @@ class SEANetEncoder(nn.Module):
 
         model += [
             nn.ELU(alpha=1.0),
-            StreamingConv1d(mult * n_filters, dimension, last_kernel_size, pad_mode=pad_mode),
+            StreamingConv1d(
+                mult * n_filters, dimension, last_kernel_size, pad_mode=pad_mode
+            ),
         ]
 
         self.model = model
@@ -136,7 +154,11 @@ class SEANetDecoder(nn.Module):
         self.n_blocks = len(self.ratios) + 2  # first and last conv + residual blocks
         mult = int(2 ** len(self.ratios))
         model = nn.ModuleList(
-            [StreamingConv1d(dimension, mult * n_filters, kernel_size, pad_mode=pad_mode)]
+            [
+                StreamingConv1d(
+                    dimension, mult * n_filters, kernel_size, pad_mode=pad_mode
+                )
+            ]
         )
         # Upsample to raw audio scale
         for _, ratio in enumerate(self.ratios):
@@ -144,7 +166,10 @@ class SEANetDecoder(nn.Module):
             model += [
                 nn.ELU(alpha=1.0),
                 StreamingConvTranspose1d(
-                    mult * n_filters, mult * n_filters // 2, kernel_size=ratio * 2, stride=ratio
+                    mult * n_filters,
+                    mult * n_filters // 2,
+                    kernel_size=ratio * 2,
+                    stride=ratio,
                 ),
             ]
             # Add residual layers
@@ -170,7 +195,9 @@ class SEANetDecoder(nn.Module):
 
     def forward(self, z, model_state: dict | None):
         for layer in self.model:
-            if isinstance(layer, (StreamingConvTranspose1d, SEANetResnetBlock, StreamingConv1d)):
+            if isinstance(
+                layer, (StreamingConvTranspose1d, SEANetResnetBlock, StreamingConv1d)
+            ):
                 z = layer(z, model_state)
             else:
                 z = layer(z)

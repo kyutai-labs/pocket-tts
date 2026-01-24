@@ -12,7 +12,9 @@ class KVCacheResult:
 
     __slots__ = ("keys", "values", "positions")
 
-    def __init__(self, keys: torch.Tensor, values: torch.Tensor, positions: torch.Tensor):
+    def __init__(
+        self, keys: torch.Tensor, values: torch.Tensor, positions: torch.Tensor
+    ):
         self.keys = keys
         self.values = values
         self.positions = positions
@@ -22,7 +24,9 @@ class KVCacheResult:
         """Create from K/V tensors without cached history."""
         B, H, T, D = keys.shape
         if tuple(values.shape[:-1]) != (B, H, T):
-            raise ValueError(f"Expected values shape [B, H, T, D] with prefix {(B, H, T)}, got {values.shape}")
+            raise ValueError(
+                f"Expected values shape [B, H, T, D] with prefix {(B, H, T)}, got {values.shape}"
+            )
         positions = torch.arange(T, device=keys.device, dtype=torch.long)
         return KVCacheResult(keys, values, positions.expand(B, -1))
 
@@ -64,7 +68,9 @@ def _complete_ring_buffer(
     last_offset = end_offset.view(-1, 1) + T - 1
     end_index = last_offset % capacity
     delta = indexes - end_index
-    positions = torch.where(delta <= 0, last_offset + delta, last_offset + delta - capacity)
+    positions = torch.where(
+        delta <= 0, last_offset + delta, last_offset + delta - capacity
+    )
 
     end_offset[:] = end_offset + T
     invalid = indexes >= end_offset.view(-1, 1)
@@ -123,7 +129,11 @@ class StreamingMultiheadAttention(StatefulModule):
     """
 
     def __init__(
-        self, embed_dim: int, num_heads: int, rope: RotaryEmbedding, context: int | None = None
+        self,
+        embed_dim: int,
+        num_heads: int,
+        rope: RotaryEmbedding,
+        context: int | None = None,
     ):
         super().__init__()
 
@@ -136,7 +146,9 @@ class StreamingMultiheadAttention(StatefulModule):
         self.in_proj = nn.Linear(embed_dim, out_dim, bias=False)
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=False)
 
-    def init_state(self, batch_size: int, sequence_length: int) -> dict[str, torch.Tensor]:
+    def init_state(
+        self, batch_size: int, sequence_length: int
+    ) -> dict[str, torch.Tensor]:
         dim_per_head = self.embed_dim // self.num_heads
 
         if self.context is not None:
@@ -186,7 +198,9 @@ class StreamingMultiheadAttention(StatefulModule):
             state["offset"] += increment
         else:
             new_size = state["current_end"].shape[0] + increment
-            state["current_end"] = torch.zeros((new_size,)).to(state["current_end"].device)
+            state["current_end"] = torch.zeros((new_size,)).to(
+                state["current_end"].device
+            )
 
     def forward(self, query: torch.Tensor, model_state: dict | None) -> torch.Tensor:
         if model_state is None:
@@ -281,7 +295,9 @@ class StreamingMultiheadAttention(StatefulModule):
 
         # Build attention bias for sliding window
         pos_k = pos_k[:, None]
-        pos_q = offset.view(-1, 1, 1) + torch.arange(T, device=device, dtype=torch.long).view(-1, 1)
+        pos_q = offset.view(-1, 1, 1) + torch.arange(
+            T, device=device, dtype=torch.long
+        ).view(-1, 1)
         delta = pos_q - pos_k
         attn_bias = (pos_k >= 0) & (delta >= 0) & (delta < self.context)
         attn_bias = attn_bias[:, None]
@@ -319,7 +335,9 @@ class StreamingMultiheadAttention(StatefulModule):
 
         # Append to buffer
         # k_buf output is full sequence [B, T_full, H, D]
-        k_full, v_full = _complete_append_buffer(state["cache"], current_end, k_store, v)
+        k_full, v_full = _complete_append_buffer(
+            state["cache"], current_end, k_store, v
+        )
 
         # Attention requires [B, H, T, D]
         k = k_full.transpose(1, 2)
@@ -328,7 +346,9 @@ class StreamingMultiheadAttention(StatefulModule):
         # Build causal mask
         # T is current seq len. T_full is T + current_end
         mask_shape = (T, T + current_end)
-        attn_mask = _materialize_causal_mask(mask_shape, shift=current_end, device=device)
+        attn_mask = _materialize_causal_mask(
+            mask_shape, shift=current_end, device=device
+        )
 
         x = F.scaled_dot_product_attention(q, k, v, attn_mask)
         x = x.transpose(1, 2)

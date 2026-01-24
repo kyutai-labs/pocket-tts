@@ -33,7 +33,9 @@ class TestResourceCleanup:
         with model:
             # Generate some audio
             state = init_states(model.flow_lm, batch_size=1, sequence_length=1000)
-            audio = model.generate_audio(model_state=state, text_to_generate="Hello world")
+            audio = model.generate_audio(
+                model_state=state, text_to_generate="Hello world"
+            )
             assert audio is not None
             assert audio.shape[0] > 0  # Has audio samples
 
@@ -52,7 +54,9 @@ class TestResourceCleanup:
 
         # Generate some audio
         state = init_states(model.flow_lm, batch_size=1, sequence_length=1000)
-        model.generate_audio(model_state=state, text_to_generate="Test memory monitoring")
+        model.generate_audio(
+            model_state=state, text_to_generate="Test memory monitoring"
+        )
 
         # Check memory after generation
         stats_after = model.get_memory_usage()
@@ -101,7 +105,9 @@ class TestResourceCleanup:
         # Run multiple generations
         for i in range(3):
             state = init_states(model.flow_lm, batch_size=1, sequence_length=1000)
-            audio = model.generate_audio(model_state=state, text_to_generate=f"Generation {i}")
+            audio = model.generate_audio(
+                model_state=state, text_to_generate=f"Generation {i}"
+            )
             assert audio is not None
 
             # Explicit cleanup
@@ -118,7 +124,9 @@ class TestResourceCleanup:
 
         # Object count should not have grown by more than 10000
         # (allowing for some Python overhead)
-        assert object_growth < 10000, f"Memory leak detected: {object_growth} objects created"
+        assert object_growth < 10000, (
+            f"Memory leak detected: {object_growth} objects created"
+        )
 
         # Cleanup
         model.cleanup()
@@ -171,7 +179,9 @@ class TestModelLoadingUnloading:
 
             # Verify model is functional
             state = init_states(model.flow_lm, batch_size=1, sequence_length=1000)
-            audio = model.generate_audio(model_state=state, text_to_generate=f"Cycle {i}")
+            audio = model.generate_audio(
+                model_state=state, text_to_generate=f"Cycle {i}"
+            )
             assert audio is not None
 
             # Cleanup
@@ -191,7 +201,9 @@ class TestModelLoadingUnloading:
 
             # Verify each model is functional
             state = init_states(model.flow_lm, batch_size=1, sequence_length=1000)
-            audio = model.generate_audio(model_state=state, text_to_generate=f"Instance {i}")
+            audio = model.generate_audio(
+                model_state=state, text_to_generate=f"Instance {i}"
+            )
             assert audio is not None
 
         # Cleanup all models

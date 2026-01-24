@@ -3,9 +3,11 @@
 //! This module provides functions that are missing from the main
 //! array_manipulation module but needed for NumPy compatibility.
 
-use crate::array::Array;
+use crate::array::{normalize_axis, Array};
 use crate::error::{NumPyError, Result};
 use crate::slicing::{MultiSlice, Slice};
+use crate::statistics::{AsF64, FromF64};
+use crate::strides::compute_multi_indices;
 
 /// Argument for split functions
 pub enum SplitArg {
@@ -384,6 +386,182 @@ where
     Ok(Array::from_vec(result))
 }
 
+fn diff_once<T>(array: &Array<T>, axis: usize) -> Result<Array<T>>
+where
+    T: Clone + Default + std::ops::Sub<Output = T> + Send + Sync + 'static,
+{
+    if array.ndim() == 0 {
+        return Err(NumPyError::invalid_operation(
+            "diff() requires at least 1-dimensional array",
+        ));
+    }
+
+    let mut output_shape = array.shape().to_vec();
+    let axis_len = output_shape[axis];
+    output_shape[axis] = axis_len.saturating_sub(1);
+
+    let output_size: usize = output_shape.iter().product();
+    if output_size == 0 {
+        return Ok(Array::from_shape_vec(output_shape, Vec::new()));
+    }
+
+    let mut output_data = Vec::with_capacity(output_size);
+    for linear_idx in 0..output_size {
+        let indices = compute_multi_indices(linear_idx, &output_shape);
+        let mut next_indices = indices.clone();
+        next_indices[axis] += 1;
+
+        let prev = array.get_by_indices(&indices)?;
+        let next = array.get_by_indices(&next_indices)?;
+        output_data.push(next.clone() - prev.clone());
+    }
+
+    Ok(Array::from_shape_vec(output_shape, output_data))
+}
+
+/// Calculate the n-th discrete difference along the given axis (similar to np.diff).
+///
+/// # Arguments
+/// - `array`: Input array
+/// - `n`: The number of times values are differenced (default 1)
+/// - `axis`: Axis along which the difference is taken (default -1)
+/// - `prepend`: Optional array to prepend to `array` before differencing
+/// - `append`: Optional array to append to `array` before differencing
+///
+/// # Returns
+/// Array containing the n-th discrete differences
+pub fn diff<T>(
+    array: &Array<T>,
+    n: isize,
+    axis: isize,
+    prepend: Option<&Array<T>>,
+    append: Option<&Array<T>>,
+) -> Result<Array<T>>
+where
+    T: Clone + Default + std::ops::Sub<Output = T> + Send + Sync + 'static,
+{
+    if n < 0 {
+        return Err(NumPyError::invalid_value("n must be non-negative"));
+    }
+
+    let mut working = if prepend.is_some() || append.is_some() {
+        let mut arrays = Vec::new();
+        if let Some(prefix) = prepend {
+            arrays.push(prefix);
+        }
+        arrays.push(array);
+        if let Some(suffix) = append {
+            arrays.push(suffix);
+        }
+        concatenate(&arrays, axis)?
+    } else {
+        array.clone()
+    };
+
+    if n == 0 {
+        return Ok(working);
+    }
+
+    let axis = normalize_axis(axis, working.ndim())?;
+    let steps =
+        usize::try_from(n).map_err(|_| NumPyError::invalid_value("n must be non-negative"))?;
+
+    for _ in 0..steps {
+        working = diff_once(&working, axis)?;
+    }
+
+    Ok(working)
+}
+
+fn gradient_axis<T>(array: &Array<T>, axis: usize) -> Result<Array<T>>
+where
+    T: Clone + Default + AsF64 + FromF64 + 'static,
+{
+    let shape = array.shape();
+    let axis_len = shape[axis];
+    if axis_len < 2 {
+        return Err(NumPyError::invalid_value(
+            "Shape of array too small to calculate a numerical gradient, at least 2 elements are required",
+        ));
+    }
+
+    let mut output = Array::zeros(shape.to_vec());
+
+    for linear_idx in 0..array.size() {
+        let indices = compute_multi_indices(linear_idx, shape);
+        let axis_index = indices[axis];
+
+        let value = if axis_index == 0 {
+            let mut next_indices = indices.clone();
+            next_indices[axis] += 1;
+            let current = array
+                .get_by_indices(&indices)?
+                .as_f64()
+                .ok_or_else(|| NumPyError::invalid_value("Unable to convert value to f64"))?;
+            let next = array
+                .get_by_indices(&next_indices)?
+                .as_f64()
+                .ok_or_else(|| NumPyError::invalid_value("Unable to convert value to f64"))?;
+            next - current
+        } else if axis_index == axis_len - 1 {
+            let mut prev_indices = indices.clone();
+            prev_indices[axis] -= 1;
+            let current = array
+                .get_by_indices(&indices)?
+                .as_f64()
+                .ok_or_else(|| NumPyError::invalid_value("Unable to convert value to f64"))?;
+            let prev = array
+                .get_by_indices(&prev_indices)?
+                .as_f64()
+                .ok_or_else(|| NumPyError::invalid_value("Unable to convert value to f64"))?;
+            current - prev
+        } else {
+            let mut prev_indices = indices.clone();
+            prev_indices[axis] -= 1;
+            let mut next_indices = indices.clone();
+            next_indices[axis] += 1;
+            let prev = array
+                .get_by_indices(&prev_indices)?
+                .as_f64()
+                .ok_or_else(|| NumPyError::invalid_value("Unable to convert value to f64"))?;
+            let next = array
+                .get_by_indices(&next_indices)?
+                .as_f64()
+                .ok_or_else(|| NumPyError::invalid_value("Unable to convert value to f64"))?;
+            (next - prev) / 2.0
+        };
+
+        output.set_by_indices(&indices, T::from_f64(value))?;
+    }
+
+    Ok(output)
+}
+
+/// Calculate the gradient of an N-dimensional array (similar to np.gradient).
+///
+/// # Arguments
+/// - `array`: Input array
+///
+/// # Returns
+/// Vector of gradient arrays, one per axis
+pub fn gradient<T>(array: &Array<T>) -> Result<Vec<Array<T>>>
+where
+    T: Clone + Default + AsF64 + FromF64 + 'static,
+{
+    if array.ndim() == 0 {
+        return Err(NumPyError::invalid_operation(
+            "gradient() requires at least 1-dimensional array",
+        ));
+    }
+
+    let mut results = Vec::with_capacity(array.ndim());
+    for axis in 0..array.ndim() {
+        results.push(gradient_axis(array, axis)?);
+    }
+
+    Ok(results)
+}
+
 /// Extract a diagonal from an array.
 pub fn diagonal<T>(array: &Array<T>, offset: isize, axis1: usize, axis2: usize) -> Result<Array<T>>
 where
@@ -697,23 +875,8 @@ where
 
 pub mod exports {
     pub use super::{
-        array_split, block, column_stack, concatenate, diag, diagonal, dsplit, dstack, hsplit,
-        hstack, place, put, put_along_axis, putmask, row_stack, split, stack, tril, triu, vander,
-        vsplit, vstack,
+        array_split, block, column_stack, concatenate, diag, diagonal, diff, dsplit, dstack,
+        ediff1d, gradient, hsplit, hstack, place, put, put_along_axis, putmask, row_stack, split,
+        stack, tril, triu, vander, vsplit, vstack,
     };
-}
-
-fn normalize_axis(axis: isize, ndim: usize) -> Result<usize> {
-    if axis < 0 {
-        let ax = axis + ndim as isize;
-        if ax < 0 {
-            return Err(NumPyError::invalid_value("axis out of bounds"));
-        }
-        Ok(ax as usize)
-    } else {
-        if axis as usize >= ndim {
-            return Err(NumPyError::invalid_value("axis out of bounds"));
-        }
-        Ok(axis as usize)
-    }
 }

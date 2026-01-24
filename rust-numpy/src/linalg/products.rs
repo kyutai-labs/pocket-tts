@@ -73,15 +73,15 @@ where
                         let b_idx =
                             (k as isize * b_strides[0] + j as isize * b_strides[1]) as usize;
 
-                        let a_val = a.get_linear_physical(a_idx).unwrap();
-                        let b_val = b.get_linear_physical(b_idx).unwrap();
+                        let a_val = a.get_linear(a_idx).unwrap();
+                        let b_val = b.get_linear(b_idx).unwrap();
 
                         sum = sum + (*a_val * *b_val);
                     }
 
                     let out_idx =
                         (i as isize * output_strides[0] + j as isize * output_strides[1]) as usize;
-                    output.set_linear_physical(out_idx, sum)?;
+                    output.set_linear(out_idx, sum);
                 }
             }
 

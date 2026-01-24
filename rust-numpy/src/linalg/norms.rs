@@ -267,9 +267,13 @@ where
         NormType::L1 => compute_norm_with_axis(x, 1, selected_axes.as_deref(), keepdims),
         NormType::L2 => compute_norm_with_axis(x, 2, selected_axes.as_deref(), keepdims),
         NormType::Linf => compute_norm_inf_with_axis(x, true, selected_axes.as_deref(), keepdims),
-        NormType::LNegInf => compute_norm_inf_with_axis(x, false, selected_axes.as_deref(), keepdims),
+        NormType::LNegInf => {
+            compute_norm_inf_with_axis(x, false, selected_axes.as_deref(), keepdims)
+        }
         NormType::Lp(p) => compute_norm_with_axis(x, p, selected_axes.as_deref(), keepdims),
-        NormType::LNegP(p) => compute_norm_neg_p_with_axis(x, p, selected_axes.as_deref(), keepdims),
+        NormType::LNegP(p) => {
+            compute_norm_neg_p_with_axis(x, p, selected_axes.as_deref(), keepdims)
+        }
     }
 }
 

@@ -1902,7 +1902,12 @@ pub fn real_if_close32(
 /// # Algorithm
 /// For consecutive elements, detect jumps where the absolute difference exceeds
 /// `max(discont, period/2)` and correct by adding/subtracting multiples of `period`.
-pub fn unwrap<T>(p: &Array<T>, discont: Option<T>, axis: Option<isize>, period: Option<T>) -> Result<Array<T>>
+pub fn unwrap<T>(
+    p: &Array<T>,
+    discont: Option<T>,
+    axis: Option<isize>,
+    period: Option<T>,
+) -> Result<Array<T>>
 where
     T: Clone
         + Default
@@ -1923,7 +1928,9 @@ where
 
     // Normalize axis to be in range [0, ndim)
     let axis_idx = if ndim == 0 {
-        return Err(NumPyError::invalid_value("unwrap: cannot unwrap 0-dimensional array"));
+        return Err(NumPyError::invalid_value(
+            "unwrap: cannot unwrap 0-dimensional array",
+        ));
     } else {
         let ax = axis.unwrap_or(-1);
         if ax < 0 {
@@ -3219,8 +3226,10 @@ mod tests {
     fn test_unwrap_2d_axis() {
         // Test 2D array unwrapping along axis 1 (columns)
         let p: Array<f64> = Array::from_data(
-            vec![0.0, 0.5, 6.0, 6.5,  // first row has discontinuity
-                 1.0, 1.5, 1.8, 2.0],  // second row, no discontinuity
+            vec![
+                0.0, 0.5, 6.0, 6.5, // first row has discontinuity
+                1.0, 1.5, 1.8, 2.0,
+            ], // second row, no discontinuity
             vec![2, 4],
         );
 
@@ -3258,7 +3267,7 @@ mod tests {
     fn test_unwrap_2d_axis_0() {
         // Test 2D array unwrapping along axis 0 (rows)
         let p: Array<f64> = Array::from_data(
-            vec![0.0, 1.0, 6.0, 6.5],  // column 0: 0.0 -> 6.0 (discontinuity)
+            vec![0.0, 1.0, 6.0, 6.5], // column 0: 0.0 -> 6.0 (discontinuity)
             vec![2, 2],
         );
 
@@ -3387,8 +3396,12 @@ mod tests {
         for i in 1..result.size() {
             let prev = *result.get(i - 1).unwrap();
             let curr = *result.get(i).unwrap();
-            assert!(curr > prev || (curr - prev).abs() < 1e-10,
-                    "Phase should be increasing: {} -> {}", prev, curr);
+            assert!(
+                curr > prev || (curr - prev).abs() < 1e-10,
+                "Phase should be increasing: {} -> {}",
+                prev,
+                curr
+            );
         }
     }
 
@@ -3418,7 +3431,8 @@ mod tests {
     #[test]
     fn test_numpy_example_period_6() {
         // np.unwrap([ 1, 2, 3, 4, 5, 6, 1, 2, 3], period=6) -> [1, 2, 3, 4, 5, 6, 7, 8, 9]
-        let p: Array<f64> = Array::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 1.0, 2.0, 3.0], vec![9]);
+        let p: Array<f64> =
+            Array::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 1.0, 2.0, 3.0], vec![9]);
 
         let result = unwrap(&p, None, None, Some(6.0_f64)).unwrap();
 
@@ -3426,8 +3440,13 @@ mod tests {
         for i in 0..9 {
             let val: f64 = *result.get(i).unwrap();
             let expected = (i + 1) as f64;
-            assert!((val - expected).abs() < 1e-10,
-                    "Index {}: expected {}, got {}", i, expected, val);
+            assert!(
+                (val - expected).abs() < 1e-10,
+                "Index {}: expected {}, got {}",
+                i,
+                expected,
+                val
+            );
         }
     }
 
@@ -3442,8 +3461,13 @@ mod tests {
         for i in 0..8 {
             let val: f64 = *result.get(i).unwrap();
             let expected = (i + 2) as f64;
-            assert!((val - expected).abs() < 1e-10,
-                    "Index {}: expected {}, got {}", i, expected, val);
+            assert!(
+                (val - expected).abs() < 1e-10,
+                "Index {}: expected {}, got {}",
+                i,
+                expected,
+                val
+            );
         }
     }
 

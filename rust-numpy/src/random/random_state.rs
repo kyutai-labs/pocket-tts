@@ -470,7 +470,10 @@ impl RandomState {
         }
         let p_f64 = p.into();
         if !(0.0..=1.0).contains(&p_f64) {
-            return Err(NumPyError::value_error("p must be in [0, 1]", "negative_binomial"));
+            return Err(NumPyError::value_error(
+                "p must be in [0, 1]",
+                "negative_binomial",
+            ));
         }
 
         let shape = size.unwrap_or(&[1]);
@@ -505,7 +508,9 @@ impl RandomState {
 
         let total = ngood + nbad;
         if nsample > total {
-            return Err(NumPyError::invalid_value("nsample must not exceed population size"));
+            return Err(NumPyError::invalid_value(
+                "nsample must not exceed population size",
+            ));
         }
 
         let shape = size.unwrap_or(&[1]);
@@ -518,7 +523,11 @@ impl RandomState {
         for _ in 0..total_size {
             let mut sample_pop = population.clone();
             sample_pop.shuffle(&mut self.rng);
-            let good_count = sample_pop.iter().take(nsample as usize).filter(|&&x| x).count();
+            let good_count = sample_pop
+                .iter()
+                .take(nsample as usize)
+                .filter(|&&x| x)
+                .count();
             data.push(T::from(good_count as f64));
         }
 
@@ -571,7 +580,12 @@ impl RandomState {
         Ok(Array::from_data(data, shape.to_vec()))
     }
 
-    pub fn wald<T>(&mut self, mean: T, scale: T, size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
+    pub fn wald<T>(
+        &mut self,
+        mean: T,
+        scale: T,
+        size: Option<&[usize]>,
+    ) -> Result<Array<T>, NumPyError>
     where
         T: Clone + Into<f64> + From<f64> + Default + 'static,
     {
@@ -596,7 +610,8 @@ impl RandomState {
                 .sample(&mut self.rng);
 
             let mu_y = mean_f64 * y;
-            let x = mean_f64 + (mu_y * mu_y) / (2.0 * scale_f64) - (mu_y / (2.0 * scale_f64)) * ((4.0 * scale_f64) + mu_y).sqrt();
+            let x = mean_f64 + (mu_y * mu_y) / (2.0 * scale_f64)
+                - (mu_y / (2.0 * scale_f64)) * ((4.0 * scale_f64) + mu_y).sqrt();
 
             let u: f64 = self.rng.gen();
             let sample = if u <= mean_f64 / (mean_f64 + x) {
@@ -621,7 +636,9 @@ impl RandomState {
     {
         let a_f64 = a.into();
         if a_f64 <= 0.0 {
-            return Err(NumPyError::invalid_value("shape parameter must be positive"));
+            return Err(NumPyError::invalid_value(
+                "shape parameter must be positive",
+            ));
         }
 
         let shape = size.unwrap_or(&[1]);
@@ -655,7 +672,9 @@ impl RandomState {
             return Err(NumPyError::invalid_value("left must be less than right"));
         }
         if mode_f64 < left_f64 || mode_f64 > right_f64 {
-            return Err(NumPyError::invalid_value("mode must be between left and right"));
+            return Err(NumPyError::invalid_value(
+                "mode must be between left and right",
+            ));
         }
 
         let shape = size.unwrap_or(&[1]);
@@ -681,7 +700,9 @@ impl RandomState {
     {
         let a_f64 = a.into();
         if a_f64 <= 0.0 {
-            return Err(NumPyError::invalid_value("shape parameter must be positive"));
+            return Err(NumPyError::invalid_value(
+                "shape parameter must be positive",
+            ));
         }
 
         let shape = size.unwrap_or(&[1]);
@@ -736,7 +757,10 @@ impl RandomState {
         Ok(Array::from_data(data, shape.to_vec()))
     }
 
-    pub fn standard_exponential<T>(&mut self, size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
+    pub fn standard_exponential<T>(
+        &mut self,
+        size: Option<&[usize]>,
+    ) -> Result<Array<T>, NumPyError>
     where
         T: Clone + Into<f64> + From<f64> + Default + 'static,
     {
@@ -771,8 +795,8 @@ impl RandomState {
         let total_size = shape_arr.iter().product();
         let mut data = Vec::with_capacity(total_size);
 
-        let dist = Gamma::new(shape_f64, 1.0)
-            .map_err(|e| NumPyError::invalid_value(e.to_string()))?;
+        let dist =
+            Gamma::new(shape_f64, 1.0).map_err(|e| NumPyError::invalid_value(e.to_string()))?;
 
         for _ in 0..total_size {
             let sample = dist.sample(&mut self.rng);

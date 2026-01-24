@@ -259,10 +259,8 @@ where
                     .as_ref()
                     .map_or(true, |m| *m.get_linear(i).unwrap_or(&false))
                 {
-                    out_slice[i] = (self.operation)(
-                        d0[in0.offset + i].clone(),
-                        d1[in1.offset + i].clone(),
-                    );
+                    out_slice[i] =
+                        (self.operation)(d0[in0.offset + i].clone(), d1[in1.offset + i].clone());
                 }
             }
             return Ok(());

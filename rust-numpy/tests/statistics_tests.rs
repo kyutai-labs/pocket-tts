@@ -133,7 +133,9 @@ fn test_correlate_identical() {
     let result = correlate(&a, &v, "valid").unwrap();
     // Peak correlation at the center
     let values: Vec<_> = result.iter().collect();
-    let max_idx = values.iter().enumerate()
+    let max_idx = values
+        .iter()
+        .enumerate()
         .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
         .map(|(i, _)| i)
         .unwrap();
@@ -250,4 +252,3 @@ fn test_nancumprod_all_nan() {
     assert_eq!(result.get(1).unwrap(), &1.0);
     assert_eq!(result.get(2).unwrap(), &1.0);
 }
-

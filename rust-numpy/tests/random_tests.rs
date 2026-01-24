@@ -209,9 +209,7 @@ fn test_shuffle() {
     assert_eq!(sorted_original, sorted_shuffled);
 
     // Different order (very unlikely to be the same)
-    let same_order = original.iter()
-        .zip(shuffled.iter())
-        .all(|(a, b)| a == b);
+    let same_order = original.iter().zip(shuffled.iter()).all(|(a, b)| a == b);
     assert!(!same_order);
 }
 

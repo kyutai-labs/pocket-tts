@@ -207,11 +207,7 @@ where
     DEFAULT_RNG.with(|rng| rng.borrow_mut().geometric(p, size))
 }
 
-pub fn negative_binomial<T>(
-    n: isize,
-    p: T,
-    size: Option<&[usize]>,
-) -> Result<Array<T>, NumPyError>
+pub fn negative_binomial<T>(n: isize, p: T, size: Option<&[usize]>) -> Result<Array<T>, NumPyError>
 where
     T: Clone + Into<f64> + From<f64> + Default + 'static,
 {

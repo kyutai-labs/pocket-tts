@@ -339,21 +339,44 @@ where
 /// Trim the leading and/or trailing zeros from a 1-D array.
 pub fn trim_zeros<T>(array: &Array<T>, trim: &str) -> Result<Array<T>>
 where
-    T: Clone + Default + PartialEq + Send + Sync + 'static,
+    T: Clone + Default + PartialEq + num_traits::Zero + 'static,
 {
-    let data = array.data();
+    if array.ndim() != 1 {
+        return Err(NumPyError::invalid_operation(
+            "trim_zeros() only supports 1-D arrays",
+        ));
+    }
+
+    if !matches!(trim, "f" | "b" | "fb") {
+        return Err(NumPyError::invalid_operation(
+            "trim_zeros() trim must be 'f', 'b', or 'fb'",
+        ));
+    }
+
+    let data = array.to_vec();
+
+    // Handle empty array or all zeros
+    if data.is_empty() || data.iter().all(|x| x.is_zero()) {
+        return Ok(Array::from_vec(vec![]));
+    }
+
     let mut start = 0;
     let mut end = data.len();
-    if trim.contains('f') {
-        while start < end && data[start] == T::default() {
+
+    // Trim from front
+    if trim == "f" || trim == "fb" {
+        while start < data.len() && data[start].is_zero() {
             start += 1;
         }
     }
-    if trim.contains('b') {
-        while end > start && data[end - 1] == T::default() {
+
+    // Trim from back
+    if trim == "b" || trim == "fb" {
+        while end > start && data[end - 1].is_zero() {
             end -= 1;
         }
     }
+
     Ok(Array::from_vec(data[start..end].to_vec()))
 }
 

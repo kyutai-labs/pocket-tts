@@ -198,11 +198,18 @@ def serve(
     host: Annotated[str, typer.Option(help="Host to bind to")] = "localhost",
     port: Annotated[int, typer.Option(help="Port to bind to")] = 8000,
     reload: Annotated[bool, typer.Option(help="Enable auto-reload")] = False,
+    compile: Annotated[
+        bool, typer.Option(help="Compile model with torch.compile")
+    ] = False,
+    quantize: Annotated[
+        str, typer.Option(help="Quantization mode (all, flow-lm, mimi)")
+    ] = None,
 ):
     """Start the FastAPI server."""
 
     global tts_model, global_model_state
-    tts_model = TTSModel.load_model(DEFAULT_VARIANT)
+    global tts_model, global_model_state
+    tts_model = TTSModel.load_model(DEFAULT_VARIANT, compile=compile, quantize=quantize)
 
     # Pre-load the voice prompt
     global_model_state = tts_model.get_state_for_audio_prompt(voice)
@@ -252,6 +259,12 @@ def generate(
     max_tokens: Annotated[
         int, typer.Option(help="Maximum number of tokens per chunk.")
     ] = MAX_TOKEN_PER_CHUNK,
+    compile: Annotated[
+        bool, typer.Option(help="Compile model with torch.compile")
+    ] = False,
+    quantize: Annotated[
+        str, typer.Option(help="Quantization mode (all, flow-lm, mimi)")
+    ] = None,
 ):
     """Generate speech using Kyutai Pocket TTS."""
     if "cuda" in device:
@@ -261,7 +274,13 @@ def generate(
     log_level = logging.ERROR if quiet else logging.INFO
     with enable_logging("pocket_tts", log_level):
         tts_model = TTSModel.load_model(
-            variant, temperature, lsd_decode_steps, noise_clamp, eos_threshold
+            variant,
+            temperature,
+            lsd_decode_steps,
+            noise_clamp,
+            eos_threshold,
+            compile=compile,
+            quantize=quantize,
         )
         tts_model.to(device)
 

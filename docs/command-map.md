@@ -20,6 +20,12 @@ uv run ruff format .
 uv run ruff check .
 ```
 
+## Type Check
+
+```bash
+uv run mypy pocket_tts/
+```
+
 ## Tests
 
 Fast tests (default):

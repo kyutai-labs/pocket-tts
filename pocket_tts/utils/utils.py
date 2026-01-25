@@ -95,6 +95,7 @@ def download_if_necessary(file_path: str) -> Path:
         else:
             return PROJECT_ROOT / final_file_path
 
+
 def load_predefined_voice(voice_name: str) -> torch.Tensor:
     if voice_name not in PREDEFINED_VOICES:
         raise ValueError(

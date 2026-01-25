@@ -1,0 +1,727 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>pocket_tts.rust_audio &mdash; Pocket TTS 1.0.2 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=1ed6394b"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            Pocket TTS
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../models.html">TTSModel</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../audio.html">Audio I/O Functions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../rust_audio.html">Rust Audio Processing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../examples.html">Examples</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Pocket TTS</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">pocket_tts.rust_audio</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for pocket_tts.rust_audio</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Python bindings for Rust audio processing extensions.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">ctypes</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+
+<div class="viewcode-block" id="RustAudioProcessor">
+<a class="viewcode-back" href="../../rust_audio.html#pocket_tts.rust_audio.RustAudioProcessor">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">RustAudioProcessor</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Python wrapper for Rust audio processing functions.&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="RustAudioProcessor.__init__">
+<a class="viewcode-back" href="../../rust_audio.html#pocket_tts.rust_audio.RustAudioProcessor.__init__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lib_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize the Rust audio processor.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            lib_path: Path to the compiled Rust library. If None, searches standard locations.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib_path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_find_library</span><span class="p">(</span><span class="n">lib_path</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_load_library</span><span class="p">()</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_find_library</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lib_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Find the Rust library file.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">lib_path</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">lib_path</span>
+
+        <span class="c1"># Search in standard locations</span>
+        <span class="n">search_paths</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">Path</span><span class="p">(</span><span class="vm">__file__</span><span class="p">)</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="s2">&quot;training&quot;</span> <span class="o">/</span> <span class="s2">&quot;rust_exts&quot;</span> <span class="o">/</span> <span class="s2">&quot;audio_ds&quot;</span><span class="p">,</span>
+            <span class="n">Path</span><span class="o">.</span><span class="n">cwd</span><span class="p">()</span> <span class="o">/</span> <span class="s2">&quot;training&quot;</span> <span class="o">/</span> <span class="s2">&quot;rust_exts&quot;</span> <span class="o">/</span> <span class="s2">&quot;audio_ds&quot;</span><span class="p">,</span>
+            <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/usr/local/lib&quot;</span><span class="p">),</span>
+            <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/opt/homebrew/lib&quot;</span><span class="p">),</span>
+        <span class="p">]</span>
+
+        <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">search_paths</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+                <span class="c1"># Look for the library</span>
+                <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="p">[</span>
+                    <span class="s2">&quot;libpocket_tts_audio_ds.so&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;libpocket_tts_audio_ds.dylib&quot;</span><span class="p">,</span>
+                <span class="p">]:</span>
+                    <span class="n">lib_file</span> <span class="o">=</span> <span class="n">path</span> <span class="o">/</span> <span class="n">name</span>
+                    <span class="k">if</span> <span class="n">lib_file</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+                        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">lib_file</span><span class="p">)</span>
+
+        <span class="c1"># Return default path for building</span>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span>
+            <span class="n">Path</span><span class="o">.</span><span class="n">cwd</span><span class="p">()</span>
+            <span class="o">/</span> <span class="s2">&quot;training&quot;</span>
+            <span class="o">/</span> <span class="s2">&quot;rust_exts&quot;</span>
+            <span class="o">/</span> <span class="s2">&quot;audio_ds&quot;</span>
+            <span class="o">/</span> <span class="s2">&quot;target&quot;</span>
+            <span class="o">/</span> <span class="s2">&quot;release&quot;</span>
+            <span class="o">/</span> <span class="s2">&quot;libpocket_tts_audio_ds.so&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_load_library</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Load the Rust shared library.&quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span> <span class="o">=</span> <span class="n">ctypes</span><span class="o">.</span><span class="n">CDLL</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_lib_path</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_setup_prototypes</span><span class="p">()</span>
+        <span class="k">except</span> <span class="ne">OSError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;Could not load Rust library from </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_lib_path</span><span class="si">}</span><span class="s2">. &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;Rust functions will not be available. Build with: cd training/rust_exts/audio_ds &amp;&amp; cargo build --release</span><span class="se">\n</span><span class="s2">&quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;Error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_setup_prototypes</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Set up C function prototypes for type safety.&quot;&quot;&quot;</span>
+        <span class="c1"># normalize_audio</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">normalize_audio</span><span class="o">.</span><span class="n">argtypes</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">POINTER</span><span class="p">(</span><span class="n">ctypes</span><span class="o">.</span><span class="n">c_float</span><span class="p">),</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">c_size_t</span><span class="p">,</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">c_float</span><span class="p">,</span>
+        <span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">normalize_audio</span><span class="o">.</span><span class="n">restype</span> <span class="o">=</span> <span class="n">ctypes</span><span class="o">.</span><span class="n">POINTER</span><span class="p">(</span><span class="n">ctypes</span><span class="o">.</span><span class="n">c_float</span><span class="p">)</span>
+
+        <span class="c1"># apply_gain</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">apply_gain</span><span class="o">.</span><span class="n">argtypes</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">POINTER</span><span class="p">(</span><span class="n">ctypes</span><span class="o">.</span><span class="n">c_float</span><span class="p">),</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">c_size_t</span><span class="p">,</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">c_float</span><span class="p">,</span>
+        <span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">apply_gain</span><span class="o">.</span><span class="n">restype</span> <span class="o">=</span> <span class="n">ctypes</span><span class="o">.</span><span class="n">POINTER</span><span class="p">(</span><span class="n">ctypes</span><span class="o">.</span><span class="n">c_float</span><span class="p">)</span>
+
+        <span class="c1"># resample_linear</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">resample_linear</span><span class="o">.</span><span class="n">argtypes</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">POINTER</span><span class="p">(</span><span class="n">ctypes</span><span class="o">.</span><span class="n">c_float</span><span class="p">),</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">c_size_t</span><span class="p">,</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">c_size_t</span><span class="p">,</span>
+        <span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">resample_linear</span><span class="o">.</span><span class="n">restype</span> <span class="o">=</span> <span class="n">ctypes</span><span class="o">.</span><span class="n">POINTER</span><span class="p">(</span><span class="n">ctypes</span><span class="o">.</span><span class="n">c_float</span><span class="p">)</span>
+
+        <span class="c1"># resample_sinc</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">resample_sinc</span><span class="o">.</span><span class="n">argtypes</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">POINTER</span><span class="p">(</span><span class="n">ctypes</span><span class="o">.</span><span class="n">c_float</span><span class="p">),</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">c_size_t</span><span class="p">,</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">c_size_t</span><span class="p">,</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">c_int</span><span class="p">,</span>
+        <span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">resample_sinc</span><span class="o">.</span><span class="n">restype</span> <span class="o">=</span> <span class="n">ctypes</span><span class="o">.</span><span class="n">POINTER</span><span class="p">(</span><span class="n">ctypes</span><span class="o">.</span><span class="n">c_float</span><span class="p">)</span>
+
+        <span class="c1"># int16_to_float32</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">int16_to_float32</span><span class="o">.</span><span class="n">argtypes</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">POINTER</span><span class="p">(</span><span class="n">ctypes</span><span class="o">.</span><span class="n">c_int16</span><span class="p">),</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">c_size_t</span><span class="p">,</span>
+        <span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">int16_to_float32</span><span class="o">.</span><span class="n">restype</span> <span class="o">=</span> <span class="n">ctypes</span><span class="o">.</span><span class="n">POINTER</span><span class="p">(</span><span class="n">ctypes</span><span class="o">.</span><span class="n">c_float</span><span class="p">)</span>
+
+        <span class="c1"># float32_to_int16</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">float32_to_int16</span><span class="o">.</span><span class="n">argtypes</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">POINTER</span><span class="p">(</span><span class="n">ctypes</span><span class="o">.</span><span class="n">c_float</span><span class="p">),</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">c_size_t</span><span class="p">,</span>
+        <span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">float32_to_int16</span><span class="o">.</span><span class="n">restype</span> <span class="o">=</span> <span class="n">ctypes</span><span class="o">.</span><span class="n">POINTER</span><span class="p">(</span><span class="n">ctypes</span><span class="o">.</span><span class="n">c_int16</span><span class="p">)</span>
+
+        <span class="c1"># apply_fade</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">apply_fade</span><span class="o">.</span><span class="n">argtypes</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">POINTER</span><span class="p">(</span><span class="n">ctypes</span><span class="o">.</span><span class="n">c_float</span><span class="p">),</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">c_size_t</span><span class="p">,</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">c_size_t</span><span class="p">,</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">c_size_t</span><span class="p">,</span>
+        <span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">apply_fade</span><span class="o">.</span><span class="n">restype</span> <span class="o">=</span> <span class="n">ctypes</span><span class="o">.</span><span class="n">POINTER</span><span class="p">(</span><span class="n">ctypes</span><span class="o">.</span><span class="n">c_float</span><span class="p">)</span>
+
+        <span class="c1"># free_audio_buffer</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">free_audio_buffer</span><span class="o">.</span><span class="n">argtypes</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">POINTER</span><span class="p">(</span><span class="n">ctypes</span><span class="o">.</span><span class="n">c_float</span><span class="p">),</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">c_size_t</span><span class="p">,</span>
+        <span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">free_audio_buffer</span><span class="o">.</span><span class="n">restype</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="c1"># log10_vec</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">log10_vec</span><span class="o">.</span><span class="n">argtypes</span> <span class="o">=</span> <span class="p">[</span><span class="n">ctypes</span><span class="o">.</span><span class="n">POINTER</span><span class="p">(</span><span class="n">ctypes</span><span class="o">.</span><span class="n">c_float</span><span class="p">),</span> <span class="n">ctypes</span><span class="o">.</span><span class="n">c_size_t</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">log10_vec</span><span class="o">.</span><span class="n">restype</span> <span class="o">=</span> <span class="n">ctypes</span><span class="o">.</span><span class="n">POINTER</span><span class="p">(</span><span class="n">ctypes</span><span class="o">.</span><span class="n">c_float</span><span class="p">)</span>
+
+        <span class="c1"># compute_rms</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">compute_rms</span><span class="o">.</span><span class="n">argtypes</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">POINTER</span><span class="p">(</span><span class="n">ctypes</span><span class="o">.</span><span class="n">c_float</span><span class="p">),</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">c_size_t</span><span class="p">,</span>
+        <span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">compute_rms</span><span class="o">.</span><span class="n">restype</span> <span class="o">=</span> <span class="n">ctypes</span><span class="o">.</span><span class="n">c_float</span>
+
+        <span class="c1"># compute_peak</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">compute_peak</span><span class="o">.</span><span class="n">argtypes</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">POINTER</span><span class="p">(</span><span class="n">ctypes</span><span class="o">.</span><span class="n">c_float</span><span class="p">),</span>
+            <span class="n">ctypes</span><span class="o">.</span><span class="n">c_size_t</span><span class="p">,</span>
+        <span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">compute_peak</span><span class="o">.</span><span class="n">restype</span> <span class="o">=</span> <span class="n">ctypes</span><span class="o">.</span><span class="n">c_float</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_to_c_array</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">samples</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">ctypes</span><span class="o">.</span><span class="n">POINTER</span><span class="p">(</span><span class="n">ctypes</span><span class="o">.</span><span class="n">c_float</span><span class="p">),</span> <span class="n">ctypes</span><span class="o">.</span><span class="n">c_size_t</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert numpy array to C array.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">samples</span><span class="o">.</span><span class="n">dtype</span> <span class="o">!=</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">:</span>
+            <span class="n">samples</span> <span class="o">=</span> <span class="n">samples</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+
+        <span class="n">size</span> <span class="o">=</span> <span class="n">samples</span><span class="o">.</span><span class="n">size</span>
+        <span class="n">c_array</span> <span class="o">=</span> <span class="n">samples</span><span class="o">.</span><span class="n">ctypes</span><span class="o">.</span><span class="n">data_as</span><span class="p">(</span><span class="n">ctypes</span><span class="o">.</span><span class="n">POINTER</span><span class="p">(</span><span class="n">ctypes</span><span class="o">.</span><span class="n">c_float</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">c_array</span><span class="p">,</span> <span class="n">size</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_from_c_array</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">c_ptr</span><span class="p">:</span> <span class="n">ctypes</span><span class="o">.</span><span class="n">POINTER</span><span class="p">(</span><span class="n">ctypes</span><span class="o">.</span><span class="n">c_float</span><span class="p">),</span> <span class="n">size</span><span class="p">:</span> <span class="n">ctypes</span><span class="o">.</span><span class="n">c_size_t</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert C array to numpy array.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">ctypeslib</span><span class="o">.</span><span class="n">as_array</span><span class="p">(</span><span class="n">c_ptr</span><span class="p">,</span> <span class="n">shape</span><span class="o">=</span><span class="p">(</span><span class="n">size</span><span class="p">,))</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+<div class="viewcode-block" id="RustAudioProcessor.normalize">
+<a class="viewcode-back" href="../../rust_audio.html#pocket_tts.rust_audio.RustAudioProcessor.normalize">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">normalize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">samples</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">gain</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Normalize audio samples to [-1, 1] range.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            samples: Input audio samples</span>
+<span class="sd">            gain: Additional gain factor (default: 1.0)</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Normalized audio samples</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># Fallback to pure Python implementation</span>
+            <span class="n">max_val</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">samples</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">max_val</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">samples</span> <span class="o">/</span> <span class="n">max_val</span> <span class="o">*</span> <span class="mf">0.99</span> <span class="o">*</span> <span class="n">gain</span>
+            <span class="k">return</span> <span class="n">samples</span>
+
+        <span class="n">c_array</span><span class="p">,</span> <span class="n">size</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_c_array</span><span class="p">(</span><span class="n">samples</span><span class="p">)</span>
+        <span class="n">result_ptr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">normalize_audio</span><span class="p">(</span><span class="n">c_array</span><span class="p">,</span> <span class="n">size</span><span class="p">,</span> <span class="n">gain</span><span class="p">)</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_from_c_array</span><span class="p">(</span><span class="n">result_ptr</span><span class="p">,</span> <span class="n">size</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">free_audio_buffer</span><span class="p">(</span><span class="n">result_ptr</span><span class="p">,</span> <span class="n">size</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">result</span></div>
+
+
+<div class="viewcode-block" id="RustAudioProcessor.apply_gain">
+<a class="viewcode-back" href="../../rust_audio.html#pocket_tts.rust_audio.RustAudioProcessor.apply_gain">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">apply_gain</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">samples</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">gain</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Apply gain to audio samples.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            samples: Input audio samples</span>
+<span class="sd">            gain: Gain factor to apply</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Audio samples with gain applied</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">samples</span> <span class="o">*</span> <span class="n">gain</span>
+
+        <span class="n">c_array</span><span class="p">,</span> <span class="n">size</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_c_array</span><span class="p">(</span><span class="n">samples</span><span class="p">)</span>
+        <span class="n">result_ptr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">apply_gain</span><span class="p">(</span><span class="n">c_array</span><span class="p">,</span> <span class="n">size</span><span class="p">,</span> <span class="n">gain</span><span class="p">)</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_from_c_array</span><span class="p">(</span><span class="n">result_ptr</span><span class="p">,</span> <span class="n">size</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">free_audio_buffer</span><span class="p">(</span><span class="n">result_ptr</span><span class="p">,</span> <span class="n">size</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">result</span></div>
+
+
+<div class="viewcode-block" id="RustAudioProcessor.resample_linear">
+<a class="viewcode-back" href="../../rust_audio.html#pocket_tts.rust_audio.RustAudioProcessor.resample_linear">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">resample_linear</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">samples</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">target_length</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Resample audio using linear interpolation.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            samples: Input audio samples</span>
+<span class="sd">            target_length: Desired output length</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Resampled audio samples</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># Fallback to numpy interpolation</span>
+            <span class="n">original_length</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">samples</span><span class="p">)</span>
+            <span class="n">indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">original_length</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">target_length</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">interp</span><span class="p">(</span><span class="n">indices</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">original_length</span><span class="p">),</span> <span class="n">samples</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">float32</span>
+            <span class="p">)</span>
+
+        <span class="n">c_array</span><span class="p">,</span> <span class="n">size</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_c_array</span><span class="p">(</span><span class="n">samples</span><span class="p">)</span>
+        <span class="n">result_ptr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">resample_linear</span><span class="p">(</span><span class="n">c_array</span><span class="p">,</span> <span class="n">size</span><span class="p">,</span> <span class="n">target_length</span><span class="p">)</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_from_c_array</span><span class="p">(</span><span class="n">result_ptr</span><span class="p">,</span> <span class="n">target_length</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">free_audio_buffer</span><span class="p">(</span><span class="n">result_ptr</span><span class="p">,</span> <span class="n">target_length</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">result</span></div>
+
+
+<div class="viewcode-block" id="RustAudioProcessor.resample_sinc">
+<a class="viewcode-back" href="../../rust_audio.html#pocket_tts.rust_audio.RustAudioProcessor.resample_sinc">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">resample_sinc</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">samples</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">target_length</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">quality</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">8</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Resample audio using high-quality sinc interpolation.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            samples: Input audio samples</span>
+<span class="sd">            target_length: Desired output length</span>
+<span class="sd">            quality: Quality parameter (8, 12, or 16)</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Resampled audio samples</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># Fallback to linear interpolation</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">resample_linear</span><span class="p">(</span><span class="n">samples</span><span class="p">,</span> <span class="n">target_length</span><span class="p">)</span>
+
+        <span class="n">c_array</span><span class="p">,</span> <span class="n">size</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_c_array</span><span class="p">(</span><span class="n">samples</span><span class="p">)</span>
+        <span class="n">result_ptr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">resample_sinc</span><span class="p">(</span><span class="n">c_array</span><span class="p">,</span> <span class="n">size</span><span class="p">,</span> <span class="n">target_length</span><span class="p">,</span> <span class="n">quality</span><span class="p">)</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_from_c_array</span><span class="p">(</span><span class="n">result_ptr</span><span class="p">,</span> <span class="n">target_length</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">free_audio_buffer</span><span class="p">(</span><span class="n">result_ptr</span><span class="p">,</span> <span class="n">target_length</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">result</span></div>
+
+
+<div class="viewcode-block" id="RustAudioProcessor.apply_fade">
+<a class="viewcode-back" href="../../rust_audio.html#pocket_tts.rust_audio.RustAudioProcessor.apply_fade">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">apply_fade</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">samples</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+        <span class="n">fade_in_ms</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+        <span class="n">fade_out_ms</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+        <span class="n">sample_rate</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">24000</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Apply fade in/out to audio.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            samples: Input audio samples</span>
+<span class="sd">            fade_in_ms: Fade in duration in milliseconds</span>
+<span class="sd">            fade_out_ms: Fade out duration in milliseconds</span>
+<span class="sd">            sample_rate: Sample rate</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Audio with fade applied</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">fade_in_samples</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">fade_in_ms</span> <span class="o">*</span> <span class="n">sample_rate</span> <span class="o">/</span> <span class="mi">1000</span><span class="p">)</span>
+        <span class="n">fade_out_samples</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">fade_out_ms</span> <span class="o">*</span> <span class="n">sample_rate</span> <span class="o">/</span> <span class="mi">1000</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># Fallback to numpy implementation</span>
+            <span class="n">faded</span> <span class="o">=</span> <span class="n">samples</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">fade_in_samples</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">fade_in</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">fade_in_samples</span><span class="p">)</span>
+                <span class="n">faded</span><span class="p">[:</span><span class="n">fade_in_samples</span><span class="p">]</span> <span class="o">*=</span> <span class="n">fade_in</span>
+            <span class="k">if</span> <span class="n">fade_out_samples</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">fade_out</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">fade_out_samples</span><span class="p">)</span>
+                <span class="n">faded</span><span class="p">[</span><span class="o">-</span><span class="n">fade_out_samples</span><span class="p">:]</span> <span class="o">*=</span> <span class="n">fade_out</span>
+            <span class="k">return</span> <span class="n">faded</span>
+
+        <span class="n">c_array</span><span class="p">,</span> <span class="n">size</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_c_array</span><span class="p">(</span><span class="n">samples</span><span class="p">)</span>
+        <span class="n">result_ptr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">apply_fade</span><span class="p">(</span>
+            <span class="n">c_array</span><span class="p">,</span> <span class="n">size</span><span class="p">,</span> <span class="n">fade_in_samples</span><span class="p">,</span> <span class="n">fade_out_samples</span>
+        <span class="p">)</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_from_c_array</span><span class="p">(</span><span class="n">result_ptr</span><span class="p">,</span> <span class="n">size</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">free_audio_buffer</span><span class="p">(</span><span class="n">result_ptr</span><span class="p">,</span> <span class="n">size</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">result</span></div>
+
+
+<div class="viewcode-block" id="RustAudioProcessor.compute_rms">
+<a class="viewcode-back" href="../../rust_audio.html#pocket_tts.rust_audio.RustAudioProcessor.compute_rms">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">compute_rms</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">samples</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute RMS energy of audio.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            samples: Input audio samples</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            RMS energy value</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">samples</span><span class="o">**</span><span class="mi">2</span><span class="p">))</span>
+
+        <span class="n">c_array</span><span class="p">,</span> <span class="n">size</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_c_array</span><span class="p">(</span><span class="n">samples</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">compute_rms</span><span class="p">(</span><span class="n">c_array</span><span class="p">,</span> <span class="n">size</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="RustAudioProcessor.compute_peak">
+<a class="viewcode-back" href="../../rust_audio.html#pocket_tts.rust_audio.RustAudioProcessor.compute_peak">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">compute_peak</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">samples</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute peak amplitude of audio.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            samples: Input audio samples</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Peak amplitude value</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">samples</span><span class="p">))</span>
+
+        <span class="n">c_array</span><span class="p">,</span> <span class="n">size</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_c_array</span><span class="p">(</span><span class="n">samples</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span><span class="o">.</span><span class="n">compute_peak</span><span class="p">(</span><span class="n">c_array</span><span class="p">,</span> <span class="n">size</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="RustAudioProcessor.is_available">
+<a class="viewcode-back" href="../../rust_audio.html#pocket_tts.rust_audio.RustAudioProcessor.is_available">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_available</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check if Rust library is available.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lib</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span></div>
+</div>
+
+
+
+<span class="c1"># Global instance</span>
+<span class="n">_rust_processor</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">RustAudioProcessor</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+
+
+<div class="viewcode-block" id="get_rust_processor">
+<a class="viewcode-back" href="../../rust_audio.html#pocket_tts.rust_audio.get_rust_processor">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_rust_processor</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">RustAudioProcessor</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get the global Rust audio processor instance.&quot;&quot;&quot;</span>
+    <span class="k">global</span> <span class="n">_rust_processor</span>
+    <span class="k">if</span> <span class="n">_rust_processor</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">_rust_processor</span> <span class="o">=</span> <span class="n">RustAudioProcessor</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">_rust_processor</span></div>
+
+
+
+<div class="viewcode-block" id="normalize_audio">
+<a class="viewcode-back" href="../../rust_audio.html#pocket_tts.rust_audio.normalize_audio">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">normalize_audio</span><span class="p">(</span><span class="n">samples</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">gain</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Normalize audio samples with automatic peak detection and gain adjustment.</span>
+
+<span class="sd">    This function normalizes audio to prevent clipping and optimize dynamic range.</span>
+<span class="sd">    It uses Rust implementations when available for performance, with Python fallback.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        samples: Input audio samples as numpy array. Can be any shape but typically</span>
+<span class="sd">            1D for mono or 2D for multi-channel audio. Values should be float32.</span>
+<span class="sd">        gain: Additional gain factor applied after normalization. Use &gt;1.0 to make</span>
+<span class="sd">            audio louder, &lt;1.0 to make it quieter. Defaults to 1.0 (no additional gain).</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        np.ndarray: Normalized audio samples with same shape as input.</span>
+<span class="sd">            Values are scaled to prevent clipping while maximizing loudness.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        ValueError: If samples array is empty or contains invalid data.</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">        &gt;&gt;&gt; # Create quiet audio</span>
+<span class="sd">        &gt;&gt;&gt; audio = np.random.randn(24000) * 0.1  # Very quiet</span>
+<span class="sd">        &gt;&gt;&gt; normalized = normalize_audio(audio, gain=2.0)</span>
+<span class="sd">        &gt;&gt;&gt; print(f&quot;Original RMS: {np.sqrt(np.mean(audio**2)):.3f}&quot;)</span>
+<span class="sd">        &gt;&gt;&gt; print(f&quot;Normalized RMS: {np.sqrt(np.mean(normalized**2)):.3f}&quot;)</span>
+
+<span class="sd">    Note:</span>
+<span class="sd">        - Uses Rust implementation for performance when available</span>
+<span class="sd">        - Automatic peak detection prevents clipping</span>
+<span class="sd">        - Preserves original array shape and data type</span>
+<span class="sd">        - Gain is applied after normalization for precise control</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">processor</span> <span class="o">=</span> <span class="n">get_rust_processor</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">processor</span><span class="o">.</span><span class="n">normalize</span><span class="p">(</span><span class="n">samples</span><span class="p">,</span> <span class="n">gain</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="apply_gain">
+<a class="viewcode-back" href="../../rust_audio.html#pocket_tts.rust_audio.apply_gain">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">apply_gain</span><span class="p">(</span><span class="n">samples</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">gain</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Apply linear gain to audio samples.</span>
+
+<span class="sd">    This function multiplies all audio samples by a gain factor to adjust volume.</span>
+<span class="sd">    It&#39;s a simple linear amplification/attenuation operation.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        samples: Input audio samples as numpy array. Can be any shape.</span>
+<span class="sd">            Values should be float32 in range [-1, 1] for typical audio.</span>
+<span class="sd">        gain: Linear gain factor to apply. Values &gt;1.0 increase volume,</span>
+<span class="sd">            values &lt;1.0 decrease volume, negative values invert phase.</span>
+<span class="sd">            Common values: 0.5 (half volume), 2.0 (double volume).</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        np.ndarray: Audio samples with gain applied, same shape as input.</span>
+<span class="sd">            May exceed [-1, 1] range; consider normalizing after if needed.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        ValueError: If samples array is empty or gain is invalid.</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">        &gt;&gt;&gt; audio = np.sin(2 * np.pi * 440 * np.linspace(0, 1, 24000))</span>
+<span class="sd">        &gt;&gt;&gt; # Make audio twice as loud</span>
+<span class="sd">        &gt;&gt;&gt; louder = apply_gain(audio, 2.0)</span>
+<span class="sd">        &gt;&gt;&gt; # Make audio half as loud</span>
+<span class="sd">        &gt;&gt;&gt; quieter = apply_gain(audio, 0.5)</span>
+<span class="sd">        &gt;&gt;&gt; # Invert phase (180-degree phase shift)</span>
+<span class="sd">        &gt;&gt;&gt; inverted = apply_gain(audio, -1.0)</span>
+
+<span class="sd">    Note:</span>
+<span class="sd">        - Simple linear multiplication: output = input * gain</span>
+<span class="sd">        - Does not prevent clipping; use normalize_audio() if needed</span>
+<span class="sd">        - Uses Rust implementation for performance when available</span>
+<span class="sd">        - Preserves original array shape and data type</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">processor</span> <span class="o">=</span> <span class="n">get_rust_processor</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">processor</span><span class="o">.</span><span class="n">apply_gain</span><span class="p">(</span><span class="n">samples</span><span class="p">,</span> <span class="n">gain</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="resample_audio">
+<a class="viewcode-back" href="../../rust_audio.html#pocket_tts.rust_audio.resample_audio">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">resample_audio</span><span class="p">(</span>
+    <span class="n">samples</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">target_length</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;linear&quot;</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Resample audio to a different length using various interpolation methods.</span>
+
+<span class="sd">    This function changes the audio length by resampling, which changes both</span>
+<span class="sd">    the duration and pitch. Use for time-stretching or sample rate conversion.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        samples: Input audio samples as numpy array. Should be 1D for mono</span>
+<span class="sd">            or shape [channels, samples] for multi-channel audio.</span>
+<span class="sd">        target_length: Desired number of output samples. Can be larger (slow down)</span>
+<span class="sd">            or smaller (speed up) than input length.</span>
+<span class="sd">        method: Resampling interpolation method. Options:</span>
+<span class="sd">            - &quot;linear&quot;: Fast linear interpolation (default)</span>
+<span class="sd">            - &quot;sinc&quot;: High-quality sinc interpolation, slower but better quality</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        np.ndarray: Resampled audio with specified target length.</span>
+<span class="sd">            Channel count is preserved from input.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        ValueError: If target_length is not positive or method is unsupported.</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">        &gt;&gt;&gt; # 1 second of audio at 24kHz</span>
+<span class="sd">        &gt;&gt;&gt; audio = np.sin(2 * np.pi * 440 * np.linspace(0, 1, 24000))</span>
+<span class="sd">        &gt;&gt;&gt; # Slow down to 1.5 seconds (40kHz samples)</span>
+<span class="sd">        &gt;&gt;&gt; slower = resample_audio(audio, 36000, method=&quot;sinc&quot;)</span>
+<span class="sd">        &gt;&gt;&gt; # Speed up to 0.5 seconds (12kHz samples)</span>
+<span class="sd">        &gt;&gt;&gt; faster = resample_audio(audio, 12000)</span>
+<span class="sd">        &gt;&gt;&gt; print(f&quot;Original: {len(audio)}, Slower: {len(slower)}, Faster: {len(faster)}&quot;)</span>
+
+<span class="sd">    Note:</span>
+<span class="sd">        - Linear method is fast but may introduce artifacts</span>
+<span class="sd">        - Sinc method provides better quality for audio applications</span>
+<span class="sd">        - Resampling changes pitch proportionally to speed change</span>
+<span class="sd">        - Uses Rust implementation for performance when available</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">processor</span> <span class="o">=</span> <span class="n">get_rust_processor</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;sinc&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">processor</span><span class="o">.</span><span class="n">resample_sinc</span><span class="p">(</span><span class="n">samples</span><span class="p">,</span> <span class="n">target_length</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">processor</span><span class="o">.</span><span class="n">resample_linear</span><span class="p">(</span><span class="n">samples</span><span class="p">,</span> <span class="n">target_length</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="apply_fade">
+<a class="viewcode-back" href="../../rust_audio.html#pocket_tts.rust_audio.apply_fade">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">apply_fade</span><span class="p">(</span>
+    <span class="n">samples</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">fade_in_ms</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+    <span class="n">fade_out_ms</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+    <span class="n">sample_rate</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">24000</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Apply fade in and fade out effects to audio.</span>
+
+<span class="sd">    This function applies smooth volume transitions at the beginning and end</span>
+<span class="sd">    of audio to prevent clicks and create professional-sounding transitions.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        samples: Input audio samples as numpy array. Should be 1D for mono</span>
+<span class="sd">            or shape [channels, samples] for multi-channel audio.</span>
+<span class="sd">        fade_in_ms: Duration of fade-in effect in milliseconds. Set to 0 to disable.</span>
+<span class="sd">            Typical values: 5-50ms for quick fades, 100-500ms for slow fades.</span>
+<span class="sd">        fade_out_ms: Duration of fade-out effect in milliseconds. Set to 0 to disable.</span>
+<span class="sd">            Uses same range as fade_in_ms.</span>
+<span class="sd">        sample_rate: Sample rate of the audio in Hz. Used to convert milliseconds</span>
+<span class="sd">            to sample counts. Must match the actual sample rate of the input.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        np.ndarray: Audio with fade effects applied, same shape as input.</span>
+<span class="sd">            Fade is applied multiplicatively to preserve audio quality.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        ValueError: If sample_rate is not positive or fade durations are negative.</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">        &gt;&gt;&gt; # Generate 2 seconds of audio</span>
+<span class="sd">        &gt;&gt;&gt; audio = np.sin(2 * np.pi * 440 * np.linspace(0, 2, 48000))</span>
+<span class="sd">        &gt;&gt;&gt; # Apply 100ms fade in and out</span>
+<span class="sd">        &gt;&gt;&gt; faded = apply_fade(audio, fade_in_ms=100, fade_out_ms=100, sample_rate=24000)</span>
+<span class="sd">        &gt;&gt;&gt; # Apply only fade-in</span>
+<span class="sd">        &gt;&gt;&gt; fade_only = apply_fade(audio, fade_in_ms=50, fade_out_ms=0, sample_rate=24000)</span>
+
+<span class="sd">    Note:</span>
+<span class="sd">        - Uses linear ramp for fade curves (simple and effective)</span>
+<span class="sd">        - Fade is applied multiplicatively: output = input * envelope</span>
+<span class="sd">        - Preserves original array shape and data type</span>
+<span class="sd">        - Uses Rust implementation for performance when available</span>
+<span class="sd">        - Common values: 10ms (subtle), 100ms (noticeable), 500ms (dramatic)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">processor</span> <span class="o">=</span> <span class="n">get_rust_processor</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">processor</span><span class="o">.</span><span class="n">apply_fade</span><span class="p">(</span><span class="n">samples</span><span class="p">,</span> <span class="n">fade_in_ms</span><span class="p">,</span> <span class="n">fade_out_ms</span><span class="p">,</span> <span class="n">sample_rate</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="compute_audio_metrics">
+<a class="viewcode-back" href="../../rust_audio.html#pocket_tts.rust_audio.compute_audio_metrics">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">compute_audio_metrics</span><span class="p">(</span><span class="n">samples</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute comprehensive audio quality and analysis metrics.</span>
+
+<span class="sd">    This function analyzes audio samples to extract useful technical metrics</span>
+<span class="sd">    for quality assessment, level monitoring, and audio processing decisions.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        samples: Input audio samples as numpy array. Can be any shape.</span>
+<span class="sd">            Values should be float32 for typical audio analysis.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        dict: Dictionary containing audio metrics:</span>
+<span class="sd">            - &quot;rms&quot;: Root mean square level (linear, 0-1 range)</span>
+<span class="sd">            - &quot;peak&quot;: Peak sample value (absolute, 0-1 range)</span>
+<span class="sd">            - &quot;dynamic_range_db&quot;: Dynamic range in decibels (positive values)</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">        &gt;&gt;&gt; # Generate test audio</span>
+<span class="sd">        &gt;&gt;&gt; audio = np.sin(2 * np.pi * 440 * np.linspace(0, 1, 24000)) * 0.8</span>
+<span class="sd">        &gt;&gt;&gt; metrics = compute_audio_metrics(audio)</span>
+<span class="sd">        &gt;&gt;&gt; print(f&quot;RMS level: {metrics[&#39;rms&#39;]:.3f}&quot;)</span>
+<span class="sd">        &gt;&gt;&gt; print(f&quot;Peak level: {metrics[&#39;peak&#39;]:.3f}&quot;)</span>
+<span class="sd">        &gt;&gt;&gt; print(f&quot;Dynamic range: {metrics[&#39;dynamic_range_db&#39;]:.1f} dB&quot;)</span>
+
+<span class="sd">    Note:</span>
+<span class="sd">        - RMS indicates average loudness (0.707 for full-scale sine wave)</span>
+<span class="sd">        - Peak indicates maximum sample amplitude (1.0 for full scale)</span>
+<span class="sd">        - Dynamic range shows headroom between RMS and peak</span>
+<span class="sd">        - Higher dynamic range generally indicates better audio quality</span>
+<span class="sd">        - Uses Rust implementation for performance when available</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">processor</span> <span class="o">=</span> <span class="n">get_rust_processor</span><span class="p">()</span>
+    <span class="n">rms</span> <span class="o">=</span> <span class="n">processor</span><span class="o">.</span><span class="n">compute_rms</span><span class="p">(</span><span class="n">samples</span><span class="p">)</span>
+    <span class="n">peak</span> <span class="o">=</span> <span class="n">processor</span><span class="o">.</span><span class="n">compute_peak</span><span class="p">(</span><span class="n">samples</span><span class="p">)</span>
+    <span class="n">dynamic_range_db</span> <span class="o">=</span> <span class="mi">20</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">log10</span><span class="p">(</span><span class="n">peak</span> <span class="o">/</span> <span class="nb">max</span><span class="p">(</span><span class="n">rms</span><span class="p">,</span> <span class="mf">1e-10</span><span class="p">))</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;rms&quot;</span><span class="p">:</span> <span class="n">rms</span><span class="p">,</span> <span class="s2">&quot;peak&quot;</span><span class="p">:</span> <span class="n">peak</span><span class="p">,</span> <span class="s2">&quot;dynamic_range_db&quot;</span><span class="p">:</span> <span class="n">dynamic_range_db</span><span class="p">}</span></div>
+
+
+
+<span class="c1"># def log10_array(samples: np.ndarray) -&gt; np.ndarray:</span>
+<span class="c1">#     &quot;&quot;&quot;Compute base-10 logarithm element-wise using Rust if available.</span>
+<span class="c1">#</span>
+<span class="c1">#     Args:</span>
+<span class="c1">#         samples: Input audio samples</span>
+<span class="c1">#</span>
+<span class="c1">#     Returns:</span>
+<span class="c1">#         Array with log10 of each element</span>
+<span class="c1">#     &quot;&quot;&quot;</span>
+<span class="c1">#     if self._lib is None:</span>
+<span class="c1">#         return np.log10(samples)</span>
+<span class="c1">#</span>
+<span class="c1">#     c_array, size = self._to_c_array(samples)</span>
+<span class="c1">#     result_ptr = self._lib.log10_vec(c_array, size)</span>
+<span class="c1">#     result = self._from_c_array(result_ptr, size)</span>
+<span class="c1">#     self._lib.free_audio_buffer(result_ptr, size)</span>
+<span class="c1">#     return result</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Kyutai.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

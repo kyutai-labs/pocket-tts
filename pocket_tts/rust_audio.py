@@ -346,28 +346,77 @@ def get_rust_processor() -> RustAudioProcessor:
 
 
 def normalize_audio(samples: np.ndarray, gain: float = 1.0) -> np.ndarray:
-    """Normalize audio samples using Rust if available, else Python fallback.
+    """Normalize audio samples with automatic peak detection and gain adjustment.
+
+    This function normalizes audio to prevent clipping and optimize dynamic range.
+    It uses Rust implementations when available for performance, with Python fallback.
 
     Args:
-        samples: Input audio samples
-        gain: Additional gain factor
+        samples: Input audio samples as numpy array. Can be any shape but typically
+            1D for mono or 2D for multi-channel audio. Values should be float32.
+        gain: Additional gain factor applied after normalization. Use >1.0 to make
+            audio louder, <1.0 to make it quieter. Defaults to 1.0 (no additional gain).
 
     Returns:
-        Normalized audio samples
+        np.ndarray: Normalized audio samples with same shape as input.
+            Values are scaled to prevent clipping while maximizing loudness.
+
+    Raises:
+        ValueError: If samples array is empty or contains invalid data.
+
+    Example:
+        >>> import numpy as np
+        >>> # Create quiet audio
+        >>> audio = np.random.randn(24000) * 0.1  # Very quiet
+        >>> normalized = normalize_audio(audio, gain=2.0)
+        >>> print(f"Original RMS: {np.sqrt(np.mean(audio**2)):.3f}")
+        >>> print(f"Normalized RMS: {np.sqrt(np.mean(normalized**2)):.3f}")
+
+    Note:
+        - Uses Rust implementation for performance when available
+        - Automatic peak detection prevents clipping
+        - Preserves original array shape and data type
+        - Gain is applied after normalization for precise control
     """
     processor = get_rust_processor()
     return processor.normalize(samples, gain)
 
 
 def apply_gain(samples: np.ndarray, gain: float) -> np.ndarray:
-    """Apply gain to audio samples.
+    """Apply linear gain to audio samples.
+
+    This function multiplies all audio samples by a gain factor to adjust volume.
+    It's a simple linear amplification/attenuation operation.
 
     Args:
-        samples: Input audio samples
-        gain: Gain factor
+        samples: Input audio samples as numpy array. Can be any shape.
+            Values should be float32 in range [-1, 1] for typical audio.
+        gain: Linear gain factor to apply. Values >1.0 increase volume,
+            values <1.0 decrease volume, negative values invert phase.
+            Common values: 0.5 (half volume), 2.0 (double volume).
 
     Returns:
-        Audio with gain applied
+        np.ndarray: Audio samples with gain applied, same shape as input.
+            May exceed [-1, 1] range; consider normalizing after if needed.
+
+    Raises:
+        ValueError: If samples array is empty or gain is invalid.
+
+    Example:
+        >>> import numpy as np
+        >>> audio = np.sin(2 * np.pi * 440 * np.linspace(0, 1, 24000))
+        >>> # Make audio twice as loud
+        >>> louder = apply_gain(audio, 2.0)
+        >>> # Make audio half as loud
+        >>> quieter = apply_gain(audio, 0.5)
+        >>> # Invert phase (180-degree phase shift)
+        >>> inverted = apply_gain(audio, -1.0)
+
+    Note:
+        - Simple linear multiplication: output = input * gain
+        - Does not prevent clipping; use normalize_audio() if needed
+        - Uses Rust implementation for performance when available
+        - Preserves original array shape and data type
     """
     processor = get_rust_processor()
     return processor.apply_gain(samples, gain)
@@ -376,15 +425,42 @@ def apply_gain(samples: np.ndarray, gain: float) -> np.ndarray:
 def resample_audio(
     samples: np.ndarray, target_length: int, method: str = "linear"
 ) -> np.ndarray:
-    """Resample audio to target length.
+    """Resample audio to a different length using various interpolation methods.
+
+    This function changes the audio length by resampling, which changes both
+    the duration and pitch. Use for time-stretching or sample rate conversion.
 
     Args:
-        samples: Input audio samples
-        target_length: Desired output length
-        method: Resampling method ("linear" or "sinc")
+        samples: Input audio samples as numpy array. Should be 1D for mono
+            or shape [channels, samples] for multi-channel audio.
+        target_length: Desired number of output samples. Can be larger (slow down)
+            or smaller (speed up) than input length.
+        method: Resampling interpolation method. Options:
+            - "linear": Fast linear interpolation (default)
+            - "sinc": High-quality sinc interpolation, slower but better quality
 
     Returns:
-        Resampled audio
+        np.ndarray: Resampled audio with specified target length.
+            Channel count is preserved from input.
+
+    Raises:
+        ValueError: If target_length is not positive or method is unsupported.
+
+    Example:
+        >>> import numpy as np
+        >>> # 1 second of audio at 24kHz
+        >>> audio = np.sin(2 * np.pi * 440 * np.linspace(0, 1, 24000))
+        >>> # Slow down to 1.5 seconds (40kHz samples)
+        >>> slower = resample_audio(audio, 36000, method="sinc")
+        >>> # Speed up to 0.5 seconds (12kHz samples)
+        >>> faster = resample_audio(audio, 12000)
+        >>> print(f"Original: {len(audio)}, Slower: {len(slower)}, Faster: {len(faster)}")
+
+    Note:
+        - Linear method is fast but may introduce artifacts
+        - Sinc method provides better quality for audio applications
+        - Resampling changes pitch proportionally to speed change
+        - Uses Rust implementation for performance when available
     """
     processor = get_rust_processor()
     if method == "sinc":
@@ -399,29 +475,79 @@ def apply_fade(
     fade_out_ms: float = 10,
     sample_rate: int = 24000,
 ) -> np.ndarray:
-    """Apply fade in/out to audio.
+    """Apply fade in and fade out effects to audio.
+
+    This function applies smooth volume transitions at the beginning and end
+    of audio to prevent clicks and create professional-sounding transitions.
 
     Args:
-        samples: Input audio samples
-        fade_in_ms: Fade in duration in milliseconds
-        fade_out_ms: Fade out duration in milliseconds
-        sample_rate: Sample rate
+        samples: Input audio samples as numpy array. Should be 1D for mono
+            or shape [channels, samples] for multi-channel audio.
+        fade_in_ms: Duration of fade-in effect in milliseconds. Set to 0 to disable.
+            Typical values: 5-50ms for quick fades, 100-500ms for slow fades.
+        fade_out_ms: Duration of fade-out effect in milliseconds. Set to 0 to disable.
+            Uses same range as fade_in_ms.
+        sample_rate: Sample rate of the audio in Hz. Used to convert milliseconds
+            to sample counts. Must match the actual sample rate of the input.
 
     Returns:
-        Audio with fade applied
+        np.ndarray: Audio with fade effects applied, same shape as input.
+            Fade is applied multiplicatively to preserve audio quality.
+
+    Raises:
+        ValueError: If sample_rate is not positive or fade durations are negative.
+
+    Example:
+        >>> import numpy as np
+        >>> # Generate 2 seconds of audio
+        >>> audio = np.sin(2 * np.pi * 440 * np.linspace(0, 2, 48000))
+        >>> # Apply 100ms fade in and out
+        >>> faded = apply_fade(audio, fade_in_ms=100, fade_out_ms=100, sample_rate=24000)
+        >>> # Apply only fade-in
+        >>> fade_only = apply_fade(audio, fade_in_ms=50, fade_out_ms=0, sample_rate=24000)
+
+    Note:
+        - Uses linear ramp for fade curves (simple and effective)
+        - Fade is applied multiplicatively: output = input * envelope
+        - Preserves original array shape and data type
+        - Uses Rust implementation for performance when available
+        - Common values: 10ms (subtle), 100ms (noticeable), 500ms (dramatic)
     """
     processor = get_rust_processor()
     return processor.apply_fade(samples, fade_in_ms, fade_out_ms, sample_rate)
 
 
 def compute_audio_metrics(samples: np.ndarray) -> dict:
-    """Compute audio quality metrics.
+    """Compute comprehensive audio quality and analysis metrics.
+
+    This function analyzes audio samples to extract useful technical metrics
+    for quality assessment, level monitoring, and audio processing decisions.
 
     Args:
-        samples: Input audio samples
+        samples: Input audio samples as numpy array. Can be any shape.
+            Values should be float32 for typical audio analysis.
 
     Returns:
-        Dictionary with RMS, peak, and other metrics
+        dict: Dictionary containing audio metrics:
+            - "rms": Root mean square level (linear, 0-1 range)
+            - "peak": Peak sample value (absolute, 0-1 range)
+            - "dynamic_range_db": Dynamic range in decibels (positive values)
+
+    Example:
+        >>> import numpy as np
+        >>> # Generate test audio
+        >>> audio = np.sin(2 * np.pi * 440 * np.linspace(0, 1, 24000)) * 0.8
+        >>> metrics = compute_audio_metrics(audio)
+        >>> print(f"RMS level: {metrics['rms']:.3f}")
+        >>> print(f"Peak level: {metrics['peak']:.3f}")
+        >>> print(f"Dynamic range: {metrics['dynamic_range_db']:.1f} dB")
+
+    Note:
+        - RMS indicates average loudness (0.707 for full-scale sine wave)
+        - Peak indicates maximum sample amplitude (1.0 for full scale)
+        - Dynamic range shows headroom between RMS and peak
+        - Higher dynamic range generally indicates better audio quality
+        - Uses Rust implementation for performance when available
     """
     processor = get_rust_processor()
     rms = processor.compute_rms(samples)

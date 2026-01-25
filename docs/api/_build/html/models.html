@@ -1,0 +1,622 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TTSModel &mdash; Pocket TTS 1.0.2 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=1ed6394b"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Audio I/O Functions" href="audio.html" />
+    <link rel="prev" title="Pocket TTS API Documentation" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Pocket TTS
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">TTSModel</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#pocket_tts.models.tts_model.TTSModel"><code class="docutils literal notranslate"><span class="pre">TTSModel</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#pocket_tts.models.tts_model.TTSModel.__init__"><code class="docutils literal notranslate"><span class="pre">TTSModel.__init__()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pocket_tts.models.tts_model.TTSModel.device"><code class="docutils literal notranslate"><span class="pre">TTSModel.device</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pocket_tts.models.tts_model.TTSModel.sample_rate"><code class="docutils literal notranslate"><span class="pre">TTSModel.sample_rate</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pocket_tts.models.tts_model.TTSModel.load_model"><code class="docutils literal notranslate"><span class="pre">TTSModel.load_model()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pocket_tts.models.tts_model.TTSModel.generate_audio"><code class="docutils literal notranslate"><span class="pre">TTSModel.generate_audio()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pocket_tts.models.tts_model.TTSModel.generate_audio_stream"><code class="docutils literal notranslate"><span class="pre">TTSModel.generate_audio_stream()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pocket_tts.models.tts_model.TTSModel.get_state_for_audio_prompt"><code class="docutils literal notranslate"><span class="pre">TTSModel.get_state_for_audio_prompt()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#core-methods">Core Methods</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id0"><code class="docutils literal notranslate"><span class="pre">TTSModel.load_model()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id1"><code class="docutils literal notranslate"><span class="pre">TTSModel.generate_audio()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id2"><code class="docutils literal notranslate"><span class="pre">TTSModel.generate_audio_stream()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id3"><code class="docutils literal notranslate"><span class="pre">TTSModel.get_state_for_audio_prompt()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#properties">Properties</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id4"><code class="docutils literal notranslate"><span class="pre">TTSModel.device</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id5"><code class="docutils literal notranslate"><span class="pre">TTSModel.sample_rate</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#usage-examples">Usage Examples</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#basic-text-to-speech">Basic Text-to-Speech</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#voice-cloning">Voice Cloning</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#streaming-generation">Streaming Generation</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#performance-tips">Performance Tips</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="audio.html">Audio I/O Functions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="rust_audio.html">Rust Audio Processing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Pocket TTS</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">TTSModel</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/models.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="ttsmodel">
+<h1>TTSModel<a class="headerlink" href="#ttsmodel" title="Link to this heading"></a></h1>
+<dl class="py class">
+<dt class="sig sig-object py" id="pocket_tts.models.tts_model.TTSModel">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pocket_tts.models.tts_model.</span></span><span class="sig-name descname"><span class="pre">TTSModel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">flow_lm</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FlowLMModel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">temp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">lsd_decode_steps</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">noise_clamp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">eos_threshold</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Config</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pocket_tts/models/tts_model.html#TTSModel"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.models.tts_model.TTSModel" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.pytorch.org/docs/stable/generated/torch.nn.Module.html#torch.nn.Module" title="(in PyTorch v2.10)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Module</span></code></a></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.models.tts_model.TTSModel.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">flow_lm</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FlowLMModel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">temp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">lsd_decode_steps</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">noise_clamp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">eos_threshold</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Config</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pocket_tts/models/tts_model.html#TTSModel.__init__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.models.tts_model.TTSModel.__init__" title="Link to this definition"></a></dt>
+<dd><p>Initialize internal Module state, shared by both nn.Module and ScriptModule.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="pocket_tts.models.tts_model.TTSModel.device">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">device</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></em><a class="headerlink" href="#pocket_tts.models.tts_model.TTSModel.device" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="pocket_tts.models.tts_model.TTSModel.sample_rate">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">sample_rate</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></em><a class="headerlink" href="#pocket_tts.models.tts_model.TTSModel.sample_rate" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.models.tts_model.TTSModel.load_model">
+<span class="sig-name descname"><span class="pre">load_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">temp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.7</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lsd_decode_steps</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">noise_clamp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eos_threshold</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">-4.0</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference internal" href="_modules/pocket_tts/models/tts_model.html#TTSModel.load_model"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.models.tts_model.TTSModel.load_model" title="Link to this definition"></a></dt>
+<dd><p>Load a pre-trained TTS model with specified configuration.</p>
+<p>This class method loads a complete TTS model including the flow language model
+and Mimi compression model from pre-trained weights. The model is initialized
+with the specified generation parameters and ready for inference.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>variant</strong> – Model variant identifier corresponding to a config file name
+(e.g., ‘610b0b2c’). Must match a YAML file in the config directory.</p></li>
+<li><p><strong>temp</strong> – Sampling temperature for generation. Higher values produce more
+diverse but potentially lower quality output.</p></li>
+<li><p><strong>lsd_decode_steps</strong> – Number of steps for Lagrangian Self Distillation
+decoding. More steps can improve quality but increase computation.</p></li>
+<li><p><strong>noise_clamp</strong> – Maximum value for noise sampling. If None, no clamping
+is applied. Helps prevent extreme values in generation.</p></li>
+<li><p><strong>eos_threshold</strong> – Threshold for end-of-sequence detection. Higher values
+make the model more likely to continue generating.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>Fully initialized model with loaded weights on cpu, ready for</dt><dd><p>text-to-speech generation.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#pocket_tts.models.tts_model.TTSModel" title="pocket_tts.models.tts_model.TTSModel">TTSModel</a></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#FileNotFoundError" title="(in Python v3.14)"><strong>FileNotFoundError</strong></a> – If the specified config file or model weights
+    are not found.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the configuration is invalid or incompatible.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.models.tts_model.TTSModel.generate_audio">
+<span class="sig-name descname"><span class="pre">generate_audio</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">text_to_generate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">50</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frames_after_eos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">copy_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)"><span class="pre">Tensor</span></a></span></span><a class="reference internal" href="_modules/pocket_tts/models/tts_model.html#TTSModel.generate_audio"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.models.tts_model.TTSModel.generate_audio" title="Link to this definition"></a></dt>
+<dd><p>Generate complete audio tensor from text input.</p>
+<p>This method generates the full audio output for the given text prompt
+and returns it as a single tensor. It internally uses the streaming
+generation method but collects all chunks before returning.</p>
+<p>This method is NOT thread-safe; separate model instances should be used
+for concurrent generation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model_state</strong> – Model state dictionary containing hidden states and
+positional information. Can be obtained from get_state_for_audio_prompt()
+or init_states(). The state may be modified during generation.</p></li>
+<li><p><strong>text_to_generate</strong> – Input text to convert to speech. The text will be
+automatically formatted (capitalization, punctuation) for optimal
+generation quality.</p></li>
+<li><p><strong>frames_after_eos</strong> – Number of additional frames to generate after
+detecting end-of-sequence. If None, automatically determined
+based on text length (1-3 frames).</p></li>
+<li><p><strong>copy_state</strong> – Whether to create a deep copy of the model state before
+generation. If True, preserves the original state for reuse.
+If False, modifies the input state in-place. Defaults to True.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>Generated audio tensor with shape [channels, samples]</dt><dd><p>at the model’s sample rate (typically 24kHz). The audio is
+normalized and ready for playback or saving.
+You can get the sample rate from the <cite>sample_rate</cite> attribute.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)">torch.Tensor</a></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If text_to_generate is empty or invalid.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#RuntimeError" title="(in Python v3.14)"><strong>RuntimeError</strong></a> – If generation fails due to model errors.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.models.tts_model.TTSModel.generate_audio_stream">
+<span class="sig-name descname"><span class="pre">generate_audio_stream</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">text_to_generate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">50</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frames_after_eos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">copy_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pocket_tts/models/tts_model.html#TTSModel.generate_audio_stream"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.models.tts_model.TTSModel.generate_audio_stream" title="Link to this definition"></a></dt>
+<dd><p>Generate audio streaming chunks from text input.</p>
+<p>This method generates audio from text and yields chunks as they become
+available, enabling real-time playback or processing. It uses multithreading
+to parallelize generation and decoding for optimal performance.
+This method is NOT thread-safe; separate model instances should be used
+for concurrent generation.</p>
+<dl class="field-list">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model_state</strong> – Model state dictionary containing hidden states and
+positional information. Can be obtained from get_state_for_audio_prompt()
+or init_states(). The state may be modified during generation.</p></li>
+<li><p><strong>text_to_generate</strong> – Input text to convert to speech. The text will be
+automatically formatted (capitalization, punctuation) for optimal
+generation quality.</p></li>
+<li><p><strong>frames_after_eos</strong> – Number of additional frames to generate after
+detecting end-of-sequence. If None, automatically determined
+based on text length (1-3 frames). Defaults to None.</p></li>
+<li><p><strong>copy_state</strong> – Whether to create a deep copy of the model state before
+generation. If True, preserves the original state for reuse.
+If False, modifies the input state in-place. Defaults to True.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Yields<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>torch.Tensor</em> –</p>
+<dl class="simple">
+<dt>Audio chunks with shape [samples] at the model’s</dt><dd><p>sample rate (typically 24kHz). Chunks are yielded as soon as
+they are decoded, enabling real-time streaming.</p>
+</dd>
+</dl>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If text_to_generate is empty or invalid.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#RuntimeError" title="(in Python v3.14)"><strong>RuntimeError</strong></a> – If generation fails due to model errors or threading issues.</p></li>
+</ul>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This method uses multithreading to parallelize latent generation
+and audio decoding. Generation performance is logged including
+real-time factor (RTF) metrics.</p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.models.tts_model.TTSModel.get_state_for_audio_prompt">
+<span class="sig-name descname"><span class="pre">get_state_for_audio_prompt</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">audio_conditioning</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)"><span class="pre">Tensor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">truncate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="_modules/pocket_tts/models/tts_model.html#TTSModel.get_state_for_audio_prompt"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.models.tts_model.TTSModel.get_state_for_audio_prompt" title="Link to this definition"></a></dt>
+<dd><p>Create model state conditioned on audio prompt for continuation.</p>
+<p>This method processes an audio prompt and creates a model state that
+captures the acoustic characteristics (speaker voice, style, prosody)
+for use in subsequent text-to-speech generation. The resulting state
+enables voice cloning and audio continuation with speaker consistency.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>audio_conditioning</strong> – Audio prompt to condition on. Can be:
+- Path: Local file path to audio file
+- str: URL to download audio file from
+- torch.Tensor: Pre-loaded audio tensor with shape [channels, samples]</p></li>
+<li><p><strong>truncate</strong> – Whether to truncate long audio prompts to 30 seconds.
+Helps prevent memory issues with very long inputs. Defaults to False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>Model state dictionary containing hidden states and positional</dt><dd><p>information conditioned on the audio prompt. This state can be
+passed to <cite>generate_audio()</cite> or <cite>generate_audio_stream()</cite> for
+voice-consistent generation.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)">dict</a></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#FileNotFoundError" title="(in Python v3.14)"><strong>FileNotFoundError</strong></a> – If audio file path doesn’t exist.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If audio tensor is invalid or empty.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#RuntimeError" title="(in Python v3.14)"><strong>RuntimeError</strong></a> – If audio processing or encoding fails.</p></li>
+</ul>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>Audio is automatically resampled to the model’s sample rate (24kHz)</p></li>
+<li><p>The audio is encoded using the Mimi compression model and projected
+to the flow model’s latent space</p></li>
+<li><p>Processing time is logged for performance monitoring</p></li>
+<li><p>The state preserves speaker characteristics for voice cloning</p></li>
+</ul>
+</div>
+</dd></dl>
+
+</dd></dl>
+
+<section id="core-methods">
+<h2>Core Methods<a class="headerlink" href="#core-methods" title="Link to this heading"></a></h2>
+<p>The main methods you’ll use for text-to-speech generation:</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="id0">
+<span class="sig-prename descclassname"><span class="pre">TTSModel.</span></span><span class="sig-name descname"><span class="pre">load_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">temp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.7</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lsd_decode_steps</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">noise_clamp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eos_threshold</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">-4.0</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference internal" href="_modules/pocket_tts/models/tts_model.html#TTSModel.load_model"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#id0" title="Link to this definition"></a></dt>
+<dd><p>Load a pre-trained TTS model with specified configuration.</p>
+<p>This class method loads a complete TTS model including the flow language model
+and Mimi compression model from pre-trained weights. The model is initialized
+with the specified generation parameters and ready for inference.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>variant</strong> – Model variant identifier corresponding to a config file name
+(e.g., ‘610b0b2c’). Must match a YAML file in the config directory.</p></li>
+<li><p><strong>temp</strong> – Sampling temperature for generation. Higher values produce more
+diverse but potentially lower quality output.</p></li>
+<li><p><strong>lsd_decode_steps</strong> – Number of steps for Lagrangian Self Distillation
+decoding. More steps can improve quality but increase computation.</p></li>
+<li><p><strong>noise_clamp</strong> – Maximum value for noise sampling. If None, no clamping
+is applied. Helps prevent extreme values in generation.</p></li>
+<li><p><strong>eos_threshold</strong> – Threshold for end-of-sequence detection. Higher values
+make the model more likely to continue generating.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>Fully initialized model with loaded weights on cpu, ready for</dt><dd><p>text-to-speech generation.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#pocket_tts.models.tts_model.TTSModel" title="pocket_tts.models.tts_model.TTSModel">TTSModel</a></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#FileNotFoundError" title="(in Python v3.14)"><strong>FileNotFoundError</strong></a> – If the specified config file or model weights
+    are not found.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the configuration is invalid or incompatible.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="id1">
+<span class="sig-prename descclassname"><span class="pre">TTSModel.</span></span><span class="sig-name descname"><span class="pre">generate_audio</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">text_to_generate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">50</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frames_after_eos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">copy_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)"><span class="pre">Tensor</span></a></span></span><a class="reference internal" href="_modules/pocket_tts/models/tts_model.html#TTSModel.generate_audio"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#id1" title="Link to this definition"></a></dt>
+<dd><p>Generate complete audio tensor from text input.</p>
+<p>This method generates the full audio output for the given text prompt
+and returns it as a single tensor. It internally uses the streaming
+generation method but collects all chunks before returning.</p>
+<p>This method is NOT thread-safe; separate model instances should be used
+for concurrent generation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model_state</strong> – Model state dictionary containing hidden states and
+positional information. Can be obtained from get_state_for_audio_prompt()
+or init_states(). The state may be modified during generation.</p></li>
+<li><p><strong>text_to_generate</strong> – Input text to convert to speech. The text will be
+automatically formatted (capitalization, punctuation) for optimal
+generation quality.</p></li>
+<li><p><strong>frames_after_eos</strong> – Number of additional frames to generate after
+detecting end-of-sequence. If None, automatically determined
+based on text length (1-3 frames).</p></li>
+<li><p><strong>copy_state</strong> – Whether to create a deep copy of the model state before
+generation. If True, preserves the original state for reuse.
+If False, modifies the input state in-place. Defaults to True.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>Generated audio tensor with shape [channels, samples]</dt><dd><p>at the model’s sample rate (typically 24kHz). The audio is
+normalized and ready for playback or saving.
+You can get the sample rate from the <cite>sample_rate</cite> attribute.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)">torch.Tensor</a></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If text_to_generate is empty or invalid.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#RuntimeError" title="(in Python v3.14)"><strong>RuntimeError</strong></a> – If generation fails due to model errors.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="id2">
+<span class="sig-prename descclassname"><span class="pre">TTSModel.</span></span><span class="sig-name descname"><span class="pre">generate_audio_stream</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">text_to_generate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">50</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frames_after_eos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">copy_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pocket_tts/models/tts_model.html#TTSModel.generate_audio_stream"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#id2" title="Link to this definition"></a></dt>
+<dd><p>Generate audio streaming chunks from text input.</p>
+<p>This method generates audio from text and yields chunks as they become
+available, enabling real-time playback or processing. It uses multithreading
+to parallelize generation and decoding for optimal performance.
+This method is NOT thread-safe; separate model instances should be used
+for concurrent generation.</p>
+<dl class="field-list">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model_state</strong> – Model state dictionary containing hidden states and
+positional information. Can be obtained from get_state_for_audio_prompt()
+or init_states(). The state may be modified during generation.</p></li>
+<li><p><strong>text_to_generate</strong> – Input text to convert to speech. The text will be
+automatically formatted (capitalization, punctuation) for optimal
+generation quality.</p></li>
+<li><p><strong>frames_after_eos</strong> – Number of additional frames to generate after
+detecting end-of-sequence. If None, automatically determined
+based on text length (1-3 frames). Defaults to None.</p></li>
+<li><p><strong>copy_state</strong> – Whether to create a deep copy of the model state before
+generation. If True, preserves the original state for reuse.
+If False, modifies the input state in-place. Defaults to True.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Yields<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>torch.Tensor</em> –</p>
+<dl class="simple">
+<dt>Audio chunks with shape [samples] at the model’s</dt><dd><p>sample rate (typically 24kHz). Chunks are yielded as soon as
+they are decoded, enabling real-time streaming.</p>
+</dd>
+</dl>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If text_to_generate is empty or invalid.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#RuntimeError" title="(in Python v3.14)"><strong>RuntimeError</strong></a> – If generation fails due to model errors or threading issues.</p></li>
+</ul>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This method uses multithreading to parallelize latent generation
+and audio decoding. Generation performance is logged including
+real-time factor (RTF) metrics.</p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="id3">
+<span class="sig-prename descclassname"><span class="pre">TTSModel.</span></span><span class="sig-name descname"><span class="pre">get_state_for_audio_prompt</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">audio_conditioning</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)"><span class="pre">Tensor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">truncate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="_modules/pocket_tts/models/tts_model.html#TTSModel.get_state_for_audio_prompt"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#id3" title="Link to this definition"></a></dt>
+<dd><p>Create model state conditioned on audio prompt for continuation.</p>
+<p>This method processes an audio prompt and creates a model state that
+captures the acoustic characteristics (speaker voice, style, prosody)
+for use in subsequent text-to-speech generation. The resulting state
+enables voice cloning and audio continuation with speaker consistency.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>audio_conditioning</strong> – Audio prompt to condition on. Can be:
+- Path: Local file path to audio file
+- str: URL to download audio file from
+- torch.Tensor: Pre-loaded audio tensor with shape [channels, samples]</p></li>
+<li><p><strong>truncate</strong> – Whether to truncate long audio prompts to 30 seconds.
+Helps prevent memory issues with very long inputs. Defaults to False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>Model state dictionary containing hidden states and positional</dt><dd><p>information conditioned on the audio prompt. This state can be
+passed to <cite>generate_audio()</cite> or <cite>generate_audio_stream()</cite> for
+voice-consistent generation.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)">dict</a></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#FileNotFoundError" title="(in Python v3.14)"><strong>FileNotFoundError</strong></a> – If audio file path doesn’t exist.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If audio tensor is invalid or empty.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#RuntimeError" title="(in Python v3.14)"><strong>RuntimeError</strong></a> – If audio processing or encoding fails.</p></li>
+</ul>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>Audio is automatically resampled to the model’s sample rate (24kHz)</p></li>
+<li><p>The audio is encoded using the Mimi compression model and projected
+to the flow model’s latent space</p></li>
+<li><p>Processing time is logged for performance monitoring</p></li>
+<li><p>The state preserves speaker characteristics for voice cloning</p></li>
+</ul>
+</div>
+</dd></dl>
+
+</section>
+<section id="properties">
+<h2>Properties<a class="headerlink" href="#properties" title="Link to this heading"></a></h2>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id4">
+<span class="sig-prename descclassname"><span class="pre">TTSModel.</span></span><span class="sig-name descname"><span class="pre">device</span></span><a class="headerlink" href="#id4" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id5">
+<span class="sig-prename descclassname"><span class="pre">TTSModel.</span></span><span class="sig-name descname"><span class="pre">sample_rate</span></span><a class="headerlink" href="#id5" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</section>
+<section id="usage-examples">
+<h2>Usage Examples<a class="headerlink" href="#usage-examples" title="Link to this heading"></a></h2>
+<section id="basic-text-to-speech">
+<h3>Basic Text-to-Speech<a class="headerlink" href="#basic-text-to-speech" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pocket_tts</span><span class="w"> </span><span class="kn">import</span> <span class="n">TTSModel</span><span class="p">,</span> <span class="n">save_audio</span>
+
+<span class="c1"># Load model with default configuration</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">TTSModel</span><span class="o">.</span><span class="n">load_model</span><span class="p">()</span>
+
+<span class="c1"># Use a pre-defined voice</span>
+<span class="n">voice_state</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">get_state_for_audio_prompt</span><span class="p">(</span><span class="s2">&quot;alba&quot;</span><span class="p">)</span>
+
+<span class="c1"># Generate speech</span>
+<span class="n">audio</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">generate_audio</span><span class="p">(</span><span class="n">voice_state</span><span class="p">,</span> <span class="s2">&quot;Hello world!&quot;</span><span class="p">)</span>
+
+<span class="c1"># Save the audio</span>
+<span class="n">save_audio</span><span class="p">(</span><span class="s2">&quot;output.wav&quot;</span><span class="p">,</span> <span class="n">audio</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">sample_rate</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="voice-cloning">
+<h3>Voice Cloning<a class="headerlink" href="#voice-cloning" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pocket_tts</span><span class="w"> </span><span class="kn">import</span> <span class="n">TTSModel</span><span class="p">,</span> <span class="n">load_audio</span><span class="p">,</span> <span class="n">save_audio</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">TTSModel</span><span class="o">.</span><span class="n">load_model</span><span class="p">()</span>
+
+<span class="c1"># Clone voice from an audio file</span>
+<span class="n">voice_state</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">get_state_for_audio_prompt</span><span class="p">(</span><span class="s2">&quot;path/to/voice.wav&quot;</span><span class="p">)</span>
+
+<span class="c1"># Generate speech with cloned voice</span>
+<span class="n">audio</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">generate_audio</span><span class="p">(</span><span class="n">voice_state</span><span class="p">,</span> <span class="s2">&quot;This sounds like the original speaker!&quot;</span><span class="p">)</span>
+
+<span class="n">save_audio</span><span class="p">(</span><span class="s2">&quot;cloned_output.wav&quot;</span><span class="p">,</span> <span class="n">audio</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">sample_rate</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="streaming-generation">
+<h3>Streaming Generation<a class="headerlink" href="#streaming-generation" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pocket_tts</span><span class="w"> </span><span class="kn">import</span> <span class="n">TTSModel</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">TTSModel</span><span class="o">.</span><span class="n">load_model</span><span class="p">()</span>
+<span class="n">voice_state</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">get_state_for_audio_prompt</span><span class="p">(</span><span class="s2">&quot;alba&quot;</span><span class="p">)</span>
+
+<span class="c1"># Generate audio in real-time chunks</span>
+<span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">model</span><span class="o">.</span><span class="n">generate_audio_stream</span><span class="p">(</span><span class="n">voice_state</span><span class="p">,</span> <span class="s2">&quot;This is a long text...&quot;</span><span class="p">):</span>
+    <span class="c1"># Process each chunk as it becomes available</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Got chunk with </span><span class="si">{</span><span class="n">chunk</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2"> samples&quot;</span><span class="p">)</span>
+    <span class="c1"># In a real application, you would play these chunks immediately</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="performance-tips">
+<h2>Performance Tips<a class="headerlink" href="#performance-tips" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Keep the model loaded in memory for repeated use</p></li>
+<li><p>Reuse voice states when generating multiple utterances with the same voice</p></li>
+<li><p>Use streaming for long texts to reduce latency</p></li>
+<li><p>The model is optimized for CPU usage; GPU provides no significant speedup</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="Pocket TTS API Documentation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="audio.html" class="btn btn-neutral float-right" title="Audio I/O Functions" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Kyutai.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

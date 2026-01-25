@@ -1,0 +1,306 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>pocket_tts.data.audio &mdash; Pocket TTS 1.0.2 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=1ed6394b"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            Pocket TTS
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../models.html">TTSModel</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../audio.html">Audio I/O Functions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../rust_audio.html">Rust Audio Processing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples.html">Examples</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">Pocket TTS</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">pocket_tts.data.audio</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for pocket_tts.data.audio</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Audio IO methods are defined in this module (info, read, write),</span>
+<span class="sd">We rely on av library for faster read when possible, otherwise on torchaudio.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">wave</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">nullcontext</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">beartype.typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Iterator</span>
+
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+<span class="n">FIRST_CHUNK_LENGTH_SECONDS</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;FIRST_CHUNK_LENGTH_SECONDS&quot;</span><span class="p">,</span> <span class="s2">&quot;0&quot;</span><span class="p">))</span>
+
+
+<div class="viewcode-block" id="load_wav">
+<a class="viewcode-back" href="../../../index.html#pocket_tts.data.audio.load_wav">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">load_wav</span><span class="p">(</span><span class="n">filepath</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Load audio file with automatic format detection.</span>
+
+<span class="sd">    This function provides a unified interface for loading audio files.</span>
+<span class="sd">    It supports WAV files natively and other formats through soundfile.</span>
+<span class="sd">    The audio is automatically converted to mono and normalized to float32.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        filepath: Path to the audio file. Can be a string or Path object.</span>
+<span class="sd">            Supported formats include WAV (native), FLAC, MP3, OGG (via soundfile).</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        tuple[torch.Tensor, int]: A tuple containing:</span>
+<span class="sd">            - Audio tensor with shape [1, samples] (mono, float32, normalized to [-1, 1])</span>
+<span class="sd">            - Sample rate as integer</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        FileNotFoundError: If the audio file doesn&#39;t exist.</span>
+<span class="sd">        ImportError: If soundfile is required but not installed for non-WAV formats.</span>
+<span class="sd">        ValueError: If the audio file is corrupted or invalid.</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; audio, sr = load_wav(&quot;speech.wav&quot;)</span>
+<span class="sd">        &gt;&gt;&gt; print(f&quot;Loaded {audio.shape[1]} samples at {sr}Hz&quot;)</span>
+<span class="sd">        &gt;&gt;&gt; # Output: Loaded 24000 samples at 24000Hz</span>
+
+<span class="sd">    Note:</span>
+<span class="sd">        - WAV files are loaded using Python&#39;s built-in wave module</span>
+<span class="sd">        - Other formats require soundfile: `pip install soundfile`</span>
+<span class="sd">        - Multi-channel audio is automatically mixed to mono</span>
+<span class="sd">        - Audio is normalized to float32 range [-1, 1]</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">filepath</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">filepath</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">filepath</span><span class="o">.</span><span class="n">suffix</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;.wav&quot;</span><span class="p">:</span>
+        <span class="c1"># Use built-in wave module for WAV files</span>
+        <span class="k">with</span> <span class="n">wave</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">filepath</span><span class="p">),</span> <span class="s2">&quot;rb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">wav_file</span><span class="p">:</span>
+            <span class="n">sample_rate</span> <span class="o">=</span> <span class="n">wav_file</span><span class="o">.</span><span class="n">getframerate</span><span class="p">()</span>
+            <span class="n">n_channels</span> <span class="o">=</span> <span class="n">wav_file</span><span class="o">.</span><span class="n">getnchannels</span><span class="p">()</span>
+            <span class="n">raw_data</span> <span class="o">=</span> <span class="n">wav_file</span><span class="o">.</span><span class="n">readframes</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">samples</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">frombuffer</span><span class="p">(</span><span class="n">raw_data</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int16</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span> <span class="o">/</span> <span class="mf">32768.0</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="n">n_channels</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">samples</span> <span class="o">=</span> <span class="n">samples</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">n_channels</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">from_numpy</span><span class="p">(</span><span class="n">samples</span><span class="p">)</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="n">sample_rate</span>
+
+    <span class="c1"># For non-WAV formats, use soundfile (optional dependency)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">soundfile</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sf</span>
+    <span class="k">except</span> <span class="ne">ImportError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ImportError</span><span class="p">(</span>
+            <span class="s2">&quot;soundfile is required to read non-WAV audio files. &quot;</span>
+            <span class="s2">&quot;Install with: `pip install soundfile` or `uvx --with soundfile`&quot;</span>
+        <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
+
+    <span class="n">data</span><span class="p">,</span> <span class="n">sample_rate</span> <span class="o">=</span> <span class="n">sf</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">filepath</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;float32&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">data</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">wav</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">from_numpy</span><span class="p">(</span><span class="n">data</span><span class="p">)</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">wav</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">from_numpy</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">wav</span><span class="p">,</span> <span class="n">sample_rate</span></div>
+
+
+
+<div class="viewcode-block" id="StreamingWAVWriter">
+<a class="viewcode-back" href="../../../index.html#pocket_tts.data.audio.StreamingWAVWriter">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">StreamingWAVWriter</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;WAV writer using Python&#39;s standard library wave module.&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="StreamingWAVWriter.__init__">
+<a class="viewcode-back" href="../../../index.html#pocket_tts.data.audio.StreamingWAVWriter.__init__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">output_stream</span><span class="p">,</span> <span class="n">sample_rate</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">output_stream</span> <span class="o">=</span> <span class="n">output_stream</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sample_rate</span> <span class="o">=</span> <span class="n">sample_rate</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wave_writer</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">first_chunk_buffer</span> <span class="o">=</span> <span class="p">[]</span></div>
+
+
+<div class="viewcode-block" id="StreamingWAVWriter.write_header">
+<a class="viewcode-back" href="../../../index.html#pocket_tts.data.audio.StreamingWAVWriter.write_header">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">write_header</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sample_rate</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize WAV writer with header.&quot;&quot;&quot;</span>
+        <span class="c1"># For stdout streaming, we need to handle the unseekable stream case</span>
+        <span class="c1"># The wave module supports unseekable streams since Python 3.4</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wave_writer</span> <span class="o">=</span> <span class="n">wave</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">output_stream</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wave_writer</span><span class="o">.</span><span class="n">setnchannels</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>  <span class="c1"># Mono</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wave_writer</span><span class="o">.</span><span class="n">setsampwidth</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>  <span class="c1"># 16-bit</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wave_writer</span><span class="o">.</span><span class="n">setframerate</span><span class="p">(</span><span class="n">sample_rate</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wave_writer</span><span class="o">.</span><span class="n">setnframes</span><span class="p">(</span><span class="mi">1_000_000_000</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="StreamingWAVWriter.write_pcm_data">
+<a class="viewcode-back" href="../../../index.html#pocket_tts.data.audio.StreamingWAVWriter.write_pcm_data">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">write_pcm_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">audio_chunk</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Write PCM data using wave module.&quot;&quot;&quot;</span>
+        <span class="c1"># Convert to int16 PCM bytes</span>
+        <span class="n">chunk_int16</span> <span class="o">=</span> <span class="p">(</span><span class="n">audio_chunk</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="mi">32767</span><span class="p">)</span><span class="o">.</span><span class="n">short</span><span class="p">()</span>
+        <span class="n">chunk_bytes</span> <span class="o">=</span> <span class="n">chunk_int16</span><span class="o">.</span><span class="n">detach</span><span class="p">()</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span><span class="o">.</span><span class="n">tobytes</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">first_chunk_buffer</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">first_chunk_buffer</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">chunk_bytes</span><span class="p">)</span>
+            <span class="n">total_length</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">c</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">first_chunk_buffer</span><span class="p">)</span>
+            <span class="n">target_length</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sample_rate</span> <span class="o">*</span> <span class="n">FIRST_CHUNK_LENGTH_SECONDS</span><span class="p">)</span> <span class="o">*</span> <span class="mi">2</span>
+            <span class="p">)</span>  <span class="c1"># 2 bytes per sample</span>
+            <span class="k">if</span> <span class="n">total_length</span> <span class="o">&lt;</span> <span class="n">target_length</span><span class="p">:</span>
+                <span class="k">return</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_flush</span><span class="p">()</span>
+            <span class="k">return</span>
+
+        <span class="c1"># Use writeframesraw to avoid frame count validation for streaming</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wave_writer</span><span class="o">.</span><span class="n">writeframesraw</span><span class="p">(</span><span class="n">chunk_bytes</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_flush</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">first_chunk_buffer</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">wave_writer</span><span class="o">.</span><span class="n">writeframesraw</span><span class="p">(</span><span class="sa">b</span><span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">first_chunk_buffer</span><span class="p">))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">first_chunk_buffer</span> <span class="o">=</span> <span class="kc">None</span>
+
+<div class="viewcode-block" id="StreamingWAVWriter.finalize">
+<a class="viewcode-back" href="../../../index.html#pocket_tts.data.audio.StreamingWAVWriter.finalize">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">finalize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Close the wave writer.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_flush</span><span class="p">()</span>
+
+        <span class="c1"># Let&#39;s add 200ms of silence to ensure proper playback</span>
+        <span class="n">silence_duration_sec</span> <span class="o">=</span> <span class="mf">0.2</span>
+        <span class="n">num_silence_samples</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sample_rate</span> <span class="o">*</span> <span class="n">silence_duration_sec</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">wave_writer</span><span class="o">.</span><span class="n">writeframesraw</span><span class="p">(</span><span class="nb">bytes</span><span class="p">(</span><span class="n">num_silence_samples</span> <span class="o">*</span> <span class="mi">2</span><span class="p">))</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">wave_writer</span><span class="p">:</span>
+            <span class="c1"># do not update the header for unseekable streams</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">wave_writer</span><span class="o">.</span><span class="n">_patchheader</span> <span class="o">=</span> <span class="k">lambda</span><span class="p">:</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">wave_writer</span><span class="o">.</span><span class="n">close</span><span class="p">()</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="is_file_like">
+<a class="viewcode-back" href="../../../index.html#pocket_tts.data.audio.is_file_like">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">is_file_like</span><span class="p">(</span><span class="n">obj</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Check if object has basic file-like methods.&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="nb">all</span><span class="p">(</span><span class="nb">hasattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">attr</span><span class="p">)</span> <span class="k">for</span> <span class="n">attr</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;write&quot;</span><span class="p">,</span> <span class="s2">&quot;close&quot;</span><span class="p">])</span></div>
+
+
+
+<div class="viewcode-block" id="stream_audio_chunks">
+<a class="viewcode-back" href="../../../index.html#pocket_tts.data.audio.stream_audio_chunks">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">stream_audio_chunks</span><span class="p">(</span>
+    <span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">|</span> <span class="n">Any</span><span class="p">,</span>
+    <span class="n">audio_chunks</span><span class="p">:</span> <span class="n">Iterator</span><span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">],</span>
+    <span class="n">sample_rate</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Stream audio chunks to a WAV file or stdout, optionally playing them.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">path</span> <span class="o">==</span> <span class="s2">&quot;-&quot;</span><span class="p">:</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">buffer</span>
+    <span class="k">elif</span> <span class="n">path</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="n">nullcontext</span><span class="p">()</span>
+    <span class="k">elif</span> <span class="n">is_file_like</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="n">path</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span>
+
+    <span class="k">with</span> <span class="n">f</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">writer</span> <span class="o">=</span> <span class="n">StreamingWAVWriter</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">sample_rate</span><span class="p">)</span>
+            <span class="n">writer</span><span class="o">.</span><span class="n">write_header</span><span class="p">(</span><span class="n">sample_rate</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">audio_chunks</span><span class="p">:</span>
+            <span class="c1"># Then write to file</span>
+            <span class="k">if</span> <span class="n">path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">writer</span><span class="o">.</span><span class="n">write_pcm_data</span><span class="p">(</span><span class="n">chunk</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">writer</span><span class="o">.</span><span class="n">finalize</span><span class="p">()</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Kyutai.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

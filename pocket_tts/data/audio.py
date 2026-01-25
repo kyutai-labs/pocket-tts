@@ -20,8 +20,38 @@ logger = logging.getLogger(__name__)
 FIRST_CHUNK_LENGTH_SECONDS = float(os.environ.get("FIRST_CHUNK_LENGTH_SECONDS", "0"))
 
 
-def audio_read(filepath: str | Path) -> tuple[torch.Tensor, int]:
-    """Read audio file. WAV uses built-in wave module; other formats require soundfile."""
+def load_wav(filepath: str | Path) -> tuple[torch.Tensor, int]:
+    """Load audio file with automatic format detection.
+
+    This function provides a unified interface for loading audio files.
+    It supports WAV files natively and other formats through soundfile.
+    The audio is automatically converted to mono and normalized to float32.
+
+    Args:
+        filepath: Path to the audio file. Can be a string or Path object.
+            Supported formats include WAV (native), FLAC, MP3, OGG (via soundfile).
+
+    Returns:
+        tuple[torch.Tensor, int]: A tuple containing:
+            - Audio tensor with shape [1, samples] (mono, float32, normalized to [-1, 1])
+            - Sample rate as integer
+
+    Raises:
+        FileNotFoundError: If the audio file doesn't exist.
+        ImportError: If soundfile is required but not installed for non-WAV formats.
+        ValueError: If the audio file is corrupted or invalid.
+
+    Example:
+        >>> audio, sr = load_wav("speech.wav")
+        >>> print(f"Loaded {audio.shape[1]} samples at {sr}Hz")
+        >>> # Output: Loaded 24000 samples at 24000Hz
+
+    Note:
+        - WAV files are loaded using Python's built-in wave module
+        - Other formats require soundfile: `pip install soundfile`
+        - Multi-channel audio is automatically mixed to mono
+        - Audio is normalized to float32 range [-1, 1]
+    """
     filepath = Path(filepath)
 
     if filepath.suffix.lower() == ".wav":
@@ -52,9 +82,6 @@ def audio_read(filepath: str | Path) -> tuple[torch.Tensor, int]:
     else:
         wav = torch.from_numpy(data.mean(axis=1)).unsqueeze(0)
     return wav, sample_rate
-
-
-load_wav = audio_read
 
 
 class StreamingWAVWriter:

@@ -1,0 +1,165 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>pocket_tts.data.audio_output &mdash; Pocket TTS 1.0.2 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=1ed6394b"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            Pocket TTS
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../models.html">TTSModel</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../audio.html">Audio I/O Functions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../rust_audio.html">Rust Audio Processing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples.html">Examples</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">Pocket TTS</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">pocket_tts.data.audio_output</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for pocket_tts.data.audio_output</h1><div class="highlight"><pre>
+<span></span><span class="c1"># Import numpy_rs for NumPy replacement</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Union</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np_rs</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">scipy.io.wavfile</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+
+
+<div class="viewcode-block" id="save_audio">
+<a class="viewcode-back" href="../../../audio.html#pocket_tts.data.audio_output.save_audio">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">save_audio</span><span class="p">(</span>
+    <span class="n">path</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">],</span> <span class="n">audio</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">np_rs</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="n">sample_rate</span><span class="p">:</span> <span class="nb">int</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Save audio tensor or array to a WAV file with automatic conversion.</span>
+
+<span class="sd">    This function provides a reliable way to save audio data to WAV format.</span>
+<span class="sd">    It handles both PyTorch tensors and NumPy arrays automatically,</span>
+<span class="sd">    ensuring proper format conversion and shape handling.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        path: Destination path for the WAV file. Can be string or Path object.</span>
+<span class="sd">            The file will be created or overwritten if it exists.</span>
+<span class="sd">        audio: Audio data to save. Accepts:</span>
+<span class="sd">            - torch.Tensor: Any shape, automatically detached and moved to CPU</span>
+<span class="sd">            - numpy.ndarray: Any shape, used directly</span>
+<span class="sd">            Expected format: float32 values normalized to [-1, 1]</span>
+<span class="sd">        sample_rate: Sampling rate in Hz for the output WAV file.</span>
+<span class="sd">            Common values: 16000, 22050, 24000, 44100, 48000.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        ValueError: If audio data is invalid or empty.</span>
+<span class="sd">        TypeError: If audio is neither torch.Tensor nor numpy.ndarray.</span>
+<span class="sd">        OSError: If the destination path is invalid or not writable.</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; import torch</span>
+<span class="sd">        &gt;&gt;&gt; # Generate 1 second of sine wave at 440Hz</span>
+<span class="sd">        &gt;&gt;&gt; samples = torch.linspace(0, 1, 24000)</span>
+<span class="sd">        &gt;&gt;&gt; audio = torch.sin(2 * torch.pi * 440 * samples) * 0.5</span>
+<span class="sd">        &gt;&gt;&gt; save_audio(&quot;tone.wav&quot;, audio, 24000)</span>
+<span class="sd">        &gt;&gt;&gt; # Creates tone.wav with 1 second of 440Hz tone</span>
+
+<span class="sd">    Note:</span>
+<span class="sd">        - Audio is automatically converted to int16 PCM for WAV format</span>
+<span class="sd">        - Multi-channel audio (shape [channels, samples]) is preserved</span>
+<span class="sd">        - Single-channel audio (shape [samples]) is written as mono</span>
+<span class="sd">        - Uses scipy.io.wavfile for reliable WAV writing</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">audio</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">):</span>
+        <span class="n">audio</span> <span class="o">=</span> <span class="n">audio</span><span class="o">.</span><span class="n">detach</span><span class="p">()</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+
+    <span class="c1"># Ensure correct shape for scipy (samples, channels) or just (samples) for mono</span>
+    <span class="k">if</span> <span class="n">audio</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span> <span class="ow">and</span> <span class="n">audio</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">audio</span> <span class="o">=</span> <span class="n">audio</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+    <span class="c1"># Normalize if needed? Assuming model output is float32 [-1, 1] usually,</span>
+    <span class="c1"># but scipy handles float32 fine.</span>
+
+    <span class="n">scipy</span><span class="o">.</span><span class="n">io</span><span class="o">.</span><span class="n">wavfile</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">),</span> <span class="n">sample_rate</span><span class="p">,</span> <span class="n">audio</span><span class="p">)</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Kyutai.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

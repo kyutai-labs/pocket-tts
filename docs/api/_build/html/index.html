@@ -1,0 +1,904 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pocket TTS API Documentation &mdash; Pocket TTS 1.0.2 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=1ed6394b"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="TTSModel" href="models.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="#" class="icon icon-home">
+            Pocket TTS
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="models.html">TTSModel</a></li>
+<li class="toctree-l1"><a class="reference internal" href="audio.html">Audio I/O Functions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="rust_audio.html">Rust Audio Processing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="#">Pocket TTS</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="#" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Pocket TTS API Documentation</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="pocket-tts-api-documentation">
+<h1>Pocket TTS API Documentation<a class="headerlink" href="#pocket-tts-api-documentation" title="Link to this heading"></a></h1>
+<p>Welcome to the Pocket TTS API documentation. This page provides comprehensive documentation for all public APIs.</p>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="models.html">TTSModel</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="models.html#pocket_tts.models.tts_model.TTSModel"><code class="docutils literal notranslate"><span class="pre">TTSModel</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="models.html#core-methods">Core Methods</a></li>
+<li class="toctree-l2"><a class="reference internal" href="models.html#properties">Properties</a></li>
+<li class="toctree-l2"><a class="reference internal" href="models.html#usage-examples">Usage Examples</a></li>
+<li class="toctree-l2"><a class="reference internal" href="models.html#performance-tips">Performance Tips</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="audio.html">Audio I/O Functions</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="audio.html#pocket_tts.data.audio.load_wav"><code class="docutils literal notranslate"><span class="pre">load_wav()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="audio.html#pocket_tts.data.audio.StreamingWAVWriter"><code class="docutils literal notranslate"><span class="pre">StreamingWAVWriter</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="audio.html#pocket_tts.data.audio.is_file_like"><code class="docutils literal notranslate"><span class="pre">is_file_like()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="audio.html#pocket_tts.data.audio.stream_audio_chunks"><code class="docutils literal notranslate"><span class="pre">stream_audio_chunks()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="audio.html#functions">Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="audio.html#usage-examples">Usage Examples</a></li>
+<li class="toctree-l2"><a class="reference internal" href="audio.html#format-support">Format Support</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="rust_audio.html">Rust Audio Processing</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="rust_audio.html#pocket_tts.rust_audio.RustAudioProcessor"><code class="docutils literal notranslate"><span class="pre">RustAudioProcessor</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="rust_audio.html#pocket_tts.rust_audio.get_rust_processor"><code class="docutils literal notranslate"><span class="pre">get_rust_processor()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="rust_audio.html#pocket_tts.rust_audio.normalize_audio"><code class="docutils literal notranslate"><span class="pre">normalize_audio()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="rust_audio.html#pocket_tts.rust_audio.apply_gain"><code class="docutils literal notranslate"><span class="pre">apply_gain()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="rust_audio.html#pocket_tts.rust_audio.resample_audio"><code class="docutils literal notranslate"><span class="pre">resample_audio()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="rust_audio.html#pocket_tts.rust_audio.apply_fade"><code class="docutils literal notranslate"><span class="pre">apply_fade()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="rust_audio.html#pocket_tts.rust_audio.compute_audio_metrics"><code class="docutils literal notranslate"><span class="pre">compute_audio_metrics()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="rust_audio.html#functions">Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rust_audio.html#usage-examples">Usage Examples</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rust_audio.html#performance">Performance</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#basic-usage">Basic Usage</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#voice-cloning">Voice Cloning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#streaming-and-real-time">Streaming and Real-time</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#audio-processing">Audio Processing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#error-handling">Error Handling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#performance-tips">Performance Tips</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<section id="core-features">
+<h2>Core Features<a class="headerlink" href="#core-features" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><strong>Text-to-Speech Generation</strong>: Convert text to natural-sounding speech</p></li>
+<li><p><strong>Voice Cloning</strong>: Clone voices from audio samples</p></li>
+<li><p><strong>Audio Processing</strong>: Comprehensive audio I/O and processing utilities</p></li>
+<li><p><strong>Streaming</strong>: Real-time audio generation with low latency</p></li>
+<li><p><strong>CPU Optimized</strong>: Efficient CPU-based processing, no GPU required</p></li>
+</ul>
+</section>
+<section id="getting-started">
+<h2>Getting Started<a class="headerlink" href="#getting-started" title="Link to this heading"></a></h2>
+<p>Basic usage example:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pocket_tts</span><span class="w"> </span><span class="kn">import</span> <span class="n">TTSModel</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pocket_tts</span><span class="w"> </span><span class="kn">import</span> <span class="n">save_audio</span>
+
+<span class="c1"># Load the model</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">TTSModel</span><span class="o">.</span><span class="n">load_model</span><span class="p">()</span>
+
+<span class="c1"># Create voice state from a pre-defined voice or audio file</span>
+<span class="n">voice_state</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">get_state_for_audio_prompt</span><span class="p">(</span><span class="s2">&quot;alba&quot;</span><span class="p">)</span>
+
+<span class="c1"># Generate speech</span>
+<span class="n">audio</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">generate_audio</span><span class="p">(</span><span class="n">voice_state</span><span class="p">,</span> <span class="s2">&quot;Hello, this is Pocket TTS!&quot;</span><span class="p">)</span>
+
+<span class="c1"># Save to file</span>
+<span class="n">save_audio</span><span class="p">(</span><span class="s2">&quot;output.wav&quot;</span><span class="p">,</span> <span class="n">audio</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">sample_rate</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="api-reference">
+<h2>API Reference<a class="headerlink" href="#api-reference" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="pocket_tts.TTSModel">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pocket_tts.</span></span><span class="sig-name descname"><span class="pre">TTSModel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">flow_lm</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FlowLMModel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">temp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">lsd_decode_steps</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">noise_clamp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">eos_threshold</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Config</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pocket_tts/models/tts_model.html#TTSModel"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.TTSModel" title="Link to this definition"></a></dt>
+<dd><dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.TTSModel.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">flow_lm</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FlowLMModel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">temp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">lsd_decode_steps</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">noise_clamp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">eos_threshold</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Config</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pocket_tts/models/tts_model.html#TTSModel.__init__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.TTSModel.__init__" title="Link to this definition"></a></dt>
+<dd><p>Initialize internal Module state, shared by both nn.Module and ScriptModule.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="pocket_tts.TTSModel.device">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">device</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></em><a class="headerlink" href="#pocket_tts.TTSModel.device" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="pocket_tts.TTSModel.sample_rate">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">sample_rate</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></em><a class="headerlink" href="#pocket_tts.TTSModel.sample_rate" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.TTSModel.load_model">
+<span class="sig-name descname"><span class="pre">load_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">temp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.7</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lsd_decode_steps</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">noise_clamp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eos_threshold</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">-4.0</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference internal" href="_modules/pocket_tts/models/tts_model.html#TTSModel.load_model"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.TTSModel.load_model" title="Link to this definition"></a></dt>
+<dd><p>Load a pre-trained TTS model with specified configuration.</p>
+<p>This class method loads a complete TTS model including the flow language model
+and Mimi compression model from pre-trained weights. The model is initialized
+with the specified generation parameters and ready for inference.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>variant</strong> – Model variant identifier corresponding to a config file name
+(e.g., ‘610b0b2c’). Must match a YAML file in the config directory.</p></li>
+<li><p><strong>temp</strong> – Sampling temperature for generation. Higher values produce more
+diverse but potentially lower quality output.</p></li>
+<li><p><strong>lsd_decode_steps</strong> – Number of steps for Lagrangian Self Distillation
+decoding. More steps can improve quality but increase computation.</p></li>
+<li><p><strong>noise_clamp</strong> – Maximum value for noise sampling. If None, no clamping
+is applied. Helps prevent extreme values in generation.</p></li>
+<li><p><strong>eos_threshold</strong> – Threshold for end-of-sequence detection. Higher values
+make the model more likely to continue generating.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>Fully initialized model with loaded weights on cpu, ready for</dt><dd><p>text-to-speech generation.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#pocket_tts.TTSModel" title="pocket_tts.TTSModel">TTSModel</a></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#FileNotFoundError" title="(in Python v3.14)"><strong>FileNotFoundError</strong></a> – If the specified config file or model weights
+    are not found.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the configuration is invalid or incompatible.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.TTSModel.generate_audio">
+<span class="sig-name descname"><span class="pre">generate_audio</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">text_to_generate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">50</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frames_after_eos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">copy_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)"><span class="pre">Tensor</span></a></span></span><a class="reference internal" href="_modules/pocket_tts/models/tts_model.html#TTSModel.generate_audio"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.TTSModel.generate_audio" title="Link to this definition"></a></dt>
+<dd><p>Generate complete audio tensor from text input.</p>
+<p>This method generates the full audio output for the given text prompt
+and returns it as a single tensor. It internally uses the streaming
+generation method but collects all chunks before returning.</p>
+<p>This method is NOT thread-safe; separate model instances should be used
+for concurrent generation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model_state</strong> – Model state dictionary containing hidden states and
+positional information. Can be obtained from get_state_for_audio_prompt()
+or init_states(). The state may be modified during generation.</p></li>
+<li><p><strong>text_to_generate</strong> – Input text to convert to speech. The text will be
+automatically formatted (capitalization, punctuation) for optimal
+generation quality.</p></li>
+<li><p><strong>frames_after_eos</strong> – Number of additional frames to generate after
+detecting end-of-sequence. If None, automatically determined
+based on text length (1-3 frames).</p></li>
+<li><p><strong>copy_state</strong> – Whether to create a deep copy of the model state before
+generation. If True, preserves the original state for reuse.
+If False, modifies the input state in-place. Defaults to True.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>Generated audio tensor with shape [channels, samples]</dt><dd><p>at the model’s sample rate (typically 24kHz). The audio is
+normalized and ready for playback or saving.
+You can get the sample rate from the <cite>sample_rate</cite> attribute.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)">torch.Tensor</a></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If text_to_generate is empty or invalid.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#RuntimeError" title="(in Python v3.14)"><strong>RuntimeError</strong></a> – If generation fails due to model errors.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.TTSModel.generate_audio_stream">
+<span class="sig-name descname"><span class="pre">generate_audio_stream</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">text_to_generate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">50</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frames_after_eos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">copy_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pocket_tts/models/tts_model.html#TTSModel.generate_audio_stream"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.TTSModel.generate_audio_stream" title="Link to this definition"></a></dt>
+<dd><p>Generate audio streaming chunks from text input.</p>
+<p>This method generates audio from text and yields chunks as they become
+available, enabling real-time playback or processing. It uses multithreading
+to parallelize generation and decoding for optimal performance.
+This method is NOT thread-safe; separate model instances should be used
+for concurrent generation.</p>
+<dl class="field-list">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model_state</strong> – Model state dictionary containing hidden states and
+positional information. Can be obtained from get_state_for_audio_prompt()
+or init_states(). The state may be modified during generation.</p></li>
+<li><p><strong>text_to_generate</strong> – Input text to convert to speech. The text will be
+automatically formatted (capitalization, punctuation) for optimal
+generation quality.</p></li>
+<li><p><strong>frames_after_eos</strong> – Number of additional frames to generate after
+detecting end-of-sequence. If None, automatically determined
+based on text length (1-3 frames). Defaults to None.</p></li>
+<li><p><strong>copy_state</strong> – Whether to create a deep copy of the model state before
+generation. If True, preserves the original state for reuse.
+If False, modifies the input state in-place. Defaults to True.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Yields<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>torch.Tensor</em> –</p>
+<dl class="simple">
+<dt>Audio chunks with shape [samples] at the model’s</dt><dd><p>sample rate (typically 24kHz). Chunks are yielded as soon as
+they are decoded, enabling real-time streaming.</p>
+</dd>
+</dl>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If text_to_generate is empty or invalid.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#RuntimeError" title="(in Python v3.14)"><strong>RuntimeError</strong></a> – If generation fails due to model errors or threading issues.</p></li>
+</ul>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This method uses multithreading to parallelize latent generation
+and audio decoding. Generation performance is logged including
+real-time factor (RTF) metrics.</p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.TTSModel.get_state_for_audio_prompt">
+<span class="sig-name descname"><span class="pre">get_state_for_audio_prompt</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">audio_conditioning</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)"><span class="pre">Tensor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">truncate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="_modules/pocket_tts/models/tts_model.html#TTSModel.get_state_for_audio_prompt"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.TTSModel.get_state_for_audio_prompt" title="Link to this definition"></a></dt>
+<dd><p>Create model state conditioned on audio prompt for continuation.</p>
+<p>This method processes an audio prompt and creates a model state that
+captures the acoustic characteristics (speaker voice, style, prosody)
+for use in subsequent text-to-speech generation. The resulting state
+enables voice cloning and audio continuation with speaker consistency.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>audio_conditioning</strong> – Audio prompt to condition on. Can be:
+- Path: Local file path to audio file
+- str: URL to download audio file from
+- torch.Tensor: Pre-loaded audio tensor with shape [channels, samples]</p></li>
+<li><p><strong>truncate</strong> – Whether to truncate long audio prompts to 30 seconds.
+Helps prevent memory issues with very long inputs. Defaults to False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>Model state dictionary containing hidden states and positional</dt><dd><p>information conditioned on the audio prompt. This state can be
+passed to <cite>generate_audio()</cite> or <cite>generate_audio_stream()</cite> for
+voice-consistent generation.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)">dict</a></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#FileNotFoundError" title="(in Python v3.14)"><strong>FileNotFoundError</strong></a> – If audio file path doesn’t exist.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If audio tensor is invalid or empty.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#RuntimeError" title="(in Python v3.14)"><strong>RuntimeError</strong></a> – If audio processing or encoding fails.</p></li>
+</ul>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>Audio is automatically resampled to the model’s sample rate (24kHz)</p></li>
+<li><p>The audio is encoded using the Mimi compression model and projected
+to the flow model’s latent space</p></li>
+<li><p>Processing time is logged for performance monitoring</p></li>
+<li><p>The state preserves speaker characteristics for voice cloning</p></li>
+</ul>
+</div>
+</dd></dl>
+
+</dd></dl>
+
+<p id="module-pocket_tts.data.audio">Audio IO methods are defined in this module (info, read, write),
+We rely on av library for faster read when possible, otherwise on torchaudio.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="pocket_tts.data.audio.load_wav">
+<span class="sig-prename descclassname"><span class="pre">pocket_tts.data.audio.</span></span><span class="sig-name descname"><span class="pre">load_wav</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filepath</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)"><span class="pre">Tensor</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/pocket_tts/data/audio.html#load_wav"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.data.audio.load_wav" title="Link to this definition"></a></dt>
+<dd><p>Load audio file with automatic format detection.</p>
+<p>This function provides a unified interface for loading audio files.
+It supports WAV files natively and other formats through soundfile.
+The audio is automatically converted to mono and normalized to float32.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>filepath</strong> – Path to the audio file. Can be a string or Path object.
+Supported formats include WAV (native), FLAC, MP3, OGG (via soundfile).</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>A tuple containing:</dt><dd><ul class="simple">
+<li><p>Audio tensor with shape [1, samples] (mono, float32, normalized to [-1, 1])</p></li>
+<li><p>Sample rate as integer</p></li>
+</ul>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)">tuple</a>[<a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)">torch.Tensor</a>, <a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)">int</a>]</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#FileNotFoundError" title="(in Python v3.14)"><strong>FileNotFoundError</strong></a> – If the audio file doesn’t exist.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ImportError" title="(in Python v3.14)"><strong>ImportError</strong></a> – If soundfile is required but not installed for non-WAV formats.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the audio file is corrupted or invalid.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">audio</span><span class="p">,</span> <span class="n">sr</span> <span class="o">=</span> <span class="n">load_wav</span><span class="p">(</span><span class="s2">&quot;speech.wav&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Loaded </span><span class="si">{</span><span class="n">audio</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2"> samples at </span><span class="si">{</span><span class="n">sr</span><span class="si">}</span><span class="s2">Hz&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Output: Loaded 24000 samples at 24000Hz</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>WAV files are loaded using Python’s built-in wave module</p></li>
+<li><p>Other formats require soundfile: <cite>pip install soundfile</cite></p></li>
+<li><p>Multi-channel audio is automatically mixed to mono</p></li>
+<li><p>Audio is normalized to float32 range [-1, 1]</p></li>
+</ul>
+</div>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pocket_tts.data.audio.StreamingWAVWriter">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pocket_tts.data.audio.</span></span><span class="sig-name descname"><span class="pre">StreamingWAVWriter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output_stream</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_rate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pocket_tts/data/audio.html#StreamingWAVWriter"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.data.audio.StreamingWAVWriter" title="Link to this definition"></a></dt>
+<dd><p>WAV writer using Python’s standard library wave module.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.data.audio.StreamingWAVWriter.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output_stream</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_rate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pocket_tts/data/audio.html#StreamingWAVWriter.__init__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.data.audio.StreamingWAVWriter.__init__" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.data.audio.StreamingWAVWriter.write_header">
+<span class="sig-name descname"><span class="pre">write_header</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sample_rate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pocket_tts/data/audio.html#StreamingWAVWriter.write_header"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.data.audio.StreamingWAVWriter.write_header" title="Link to this definition"></a></dt>
+<dd><p>Initialize WAV writer with header.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.data.audio.StreamingWAVWriter.write_pcm_data">
+<span class="sig-name descname"><span class="pre">write_pcm_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">audio_chunk</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)"><span class="pre">Tensor</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pocket_tts/data/audio.html#StreamingWAVWriter.write_pcm_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.data.audio.StreamingWAVWriter.write_pcm_data" title="Link to this definition"></a></dt>
+<dd><p>Write PCM data using wave module.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.data.audio.StreamingWAVWriter.finalize">
+<span class="sig-name descname"><span class="pre">finalize</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pocket_tts/data/audio.html#StreamingWAVWriter.finalize"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.data.audio.StreamingWAVWriter.finalize" title="Link to this definition"></a></dt>
+<dd><p>Close the wave writer.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pocket_tts.data.audio.is_file_like">
+<span class="sig-prename descclassname"><span class="pre">pocket_tts.data.audio.</span></span><span class="sig-name descname"><span class="pre">is_file_like</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">obj</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pocket_tts/data/audio.html#is_file_like"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.data.audio.is_file_like" title="Link to this definition"></a></dt>
+<dd><p>Check if object has basic file-like methods.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pocket_tts.data.audio.stream_audio_chunks">
+<span class="sig-prename descclassname"><span class="pre">pocket_tts.data.audio.</span></span><span class="sig-name descname"><span class="pre">stream_audio_chunks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">audio_chunks</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Iterator" title="(in Python v3.14)"><span class="pre">Iterator</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)"><span class="pre">Tensor</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_rate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pocket_tts/data/audio.html#stream_audio_chunks"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.data.audio.stream_audio_chunks" title="Link to this definition"></a></dt>
+<dd><p>Stream audio chunks to a WAV file or stdout, optionally playing them.</p>
+</dd></dl>
+
+<p id="module-pocket_tts.rust_audio">Python bindings for Rust audio processing extensions.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="pocket_tts.rust_audio.RustAudioProcessor">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pocket_tts.rust_audio.</span></span><span class="sig-name descname"><span class="pre">RustAudioProcessor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lib_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pocket_tts/rust_audio.html#RustAudioProcessor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.rust_audio.RustAudioProcessor" title="Link to this definition"></a></dt>
+<dd><p>Python wrapper for Rust audio processing functions.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.rust_audio.RustAudioProcessor.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lib_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pocket_tts/rust_audio.html#RustAudioProcessor.__init__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.rust_audio.RustAudioProcessor.__init__" title="Link to this definition"></a></dt>
+<dd><p>Initialize the Rust audio processor.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>lib_path</strong> – Path to the compiled Rust library. If None, searches standard locations.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.rust_audio.RustAudioProcessor.normalize">
+<span class="sig-name descname"><span class="pre">normalize</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">samples</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">gain</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></span></span><a class="reference internal" href="_modules/pocket_tts/rust_audio.html#RustAudioProcessor.normalize"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.rust_audio.RustAudioProcessor.normalize" title="Link to this definition"></a></dt>
+<dd><p>Normalize audio samples to [-1, 1] range.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>samples</strong> – Input audio samples</p></li>
+<li><p><strong>gain</strong> – Additional gain factor (default: 1.0)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Normalized audio samples</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.rust_audio.RustAudioProcessor.apply_gain">
+<span class="sig-name descname"><span class="pre">apply_gain</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">samples</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">gain</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></span></span><a class="reference internal" href="_modules/pocket_tts/rust_audio.html#RustAudioProcessor.apply_gain"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.rust_audio.RustAudioProcessor.apply_gain" title="Link to this definition"></a></dt>
+<dd><p>Apply gain to audio samples.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>samples</strong> – Input audio samples</p></li>
+<li><p><strong>gain</strong> – Gain factor to apply</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Audio samples with gain applied</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.rust_audio.RustAudioProcessor.resample_linear">
+<span class="sig-name descname"><span class="pre">resample_linear</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">samples</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_length</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></span></span><a class="reference internal" href="_modules/pocket_tts/rust_audio.html#RustAudioProcessor.resample_linear"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.rust_audio.RustAudioProcessor.resample_linear" title="Link to this definition"></a></dt>
+<dd><p>Resample audio using linear interpolation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>samples</strong> – Input audio samples</p></li>
+<li><p><strong>target_length</strong> – Desired output length</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Resampled audio samples</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.rust_audio.RustAudioProcessor.resample_sinc">
+<span class="sig-name descname"><span class="pre">resample_sinc</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">samples</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_length</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">quality</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">8</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></span></span><a class="reference internal" href="_modules/pocket_tts/rust_audio.html#RustAudioProcessor.resample_sinc"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.rust_audio.RustAudioProcessor.resample_sinc" title="Link to this definition"></a></dt>
+<dd><p>Resample audio using high-quality sinc interpolation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>samples</strong> – Input audio samples</p></li>
+<li><p><strong>target_length</strong> – Desired output length</p></li>
+<li><p><strong>quality</strong> – Quality parameter (8, 12, or 16)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Resampled audio samples</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.rust_audio.RustAudioProcessor.apply_fade">
+<span class="sig-name descname"><span class="pre">apply_fade</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">samples</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">fade_in_ms</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">fade_out_ms</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_rate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">24000</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></span></span><a class="reference internal" href="_modules/pocket_tts/rust_audio.html#RustAudioProcessor.apply_fade"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.rust_audio.RustAudioProcessor.apply_fade" title="Link to this definition"></a></dt>
+<dd><p>Apply fade in/out to audio.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>samples</strong> – Input audio samples</p></li>
+<li><p><strong>fade_in_ms</strong> – Fade in duration in milliseconds</p></li>
+<li><p><strong>fade_out_ms</strong> – Fade out duration in milliseconds</p></li>
+<li><p><strong>sample_rate</strong> – Sample rate</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Audio with fade applied</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.rust_audio.RustAudioProcessor.compute_rms">
+<span class="sig-name descname"><span class="pre">compute_rms</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">samples</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></span><a class="reference internal" href="_modules/pocket_tts/rust_audio.html#RustAudioProcessor.compute_rms"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.rust_audio.RustAudioProcessor.compute_rms" title="Link to this definition"></a></dt>
+<dd><p>Compute RMS energy of audio.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>samples</strong> – Input audio samples</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>RMS energy value</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.rust_audio.RustAudioProcessor.compute_peak">
+<span class="sig-name descname"><span class="pre">compute_peak</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">samples</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></span><a class="reference internal" href="_modules/pocket_tts/rust_audio.html#RustAudioProcessor.compute_peak"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.rust_audio.RustAudioProcessor.compute_peak" title="Link to this definition"></a></dt>
+<dd><p>Compute peak amplitude of audio.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>samples</strong> – Input audio samples</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Peak amplitude value</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.rust_audio.RustAudioProcessor.is_available">
+<span class="sig-name descname"><span class="pre">is_available</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span></span><a class="reference internal" href="_modules/pocket_tts/rust_audio.html#RustAudioProcessor.is_available"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.rust_audio.RustAudioProcessor.is_available" title="Link to this definition"></a></dt>
+<dd><p>Check if Rust library is available.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pocket_tts.rust_audio.get_rust_processor">
+<span class="sig-prename descclassname"><span class="pre">pocket_tts.rust_audio.</span></span><span class="sig-name descname"><span class="pre">get_rust_processor</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="rust_audio.html#pocket_tts.rust_audio.RustAudioProcessor" title="pocket_tts.rust_audio.RustAudioProcessor"><span class="pre">RustAudioProcessor</span></a></span></span><a class="reference internal" href="_modules/pocket_tts/rust_audio.html#get_rust_processor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.rust_audio.get_rust_processor" title="Link to this definition"></a></dt>
+<dd><p>Get the global Rust audio processor instance.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pocket_tts.rust_audio.normalize_audio">
+<span class="sig-prename descclassname"><span class="pre">pocket_tts.rust_audio.</span></span><span class="sig-name descname"><span class="pre">normalize_audio</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">samples</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">gain</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></span></span><a class="reference internal" href="_modules/pocket_tts/rust_audio.html#normalize_audio"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.rust_audio.normalize_audio" title="Link to this definition"></a></dt>
+<dd><p>Normalize audio samples with automatic peak detection and gain adjustment.</p>
+<p>This function normalizes audio to prevent clipping and optimize dynamic range.
+It uses Rust implementations when available for performance, with Python fallback.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>samples</strong> – Input audio samples as numpy array. Can be any shape but typically
+1D for mono or 2D for multi-channel audio. Values should be float32.</p></li>
+<li><p><strong>gain</strong> – Additional gain factor applied after normalization. Use &gt;1.0 to make
+audio louder, &lt;1.0 to make it quieter. Defaults to 1.0 (no additional gain).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>Normalized audio samples with same shape as input.</dt><dd><p>Values are scaled to prevent clipping while maximizing loudness.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.ndarray</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If samples array is empty or contains invalid data.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Create quiet audio</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">audio</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">24000</span><span class="p">)</span> <span class="o">*</span> <span class="mf">0.1</span>  <span class="c1"># Very quiet</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">normalized</span> <span class="o">=</span> <span class="n">normalize_audio</span><span class="p">(</span><span class="n">audio</span><span class="p">,</span> <span class="n">gain</span><span class="o">=</span><span class="mf">2.0</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Original RMS: </span><span class="si">{</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">audio</span><span class="o">**</span><span class="mi">2</span><span class="p">))</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Normalized RMS: </span><span class="si">{</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">normalized</span><span class="o">**</span><span class="mi">2</span><span class="p">))</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>Uses Rust implementation for performance when available</p></li>
+<li><p>Automatic peak detection prevents clipping</p></li>
+<li><p>Preserves original array shape and data type</p></li>
+<li><p>Gain is applied after normalization for precise control</p></li>
+</ul>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pocket_tts.rust_audio.apply_gain">
+<span class="sig-prename descclassname"><span class="pre">pocket_tts.rust_audio.</span></span><span class="sig-name descname"><span class="pre">apply_gain</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">samples</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">gain</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></span></span><a class="reference internal" href="_modules/pocket_tts/rust_audio.html#apply_gain"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.rust_audio.apply_gain" title="Link to this definition"></a></dt>
+<dd><p>Apply linear gain to audio samples.</p>
+<p>This function multiplies all audio samples by a gain factor to adjust volume.
+It’s a simple linear amplification/attenuation operation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>samples</strong> – Input audio samples as numpy array. Can be any shape.
+Values should be float32 in range [-1, 1] for typical audio.</p></li>
+<li><p><strong>gain</strong> – Linear gain factor to apply. Values &gt;1.0 increase volume,
+values &lt;1.0 decrease volume, negative values invert phase.
+Common values: 0.5 (half volume), 2.0 (double volume).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>Audio samples with gain applied, same shape as input.</dt><dd><p>May exceed [-1, 1] range; consider normalizing after if needed.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.ndarray</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If samples array is empty or gain is invalid.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">audio</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="mi">440</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">24000</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Make audio twice as loud</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">louder</span> <span class="o">=</span> <span class="n">apply_gain</span><span class="p">(</span><span class="n">audio</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Make audio half as loud</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">quieter</span> <span class="o">=</span> <span class="n">apply_gain</span><span class="p">(</span><span class="n">audio</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Invert phase (180-degree phase shift)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">inverted</span> <span class="o">=</span> <span class="n">apply_gain</span><span class="p">(</span><span class="n">audio</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.0</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>Simple linear multiplication: output = input * gain</p></li>
+<li><p>Does not prevent clipping; use normalize_audio() if needed</p></li>
+<li><p>Uses Rust implementation for performance when available</p></li>
+<li><p>Preserves original array shape and data type</p></li>
+</ul>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pocket_tts.rust_audio.resample_audio">
+<span class="sig-prename descclassname"><span class="pre">pocket_tts.rust_audio.</span></span><span class="sig-name descname"><span class="pre">resample_audio</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">samples</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_length</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'linear'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></span></span><a class="reference internal" href="_modules/pocket_tts/rust_audio.html#resample_audio"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.rust_audio.resample_audio" title="Link to this definition"></a></dt>
+<dd><p>Resample audio to a different length using various interpolation methods.</p>
+<p>This function changes the audio length by resampling, which changes both
+the duration and pitch. Use for time-stretching or sample rate conversion.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>samples</strong> – Input audio samples as numpy array. Should be 1D for mono
+or shape [channels, samples] for multi-channel audio.</p></li>
+<li><p><strong>target_length</strong> – Desired number of output samples. Can be larger (slow down)
+or smaller (speed up) than input length.</p></li>
+<li><p><strong>method</strong> – Resampling interpolation method. Options:
+- “linear”: Fast linear interpolation (default)
+- “sinc”: High-quality sinc interpolation, slower but better quality</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>Resampled audio with specified target length.</dt><dd><p>Channel count is preserved from input.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.ndarray</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If target_length is not positive or method is unsupported.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># 1 second of audio at 24kHz</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">audio</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="mi">440</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">24000</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Slow down to 1.5 seconds (40kHz samples)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">slower</span> <span class="o">=</span> <span class="n">resample_audio</span><span class="p">(</span><span class="n">audio</span><span class="p">,</span> <span class="mi">36000</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s2">&quot;sinc&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Speed up to 0.5 seconds (12kHz samples)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">faster</span> <span class="o">=</span> <span class="n">resample_audio</span><span class="p">(</span><span class="n">audio</span><span class="p">,</span> <span class="mi">12000</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Original: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">audio</span><span class="p">)</span><span class="si">}</span><span class="s2">, Slower: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">slower</span><span class="p">)</span><span class="si">}</span><span class="s2">, Faster: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">faster</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>Linear method is fast but may introduce artifacts</p></li>
+<li><p>Sinc method provides better quality for audio applications</p></li>
+<li><p>Resampling changes pitch proportionally to speed change</p></li>
+<li><p>Uses Rust implementation for performance when available</p></li>
+</ul>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pocket_tts.rust_audio.apply_fade">
+<span class="sig-prename descclassname"><span class="pre">pocket_tts.rust_audio.</span></span><span class="sig-name descname"><span class="pre">apply_fade</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">samples</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">fade_in_ms</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fade_out_ms</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_rate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">24000</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></span></span><a class="reference internal" href="_modules/pocket_tts/rust_audio.html#apply_fade"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.rust_audio.apply_fade" title="Link to this definition"></a></dt>
+<dd><p>Apply fade in and fade out effects to audio.</p>
+<p>This function applies smooth volume transitions at the beginning and end
+of audio to prevent clicks and create professional-sounding transitions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>samples</strong> – Input audio samples as numpy array. Should be 1D for mono
+or shape [channels, samples] for multi-channel audio.</p></li>
+<li><p><strong>fade_in_ms</strong> – Duration of fade-in effect in milliseconds. Set to 0 to disable.
+Typical values: 5-50ms for quick fades, 100-500ms for slow fades.</p></li>
+<li><p><strong>fade_out_ms</strong> – Duration of fade-out effect in milliseconds. Set to 0 to disable.
+Uses same range as fade_in_ms.</p></li>
+<li><p><strong>sample_rate</strong> – Sample rate of the audio in Hz. Used to convert milliseconds
+to sample counts. Must match the actual sample rate of the input.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>Audio with fade effects applied, same shape as input.</dt><dd><p>Fade is applied multiplicatively to preserve audio quality.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.ndarray</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If sample_rate is not positive or fade durations are negative.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Generate 2 seconds of audio</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">audio</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="mi">440</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">48000</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Apply 100ms fade in and out</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">faded</span> <span class="o">=</span> <span class="n">apply_fade</span><span class="p">(</span><span class="n">audio</span><span class="p">,</span> <span class="n">fade_in_ms</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">fade_out_ms</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">sample_rate</span><span class="o">=</span><span class="mi">24000</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Apply only fade-in</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">fade_only</span> <span class="o">=</span> <span class="n">apply_fade</span><span class="p">(</span><span class="n">audio</span><span class="p">,</span> <span class="n">fade_in_ms</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">fade_out_ms</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">sample_rate</span><span class="o">=</span><span class="mi">24000</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>Uses linear ramp for fade curves (simple and effective)</p></li>
+<li><p>Fade is applied multiplicatively: output = input * envelope</p></li>
+<li><p>Preserves original array shape and data type</p></li>
+<li><p>Uses Rust implementation for performance when available</p></li>
+<li><p>Common values: 10ms (subtle), 100ms (noticeable), 500ms (dramatic)</p></li>
+</ul>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pocket_tts.rust_audio.compute_audio_metrics">
+<span class="sig-prename descclassname"><span class="pre">pocket_tts.rust_audio.</span></span><span class="sig-name descname"><span class="pre">compute_audio_metrics</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">samples</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="_modules/pocket_tts/rust_audio.html#compute_audio_metrics"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.rust_audio.compute_audio_metrics" title="Link to this definition"></a></dt>
+<dd><p>Compute comprehensive audio quality and analysis metrics.</p>
+<p>This function analyzes audio samples to extract useful technical metrics
+for quality assessment, level monitoring, and audio processing decisions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>samples</strong> – Input audio samples as numpy array. Can be any shape.
+Values should be float32 for typical audio analysis.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>Dictionary containing audio metrics:</dt><dd><ul class="simple">
+<li><p>”rms”: Root mean square level (linear, 0-1 range)</p></li>
+<li><p>”peak”: Peak sample value (absolute, 0-1 range)</p></li>
+<li><p>”dynamic_range_db”: Dynamic range in decibels (positive values)</p></li>
+</ul>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)">dict</a></p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Generate test audio</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">audio</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="mi">440</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">24000</span><span class="p">))</span> <span class="o">*</span> <span class="mf">0.8</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">metrics</span> <span class="o">=</span> <span class="n">compute_audio_metrics</span><span class="p">(</span><span class="n">audio</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;RMS level: </span><span class="si">{</span><span class="n">metrics</span><span class="p">[</span><span class="s1">&#39;rms&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Peak level: </span><span class="si">{</span><span class="n">metrics</span><span class="p">[</span><span class="s1">&#39;peak&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Dynamic range: </span><span class="si">{</span><span class="n">metrics</span><span class="p">[</span><span class="s1">&#39;dynamic_range_db&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2"> dB&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>RMS indicates average loudness (0.707 for full-scale sine wave)</p></li>
+<li><p>Peak indicates maximum sample amplitude (1.0 for full scale)</p></li>
+<li><p>Dynamic range shows headroom between RMS and peak</p></li>
+<li><p>Higher dynamic range generally indicates better audio quality</p></li>
+<li><p>Uses Rust implementation for performance when available</p></li>
+</ul>
+</div>
+</dd></dl>
+
+</section>
+</section>
+<section id="indices-and-tables">
+<h1>Indices and tables<a class="headerlink" href="#indices-and-tables" title="Link to this heading"></a></h1>
+<ul class="simple">
+<li><p><a class="reference internal" href="genindex.html"><span class="std std-ref">Index</span></a></p></li>
+<li><p><a class="reference internal" href="py-modindex.html"><span class="std std-ref">Module Index</span></a></p></li>
+<li><p><a class="reference internal" href="search.html"><span class="std std-ref">Search Page</span></a></p></li>
+</ul>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="models.html" class="btn btn-neutral float-right" title="TTSModel" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Kyutai.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

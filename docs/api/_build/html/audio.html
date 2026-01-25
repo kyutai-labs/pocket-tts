@@ -1,0 +1,389 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Audio I/O Functions &mdash; Pocket TTS 1.0.2 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=1ed6394b"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Rust Audio Processing" href="rust_audio.html" />
+    <link rel="prev" title="TTSModel" href="models.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Pocket TTS
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="models.html">TTSModel</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Audio I/O Functions</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#pocket_tts.data.audio.load_wav"><code class="docutils literal notranslate"><span class="pre">load_wav()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#pocket_tts.data.audio.StreamingWAVWriter"><code class="docutils literal notranslate"><span class="pre">StreamingWAVWriter</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#pocket_tts.data.audio.StreamingWAVWriter.__init__"><code class="docutils literal notranslate"><span class="pre">StreamingWAVWriter.__init__()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pocket_tts.data.audio.StreamingWAVWriter.write_header"><code class="docutils literal notranslate"><span class="pre">StreamingWAVWriter.write_header()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pocket_tts.data.audio.StreamingWAVWriter.write_pcm_data"><code class="docutils literal notranslate"><span class="pre">StreamingWAVWriter.write_pcm_data()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pocket_tts.data.audio.StreamingWAVWriter.finalize"><code class="docutils literal notranslate"><span class="pre">StreamingWAVWriter.finalize()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#pocket_tts.data.audio.is_file_like"><code class="docutils literal notranslate"><span class="pre">is_file_like()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#pocket_tts.data.audio.stream_audio_chunks"><code class="docutils literal notranslate"><span class="pre">stream_audio_chunks()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#functions">Functions</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#load-wav">load_wav</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#id0"><code class="docutils literal notranslate"><span class="pre">load_wav()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#save-audio">save_audio</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#pocket_tts.data.audio_output.save_audio"><code class="docutils literal notranslate"><span class="pre">save_audio()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#usage-examples">Usage Examples</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#loading-audio-files">Loading Audio Files</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#saving-audio-files">Saving Audio Files</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#format-support">Format Support</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="rust_audio.html">Rust Audio Processing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Pocket TTS</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Audio I/O Functions</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/audio.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="audio-i-o-functions">
+<h1>Audio I/O Functions<a class="headerlink" href="#audio-i-o-functions" title="Link to this heading"></a></h1>
+<p>This module provides functions for loading and saving audio files with automatic format detection and conversion.</p>
+<p id="module-pocket_tts.data.audio">Audio IO methods are defined in this module (info, read, write),
+We rely on av library for faster read when possible, otherwise on torchaudio.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="pocket_tts.data.audio.load_wav">
+<span class="sig-prename descclassname"><span class="pre">pocket_tts.data.audio.</span></span><span class="sig-name descname"><span class="pre">load_wav</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filepath</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)"><span class="pre">Tensor</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/pocket_tts/data/audio.html#load_wav"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.data.audio.load_wav" title="Link to this definition"></a></dt>
+<dd><p>Load audio file with automatic format detection.</p>
+<p>This function provides a unified interface for loading audio files.
+It supports WAV files natively and other formats through soundfile.
+The audio is automatically converted to mono and normalized to float32.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>filepath</strong> – Path to the audio file. Can be a string or Path object.
+Supported formats include WAV (native), FLAC, MP3, OGG (via soundfile).</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>A tuple containing:</dt><dd><ul class="simple">
+<li><p>Audio tensor with shape [1, samples] (mono, float32, normalized to [-1, 1])</p></li>
+<li><p>Sample rate as integer</p></li>
+</ul>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)">tuple</a>[<a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)">torch.Tensor</a>, <a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)">int</a>]</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#FileNotFoundError" title="(in Python v3.14)"><strong>FileNotFoundError</strong></a> – If the audio file doesn’t exist.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ImportError" title="(in Python v3.14)"><strong>ImportError</strong></a> – If soundfile is required but not installed for non-WAV formats.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the audio file is corrupted or invalid.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">audio</span><span class="p">,</span> <span class="n">sr</span> <span class="o">=</span> <span class="n">load_wav</span><span class="p">(</span><span class="s2">&quot;speech.wav&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Loaded </span><span class="si">{</span><span class="n">audio</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2"> samples at </span><span class="si">{</span><span class="n">sr</span><span class="si">}</span><span class="s2">Hz&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Output: Loaded 24000 samples at 24000Hz</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>WAV files are loaded using Python’s built-in wave module</p></li>
+<li><p>Other formats require soundfile: <cite>pip install soundfile</cite></p></li>
+<li><p>Multi-channel audio is automatically mixed to mono</p></li>
+<li><p>Audio is normalized to float32 range [-1, 1]</p></li>
+</ul>
+</div>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pocket_tts.data.audio.StreamingWAVWriter">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pocket_tts.data.audio.</span></span><span class="sig-name descname"><span class="pre">StreamingWAVWriter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output_stream</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_rate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pocket_tts/data/audio.html#StreamingWAVWriter"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.data.audio.StreamingWAVWriter" title="Link to this definition"></a></dt>
+<dd><p>WAV writer using Python’s standard library wave module.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.data.audio.StreamingWAVWriter.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output_stream</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_rate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pocket_tts/data/audio.html#StreamingWAVWriter.__init__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.data.audio.StreamingWAVWriter.__init__" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.data.audio.StreamingWAVWriter.write_header">
+<span class="sig-name descname"><span class="pre">write_header</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sample_rate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pocket_tts/data/audio.html#StreamingWAVWriter.write_header"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.data.audio.StreamingWAVWriter.write_header" title="Link to this definition"></a></dt>
+<dd><p>Initialize WAV writer with header.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.data.audio.StreamingWAVWriter.write_pcm_data">
+<span class="sig-name descname"><span class="pre">write_pcm_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">audio_chunk</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)"><span class="pre">Tensor</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pocket_tts/data/audio.html#StreamingWAVWriter.write_pcm_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.data.audio.StreamingWAVWriter.write_pcm_data" title="Link to this definition"></a></dt>
+<dd><p>Write PCM data using wave module.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pocket_tts.data.audio.StreamingWAVWriter.finalize">
+<span class="sig-name descname"><span class="pre">finalize</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pocket_tts/data/audio.html#StreamingWAVWriter.finalize"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.data.audio.StreamingWAVWriter.finalize" title="Link to this definition"></a></dt>
+<dd><p>Close the wave writer.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pocket_tts.data.audio.is_file_like">
+<span class="sig-prename descclassname"><span class="pre">pocket_tts.data.audio.</span></span><span class="sig-name descname"><span class="pre">is_file_like</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">obj</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pocket_tts/data/audio.html#is_file_like"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.data.audio.is_file_like" title="Link to this definition"></a></dt>
+<dd><p>Check if object has basic file-like methods.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pocket_tts.data.audio.stream_audio_chunks">
+<span class="sig-prename descclassname"><span class="pre">pocket_tts.data.audio.</span></span><span class="sig-name descname"><span class="pre">stream_audio_chunks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">audio_chunks</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Iterator" title="(in Python v3.14)"><span class="pre">Iterator</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)"><span class="pre">Tensor</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_rate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pocket_tts/data/audio.html#stream_audio_chunks"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.data.audio.stream_audio_chunks" title="Link to this definition"></a></dt>
+<dd><p>Stream audio chunks to a WAV file or stdout, optionally playing them.</p>
+</dd></dl>
+
+<section id="functions">
+<h2>Functions<a class="headerlink" href="#functions" title="Link to this heading"></a></h2>
+<section id="load-wav">
+<h3>load_wav<a class="headerlink" href="#load-wav" title="Link to this heading"></a></h3>
+<dl class="py function">
+<dt class="sig sig-object py" id="id0">
+<span class="sig-prename descclassname"><span class="pre">pocket_tts.data.audio.</span></span><span class="sig-name descname"><span class="pre">load_wav</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filepath</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)"><span class="pre">Tensor</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/pocket_tts/data/audio.html#load_wav"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#id0" title="Link to this definition"></a></dt>
+<dd><p>Load audio file with automatic format detection.</p>
+<p>This function provides a unified interface for loading audio files.
+It supports WAV files natively and other formats through soundfile.
+The audio is automatically converted to mono and normalized to float32.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>filepath</strong> – Path to the audio file. Can be a string or Path object.
+Supported formats include WAV (native), FLAC, MP3, OGG (via soundfile).</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>A tuple containing:</dt><dd><ul class="simple">
+<li><p>Audio tensor with shape [1, samples] (mono, float32, normalized to [-1, 1])</p></li>
+<li><p>Sample rate as integer</p></li>
+</ul>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)">tuple</a>[<a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)">torch.Tensor</a>, <a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)">int</a>]</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#FileNotFoundError" title="(in Python v3.14)"><strong>FileNotFoundError</strong></a> – If the audio file doesn’t exist.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ImportError" title="(in Python v3.14)"><strong>ImportError</strong></a> – If soundfile is required but not installed for non-WAV formats.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the audio file is corrupted or invalid.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">audio</span><span class="p">,</span> <span class="n">sr</span> <span class="o">=</span> <span class="n">load_wav</span><span class="p">(</span><span class="s2">&quot;speech.wav&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Loaded </span><span class="si">{</span><span class="n">audio</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2"> samples at </span><span class="si">{</span><span class="n">sr</span><span class="si">}</span><span class="s2">Hz&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Output: Loaded 24000 samples at 24000Hz</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>WAV files are loaded using Python’s built-in wave module</p></li>
+<li><p>Other formats require soundfile: <cite>pip install soundfile</cite></p></li>
+<li><p>Multi-channel audio is automatically mixed to mono</p></li>
+<li><p>Audio is normalized to float32 range [-1, 1]</p></li>
+</ul>
+</div>
+</dd></dl>
+
+</section>
+<section id="save-audio">
+<h3>save_audio<a class="headerlink" href="#save-audio" title="Link to this heading"></a></h3>
+<dl class="py function">
+<dt class="sig sig-object py" id="pocket_tts.data.audio_output.save_audio">
+<span class="sig-prename descclassname"><span class="pre">pocket_tts.data.audio_output.</span></span><span class="sig-name descname"><span class="pre">save_audio</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">audio</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)"><span class="pre">Tensor</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_rate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="reference internal" href="_modules/pocket_tts/data/audio_output.html#save_audio"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pocket_tts.data.audio_output.save_audio" title="Link to this definition"></a></dt>
+<dd><p>Save audio tensor or array to a WAV file with automatic conversion.</p>
+<p>This function provides a reliable way to save audio data to WAV format.
+It handles both PyTorch tensors and NumPy arrays automatically,
+ensuring proper format conversion and shape handling.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>path</strong> – Destination path for the WAV file. Can be string or Path object.
+The file will be created or overwritten if it exists.</p></li>
+<li><p><strong>audio</strong> – Audio data to save. Accepts:
+- torch.Tensor: Any shape, automatically detached and moved to CPU
+- numpy.ndarray: Any shape, used directly
+Expected format: float32 values normalized to [-1, 1]</p></li>
+<li><p><strong>sample_rate</strong> – Sampling rate in Hz for the output WAV file.
+Common values: 16000, 22050, 24000, 44100, 48000.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If audio data is invalid or empty.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If audio is neither torch.Tensor nor numpy.ndarray.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#OSError" title="(in Python v3.14)"><strong>OSError</strong></a> – If the destination path is invalid or not writable.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Generate 1 second of sine wave at 440Hz</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">samples</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">24000</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">audio</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="mi">440</span> <span class="o">*</span> <span class="n">samples</span><span class="p">)</span> <span class="o">*</span> <span class="mf">0.5</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">save_audio</span><span class="p">(</span><span class="s2">&quot;tone.wav&quot;</span><span class="p">,</span> <span class="n">audio</span><span class="p">,</span> <span class="mi">24000</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Creates tone.wav with 1 second of 440Hz tone</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>Audio is automatically converted to int16 PCM for WAV format</p></li>
+<li><p>Multi-channel audio (shape [channels, samples]) is preserved</p></li>
+<li><p>Single-channel audio (shape [samples]) is written as mono</p></li>
+<li><p>Uses scipy.io.wavfile for reliable WAV writing</p></li>
+</ul>
+</div>
+</dd></dl>
+
+</section>
+</section>
+<section id="usage-examples">
+<h2>Usage Examples<a class="headerlink" href="#usage-examples" title="Link to this heading"></a></h2>
+<section id="loading-audio-files">
+<h3>Loading Audio Files<a class="headerlink" href="#loading-audio-files" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pocket_tts</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_wav</span>
+
+<span class="c1"># Load a WAV file</span>
+<span class="n">audio</span><span class="p">,</span> <span class="n">sample_rate</span> <span class="o">=</span> <span class="n">load_wav</span><span class="p">(</span><span class="s2">&quot;speech.wav&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Loaded audio with shape: </span><span class="si">{</span><span class="n">audio</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Sample rate: </span><span class="si">{</span><span class="n">sample_rate</span><span class="si">}</span><span class="s2"> Hz&quot;</span><span class="p">)</span>
+
+<span class="c1"># Load other formats (requires soundfile)</span>
+<span class="n">audio</span><span class="p">,</span> <span class="n">sample_rate</span> <span class="o">=</span> <span class="n">load_wav</span><span class="p">(</span><span class="s2">&quot;audio.mp3&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="saving-audio-files">
+<h3>Saving Audio Files<a class="headerlink" href="#saving-audio-files" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pocket_tts</span><span class="w"> </span><span class="kn">import</span> <span class="n">save_audio</span>
+
+<span class="c1"># Create some test audio</span>
+<span class="n">sample_rate</span> <span class="o">=</span> <span class="mi">24000</span>
+<span class="n">duration</span> <span class="o">=</span> <span class="mf">1.0</span>  <span class="c1"># 1 second</span>
+<span class="n">t</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">duration</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">sample_rate</span> <span class="o">*</span> <span class="n">duration</span><span class="p">))</span>
+<span class="n">audio</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="mi">440</span> <span class="o">*</span> <span class="n">t</span><span class="p">)</span> <span class="o">*</span> <span class="mf">0.5</span>  <span class="c1"># 440 Hz sine wave</span>
+
+<span class="c1"># Save to WAV file</span>
+<span class="n">save_audio</span><span class="p">(</span><span class="s2">&quot;output.wav&quot;</span><span class="p">,</span> <span class="n">audio</span><span class="p">,</span> <span class="n">sample_rate</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="format-support">
+<h2>Format Support<a class="headerlink" href="#format-support" title="Link to this heading"></a></h2>
+<p>Supported formats:</p>
+<ul class="simple">
+<li><p><strong>WAV</strong>: Native support using Python’s wave module</p></li>
+<li><p><strong>MP3, FLAC, OGG</strong>: Via soundfile (install with <cite>pip install soundfile</cite>)</p></li>
+</ul>
+<p>All audio is automatically:</p>
+<ul class="simple">
+<li><p>Converted to mono (multi-channel mixed to single channel)</p></li>
+<li><p>Normalized to float32 range [-1, 1]</p></li>
+<li><p>Reshaped to [1, samples] format for consistency</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="models.html" class="btn btn-neutral float-left" title="TTSModel" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="rust_audio.html" class="btn btn-neutral float-right" title="Rust Audio Processing" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Kyutai.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -16,7 +16,7 @@ from torch.nn import functional as F
 from typing_extensions import Self
 
 from pocket_tts.conditioners.base import TokenizedText
-from pocket_tts.data.audio import audio_read
+from pocket_tts.data.audio import load_wav
 from pocket_tts.data.audio_utils import convert_audio
 from pocket_tts.default_parameters import (
     DEFAULT_EOS_THRESHOLD,
@@ -784,7 +784,7 @@ class TTSModel(nn.Module):
                 audio_conditioning = download_if_necessary(audio_conditioning)
 
             if isinstance(audio_conditioning, Path):
-                audio, conditioning_sample_rate = audio_read(audio_conditioning)
+                audio, conditioning_sample_rate = load_wav(audio_conditioning)
 
                 if truncate:
                     max_samples = int(

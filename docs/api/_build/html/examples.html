@@ -1,0 +1,411 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Examples &mdash; Pocket TTS 1.0.2 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=1ed6394b"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="Rust Audio Processing" href="rust_audio.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Pocket TTS
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="models.html">TTSModel</a></li>
+<li class="toctree-l1"><a class="reference internal" href="audio.html">Audio I/O Functions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="rust_audio.html">Rust Audio Processing</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Examples</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#basic-usage">Basic Usage</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#simple-text-to-speech">Simple Text-to-Speech</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#voice-cloning">Voice Cloning</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#clone-voice-from-audio-file">Clone Voice from Audio File</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#voice-cloning-from-url">Voice Cloning from URL</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#streaming-and-real-time">Streaming and Real-time</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#real-time-audio-generation">Real-time Audio Generation</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#audio-processing">Audio Processing</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#audio-enhancement">Audio Enhancement</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#batch-processing">Batch Processing</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#error-handling">Error Handling</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#robust-error-handling">Robust Error Handling</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#performance-tips">Performance Tips</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#memory-management">Memory Management</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#voice-state-caching">Voice State Caching</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Pocket TTS</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Examples</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/examples.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="examples">
+<h1>Examples<a class="headerlink" href="#examples" title="Link to this heading"></a></h1>
+<p>This section provides practical examples for common Pocket TTS use cases.</p>
+<section id="basic-usage">
+<h2>Basic Usage<a class="headerlink" href="#basic-usage" title="Link to this heading"></a></h2>
+<section id="simple-text-to-speech">
+<h3>Simple Text-to-Speech<a class="headerlink" href="#simple-text-to-speech" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pocket_tts</span><span class="w"> </span><span class="kn">import</span> <span class="n">TTSModel</span><span class="p">,</span> <span class="n">save_audio</span>
+
+<span class="c1"># Load the model</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">TTSModel</span><span class="o">.</span><span class="n">load_model</span><span class="p">()</span>
+
+<span class="c1"># Use a pre-defined voice</span>
+<span class="n">voice_state</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">get_state_for_audio_prompt</span><span class="p">(</span><span class="s2">&quot;alba&quot;</span><span class="p">)</span>
+
+<span class="c1"># Generate speech</span>
+<span class="n">audio</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">generate_audio</span><span class="p">(</span><span class="n">voice_state</span><span class="p">,</span> <span class="s2">&quot;Hello, this is Pocket TTS!&quot;</span><span class="p">)</span>
+
+<span class="c1"># Save to file</span>
+<span class="n">save_audio</span><span class="p">(</span><span class="s2">&quot;hello.wav&quot;</span><span class="p">,</span> <span class="n">audio</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">sample_rate</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Audio saved to hello.wav (</span><span class="si">{</span><span class="n">model</span><span class="o">.</span><span class="n">sample_rate</span><span class="si">}</span><span class="s2"> Hz)&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="voice-cloning">
+<h2>Voice Cloning<a class="headerlink" href="#voice-cloning" title="Link to this heading"></a></h2>
+<section id="clone-voice-from-audio-file">
+<h3>Clone Voice from Audio File<a class="headerlink" href="#clone-voice-from-audio-file" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pocket_tts</span><span class="w"> </span><span class="kn">import</span> <span class="n">TTSModel</span><span class="p">,</span> <span class="n">load_wav</span><span class="p">,</span> <span class="n">save_audio</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">TTSModel</span><span class="o">.</span><span class="n">load_model</span><span class="p">()</span>
+
+<span class="c1"># Load reference audio for voice cloning</span>
+<span class="n">reference_audio</span><span class="p">,</span> <span class="n">sr</span> <span class="o">=</span> <span class="n">load_wav</span><span class="p">(</span><span class="s2">&quot;reference_voice.wav&quot;</span><span class="p">)</span>
+
+<span class="c1"># Create voice state from the reference</span>
+<span class="n">voice_state</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">get_state_for_audio_prompt</span><span class="p">(</span><span class="n">reference_audio</span><span class="p">)</span>
+
+<span class="c1"># Generate speech with cloned voice</span>
+<span class="n">text</span> <span class="o">=</span> <span class="s2">&quot;This sounds like the original speaker!&quot;</span>
+<span class="n">audio</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">generate_audio</span><span class="p">(</span><span class="n">voice_state</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+
+<span class="n">save_audio</span><span class="p">(</span><span class="s2">&quot;cloned_voice.wav&quot;</span><span class="p">,</span> <span class="n">audio</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">sample_rate</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="voice-cloning-from-url">
+<h3>Voice Cloning from URL<a class="headerlink" href="#voice-cloning-from-url" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pocket_tts</span><span class="w"> </span><span class="kn">import</span> <span class="n">TTSModel</span><span class="p">,</span> <span class="n">save_audio</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">TTSModel</span><span class="o">.</span><span class="n">load_model</span><span class="p">()</span>
+
+<span class="c1"># Use voice from Hugging Face</span>
+<span class="n">voice_url</span> <span class="o">=</span> <span class="s2">&quot;https://huggingface.co/kyutai/tts-voices/resolve/main/alba-mackenna/casual.wav&quot;</span>
+<span class="n">voice_state</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">get_state_for_audio_prompt</span><span class="p">(</span><span class="n">voice_url</span><span class="p">)</span>
+
+<span class="n">audio</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">generate_audio</span><span class="p">(</span><span class="n">voice_state</span><span class="p">,</span> <span class="s2">&quot;Voice cloning from URL works!&quot;</span><span class="p">)</span>
+<span class="n">save_audio</span><span class="p">(</span><span class="s2">&quot;url_cloned.wav&quot;</span><span class="p">,</span> <span class="n">audio</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">sample_rate</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="streaming-and-real-time">
+<h2>Streaming and Real-time<a class="headerlink" href="#streaming-and-real-time" title="Link to this heading"></a></h2>
+<section id="real-time-audio-generation">
+<h3>Real-time Audio Generation<a class="headerlink" href="#real-time-audio-generation" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pocket_tts</span><span class="w"> </span><span class="kn">import</span> <span class="n">TTSModel</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">TTSModel</span><span class="o">.</span><span class="n">load_model</span><span class="p">()</span>
+<span class="n">voice_state</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">get_state_for_audio_prompt</span><span class="p">(</span><span class="s2">&quot;alba&quot;</span><span class="p">)</span>
+
+<span class="n">long_text</span> <span class="o">=</span> <span class="s2">&quot;This is a very long text that will be processed in chunks to demonstrate real-time streaming capabilities.&quot;</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Starting real-time generation...&quot;</span><span class="p">)</span>
+<span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+
+<span class="c1"># Generate audio in streaming chunks</span>
+<span class="n">total_samples</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">generate_audio_stream</span><span class="p">(</span><span class="n">voice_state</span><span class="p">,</span> <span class="n">long_text</span><span class="p">)):</span>
+    <span class="n">chunk_samples</span> <span class="o">=</span> <span class="n">chunk</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">total_samples</span> <span class="o">+=</span> <span class="n">chunk_samples</span>
+
+    <span class="c1"># In a real application, you would play these chunks immediately</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Chunk </span><span class="si">{</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">chunk_samples</span><span class="si">}</span><span class="s2"> samples&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Simulate real-time processing</span>
+    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.01</span><span class="p">)</span>  <span class="c1"># Small delay to simulate processing</span>
+
+<span class="n">duration</span> <span class="o">=</span> <span class="n">total_samples</span> <span class="o">/</span> <span class="n">model</span><span class="o">.</span><span class="n">sample_rate</span>
+<span class="n">generation_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
+<span class="n">real_time_factor</span> <span class="o">=</span> <span class="n">duration</span> <span class="o">/</span> <span class="n">generation_time</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Generated </span><span class="si">{</span><span class="n">duration</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">s of audio in </span><span class="si">{</span><span class="n">generation_time</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">s&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Real-time factor: </span><span class="si">{</span><span class="n">real_time_factor</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">x&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="audio-processing">
+<h2>Audio Processing<a class="headerlink" href="#audio-processing" title="Link to this heading"></a></h2>
+<section id="audio-enhancement">
+<h3>Audio Enhancement<a class="headerlink" href="#audio-enhancement" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pocket_tts</span><span class="w"> </span><span class="kn">import</span> <span class="n">TTSModel</span><span class="p">,</span> <span class="n">normalize_audio</span><span class="p">,</span> <span class="n">apply_fade</span><span class="p">,</span> <span class="n">compute_audio_metrics</span><span class="p">,</span> <span class="n">save_audio</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">TTSModel</span><span class="o">.</span><span class="n">load_model</span><span class="p">()</span>
+<span class="n">voice_state</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">get_state_for_audio_prompt</span><span class="p">(</span><span class="s2">&quot;alba&quot;</span><span class="p">)</span>
+
+<span class="c1"># Generate audio</span>
+<span class="n">audio</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">generate_audio</span><span class="p">(</span><span class="n">voice_state</span><span class="p">,</span> <span class="s2">&quot;This audio will be enhanced.&quot;</span><span class="p">)</span>
+
+<span class="c1"># Convert to numpy for processing</span>
+<span class="n">audio_np</span> <span class="o">=</span> <span class="n">audio</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+
+<span class="c1"># Analyze original audio</span>
+<span class="n">original_metrics</span> <span class="o">=</span> <span class="n">compute_audio_metrics</span><span class="p">(</span><span class="n">audio_np</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Original RMS: </span><span class="si">{</span><span class="n">original_metrics</span><span class="p">[</span><span class="s1">&#39;rms&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="c1"># Normalize and enhance</span>
+<span class="n">enhanced</span> <span class="o">=</span> <span class="n">normalize_audio</span><span class="p">(</span><span class="n">audio_np</span><span class="p">,</span> <span class="n">gain</span><span class="o">=</span><span class="mf">1.2</span><span class="p">)</span>
+
+<span class="c1"># Apply fade effects</span>
+<span class="n">enhanced</span> <span class="o">=</span> <span class="n">apply_fade</span><span class="p">(</span><span class="n">enhanced</span><span class="p">,</span> <span class="n">fade_in_ms</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">fade_out_ms</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">sample_rate</span><span class="o">=</span><span class="n">model</span><span class="o">.</span><span class="n">sample_rate</span><span class="p">)</span>
+
+<span class="c1"># Analyze enhanced audio</span>
+<span class="n">enhanced_metrics</span> <span class="o">=</span> <span class="n">compute_audio_metrics</span><span class="p">(</span><span class="n">enhanced</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Enhanced RMS: </span><span class="si">{</span><span class="n">enhanced_metrics</span><span class="p">[</span><span class="s1">&#39;rms&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="c1"># Convert back to tensor and save</span>
+<span class="n">enhanced_tensor</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">from_numpy</span><span class="p">(</span><span class="n">enhanced</span><span class="p">)</span>
+<span class="n">save_audio</span><span class="p">(</span><span class="s2">&quot;enhanced.wav&quot;</span><span class="p">,</span> <span class="n">enhanced_tensor</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">sample_rate</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="batch-processing">
+<h3>Batch Processing<a class="headerlink" href="#batch-processing" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pocket_tts</span><span class="w"> </span><span class="kn">import</span> <span class="n">TTSModel</span><span class="p">,</span> <span class="n">save_audio</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">concurrent.futures</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">TTSModel</span><span class="o">.</span><span class="n">load_model</span><span class="p">()</span>
+<span class="n">voice_state</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">get_state_for_audio_prompt</span><span class="p">(</span><span class="s2">&quot;alba&quot;</span><span class="p">)</span>
+
+<span class="n">texts</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;First sentence to generate.&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Second sentence to generate.&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Third sentence to generate.&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Fourth sentence to generate.&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Fifth sentence to generate.&quot;</span>
+<span class="p">]</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">generate_speech</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate speech for a single text.&quot;&quot;&quot;</span>
+    <span class="n">audio</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">generate_audio</span><span class="p">(</span><span class="n">voice_state</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+    <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;output_</span><span class="si">{</span><span class="n">index</span><span class="si">:</span><span class="s2">02d</span><span class="si">}</span><span class="s2">.wav&quot;</span>
+    <span class="n">save_audio</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">audio</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">sample_rate</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">filename</span>
+
+<span class="c1"># Sequential processing</span>
+<span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+<span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">text</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">texts</span><span class="p">):</span>
+    <span class="n">filename</span> <span class="o">=</span> <span class="n">generate_speech</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Generated </span><span class="si">{</span><span class="n">filename</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">sequential_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Sequential processing: </span><span class="si">{</span><span class="n">sequential_time</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">s&quot;</span><span class="p">)</span>
+
+<span class="c1"># Parallel processing (note: model is not thread-safe, this is for illustration)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;For parallel processing, create separate model instances per thread.&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="error-handling">
+<h2>Error Handling<a class="headerlink" href="#error-handling" title="Link to this heading"></a></h2>
+<section id="robust-error-handling">
+<h3>Robust Error Handling<a class="headerlink" href="#robust-error-handling" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pocket_tts</span><span class="w"> </span><span class="kn">import</span> <span class="n">TTSModel</span><span class="p">,</span> <span class="n">load_wav</span><span class="p">,</span> <span class="n">save_audio</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="n">level</span><span class="o">=</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">safe_tts_generation</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">voice_source</span><span class="p">,</span> <span class="n">text</span><span class="p">,</span> <span class="n">output_path</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Safely generate TTS with error handling.&quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="c1"># Create voice state</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">voice_source</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">voice_source</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">&#39;.wav&#39;</span><span class="p">):</span>
+            <span class="n">voice_state</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">get_state_for_audio_prompt</span><span class="p">(</span><span class="n">load_wav</span><span class="p">(</span><span class="n">voice_source</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">voice_state</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">get_state_for_audio_prompt</span><span class="p">(</span><span class="n">voice_source</span><span class="p">)</span>
+
+        <span class="c1"># Generate audio</span>
+        <span class="n">audio</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">generate_audio</span><span class="p">(</span><span class="n">voice_state</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+
+        <span class="c1"># Save audio</span>
+        <span class="n">save_audio</span><span class="p">(</span><span class="n">output_path</span><span class="p">,</span> <span class="n">audio</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">sample_rate</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Successfully generated </span><span class="si">{</span><span class="n">output_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">True</span>
+
+    <span class="k">except</span> <span class="ne">FileNotFoundError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;File not found: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Invalid input: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">RuntimeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Generation failed: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unexpected error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="kc">False</span>
+
+<span class="c1"># Usage</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">TTSModel</span><span class="o">.</span><span class="n">load_model</span><span class="p">()</span>
+<span class="n">success</span> <span class="o">=</span> <span class="n">safe_tts_generation</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="s2">&quot;alba&quot;</span><span class="p">,</span> <span class="s2">&quot;Hello world!&quot;</span><span class="p">,</span> <span class="s2">&quot;output.wav&quot;</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="n">success</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Generation successful!&quot;</span><span class="p">)</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Generation failed, check logs.&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="performance-tips">
+<h2>Performance Tips<a class="headerlink" href="#performance-tips" title="Link to this heading"></a></h2>
+<section id="memory-management">
+<h3>Memory Management<a class="headerlink" href="#memory-management" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pocket_tts</span><span class="w"> </span><span class="kn">import</span> <span class="n">TTSModel</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">gc</span>
+
+<span class="c1"># Good: Keep model loaded for multiple generations</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">TTSModel</span><span class="o">.</span><span class="n">load_model</span><span class="p">()</span>
+<span class="n">voice_state</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">get_state_for_audio_prompt</span><span class="p">(</span><span class="s2">&quot;alba&quot;</span><span class="p">)</span>
+
+<span class="c1"># Generate multiple utterances efficiently</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">):</span>
+    <span class="n">audio</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">generate_audio</span><span class="p">(</span><span class="n">voice_state</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;Sentence number </span><span class="si">{</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span>
+    <span class="c1"># Process audio here...</span>
+
+<span class="c1"># Clean up if needed</span>
+<span class="k">del</span> <span class="n">model</span><span class="p">,</span> <span class="n">voice_state</span>
+<span class="n">gc</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+</pre></div>
+</div>
+</section>
+<section id="voice-state-caching">
+<h3>Voice State Caching<a class="headerlink" href="#voice-state-caching" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pocket_tts</span><span class="w"> </span><span class="kn">import</span> <span class="n">TTSModel</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">functools</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">TTSModel</span><span class="o">.</span><span class="n">load_model</span><span class="p">()</span>
+
+<span class="c1"># Cache voice states to avoid recomputation</span>
+<span class="nd">@functools</span><span class="o">.</span><span class="n">lru_cache</span><span class="p">(</span><span class="n">maxsize</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_cached_voice_state</span><span class="p">(</span><span class="n">voice_name</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Cache voice states for frequently used voices.&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">model</span><span class="o">.</span><span class="n">get_state_for_audio_prompt</span><span class="p">(</span><span class="n">voice_name</span><span class="p">)</span>
+
+<span class="c1"># Use cached voice states</span>
+<span class="n">voices</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;alba&quot;</span><span class="p">,</span> <span class="s2">&quot;marius&quot;</span><span class="p">,</span> <span class="s2">&quot;javert&quot;</span><span class="p">,</span> <span class="s2">&quot;jean&quot;</span><span class="p">,</span> <span class="s2">&quot;fantine&quot;</span><span class="p">]</span>
+
+<span class="k">for</span> <span class="n">voice</span> <span class="ow">in</span> <span class="n">voices</span><span class="p">:</span>
+    <span class="n">voice_state</span> <span class="o">=</span> <span class="n">get_cached_voice_state</span><span class="p">(</span><span class="n">voice</span><span class="p">)</span>
+    <span class="n">audio</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">generate_audio</span><span class="p">(</span><span class="n">voice_state</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;Hello from </span><span class="si">{</span><span class="n">voice</span><span class="si">}</span><span class="s2">!&quot;</span><span class="p">)</span>
+    <span class="c1"># Process audio...</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Voice states cached for efficient reuse&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="rust_audio.html" class="btn btn-neutral float-left" title="Rust Audio Processing" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Kyutai.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

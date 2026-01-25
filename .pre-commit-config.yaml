@@ -10,3 +10,17 @@ repos:
     hooks:
       - id: prettier
         types_or: [yaml, markdown, json, toml]
+  - repo: local
+    hooks:
+      - id: audit-python
+        name: audit-python
+        entry: pixi run audit-python
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: audit-rust
+        name: audit-rust
+        entry: pixi run audit-rust
+        language: system
+        pass_filenames: false
+        always_run: true

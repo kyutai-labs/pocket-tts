@@ -6,6 +6,7 @@ authors = ["Pocket-TTS Team"]
 description = "100% pure-Rust NumPy library with full API parity"
 license = "BSD-3-Clause"
 repository = "https://github.com/grantjr1842/pocket-tts"
+rust-version = "1.80"
 keywords = ["numpy", "array", "scientific-computing", "linear-algebra"]
 categories = ["mathematics", "science"]
 

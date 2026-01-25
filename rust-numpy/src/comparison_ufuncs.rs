@@ -106,9 +106,9 @@ where
                 .as_ref()
                 .map_or(true, |m| *m.get_linear(i).unwrap_or(&false))
             {
-                if let (Some(a), Some(b)) = (arr0.get(i), arr1.get(i)) {
+                if let (Some(a), Some(b)) = (arr0.get_linear(i), arr1.get_linear(i)) {
                     let result = (self.operation)(a, b);
-                    output.set(i, result)?;
+                    output.set_linear(i, result);
                 }
             }
         }
@@ -211,9 +211,9 @@ where
                 .as_ref()
                 .map_or(true, |m| *m.get_linear(i).unwrap_or(&false))
             {
-                if let Some(a) = input.get(i) {
+                if let Some(a) = input.get_linear(i) {
                     let result = (self.operation)(a);
-                    output.set(i, result)?;
+                    output.set_linear(i, result);
                 }
             }
         }
@@ -323,9 +323,9 @@ where
                 .as_ref()
                 .map_or(true, |m| *m.get_linear(i).unwrap_or(&false))
             {
-                if let (Some(a), Some(b)) = (arr0.get(i), arr1.get(i)) {
+                if let (Some(a), Some(b)) = (arr0.get_linear(i), arr1.get_linear(i)) {
                     let result = (self.operation)(a, b);
-                    output.set(i, result)?;
+                    output.set_linear(i, result);
                 }
             }
         }

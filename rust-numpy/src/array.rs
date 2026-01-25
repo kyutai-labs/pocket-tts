@@ -144,6 +144,9 @@ impl<T> Array<T> {
         if index >= self.size() {
             return None;
         }
+
+        // For broadcasted arrays, directly compute physical index using strides
+        // without round-trip through multi-dimensional indices
         let indices = crate::strides::compute_multi_indices(index, &self.shape);
         let linear_offset = crate::strides::compute_linear_index(&indices, &self.strides);
         let physical_idx = (self.offset as isize + linear_offset) as usize;

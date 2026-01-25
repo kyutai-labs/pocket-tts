@@ -1386,7 +1386,7 @@ packages:
 - pypi: ./
   name: pocket-tts
   version: 1.0.3
-  sha256: 5e3b016b5f6f5f8856d4fe1941aca4164d4b9161b5a6a6dc23211731b0406bca
+  sha256: 6aa5ea44ee5307c0955dbf878be84bd85c853e6a8c737d31208f36741134a748
   requires_dist:
   - torch~=2.10.0
   - pydantic~=2.12

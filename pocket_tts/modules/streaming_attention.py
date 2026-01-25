@@ -219,11 +219,6 @@ class StreamingMultiheadAttention(StatefulModule):
             # The sliding window is enforced by attn_bias later.
             capacity = max(T, self.context) if self.context is not None else T
 
-            if self.context is not None and self.context < T:
-                # We are processing a chunk larger than window.
-                # Buffer will hold T. attn_bias handles masking.
-                pass
-
             # Initialize state
             state_dict = self.init_state(B, capacity)
 
@@ -247,9 +242,8 @@ class StreamingMultiheadAttention(StatefulModule):
         d = self.embed_dim // self.num_heads
 
         # Check projected dims
-        if len(projected.shape) == 2:
-            # Handle case where B might be folded or query was Rank 2
-            pass
+        # Note: projected is expected to be [B, T, 3*H*D] after in_proj
+        # The view() below handles reshaping to the expected packed format
 
         packed = projected.view(B, T, 3, self.num_heads, d)
         q, k, v = torch.unbind(packed, dim=2)

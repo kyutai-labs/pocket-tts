@@ -102,7 +102,6 @@ class StatefulModule(ABC, nn.Module):
         """
         # Default implementation - subclasses should override for specific behavior
         # This provides a no-op base implementation for modules that don't need step tracking
-        pass
 
     # Remove type hints to prevent beartype wrapping
     def get_state(

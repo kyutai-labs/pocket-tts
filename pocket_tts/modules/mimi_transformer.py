@@ -60,9 +60,7 @@ class StreamingTransformerLayer(nn.Module):
     ) -> torch.Tensor:
         x_orig = x
         x = self.norm1(x)
-        # Handle state mapping for this layer
-        if model_state is not None:
-            pass
+        # State mapping is handled internally by StreamingMultiheadAttention.get_state()
         update = self.self_attn(x, model_state)
         return x_orig.to(update) + self.layer_scale_1(update)
 

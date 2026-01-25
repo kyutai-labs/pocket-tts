@@ -159,9 +159,9 @@ def test_content_preservation():
     result_words = set(combined_unprepared.lower().split())
 
     # All original words should be in result
-    assert original_words.issubset(
-        result_words
-    ), f"Missing words: {original_words - result_words}"
+    assert original_words.issubset(result_words), (
+        f"Missing words: {original_words - result_words}"
+    )
 
 
 @pytest.mark.skip(reason="MockTokenizer needs proper implementation - see issue #402")

@@ -125,9 +125,9 @@ class TestResourceCleanup:
 
         # Object count should not have grown by more than 10000
         # (allowing for some Python overhead)
-        assert (
-            object_growth < 10000
-        ), f"Memory leak detected: {object_growth} objects created"
+        assert object_growth < 10000, (
+            f"Memory leak detected: {object_growth} objects created"
+        )
 
         # Cleanup
         model.cleanup()

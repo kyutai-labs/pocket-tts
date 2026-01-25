@@ -10,7 +10,7 @@ import logging
 import os
 import sys
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from pathlib import Path
 
 # Setup path to import pocket_tts
@@ -163,7 +163,9 @@ def main():
     # Recommendations
     logger.info("\n### Recommendations ###")
     logger.info("Run this script on your system to determine the optimal thread count.")
-    logger.info("Set the POCKET_TTS_NUM_THREADS environment variable to use your preferred count:")
+    logger.info(
+        "Set the POCKET_TTS_NUM_THREADS environment variable to use your preferred count:"
+    )
     logger.info("  export POCKET_TTS_NUM_THREADS=2")
     logger.info("  pocket-tts generate 'Your text here'")
 

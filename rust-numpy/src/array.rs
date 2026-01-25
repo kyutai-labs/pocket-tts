@@ -976,6 +976,112 @@ impl<T> Array<T> {
             "byteswap requires trait specialization",
         ))
     }
+
+    // ===== Reduction Methods =====
+
+    /// Sum of array elements
+    pub fn sum(&self, axis: Option<&[isize]>, keepdims: bool) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + std::ops::Add<Output = T> + 'static,
+    {
+        crate::reductions::sum(self, axis, keepdims)
+    }
+
+    /// Product of array elements
+    pub fn prod(&self, axis: Option<&[isize]>, keepdims: bool) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + std::ops::Mul<Output = T> + 'static,
+    {
+        crate::reductions::prod(self, axis, keepdims)
+    }
+
+    /// Minimum of array elements
+    pub fn min(&self, axis: Option<&[isize]>, keepdims: bool) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + PartialOrd + 'static,
+    {
+        crate::reductions::min(self, axis, keepdims)
+    }
+
+    /// Maximum of array elements
+    pub fn max(&self, axis: Option<&[isize]>, keepdims: bool) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + PartialOrd + 'static,
+    {
+        crate::reductions::max(self, axis, keepdims)
+    }
+
+    /// Mean of array elements
+    pub fn mean(&self, axis: Option<&[isize]>, keepdims: bool) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + std::ops::Add<Output = T> + From<f64> + 'static,
+    {
+        crate::reductions::mean(self, axis, keepdims)
+    }
+
+    /// Variance of array elements
+    pub fn var(&self, axis: Option<&[isize]>, ddof: usize, keepdims: bool) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + std::ops::Add<Output = T> + std::ops::Mul<Output = T> + From<f64> + 'static,
+    {
+        crate::reductions::var(self, axis, ddof, keepdims)
+    }
+
+    /// Standard deviation of array elements
+    pub fn std(&self, axis: Option<&[isize]>, ddof: usize, keepdims: bool) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + std::ops::Add<Output = T> + std::ops::Mul<Output = T> + From<f64> + 'static,
+    {
+        crate::reductions::std(self, axis, ddof, keepdims)
+    }
+
+    /// Cumulative sum
+    pub fn cumsum(&self, axis: Option<isize>) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + std::ops::Add<Output = T> + 'static,
+    {
+        crate::reductions::cumsum(self, axis)
+    }
+
+    /// Cumulative product
+    pub fn cumprod(&self, axis: Option<isize>) -> Result<Self, NumPyError>
+    where
+        T: Clone + Default + std::ops::Mul<Output = T> + 'static,
+    {
+        crate::reductions::cumprod(self, axis)
+    }
+
+    /// Test if all elements are true
+    pub fn all(&self, axis: Option<&[isize]>, keepdims: bool) -> Result<Array<bool>, NumPyError>
+    where
+        T: Clone + Default + crate::reductions::ToBool + 'static,
+    {
+        crate::reductions::all(self, axis, keepdims)
+    }
+
+    /// Test if any element is true
+    pub fn any(&self, axis: Option<&[isize]>, keepdims: bool) -> Result<Array<bool>, NumPyError>
+    where
+        T: Clone + Default + crate::reductions::ToBool + 'static,
+    {
+        crate::reductions::any(self, axis, keepdims)
+    }
+
+    /// Index of minimum elements
+    pub fn argmin(&self, axis: Option<isize>) -> Result<Array<usize>, NumPyError>
+    where
+        T: Clone + Default + PartialOrd + 'static,
+    {
+        crate::reductions::argmin(self, axis)
+    }
+
+    /// Index of maximum elements
+    pub fn argmax(&self, axis: Option<isize>) -> Result<Array<usize>, NumPyError>
+    where
+        T: Clone + Default + PartialOrd + 'static,
+    {
+        crate::reductions::argmax(self, axis)
+    }
 }
 
 impl<T> Clone for Array<T> {

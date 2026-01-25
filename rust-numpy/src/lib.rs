@@ -142,6 +142,7 @@ pub mod parallel;
 pub mod polynomial;
 pub mod random;
 pub mod rec;
+pub mod reductions;
 pub mod set_ops;
 pub mod simd;
 pub mod slicing;
@@ -174,6 +175,9 @@ pub use dtype::{Casting, Dtype, DtypeKind};
 pub use error::{NumPyError, Result};
 pub use linalg::norm;
 pub use rec::{array as rec_array, fromarrays, fromrecords, RecArray};
+pub use reductions::{
+    all, all_bool, any, any_bool, argmax, argmin, cumprod, cumsum, max, mean, min, prod, sum,
+};
 pub use set_ops::exports::*;
 pub use statistics::{
     average, bincount, corrcoef, cov, digitize, histogram, histogram2d, histogramdd, median,

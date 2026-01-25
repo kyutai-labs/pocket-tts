@@ -97,7 +97,7 @@ mod tests {
     #[test]
     fn test_var_basic() {
         let arr = array![1, 2, 3, 4, 5];
-        let var = arr.var(None, false, false).unwrap();
+        let var = arr.var(None, 0, false).unwrap();
         let expected = 2.0;
         assert!((*var.get(0).unwrap() - expected).abs() < 1e-10);
     }
@@ -105,7 +105,7 @@ mod tests {
     #[test]
     fn test_std_basic() {
         let arr = array![1, 2, 3, 4, 5];
-        let std = arr.std(None, false, false).unwrap();
+        let std = arr.std(None, 0, false).unwrap();
         let expected = 2.0_f64.sqrt();
         assert!((*std.get(0).unwrap() - expected).abs() < 1e-10);
     }

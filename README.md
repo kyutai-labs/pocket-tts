@@ -132,6 +132,9 @@ let model = TTSModel::load_with_params(
 )?;
 ```
 
+### HuggingFace token
+If you're using a model that has to be downloaded from huggingface you will need a token in the `HF_TOKEN` environment variable
+
 ## CLI Reference
 
 ### `generate` command

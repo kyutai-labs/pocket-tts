@@ -405,41 +405,69 @@ def multi_talk_to_speech(
                 detail=f"Invalid voice source for speaker '{config.name}': {config.voice_source}",
             )
 
-    # Generate audio for each segment
+    # Generate audio progressively and stream with crossfade
     sample_rate = tts_model.config.mimi.sample_rate
     crossfade_samples = int(crossfade_ms * sample_rate / 1000)
 
-    all_audio = []
-    for segment in segments:
-        state = voice_states[segment.speaker_name]
-        audio = tts_model.generate_audio(model_state=state, text_to_generate=segment.text)
-        # Convert to numpy for concatenation
-        audio_np = audio.squeeze().numpy()
-        all_audio.append(audio_np)
+    def generate_progressive_wav():
+        """Generator that yields WAV data progressively as segments are generated."""
+        # Write WAV header first (with placeholder length)
+        header_buffer = io.BytesIO()
+        wav_header = wave.open(header_buffer, "wb")
+        wav_header.setnchannels(1)  # Mono
+        wav_header.setsampwidth(2)  # 16-bit
+        wav_header.setframerate(sample_rate)
+        wav_header.setnframes(1_000_000_000)  # Placeholder for streaming
+        wav_header.close()
+        header_buffer.seek(0)
+        yield header_buffer.read()
 
-    # Concatenate with crossfade
-    if len(all_audio) == 1:
-        final_audio = all_audio[0]
-    else:
-        final_audio = all_audio[0]
-        for audio in all_audio[1:]:
-            final_audio = apply_crossfade(final_audio, audio, crossfade_samples)
+        # Track the "tail" from previous segment for crossfading
+        prev_tail = None
 
-    # Convert to 16-bit PCM for WAV
-    audio_int16 = (final_audio * 32767).astype(np.int16)
+        for i, segment in enumerate(segments):
+            state = voice_states[segment.speaker_name]
+            audio = tts_model.generate_audio(model_state=state, text_to_generate=segment.text)
+            audio_np = audio.squeeze().numpy()
 
-    # Write WAV to buffer
-    buffer = io.BytesIO()
-    with wave.open(buffer, "wb") as wav_file:
-        wav_file.setnchannels(1)  # Mono
-        wav_file.setsampwidth(2)  # 16-bit
-        wav_file.setframerate(sample_rate)
-        wav_file.writeframes(audio_int16.tobytes())
+            is_last = i == len(segments) - 1
 
-    return Response(
-        content=buffer.getvalue(),
+            if prev_tail is not None and len(prev_tail) > 0 and len(audio_np) >= crossfade_samples:
+                # Apply crossfade with previous segment's tail
+                fade_out = np.linspace(1.0, 0.0, crossfade_samples)
+                fade_in = np.linspace(0.0, 1.0, crossfade_samples)
+                crossfaded = prev_tail * fade_out + audio_np[:crossfade_samples] * fade_in
+                # Convert and yield the crossfaded portion
+                crossfaded_int16 = (crossfaded * 32767).astype(np.int16)
+                yield crossfaded_int16.tobytes()
+                # Continue with the rest of this segment (minus crossfade start)
+                audio_np = audio_np[crossfade_samples:]
+
+            if is_last:
+                # Last segment: yield everything
+                if len(audio_np) > 0:
+                    audio_int16 = (audio_np * 32767).astype(np.int16)
+                    yield audio_int16.tobytes()
+                prev_tail = None
+            else:
+                # Not last: hold back the tail for crossfading with next segment
+                if len(audio_np) > crossfade_samples:
+                    # Yield everything except the tail
+                    main_part = audio_np[:-crossfade_samples]
+                    audio_int16 = (main_part * 32767).astype(np.int16)
+                    yield audio_int16.tobytes()
+                    prev_tail = audio_np[-crossfade_samples:]
+                else:
+                    # Segment too short, just hold it all for crossfade
+                    prev_tail = audio_np
+
+    return StreamingResponse(
+        generate_progressive_wav(),
         media_type="audio/wav",
-        headers={"Content-Disposition": "attachment; filename=multi_talk_speech.wav"},
+        headers={
+            "Content-Disposition": "attachment; filename=multi_talk_speech.wav",
+            "Transfer-Encoding": "chunked",
+        },
     )
 
 

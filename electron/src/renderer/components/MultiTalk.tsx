@@ -91,17 +91,28 @@ export function MultiTalk() {
     if (textarea) {
       const start = textarea.selectionStart;
       const end = textarea.selectionEnd;
-      const newScript = script.slice(0, start) + tag + script.slice(end);
+
+      // Determine if we need a newline prefix
+      let prefix = '';
+      if (start > 0) {
+        const charBefore = script.charAt(start - 1);
+        if (charBefore !== '\n') {
+          prefix = '\n';
+        }
+      }
+
+      const insertion = prefix + tag;
+      const newScript = script.slice(0, start) + insertion + script.slice(end);
       setScript(newScript);
 
       // Set cursor position after the inserted tag
       setTimeout(() => {
         textarea.focus();
-        textarea.setSelectionRange(start + tag.length, start + tag.length);
+        textarea.setSelectionRange(start + insertion.length, start + insertion.length);
       }, 0);
     } else {
-      // Fallback: append to end
-      setScript((prev) => prev + tag);
+      // Fallback: append to end with newline
+      setScript((prev) => (prev && !prev.endsWith('\n') ? prev + '\n' : prev) + tag);
     }
   }, [script]);
 

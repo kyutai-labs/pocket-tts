@@ -32,6 +32,25 @@ export function SpeakerCard({
 }: SpeakerCardProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const handleVoiceChange = (voiceId: string) => {
+    const updates: Partial<Speaker> = { voice: voiceId };
+
+    // Update speaker name based on selected voice
+    if (voiceId.startsWith('saved:')) {
+      const savedVoice = savedVoices.find((v) => `saved:${v.id}` === voiceId);
+      if (savedVoice) {
+        updates.name = savedVoice.name;
+      }
+    } else if (voiceId !== 'custom_url' && voiceId !== 'upload') {
+      const predefinedVoice = PREDEFINED_VOICES.find((v) => v.id === voiceId);
+      if (predefinedVoice) {
+        updates.name = predefinedVoice.name;
+      }
+    }
+
+    onUpdate(updates);
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -86,7 +105,7 @@ export function SpeakerCard({
           <label className="block text-xs text-text-secondary mb-1">Voice</label>
           <select
             value={speaker.voice}
-            onChange={(e) => onUpdate({ voice: e.target.value })}
+            onChange={(e) => handleVoiceChange(e.target.value)}
             disabled={disabled}
             className={`w-full bg-bg-secondary text-text-primary border border-border-color rounded px-2 py-1.5 text-sm
               focus:outline-none focus:ring-1 focus:ring-accent

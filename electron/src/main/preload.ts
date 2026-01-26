@@ -40,6 +40,8 @@ export interface ElectronAPI {
   saveVoice: (params: { name: string; description: string; audioData: ArrayBuffer }) => Promise<SavedVoice>;
   getSavedVoices: () => Promise<SavedVoice[]>;
   deleteVoice: (id: string) => Promise<void>;
+  // Dev tools
+  toggleDevTools: () => Promise<void>;
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -65,4 +67,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('voice:save', params),
   getSavedVoices: () => ipcRenderer.invoke('voice:list'),
   deleteVoice: (id: string) => ipcRenderer.invoke('voice:delete', id),
+  // Dev tools
+  toggleDevTools: () => ipcRenderer.invoke('toggle-devtools'),
 } as ElectronAPI);

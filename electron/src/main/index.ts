@@ -35,8 +35,7 @@ async function createWindow() {
     mainWindow.loadFile(htmlPath);
   }
 
-  // Always open DevTools for debugging (remove in production)
-  mainWindow.webContents.openDevTools();
+  // DevTools off by default - can be toggled via IPC
 
   // Log any load failures
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
@@ -102,4 +101,14 @@ app.on('before-quit', async () => {
 
 ipcMain.handle('get-server-port', () => {
   return pythonServer?.port ?? 8000;
+});
+
+ipcMain.handle('toggle-devtools', () => {
+  if (mainWindow) {
+    if (mainWindow.webContents.isDevToolsOpened()) {
+      mainWindow.webContents.closeDevTools();
+    } else {
+      mainWindow.webContents.openDevTools();
+    }
+  }
 });

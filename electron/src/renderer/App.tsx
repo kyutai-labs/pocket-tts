@@ -188,8 +188,16 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-bg-primary">
-      {/* Drag region for macOS */}
-      <div className="h-8 drag-region" />
+      {/* Drag region for macOS with dev tools toggle */}
+      <div className="h-8 drag-region relative">
+        <button
+          onClick={() => window.electronAPI?.toggleDevTools()}
+          className="absolute right-2 top-1 no-drag text-text-secondary/40 hover:text-text-secondary text-xs px-1.5 py-0.5 rounded transition-colors"
+          title="Toggle Developer Tools"
+        >
+          DEV
+        </button>
+      </div>
 
       <div className="max-w-2xl mx-auto px-6 pb-8">
         {/* Header */}

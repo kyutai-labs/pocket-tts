@@ -38,6 +38,8 @@ export interface ElectronAPI {
   saveVoice: (params: { name: string; description: string; audioData: ArrayBuffer }) => Promise<SavedVoice>;
   getSavedVoices: () => Promise<SavedVoice[]>;
   deleteVoice: (id: string) => Promise<void>;
+  // Dev tools
+  toggleDevTools: () => Promise<void>;
 }
 
 declare global {

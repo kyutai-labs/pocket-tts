@@ -57,7 +57,11 @@ pocket-tts generate --voice "hf://kyutai/tts-voices/jessica-jian/casual.wav"
 
 # Use local voice file
 pocket-tts generate --voice "./my_voice.wav"
+
+# Use a safetensors file (such as one created using `pocket-tts export-voice`)
+pocket-tts generate --voice "./my_voice.safetensors"
 ```
+
 
 ### Quality Tuning
 

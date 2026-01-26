@@ -44,6 +44,15 @@ from pocket_tts.utils.weights_loading import get_flow_lm_state_dict, get_mimi_st
 torch.set_num_threads(1)
 logger = logging.getLogger(__name__)
 
+VOICE_CLONING_UNSUPPORTED = (
+    f"We could not download the weights for the model with voice cloning, "
+    f"but you're trying to use voice cloning. "
+    f"Without voice cloning, you can use our catalog of voices {list(PREDEFINED_VOICES)}. "
+    f"If you want access to the model with voice cloning, go to "
+    f"https://huggingface.co/kyutai/pocket-tts and accept the terms, "
+    f"then make sure you're logged in locally with `uvx hf auth login`."
+)
+
 
 class TTSModel(nn.Module):
     def __init__(
@@ -639,9 +648,9 @@ class TTSModel(nn.Module):
         enables voice cloning and audio continuation with speaker consistency.
 
         Args:
-            audio_conditioning: Audio prompt to condition on. Can be:
-                - Path: Local file path to audio file
-                - str: URL to download audio file from
+            audio_conditioning: Audio prompt to condition (or .safetensors to load). Can be:
+                - Path: Local file path to audio file (or .safetensors)
+                - str: URL to download audio file (or .safetensors) from
                 - torch.Tensor: Pre-loaded audio tensor with shape [channels, samples]
             truncate: Whether to truncate long audio prompts to 30 seconds.
                 Helps prevent memory issues with very long inputs. Defaults to False.
@@ -664,19 +673,21 @@ class TTSModel(nn.Module):
             - Processing time is logged for performance monitoring
             - The state preserves speaker characteristics for voice cloning
         """
-        if isinstance(audio_conditioning, str) and audio_conditioning in PREDEFINED_VOICES:
+        if isinstance(audio_conditioning, (str, Path)) and str(audio_conditioning).endswith(
+            ".safetensors"
+        ):
+            if isinstance(audio_conditioning, str):
+                audio_conditioning = download_if_necessary(audio_conditioning)
+            import safetensors.torch
+
+            prompt = safetensors.torch.load_file(audio_conditioning)["audio_prompt"]
+        elif isinstance(audio_conditioning, str) and audio_conditioning in PREDEFINED_VOICES:
             # We get the audio conditioning directly from the safetensors file.
             prompt = load_predefined_voice(audio_conditioning)
         else:
             if not self.has_voice_cloning and isinstance(audio_conditioning, (str, Path)):
-                raise ValueError(
-                    f"We could not download the weights for the model with voice cloning, "
-                    f"but you're trying to use voice cloning. "
-                    f"Without voice cloning, you can use our catalog of voices {list(PREDEFINED_VOICES)}. "
-                    f"If you want access to the model with voice cloning, go to "
-                    f"https://huggingface.co/kyutai/pocket-tts and accept the terms, "
-                    f"then make sure you're logged in locally with `uvx hf auth login`."
-                )
+                raise ValueError(VOICE_CLONING_UNSUPPORTED)
+
             if isinstance(audio_conditioning, str):
                 audio_conditioning = download_if_necessary(audio_conditioning)
 
@@ -695,11 +706,6 @@ class TTSModel(nn.Module):
 
             with display_execution_time("Encoding audio prompt"):
                 prompt = self._encode_audio(audio_conditioning.unsqueeze(0).to(self.device))
-                # import safetensors.torch
-                # safetensors.torch.save_file(
-                #     {"audio_prompt": prompt},
-                #     "/projects/huggingface/pocket-tts/embeddings/cosette.safetensors"
-                # )
 
         model_state = init_states(self.flow_lm, batch_size=1, sequence_length=1000)
 
@@ -711,6 +717,72 @@ class TTSModel(nn.Module):
         self._slice_kv_cache(model_state, num_audio_frames)
 
         return model_state
+
+    @torch.no_grad
+    def save_audio_prompt(
+        self,
+        audio_conditioning: Path | str | torch.Tensor,
+        export_path: Path | str,
+        truncate: bool = False,
+    ) -> torch.Tensor:
+        """Save audio prompt to .safetensors file
+
+        This method processes an audio prompt and exports it to a .safetensors file,
+        which can be loaded by get_state_for_audio_prompt in subsequent uses
+        without converting the audio again.
+
+        It also takes an already converted audio tensor and exports it as a .safetensors file
+
+        Args:
+            audio_conditioning: Audio to export
+                - Path: Local file path to audio file
+                - str: URL to download audio file
+                - torch.Tensor: Pre-loaded audio tensor with shape [channels, samples]
+            export_path: Path to output file
+            truncate: Whether to truncate long audio prompts to 30 seconds.
+
+        Returns:
+            Audio tensor of converted audio
+
+        Raises:
+            FileNotFoundError: If audio file path doesn't exist.
+            ValueError: If audio tensor export path is invalid or empty.
+            RuntimeError: If audio processing or encoding fails.
+
+        Note:
+            - Send resulting audio tensor to get_state_for_audio_prompt
+              in order to get the model state for generation.
+        """
+        if not export_path or not isinstance(export_path, (str, Path)):
+            raise ValueError("export_path must be of type str or Path")
+        export_path = Path(export_path).with_suffix(".safetensors")
+
+        if not self.has_voice_cloning and isinstance(audio_conditioning, (str, Path)):
+            raise ValueError(VOICE_CLONING_UNSUPPORTED)
+
+        if isinstance(audio_conditioning, str):
+            audio_conditioning = download_if_necessary(audio_conditioning)
+
+        if isinstance(audio_conditioning, Path):
+            audio, conditioning_sample_rate = audio_read(audio_conditioning)
+
+            if truncate:
+                max_samples = int(30 * conditioning_sample_rate)  # 30 seconds of audio
+                if audio.shape[-1] > max_samples:
+                    audio = audio[..., :max_samples]
+                    logger.info(f"Audio truncated to first 30 seconds ({max_samples} samples)")
+
+            audio_conditioning = convert_audio(
+                audio, conditioning_sample_rate, self.config.mimi.sample_rate, 1
+            )
+
+        with display_execution_time("Exporting audio prompt"):
+            prompt = self._encode_audio(audio_conditioning.unsqueeze(0).to(self.device))
+            import safetensors.torch
+
+            safetensors.torch.save_file({"audio_prompt": prompt}, export_path)
+
+        return audio_conditioning
 
 
 def prepare_text_prompt(text: str) -> tuple[str, int]:

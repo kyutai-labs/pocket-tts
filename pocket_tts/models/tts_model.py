@@ -164,7 +164,9 @@ class TTSModel(nn.Module):
 
         return tts_model
 
+    @classmethod
     def load_model(
+        cls,
         variant: str = DEFAULT_VARIANT,
         temp: float | int = DEFAULT_TEMPERATURE,
         lsd_decode_steps: int = DEFAULT_LSD_DECODE_STEPS,

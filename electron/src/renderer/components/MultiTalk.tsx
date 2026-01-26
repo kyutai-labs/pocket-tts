@@ -5,6 +5,7 @@ import { StatusIndicator } from './StatusIndicator';
 import { StreamingWavPlayer } from '../lib/streaming-wav-player';
 import { GenerationStatus } from '../App';
 import { PREDEFINED_VOICES, SavedVoice } from './VoiceSelector';
+import { addToHistory } from './History';
 
 interface MultiTalkConfig {
   version: string;
@@ -27,9 +28,26 @@ interface GenerationState {
   error: string | null;
 }
 
+export interface MultiTalkConfig {
+  script: string;
+  speakers: {
+    name: string;
+    voice: string;
+    voiceName?: string;
+    customUrl?: string | null;
+    fileData?: string | null;
+    seed?: number | null;
+  }[];
+}
+
+interface MultiTalkProps {
+  pendingConfig?: MultiTalkConfig | null;
+  onConfigLoaded?: () => void;
+}
+
 let nextSpeakerId = 1;
 
-export function MultiTalk() {
+export function MultiTalk({ pendingConfig, onConfigLoaded }: MultiTalkProps) {
   const [speakers, setSpeakers] = useState<Speaker[]>([
     {
       id: `speaker-${nextSpeakerId++}`,
@@ -56,6 +74,24 @@ export function MultiTalk() {
   });
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
 
+  // Load config from history when pendingConfig changes
+  useEffect(() => {
+    if (pendingConfig) {
+      const newSpeakers: Speaker[] = pendingConfig.speakers.map((s) => ({
+        id: `speaker-${nextSpeakerId++}`,
+        name: s.name,
+        voice: s.voice,
+        seed: s.seed ?? null,
+        customUrl: s.customUrl ?? null,
+        fileData: s.fileData ?? null,
+        fileName: s.fileData ? 'Loaded from history' : null,
+      }));
+      setSpeakers(newSpeakers);
+      setScript(pendingConfig.script);
+      onConfigLoaded?.();
+    }
+  }, [pendingConfig, onConfigLoaded]);
+
   const playerRef = useRef<StreamingWavPlayer | null>(null);
   const startTimeRef = useRef<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -79,9 +115,21 @@ export function MultiTalk() {
   }, []);
 
   const updateSpeaker = useCallback((id: string, updates: Partial<Speaker>) => {
-    setSpeakers((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, ...updates } : s))
-    );
+    setSpeakers((prev) => {
+      const oldSpeaker = prev.find((s) => s.id === id);
+      const newSpeakers = prev.map((s) => (s.id === id ? { ...s, ...updates } : s));
+
+      // If name changed, update script tags
+      if (oldSpeaker && updates.name && updates.name !== oldSpeaker.name) {
+        const oldName = oldSpeaker.name;
+        const newName = updates.name;
+        // Replace {OldName} with {NewName} in script (case-insensitive match)
+        const pattern = new RegExp(`\\{${oldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\}`, 'gi');
+        setScript((prevScript) => prevScript.replace(pattern, `{${newName}}`));
+      }
+
+      return newSpeakers;
+    });
   }, []);
 
   const insertSpeakerToScript = useCallback((name: string) => {
@@ -191,6 +239,31 @@ export function MultiTalk() {
         if (playerRef.current) {
           setAudioBlob(playerRef.current.getAudioBlob());
         }
+
+        // Save to history
+        addToHistory({
+          type: 'multi',
+          script,
+          speakers: speakers.map((s) => {
+            // Get voice display name
+            let voiceName = s.name;
+            if (s.voice.startsWith('saved:')) {
+              const saved = savedVoices.find((v) => `saved:${v.id}` === s.voice);
+              if (saved) voiceName = saved.name;
+            } else {
+              const predefined = PREDEFINED_VOICES.find((v) => v.id === s.voice);
+              if (predefined) voiceName = predefined.name;
+            }
+            return {
+              name: s.name,
+              voice: s.voice,
+              voiceName,
+              customUrl: s.customUrl,
+              fileData: s.fileData,
+              seed: s.seed,
+            };
+          }),
+        });
       },
       onError: (error) => {
         setGenerationState((prev) => ({

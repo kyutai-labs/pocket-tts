@@ -48,6 +48,11 @@ uv run pyinstaller \
     --hidden-import=huggingface_hub \
     --hidden-import=safetensors \
     --hidden-import=beartype \
+    --hidden-import=starlette \
+    --hidden-import=starlette.requests \
+    --hidden-import=starlette.formparsers \
+    --hidden-import=python_multipart \
+    --hidden-import=python_multipart.multipart \
     --collect-all=pocket_tts \
     --collect-data=sentencepiece \
     --noconfirm \

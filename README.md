@@ -108,6 +108,19 @@ npm run build:electron
 
 This creates platform-specific installers in the `electron/release/` folder.
 
+**Important:** If you've made changes to the Python code in `pocket_tts/`, you must reinstall the local package before rebuilding:
+
+```bash
+# From the project root
+uv pip install -e .
+
+# Then rebuild
+cd electron/python && ./bundle-python.sh
+cd .. && npm run build:electron
+```
+
+PyInstaller bundles the *installed* package, not the source files directly. Without reinstalling, your changes won't be included in the build.
+
 ## Using it as a Python library
 
 You can try out the Python library on Colab [here](https://colab.research.google.com/github/kyutai-labs/pocket-tts/blob/main/docs/pocket-tts-example.ipynb).

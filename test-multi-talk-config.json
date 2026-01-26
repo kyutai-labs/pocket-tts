@@ -3,13 +3,13 @@
   "speakers": [
     {
       "name": "Southern Girl",
-      "voice_source": "southern_girl",
+      "voice_source": "cosette",
       "voice_data": null,
       "seed": null
     },
     {
       "name": "George Wilson",
-      "voice_source": "george_wilson",
+      "voice_source": "marius",
       "voice_data": null,
       "seed": null
     }

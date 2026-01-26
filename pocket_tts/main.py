@@ -6,6 +6,7 @@ import os
 import re
 import tempfile
 import threading
+import wave
 from dataclasses import dataclass
 from pathlib import Path
 from queue import Queue
@@ -16,7 +17,9 @@ import typer
 import uvicorn
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
+from starlette import requests as starlette_requests
+from starlette.formparsers import MultiPartParser
 from typing_extensions import Annotated
 
 from pocket_tts.data.audio import stream_audio_chunks
@@ -34,6 +37,31 @@ from pocket_tts.utils.logging_utils import enable_logging
 from pocket_tts.utils.utils import PREDEFINED_VOICES, size_of_dict
 
 logger = logging.getLogger(__name__)
+
+# Increase multipart body size limit from default 1MB to 50MB for large audio files
+# Must patch both the class attribute AND the Request methods that pass hardcoded defaults
+MAX_PART_SIZE = 50 * 1024 * 1024  # 50MB
+MultiPartParser.max_part_size = MAX_PART_SIZE
+
+# Monkey-patch Request._get_form and Request.form to use larger max_part_size
+_original_get_form = starlette_requests.Request._get_form
+_original_form = starlette_requests.Request.form
+
+
+async def _patched_get_form(self, *, max_files=1000, max_fields=1000, max_part_size=MAX_PART_SIZE):
+    return await _original_get_form(
+        self, max_files=max_files, max_fields=max_fields, max_part_size=max_part_size
+    )
+
+
+def _patched_form(self, *, max_files=1000, max_fields=1000, max_part_size=MAX_PART_SIZE):
+    return _original_form(
+        self, max_files=max_files, max_fields=max_fields, max_part_size=max_part_size
+    )
+
+
+starlette_requests.Request._get_form = _patched_get_form
+starlette_requests.Request.form = _patched_form
 
 cli_app = typer.Typer(
     help="Kyutai Pocket TTS - Text-to-Speech generation tool", pretty_exceptions_show_locals=False
@@ -397,18 +425,19 @@ def multi_talk_to_speech(
         for audio in all_audio[1:]:
             final_audio = apply_crossfade(final_audio, audio, crossfade_samples)
 
-    # Convert back to torch tensor for streaming
-    final_tensor = torch.from_numpy(final_audio.astype(np.float32))
+    # Convert to 16-bit PCM for WAV
+    audio_int16 = (final_audio * 32767).astype(np.int16)
 
-    # Stream the audio
-    def generate_wav():
-        buffer = io.BytesIO()
-        stream_audio_chunks(buffer, iter([final_tensor]), sample_rate)
-        buffer.seek(0)
-        yield buffer.read()
+    # Write WAV to buffer
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav_file:
+        wav_file.setnchannels(1)  # Mono
+        wav_file.setsampwidth(2)  # 16-bit
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(audio_int16.tobytes())
 
-    return StreamingResponse(
-        generate_wav(),
+    return Response(
+        content=buffer.getvalue(),
         media_type="audio/wav",
         headers={"Content-Disposition": "attachment; filename=multi_talk_speech.wav"},
     )

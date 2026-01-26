@@ -1,11 +1,17 @@
+import base64
 import io
+import json
 import logging
 import os
+import re
 import tempfile
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 from queue import Queue
+from typing import Optional
 
+import numpy as np
 import typer
 import uvicorn
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -32,6 +38,110 @@ logger = logging.getLogger(__name__)
 cli_app = typer.Typer(
     help="Kyutai Pocket TTS - Text-to-Speech generation tool", pretty_exceptions_show_locals=False
 )
+
+
+# ------------------------------------------------------
+# Multi-Talk data structures and helpers
+# ------------------------------------------------------
+
+
+@dataclass
+class SpeakerConfig:
+    """Configuration for a single speaker in multi-talk mode."""
+
+    name: str
+    voice_source: str  # predefined name, URL, or "uploaded"
+    voice_data: Optional[str] = None  # Base64-encoded WAV if uploaded
+    seed: Optional[int] = None
+
+
+@dataclass
+class ScriptSegment:
+    """A segment of script with speaker and text."""
+
+    speaker_name: str
+    text: str
+
+
+def parse_script(script: str, speaker_names: list[str]) -> list[ScriptSegment]:
+    """
+    Parse a script with speaker tags into segments.
+
+    Format: {SpeakerName} text until next tag or end
+
+    Args:
+        script: The script text with {SpeakerName} tags
+        speaker_names: List of valid speaker names
+
+    Returns:
+        List of ScriptSegment objects
+
+    Raises:
+        ValueError: If an unknown speaker name is found
+    """
+    # Normalize speaker names for case-insensitive matching
+    speaker_map = {name.lower(): name for name in speaker_names}
+
+    # Pattern to match {SpeakerName} tags
+    pattern = r"\{([^}]+)\}"
+
+    segments = []
+    last_end = 0
+    current_speaker = None
+
+    for match in re.finditer(pattern, script):
+        # Get text before this tag (belongs to previous speaker)
+        if current_speaker is not None:
+            text = script[last_end : match.start()].strip()
+            if text:
+                segments.append(ScriptSegment(speaker_name=current_speaker, text=text))
+
+        # Get the new speaker name
+        speaker_key = match.group(1).strip().lower()
+        if speaker_key not in speaker_map:
+            available = ", ".join(speaker_names)
+            raise ValueError(
+                f"Unknown speaker: '{match.group(1)}'. Available speakers: {available}"
+            )
+
+        current_speaker = speaker_map[speaker_key]
+        last_end = match.end()
+
+    # Get remaining text after last tag
+    if current_speaker is not None:
+        text = script[last_end:].strip()
+        if text:
+            segments.append(ScriptSegment(speaker_name=current_speaker, text=text))
+
+    return segments
+
+
+def apply_crossfade(audio1: np.ndarray, audio2: np.ndarray, crossfade_samples: int) -> np.ndarray:
+    """
+    Apply linear crossfade between two audio arrays.
+
+    Args:
+        audio1: First audio array
+        audio2: Second audio array
+        crossfade_samples: Number of samples for crossfade
+
+    Returns:
+        Concatenated audio with crossfade applied
+    """
+    if crossfade_samples <= 0 or len(audio1) < crossfade_samples or len(audio2) < crossfade_samples:
+        return np.concatenate([audio1, audio2])
+
+    # Create fade curves
+    fade_out = np.linspace(1.0, 0.0, crossfade_samples)
+    fade_in = np.linspace(0.0, 1.0, crossfade_samples)
+
+    # Apply crossfade
+    audio1_end = audio1[-crossfade_samples:] * fade_out
+    audio2_start = audio2[:crossfade_samples] * fade_in
+    crossfaded = audio1_end + audio2_start
+
+    # Combine: audio1 (except end) + crossfaded + audio2 (except start)
+    return np.concatenate([audio1[:-crossfade_samples], crossfaded, audio2[crossfade_samples:]])
 
 
 # ------------------------------------------------------
@@ -168,6 +278,139 @@ def text_to_speech(
             "Content-Disposition": "attachment; filename=generated_speech.wav",
             "Transfer-Encoding": "chunked",
         },
+    )
+
+
+@web_app.post("/multi-tts")
+def multi_talk_to_speech(
+    script: str = Form(...), speakers: str = Form(...), crossfade_ms: int = Form(100)
+):
+    """
+    Generate multi-speaker audio from a script with speaker tags.
+
+    Args:
+        script: Script with {SpeakerName} tags (e.g., "{Alice} Hello! {Bob} Hi there!")
+        speakers: JSON array of speaker configs
+        crossfade_ms: Crossfade duration between segments in milliseconds
+    """
+    import torch
+
+    if not script.strip():
+        raise HTTPException(status_code=400, detail="Script cannot be empty")
+
+    # Parse speakers JSON
+    try:
+        speakers_data = json.loads(speakers)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid speakers JSON: {e}")
+
+    if not speakers_data:
+        raise HTTPException(status_code=400, detail="At least one speaker is required")
+
+    # Build speaker configs
+    speaker_configs = []
+    for s in speakers_data:
+        if "name" not in s or "voice_source" not in s:
+            raise HTTPException(
+                status_code=400, detail="Each speaker must have 'name' and 'voice_source'"
+            )
+        speaker_configs.append(
+            SpeakerConfig(
+                name=s["name"],
+                voice_source=s["voice_source"],
+                voice_data=s.get("voice_data"),
+                seed=s.get("seed"),
+            )
+        )
+
+    speaker_names = [s.name for s in speaker_configs]
+
+    # Parse script to get segments
+    try:
+        segments = parse_script(script, speaker_names)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not segments:
+        raise HTTPException(status_code=400, detail="Script contains no valid segments")
+
+    # Pre-load voice states for all speakers
+    voice_states = {}
+    for config in speaker_configs:
+        if config.name in voice_states:
+            continue  # Already loaded
+
+        if config.voice_source == "uploaded" and config.voice_data:
+            # Decode base64 WAV and create temp file
+            try:
+                wav_bytes = base64.b64decode(config.voice_data)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid base64 voice data for speaker '{config.name}': {e}",
+                )
+
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
+                temp_file.write(wav_bytes)
+                temp_file.flush()
+                try:
+                    voice_states[config.name] = tts_model.get_state_for_audio_prompt(
+                        Path(temp_file.name), truncate=True
+                    )
+                finally:
+                    os.unlink(temp_file.name)
+        elif config.voice_source in PREDEFINED_VOICES:
+            voice_states[config.name] = tts_model._cached_get_state_for_audio_prompt(
+                config.voice_source, truncate=True
+            )
+        elif (
+            config.voice_source.startswith("http://")
+            or config.voice_source.startswith("https://")
+            or config.voice_source.startswith("hf://")
+        ):
+            voice_states[config.name] = tts_model._cached_get_state_for_audio_prompt(
+                config.voice_source, truncate=True
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid voice source for speaker '{config.name}': {config.voice_source}",
+            )
+
+    # Generate audio for each segment
+    sample_rate = tts_model.config.mimi.sample_rate
+    crossfade_samples = int(crossfade_ms * sample_rate / 1000)
+
+    all_audio = []
+    for segment in segments:
+        state = voice_states[segment.speaker_name]
+        audio = tts_model.generate_audio(model_state=state, text_to_generate=segment.text)
+        # Convert to numpy for concatenation
+        audio_np = audio.squeeze().numpy()
+        all_audio.append(audio_np)
+
+    # Concatenate with crossfade
+    if len(all_audio) == 1:
+        final_audio = all_audio[0]
+    else:
+        final_audio = all_audio[0]
+        for audio in all_audio[1:]:
+            final_audio = apply_crossfade(final_audio, audio, crossfade_samples)
+
+    # Convert back to torch tensor for streaming
+    final_tensor = torch.from_numpy(final_audio.astype(np.float32))
+
+    # Stream the audio
+    def generate_wav():
+        buffer = io.BytesIO()
+        stream_audio_chunks(buffer, iter([final_tensor]), sample_rate)
+        buffer.seek(0)
+        yield buffer.read()
+
+    return StreamingResponse(
+        generate_wav(),
+        media_type="audio/wav",
+        headers={"Content-Disposition": "attachment; filename=multi_talk_speech.wav"},
     )
 
 

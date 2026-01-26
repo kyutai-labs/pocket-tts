@@ -19,9 +19,22 @@
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
-    <div class="max-w-xl mx-auto p-4 space-y-4">
+    <div class="max-w-2xl mx-auto p-4 space-y-4">
         <h1 class="text-xl font-bold text-center">Pocket TTS</h1>
-        
+
+        <!-- Tab Navigation -->
+        <div class="flex border-b border-gray-200">
+            <button id="tab-single" class="px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600">
+                Single Voice
+            </button>
+            <button id="tab-multi" class="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 border-b-2 border-transparent">
+                Multi-Talk
+            </button>
+        </div>
+
+        <!-- Single Voice Panel -->
+        <div id="panel-single" class="space-y-4">
+
         <div class="bg-white p-4 rounded-lg shadow">
             <textarea
                 id="text-input"
@@ -88,6 +101,81 @@
                 </div>
             </div>
         </div>
+
+        </div> <!-- End Single Voice Panel -->
+
+        <!-- Multi-Talk Panel -->
+        <div id="panel-multi" class="hidden space-y-4">
+
+            <!-- Import/Export Buttons -->
+            <div class="flex justify-end space-x-2">
+                <label class="px-3 py-1 text-sm border border-gray-300 rounded cursor-pointer hover:bg-gray-50">
+                    Import JSON
+                    <input type="file" id="import-config" accept=".json" class="hidden">
+                </label>
+                <button id="export-config" class="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50">
+                    Export JSON
+                </button>
+            </div>
+
+            <!-- Speakers Section -->
+            <div class="bg-white p-4 rounded-lg shadow">
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="font-semibold">Speakers</h2>
+                    <button id="add-speaker" class="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">
+                        + Add Speaker
+                    </button>
+                </div>
+                <div id="speakers-container" class="space-y-3">
+                    <!-- Speaker cards will be dynamically inserted here -->
+                </div>
+            </div>
+
+            <!-- Script Section -->
+            <div class="bg-white p-4 rounded-lg shadow">
+                <label class="block font-semibold mb-2">Script</label>
+                <textarea
+                    id="script-input"
+                    class="w-full border rounded p-3 font-mono text-sm"
+                    rows="6"
+                    placeholder="{Alice} Hello Bob, how are you today?
+{Bob} I'm doing great, thanks for asking!
+{Alice} That's wonderful to hear."
+                ></textarea>
+                <p class="text-xs text-gray-500 mt-1">
+                    Use {SpeakerName} to indicate who speaks. Names must match speakers defined above.
+                </p>
+            </div>
+
+            <!-- Generate Button -->
+            <button
+                id="multi-generate-btn"
+                class="w-full px-4 py-2 rounded text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+                <span id="multi-generate-text">Generate Multi-Talk Audio</span>
+            </button>
+
+            <!-- Status -->
+            <div id="multi-status" class="hidden">
+                <div class="flex items-center space-x-2">
+                    <div id="multi-status-spinner" class="spinner w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+                    <span id="multi-status-text"></span>
+                </div>
+            </div>
+
+            <!-- Audio Output -->
+            <div id="multi-audio-section" class="hidden">
+                <div class="bg-white p-4 rounded-lg shadow">
+                    <h3 class="text-lg font-semibold mb-2">Generated Audio</h3>
+                    <audio id="multi-audio" controls class="w-full"></audio>
+                    <div class="mt-2">
+                        <a id="multi-download-link" class="text-blue-600 text-sm hover:underline">Download</a>
+                    </div>
+                </div>
+            </div>
+
+        </div> <!-- End Multi-Talk Panel -->
+
     </div>
 
     <script>
@@ -364,6 +452,421 @@
                 generateText.textContent = 'Generate Audio';
             }
         }
+
+        // =============================================
+        // Multi-Talk Functionality
+        // =============================================
+
+        // Predefined voices available
+        const PREDEFINED_VOICES = ['alba', 'marius', 'javert', 'jean', 'fantine', 'cosette', 'eponine', 'azelma'];
+
+        // Multi-Talk State
+        const multiTalkState = {
+            speakers: [],
+            nextSpeakerId: 1
+        };
+
+        // Tab elements
+        const tabSingle = document.getElementById('tab-single');
+        const tabMulti = document.getElementById('tab-multi');
+        const panelSingle = document.getElementById('panel-single');
+        const panelMulti = document.getElementById('panel-multi');
+
+        // Multi-Talk DOM elements
+        const speakersContainer = document.getElementById('speakers-container');
+        const addSpeakerBtn = document.getElementById('add-speaker');
+        const scriptInput = document.getElementById('script-input');
+        const multiGenerateBtn = document.getElementById('multi-generate-btn');
+        const multiGenerateText = document.getElementById('multi-generate-text');
+        const multiStatus = document.getElementById('multi-status');
+        const multiStatusText = document.getElementById('multi-status-text');
+        const multiStatusSpinner = document.getElementById('multi-status-spinner');
+        const multiAudioSection = document.getElementById('multi-audio-section');
+        const multiAudio = document.getElementById('multi-audio');
+        const multiDownloadLink = document.getElementById('multi-download-link');
+        const importConfigInput = document.getElementById('import-config');
+        const exportConfigBtn = document.getElementById('export-config');
+
+        // Tab switching
+        tabSingle.addEventListener('click', () => {
+            tabSingle.classList.add('border-blue-600', 'text-blue-600');
+            tabSingle.classList.remove('text-gray-500', 'border-transparent');
+            tabMulti.classList.remove('border-blue-600', 'text-blue-600');
+            tabMulti.classList.add('text-gray-500', 'border-transparent');
+            panelSingle.classList.remove('hidden');
+            panelMulti.classList.add('hidden');
+        });
+
+        tabMulti.addEventListener('click', () => {
+            tabMulti.classList.add('border-blue-600', 'text-blue-600');
+            tabMulti.classList.remove('text-gray-500', 'border-transparent');
+            tabSingle.classList.remove('border-blue-600', 'text-blue-600');
+            tabSingle.classList.add('text-gray-500', 'border-transparent');
+            panelMulti.classList.remove('hidden');
+            panelSingle.classList.add('hidden');
+        });
+
+        // Speaker Card Template
+        function createSpeakerCard(speaker) {
+            const card = document.createElement('div');
+            card.className = 'speaker-card border rounded p-3 bg-gray-50';
+            card.dataset.speakerId = speaker.id;
+
+            const isFirstSpeaker = multiTalkState.speakers.length === 0 ||
+                                   (multiTalkState.speakers.length === 1 && multiTalkState.speakers[0].id === speaker.id);
+
+            card.innerHTML = `
+                <div class="flex justify-between items-start mb-2">
+                    <input
+                        type="text"
+                        class="speaker-name font-medium bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none"
+                        value="${speaker.name}"
+                        placeholder="Speaker Name"
+                    />
+                    <button class="remove-speaker text-red-500 text-sm hover:text-red-700 ${isFirstSpeaker ? 'hidden' : ''}">Remove</button>
+                </div>
+                <div class="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                        <label class="block text-gray-600 text-xs mb-1">Voice</label>
+                        <select class="speaker-voice w-full border rounded p-1 bg-white text-sm">
+                            ${PREDEFINED_VOICES.map(v =>
+                                `<option value="${v}" ${speaker.voice === v ? 'selected' : ''}>${v.charAt(0).toUpperCase() + v.slice(1)}</option>`
+                            ).join('')}
+                            <option value="custom_url" ${speaker.voice === 'custom_url' ? 'selected' : ''}>Custom URL...</option>
+                            <option value="upload" ${speaker.voice === 'upload' ? 'selected' : ''}>Upload WAV...</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-gray-600 text-xs mb-1">Seed (optional)</label>
+                        <input type="number" class="speaker-seed w-full border rounded p-1 text-sm" placeholder="Random" value="${speaker.seed || ''}">
+                    </div>
+                </div>
+                <div class="speaker-url-input ${speaker.voice === 'custom_url' ? '' : 'hidden'} mt-2">
+                    <input type="text" class="speaker-custom-url w-full border rounded p-1 text-sm" placeholder="hf://... or https://..." value="${speaker.customUrl || ''}">
+                </div>
+                <div class="speaker-file-input ${speaker.voice === 'upload' ? '' : 'hidden'} mt-2">
+                    <input type="file" accept=".wav,audio/wav" class="speaker-file w-full text-sm">
+                    ${speaker.fileData ? '<span class="text-xs text-green-600">File loaded</span>' : ''}
+                </div>
+            `;
+
+            // Event listeners for this card
+            const nameInput = card.querySelector('.speaker-name');
+            const voiceSelect = card.querySelector('.speaker-voice');
+            const seedInput = card.querySelector('.speaker-seed');
+            const removeBtn = card.querySelector('.remove-speaker');
+            const urlInput = card.querySelector('.speaker-custom-url');
+            const fileInput = card.querySelector('.speaker-file');
+            const urlDiv = card.querySelector('.speaker-url-input');
+            const fileDiv = card.querySelector('.speaker-file-input');
+
+            nameInput.addEventListener('change', () => {
+                updateSpeaker(speaker.id, { name: nameInput.value });
+            });
+
+            voiceSelect.addEventListener('change', () => {
+                const value = voiceSelect.value;
+                updateSpeaker(speaker.id, { voice: value });
+
+                // Show/hide URL and file inputs
+                urlDiv.classList.toggle('hidden', value !== 'custom_url');
+                fileDiv.classList.toggle('hidden', value !== 'upload');
+            });
+
+            seedInput.addEventListener('change', () => {
+                const value = seedInput.value ? parseInt(seedInput.value) : null;
+                updateSpeaker(speaker.id, { seed: value });
+            });
+
+            removeBtn.addEventListener('click', () => {
+                removeSpeaker(speaker.id);
+            });
+
+            urlInput.addEventListener('change', () => {
+                updateSpeaker(speaker.id, { customUrl: urlInput.value });
+            });
+
+            fileInput.addEventListener('change', async () => {
+                const file = fileInput.files[0];
+                if (file) {
+                    const base64 = await fileToBase64(file);
+                    updateSpeaker(speaker.id, { fileData: base64 });
+                    // Show indicator
+                    const indicator = document.createElement('span');
+                    indicator.className = 'text-xs text-green-600 ml-2';
+                    indicator.textContent = 'File loaded';
+                    fileDiv.appendChild(indicator);
+                }
+            });
+
+            return card;
+        }
+
+        // Convert file to base64
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    // Remove the data URL prefix
+                    const base64 = reader.result.split(',')[1];
+                    resolve(base64);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // Speaker management functions
+        function addSpeaker(config = null) {
+            const id = `speaker-${multiTalkState.nextSpeakerId++}`;
+            const speaker = config || {
+                id,
+                name: `Speaker ${multiTalkState.speakers.length + 1}`,
+                voice: 'alba',
+                seed: null,
+                customUrl: null,
+                fileData: null
+            };
+            if (!speaker.id) speaker.id = id;
+
+            multiTalkState.speakers.push(speaker);
+            const card = createSpeakerCard(speaker);
+            speakersContainer.appendChild(card);
+
+            // Update remove button visibility on all cards
+            updateRemoveButtonVisibility();
+        }
+
+        function removeSpeaker(speakerId) {
+            multiTalkState.speakers = multiTalkState.speakers.filter(s => s.id !== speakerId);
+            const card = document.querySelector(`[data-speaker-id="${speakerId}"]`);
+            if (card) card.remove();
+
+            // Update remove button visibility on all cards
+            updateRemoveButtonVisibility();
+        }
+
+        function updateSpeaker(speakerId, updates) {
+            const speaker = multiTalkState.speakers.find(s => s.id === speakerId);
+            if (speaker) {
+                Object.assign(speaker, updates);
+            }
+        }
+
+        function updateRemoveButtonVisibility() {
+            const cards = speakersContainer.querySelectorAll('.speaker-card');
+            cards.forEach((card, index) => {
+                const removeBtn = card.querySelector('.remove-speaker');
+                if (removeBtn) {
+                    removeBtn.classList.toggle('hidden', multiTalkState.speakers.length <= 1);
+                }
+            });
+        }
+
+        // Show/hide multi-talk status
+        function showMultiStatus(message, isLoading = false) {
+            multiStatusText.textContent = message;
+            multiStatusSpinner.style.display = isLoading ? 'block' : 'none';
+            multiStatus.classList.remove('hidden');
+        }
+
+        function hideMultiStatus() {
+            multiStatus.classList.add('hidden');
+        }
+
+        // Generate multi-talk audio
+        async function generateMultiTalkAudio() {
+            const script = scriptInput.value.trim();
+
+            if (!script) {
+                showMultiStatus('Please enter a script.', false);
+                setTimeout(hideMultiStatus, 3000);
+                return;
+            }
+
+            if (multiTalkState.speakers.length === 0) {
+                showMultiStatus('Please add at least one speaker.', false);
+                setTimeout(hideMultiStatus, 3000);
+                return;
+            }
+
+            // Build speakers data
+            const speakersData = multiTalkState.speakers.map(s => ({
+                name: s.name,
+                voice_source: s.voice === 'upload' ? 'uploaded' :
+                             (s.voice === 'custom_url' ? s.customUrl : s.voice),
+                voice_data: s.voice === 'upload' ? s.fileData : null,
+                seed: s.seed
+            }));
+
+            // Validate all speakers have valid voice sources
+            for (const speaker of speakersData) {
+                if (!speaker.voice_source) {
+                    showMultiStatus(`Speaker "${speaker.name}" has no voice selected.`, false);
+                    setTimeout(hideMultiStatus, 3000);
+                    return;
+                }
+                if (speaker.voice_source === 'uploaded' && !speaker.voice_data) {
+                    showMultiStatus(`Speaker "${speaker.name}" needs an uploaded WAV file.`, false);
+                    setTimeout(hideMultiStatus, 3000);
+                    return;
+                }
+            }
+
+            // Update UI
+            multiGenerateBtn.disabled = true;
+            multiGenerateText.textContent = 'Generating...';
+            showMultiStatus('Generating multi-speaker audio...', true);
+            multiAudioSection.classList.add('hidden');
+
+            const startTime = performance.now();
+
+            try {
+                const formData = new FormData();
+                formData.append('script', script);
+                formData.append('speakers', JSON.stringify(speakersData));
+                formData.append('crossfade_ms', '100');
+
+                const response = await fetch('/multi-tts', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || `Server error: ${response.status}`);
+                }
+
+                const blob = await response.blob();
+                const totalTime = ((performance.now() - startTime) / 1000).toFixed(2);
+
+                // Update UI with audio
+                const audioUrl = URL.createObjectURL(blob);
+                multiAudio.src = audioUrl;
+
+                multiAudio.addEventListener('loadedmetadata', () => {
+                    const audioDuration = multiAudio.duration;
+                    const speedRatio = (audioDuration / parseFloat(totalTime)).toFixed(1);
+                    showMultiStatus(
+                        `Generated ${multiTalkState.speakers.length} speakers in ${totalTime}s (${speedRatio}x faster than real-time)`,
+                        false
+                    );
+                }, { once: true });
+
+                multiDownloadLink.href = audioUrl;
+                multiDownloadLink.download = 'multi-talk-audio.wav';
+                multiAudioSection.classList.remove('hidden');
+
+            } catch (error) {
+                console.error('Error generating multi-talk audio:', error);
+                showMultiStatus(`Error: ${error.message}`, false);
+            } finally {
+                multiGenerateBtn.disabled = false;
+                multiGenerateText.textContent = 'Generate Multi-Talk Audio';
+            }
+        }
+
+        // Import/Export functionality
+        function exportConfig() {
+            const config = {
+                version: '1.0',
+                speakers: multiTalkState.speakers.map(s => ({
+                    name: s.name,
+                    voice_source: s.voice === 'upload' ? 'uploaded' :
+                                 (s.voice === 'custom_url' ? s.customUrl : s.voice),
+                    voice_data: s.voice === 'upload' ? s.fileData : null,
+                    seed: s.seed
+                })),
+                script: scriptInput.value,
+                settings: {
+                    crossfade_ms: 100
+                }
+            };
+
+            const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'multi-talk-config.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function importConfig(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const config = JSON.parse(e.target.result);
+
+                    // Clear existing speakers
+                    multiTalkState.speakers = [];
+                    multiTalkState.nextSpeakerId = 1;
+                    speakersContainer.innerHTML = '';
+
+                    // Add speakers from config
+                    if (config.speakers && config.speakers.length > 0) {
+                        config.speakers.forEach(s => {
+                            // Determine voice type from voice_source
+                            let voice = s.voice_source;
+                            let customUrl = null;
+
+                            if (s.voice_source === 'uploaded') {
+                                voice = 'upload';
+                            } else if (s.voice_source &&
+                                      (s.voice_source.startsWith('hf://') ||
+                                       s.voice_source.startsWith('http://') ||
+                                       s.voice_source.startsWith('https://'))) {
+                                customUrl = s.voice_source;
+                                voice = 'custom_url';
+                            } else if (!PREDEFINED_VOICES.includes(s.voice_source)) {
+                                voice = 'alba'; // Fallback to default
+                            }
+
+                            addSpeaker({
+                                name: s.name,
+                                voice: voice,
+                                customUrl: customUrl,
+                                fileData: s.voice_data,
+                                seed: s.seed
+                            });
+                        });
+                    }
+
+                    // Set script
+                    if (config.script) {
+                        scriptInput.value = config.script;
+                    }
+
+                    showMultiStatus('Configuration imported successfully!', false);
+                    setTimeout(hideMultiStatus, 3000);
+
+                } catch (error) {
+                    console.error('Error importing config:', error);
+                    showMultiStatus(`Error importing config: ${error.message}`, false);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // Event listeners for multi-talk
+        addSpeakerBtn.addEventListener('click', () => addSpeaker());
+        multiGenerateBtn.addEventListener('click', generateMultiTalkAudio);
+        exportConfigBtn.addEventListener('click', exportConfig);
+        importConfigInput.addEventListener('change', (e) => {
+            if (e.target.files[0]) {
+                importConfig(e.target.files[0]);
+                e.target.value = ''; // Reset input
+            }
+        });
+
+        // Initialize with one default speaker
+        addSpeaker({
+            name: 'Alice',
+            voice: 'alba',
+            seed: null,
+            customUrl: null,
+            fileData: null
+        });
 
         // Focus on text input when page loads
         window.addEventListener('load', () => {

@@ -6,10 +6,13 @@ import { SynthesizeButton } from './components/SynthesizeButton';
 import { AudioPlayer } from './components/AudioPlayer';
 import { StatusIndicator } from './components/StatusIndicator';
 import { SaveVoiceModal } from './components/SaveVoiceModal';
+import { MultiTalk } from './components/MultiTalk';
 import { StreamingWavPlayer } from './lib/streaming-wav-player';
 import './types/electron.d.ts';
 
 export type GenerationStatus = 'idle' | 'generating' | 'streaming' | 'complete' | 'error';
+
+type TabType = 'single' | 'multi';
 
 interface GenerationState {
   status: GenerationStatus;
@@ -19,6 +22,7 @@ interface GenerationState {
 }
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState<TabType>('single');
   const [text, setText] = useState(
     "Hello world. I am Kyutai's Pocket TTS. I'm fast enough to run on small CPUs. I hope you'll like me."
   );
@@ -189,13 +193,40 @@ export default function App() {
 
       <div className="max-w-2xl mx-auto px-6 pb-8">
         {/* Header */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <h1 className="text-2xl font-bold text-text-primary">Pocket TTS</h1>
           <p className="text-sm text-text-secondary mt-1">
             High-quality text-to-speech that runs on your CPU
           </p>
         </div>
 
+        {/* Tab Navigation */}
+        <div className="flex border-b border-border-color mb-6">
+          <button
+            onClick={() => setActiveTab('single')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors
+              ${activeTab === 'single'
+                ? 'border-accent text-accent'
+                : 'border-transparent text-text-secondary hover:text-text-primary'
+              }`}
+          >
+            Single Voice
+          </button>
+          <button
+            onClick={() => setActiveTab('multi')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors
+              ${activeTab === 'multi'
+                ? 'border-accent text-accent'
+                : 'border-transparent text-text-secondary hover:text-text-primary'
+              }`}
+          >
+            Multi-Talk
+          </button>
+        </div>
+
+        {/* Single Voice Tab */}
+        {activeTab === 'single' && (
+          <>
         {/* Reference Audio Section */}
         <div className="mb-6">
           <ReferenceAudio
@@ -249,6 +280,11 @@ export default function App() {
             <AudioPlayer audioBlob={audioBlob} />
           </div>
         )}
+          </>
+        )}
+
+        {/* Multi-Talk Tab */}
+        {activeTab === 'multi' && <MultiTalk />}
       </div>
 
       {/* Save Voice Modal */}

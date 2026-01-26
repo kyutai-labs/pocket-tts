@@ -86,6 +86,10 @@ A native desktop application is available in the `electron/` folder. It provides
 - Real-time streaming audio playback
 - Download generated audio
 
+![Single Voice Mode](Assets/Single_Voice.jpeg)
+![Multi-Talk Mode](Assets/Multi-Talk.jpeg)
+![History View](Assets/History.jpeg)
+
 ### Running the Desktop App
 
 ```bash

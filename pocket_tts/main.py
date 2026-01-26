@@ -181,11 +181,17 @@ def serve(
     host: Annotated[str, typer.Option(help="Host to bind to")] = "localhost",
     port: Annotated[int, typer.Option(help="Port to bind to")] = 8000,
     reload: Annotated[bool, typer.Option(help="Enable auto-reload")] = False,
+    model_path: Annotated[
+        str,
+        typer.Option(
+            help="Local directory to search for model files before downloading from HuggingFace"
+        ),
+    ] = None,
 ):
     """Start the FastAPI server."""
 
     global tts_model, global_model_state
-    tts_model = TTSModel.load_model(DEFAULT_VARIANT)
+    tts_model = TTSModel.load_model(DEFAULT_VARIANT, model_path=model_path)
 
     # Pre-load the voice prompt
     global_model_state = tts_model.get_state_for_audio_prompt(voice)
@@ -224,6 +230,12 @@ def generate(
         str, typer.Option(help="Output path for generated audio")
     ] = "./tts_output.wav",
     device: Annotated[str, typer.Option(help="Device to use")] = "cpu",
+    model_path: Annotated[
+        str,
+        typer.Option(
+            help="Local directory to search for model files before downloading from HuggingFace"
+        ),
+    ] = None,
     max_tokens: Annotated[
         int, typer.Option(help="Maximum number of tokens per chunk.")
     ] = MAX_TOKEN_PER_CHUNK,
@@ -236,7 +248,7 @@ def generate(
     log_level = logging.ERROR if quiet else logging.INFO
     with enable_logging("pocket_tts", log_level):
         tts_model = TTSModel.load_model(
-            variant, temperature, lsd_decode_steps, noise_clamp, eos_threshold
+            variant, temperature, lsd_decode_steps, noise_clamp, eos_threshold, model_path
         )
         tts_model.to(device)
 

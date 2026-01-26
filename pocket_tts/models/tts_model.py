@@ -208,7 +208,8 @@ class TTSModel(nn.Module):
     def _flow_lm_current_end(self, model_state: dict) -> int:
         for module_name, module in self.flow_lm.named_modules():
             if isinstance(module, StreamingMultiheadAttention):
-                return model_state[module_name]["current_end"].shape[0]
+                offset = model_state[module_name]["offset"]
+                return int(offset.view(-1)[0].item())
         return 0
 
     def _ensure_flow_lm_cache_capacity(self, model_state: dict, required_length: int) -> None:
@@ -219,7 +220,7 @@ class TTSModel(nn.Module):
                 continue
             state = model_state[module_name]
             cache = state["cache"]
-            current_end = state["current_end"].shape[0]
+            current_end = int(state["offset"].view(-1)[0].item())
             required_length = max(required_length, current_end)
             if cache.shape[2] >= required_length:
                 continue

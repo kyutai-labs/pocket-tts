@@ -1,0 +1,57 @@
+# sig: b6369a24
+
+weights_path: hf://kyutai/pocket-tts/tts_b6369a24.safetensors@427e3d61b276ed69fdd03de0d185fa8a8d97fc5b
+weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/tts_b6369a24.safetensors@d4fdd22ae8c8e1cb3634e150ebeff1dab2d16df3
+
+flow_lm:
+  dtype: float32
+  flow:
+    depth: 6
+    dim: 512
+  transformer:
+    d_model: 1024
+    hidden_scale: 4
+    max_period: 10000
+    num_heads: 16
+    num_layers: 6
+  lookup_table:
+    dim: 1024
+    n_bins: 4000
+    tokenizer: sentencepiece
+    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/tokenizer.model@d4fdd22ae8c8e1cb3634e150ebeff1dab2d16df3
+  #weights_path: flow_lm_b6369a24.safetensors
+
+mimi:
+  dtype: float32
+  sample_rate: 24000
+  channels: 1
+  frame_rate: 12.5
+  seanet:
+    dimension: 512
+    channels: 1
+    n_filters: 64
+    n_residual_layers: 1
+    ratios:
+    - 6
+    - 5
+    - 4
+    kernel_size: 7
+    residual_kernel_size: 3
+    last_kernel_size: 3
+    dilation_base: 2
+    pad_mode: constant
+    compress: 2
+  transformer:
+    d_model: 512
+    num_heads: 8
+    num_layers: 2
+    layer_scale: 0.01
+    context: 250
+    dim_feedforward: 2048
+    input_dimension: 512
+    output_dimensions:
+    - 512
+  quantizer:
+    dimension: 32
+    output_dimension: 512
+  #weights_path: mimi_b6369a24.safetensors

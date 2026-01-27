@@ -19,11 +19,10 @@ This will generate a WAV file `./tts_output.wav` with the default text and voice
 - `--text TEXT`: Text to generate (default: "Hello world! I am Kyutai Pocket TTS. I'm fast enough to run on small CPUs. I hope you'll like me.")
 - `--voice VOICE`: Path to audio conditioning file (voice to clone) (default: "hf://kyutai/tts-voices/alba-mackenna/casual.wav"). Urls and local paths are supported.
 - `--output-path OUTPUT_PATH`: Output path for generated audio (default: "./tts_output.wav")
-- `--confg CONFIG_PATH`: Path to custom config.yaml (for loading local model files)
 
 ### Generation Parameters
 
-- `--variant VARIANT`: Model signature (default: "b6369a24")
+- `--config CONFIG_PATH`: Path to custom config.yaml (for loading local model files) or model signature (default: "b6369a24")
 - `--lsd-decode-steps LSD_DECODE_STEPS`: Number of generation steps (default: 1)
 - `--temperature TEMPERATURE`: Temperature for generation (default: 0.7)
 - `--noise-clamp NOISE_CLAMP`: Noise clamp value (default: None)

@@ -184,7 +184,7 @@ def serve(
     config: Annotated[
         str,
         typer.Option(
-            help="Model variant signature or path to locally-saved model config .yaml file"
+            help="Path to locally-saved model config .yaml file or model variant signature"
         ),
     ] = DEFAULT_VARIANT,
 ):
@@ -286,7 +286,7 @@ def export_voice(
         bool, typer.Option("-tr", "--truncate", help="Truncate long audio")
     ] = False,
     quiet: Annotated[bool, typer.Option("-q", "--quiet", help="Disable logging output")] = False,
-    variant: Annotated[str, typer.Option(help="Model signature")] = DEFAULT_VARIANT,
+    config: Annotated[str, typer.Option(help="Model config path or signature")] = DEFAULT_VARIANT,
     lsd_decode_steps: Annotated[
         int, typer.Option(help="Number of generation steps")
     ] = DEFAULT_LSD_DECODE_STEPS,
@@ -343,7 +343,7 @@ def export_voice(
 
     with enable_logging("pocket_tts", log_level):
         tts_model = TTSModel.load_model(
-            variant, temperature, lsd_decode_steps, noise_clamp, eos_threshold
+            config, temperature, lsd_decode_steps, noise_clamp, eos_threshold
         )
         tts_model.to(device)
 

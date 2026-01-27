@@ -37,12 +37,12 @@ The main class for text-to-speech generation.
 
 #### Class Methods
 
-##### `load_model(variant="b6369a24", temp=0.7, lsd_decode_steps=1, noise_clamp=None, eos_threshold=-4.0)`
+##### `load_model(config="b6369a24", temp=0.7, lsd_decode_steps=1, noise_clamp=None, eos_threshold=-4.0)`
 
 Load and return a TTSModel instance with pre-trained weights.
 
 **Parameters:**
-- `variant` (str): Model variant identifier (default: "b6369a24")
+- `config` (str): Path to model config YAML file or a variant identifier (default: "b6369a24")
 - `temp` (float): Sampling temperature for generation (default: 0.7)
 - `lsd_decode_steps` (int): Number of generation steps (default: 1)
 - `noise_clamp` (float | None): Maximum value for noise sampling (default: None)

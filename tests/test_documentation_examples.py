@@ -41,9 +41,7 @@ def test_load_model():
     model = TTSModel.load_model()
 
     # Load with custom parameters
-    model = TTSModel.load_model(
-        variant="b6369a24", temp=0.5, lsd_decode_steps=5, eos_threshold=-3.0
-    )
+    model = TTSModel.load_model(config="b6369a24", temp=0.5, lsd_decode_steps=5, eos_threshold=-3.0)
 
 
 def test_device():

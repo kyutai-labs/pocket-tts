@@ -181,7 +181,7 @@ class TTSModel(nn.Module):
     @classmethod
     def load_model(
         cls,
-        variant: str = DEFAULT_VARIANT,
+        config: str | Path = DEFAULT_VARIANT,
         temp: float | int = DEFAULT_TEMPERATURE,
         lsd_decode_steps: int = DEFAULT_LSD_DECODE_STEPS,
         noise_clamp: float | int | None = DEFAULT_NOISE_CLAMP,
@@ -194,8 +194,8 @@ class TTSModel(nn.Module):
         with the specified generation parameters and ready for inference.
 
         Args:
-            variant: Model variant identifier corresponding to a config file name
-                (e.g., '610b0b2c'). Must match a YAML file in the config directory.
+            config: a path to a custom YAML config file saved locally (e.g., C://pocket_tts/pocket_tts_config.yaml)
+                or a model variant identifier (e.g., '610b0b2c'; must match a YAML file in the config directory).
             temp: Sampling temperature for generation. Higher values produce more
                 diverse but potentially lower quality output.
             lsd_decode_steps: Number of steps for Lagrangian Self Distillation
@@ -214,7 +214,13 @@ class TTSModel(nn.Module):
                 are not found.
             ValueError: If the configuration is invalid or incompatible.
         """
-        config = load_config(Path(__file__).parents[1] / f"config/{variant}.yaml")
+        if str(config).endswith(".yaml"):
+            config_path = Path(config)
+            config = load_config(config_path)
+            logger.info(f"Loading model from config at {config_path}...")
+        else:
+            config = load_config(Path(__file__).parents[1] / f"config/{config}.yaml")
+
         tts_model = TTSModel._from_pydantic_config_with_weights(
             config, temp, lsd_decode_steps, noise_clamp, eos_threshold
         )

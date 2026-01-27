@@ -181,11 +181,17 @@ def serve(
     host: Annotated[str, typer.Option(help="Host to bind to")] = "localhost",
     port: Annotated[int, typer.Option(help="Port to bind to")] = 8000,
     reload: Annotated[bool, typer.Option(help="Enable auto-reload")] = False,
+    config: Annotated[
+        str,
+        typer.Option(
+            help="Path to locally-saved model config .yaml file or model variant signature"
+        ),
+    ] = DEFAULT_VARIANT,
 ):
     """Start the FastAPI server."""
 
     global tts_model, global_model_state
-    tts_model = TTSModel.load_model(DEFAULT_VARIANT)
+    tts_model = TTSModel.load_model(config)
 
     # Pre-load the voice prompt
     global_model_state = tts_model.get_state_for_audio_prompt(voice)
@@ -208,7 +214,9 @@ def generate(
         str, typer.Option(help="Path to audio conditioning file (voice to clone)")
     ] = DEFAULT_AUDIO_PROMPT,
     quiet: Annotated[bool, typer.Option("-q", "--quiet", help="Disable logging output")] = False,
-    variant: Annotated[str, typer.Option(help="Model signature")] = DEFAULT_VARIANT,
+    config: Annotated[
+        str, typer.Option(help="Model signature or path to config .yaml file")
+    ] = DEFAULT_VARIANT,
     lsd_decode_steps: Annotated[
         int, typer.Option(help="Number of generation steps")
     ] = DEFAULT_LSD_DECODE_STEPS,
@@ -236,7 +244,7 @@ def generate(
     log_level = logging.ERROR if quiet else logging.INFO
     with enable_logging("pocket_tts", log_level):
         tts_model = TTSModel.load_model(
-            variant, temperature, lsd_decode_steps, noise_clamp, eos_threshold
+            config, temperature, lsd_decode_steps, noise_clamp, eos_threshold
         )
         tts_model.to(device)
 
@@ -278,7 +286,7 @@ def export_voice(
         bool, typer.Option("-tr", "--truncate", help="Truncate long audio")
     ] = False,
     quiet: Annotated[bool, typer.Option("-q", "--quiet", help="Disable logging output")] = False,
-    variant: Annotated[str, typer.Option(help="Model signature")] = DEFAULT_VARIANT,
+    config: Annotated[str, typer.Option(help="Model config path or signature")] = DEFAULT_VARIANT,
     lsd_decode_steps: Annotated[
         int, typer.Option(help="Number of generation steps")
     ] = DEFAULT_LSD_DECODE_STEPS,
@@ -335,7 +343,7 @@ def export_voice(
 
     with enable_logging("pocket_tts", log_level):
         tts_model = TTSModel.load_model(
-            variant, temperature, lsd_decode_steps, noise_clamp, eos_threshold
+            config, temperature, lsd_decode_steps, noise_clamp, eos_threshold
         )
         tts_model.to(device)
 

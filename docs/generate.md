@@ -19,6 +19,7 @@ This will generate a WAV file `./tts_output.wav` with the default text and voice
 - `--text TEXT`: Text to generate (default: "Hello world! I am Kyutai Pocket TTS. I'm fast enough to run on small CPUs. I hope you'll like me.")
 - `--voice VOICE`: Path to audio conditioning file (voice to clone) (default: "hf://kyutai/tts-voices/alba-mackenna/casual.wav"). Urls and local paths are supported.
 - `--output-path OUTPUT_PATH`: Output path for generated audio (default: "./tts_output.wav")
+- `--confg CONFIG_PATH`: Path to custom config.yaml (for loading local model files)
 
 ### Generation Parameters
 
@@ -70,6 +71,19 @@ pocket-tts generate --temperature 1.0
 
 # Adjust EOS threshold, smaller means finishing earlier.
 pocket-tts generate --eos-threshold -3.0
+```
+
+### Custom Model Config
+
+If you'd like to override the paths from which the models are loaded, you can provide a custom YAML configuration. 
+
+Copy pocket_tts/config/b6369a24.yaml and change weights_path:, weights_path_without_voice_cloning: and tokenizer_path: to the paths of the models you want to load. 
+
+Then, use the --config option to point to your newly created config.
+
+```bash
+# Use a different config
+pocket-tts generate --config "C://pocket-tts/my_config.yaml"
 ```
 
 ## Output Format

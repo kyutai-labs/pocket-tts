@@ -65,10 +65,6 @@ You can use your own or check out our [voice repository](https://huggingface.co/
 Feel free to check out the [generate documentation](https://github.com/kyutai-labs/pocket-tts/tree/main/docs/generate.md) for more details and examples.
 For trying multiple voices and prompts quickly, prefer using the `serve` command.
 
-The optional `--config` argument can take either the name of a pocket-tts model variant (e.g., b6369a24) or a path to a locally-saved pocket-tts model config file in .yaml format,
-e.g., C://pocket-tts/my_pocket_tts_config.yaml.  If a path to a .yaml is used, then the models located at the paths in
-`weights_path:`, `weights_path_without_voice_cloning:` and `tokenizer_path` will be used for loading the model files. 
-
 ### The `serve` command
 
 You can also run a local server to generate audio via HTTP requests.

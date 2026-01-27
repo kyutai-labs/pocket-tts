@@ -110,10 +110,6 @@ you have multiple voices you want to use. `load_model()`
 and `get_state_for_audio_prompt()` are relatively slow operations,
 so we recommend to keep the model and voice states in memory if you can.
 
-As above, you can also load a pocket-tts model using custom paths in a locally-saved .yaml file by passing
-the path to the .yaml file as an argument for TTSModel.loadmodel:
-`tts_model = TTSModel.load_model("path/to/config.yaml")`
-
 You can check out the [Python API documentation](https://github.com/kyutai-labs/pocket-tts/tree/main/docs/python-api.md) for more details and examples.
 
 ## Unsupported features

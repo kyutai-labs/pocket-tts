@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>Pocket TTS Menu Bar</string>
+    <key>CFBundleDisplayName</key>
+    <string>Pocket TTS</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.kyutai.pocket-tts.menubar</string>
+    <key>CFBundleVersion</key>
+    <string>1.0.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleExecutable</key>
+    <string>PocketTTSMenuBar</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>12.0</string>
+    <!-- Run as menu bar app (no Dock icon) -->
+    <key>LSUIElement</key>
+    <true/>
+    <!-- Required capabilities -->
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright © 2026 Kyutai. All rights reserved.</string>
+</dict>
+</plist>

@@ -41,6 +41,22 @@ Pre-commit handles this automatically, but you can run manually:
 ### Building (No Build Step)
 This is a pure Python package with Rust extensions in `training/rust_exts/audio_ds/` for training-time audio processing. The main package does not require building.
 
+### macOS Service (Swift/Xcode Projects)
+The `macos-service/` directory contains Swift projects that require Xcode builds:
+```bash
+# Always use the xcode-builder-agent or xcodebuild-clean wrapper
+# DO NOT use bare `swift build` or `xcodebuild` (miniforge PATH conflicts)
+
+# Development/Testing - Use the consolidated script
+cd macos-service/scripts
+./dev-test.sh    # Kills old processes, builds, installs, opens Xcode
+
+# Or manually using the clean build wrapper
+/Users/system-backup/bin/xcodebuild-clean -scheme PocketTTSMenuBar build
+
+# Or use the xcode-builder-agent Task tool with subagent_type="xcode-builder-agent"
+```
+
 ## Code Structure
 
 ### Main Package (`pocket_tts/`)
@@ -86,6 +102,60 @@ This is a pure Python package with Rust extensions in `training/rust_exts/audio_
 - `test_python_api.py`: Tests for public Python API
 - `test_cli_generate.py`: Tests for CLI generate command
 - `test_documentation_examples.py`: Ensures docs examples work
+
+### macOS Service Integration (`macos-service/`)
+
+Native macOS integration for system-wide text-to-speech Quick Action.
+
+**Structure:**
+```
+macos-service/
+├── PLAN.md                          # Implementation plan and architecture
+├── README.md                        # Installation and usage guide
+├── PocketTTSMenuBar/               # Swift menu bar app (voice selection)
+│   ├── Sources/
+│   │   ├── App/                    # App delegate and main entry
+│   │   ├── Views/                  # SwiftUI views
+│   │   ├── Models/                 # Data models (Config, Voice)
+│   │   ├── Services/               # ConfigManager, VoiceManager, ServerManager
+│   │   └── Utilities/              # Constants and helpers
+│   └── Package.swift
+├── PocketTTSQuickAction/           # Swift CLI tool for Quick Action
+│   ├── Sources/
+│   │   ├── main.swift              # CLI entry point
+│   │   ├── StreamingWAVPlayer.swift # Progressive audio playback
+│   │   ├── TTSClient.swift         # HTTP client for /tts endpoint
+│   │   ├── ConfigManager.swift     # Config loading
+│   │   ├── VoiceManager.swift      # Voice lookup
+│   │   └── SharedModels.swift      # Shared data models
+│   └── Package.swift
+├── quick-actions/
+│   └── Read Selection with Pocket TTS.workflow/  # Automator Quick Action
+├── launchd/
+│   └── com.kyutai.pocket-tts.server.plist        # LaunchAgent template
+└── scripts/
+    ├── dev-test.sh                 # Development script: kill old processes, build, install
+    ├── install-service.sh          # Install LaunchAgent
+    ├── install-quick-action.sh     # Install Quick Action
+    └── uninstall-*.sh              # Uninstall scripts
+```
+
+**Key Features:**
+- **Quick Action**: Select text anywhere on macOS → Right-click → Services → "Read Selection with Pocket TTS"
+- **Menu Bar App**: Native Swift app for voice selection and server monitoring
+- **LaunchAgent**: Auto-start TTS server on login
+- **Shared Configuration**: `~/Library/Application Support/Pocket TTS/` (compatible with Electron app)
+- **Progressive Streaming**: Audio starts playing within 1-2 seconds
+- **Voice Support**: Both predefined voices and custom voice cloning
+
+**Important Notes:**
+- Swift projects must be built with `xcode-builder-agent` or `xcodebuild-clean` wrapper (miniforge PATH contamination)
+- Use `dev-test.sh` for development: kills old processes, builds both packages, installs Quick Action, opens Xcode
+- Configuration and voices are shared between Electron app, menu bar app, and Quick Action at `~/Library/Application Support/Pocket TTS/`
+- Quick Action reads are ephemeral (no history integration)
+- Server must be running on localhost:8765 for Quick Action to work
+- **Critical fix**: StreamingWAVPlayer now waits for actual playback duration instead of hardcoded 0.5s (prevents audio cutoff)
+- **Critical fix**: Menu bar app uses traditional AppKit lifecycle instead of SwiftUI App (fixes menu not appearing)
 
 ## Development Workflow
 

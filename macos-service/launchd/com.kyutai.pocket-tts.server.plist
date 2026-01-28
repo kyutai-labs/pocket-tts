@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Service identifier -->
+    <key>Label</key>
+    <string>com.kyutai.pocket-tts.server</string>
+
+    <!-- Program to run -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{UV_PATH}}</string>
+        <string>run</string>
+        <string>pocket-tts</string>
+        <string>serve</string>
+        <string>--port</string>
+        <string>8765</string>
+        <string>--host</string>
+        <string>127.0.0.1</string>
+    </array>
+
+    <!-- Working directory (project root) -->
+    <key>WorkingDirectory</key>
+    <string>{{PROJECT_ROOT}}</string>
+
+    <!-- Auto-start on login -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Restart on crash -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <!-- Standard output log -->
+    <key>StandardOutPath</key>
+    <string>/Users/{{USERNAME}}/Library/Logs/PocketTTS/server.log</string>
+
+    <!-- Standard error log -->
+    <key>StandardErrorPath</key>
+    <string>/Users/{{USERNAME}}/Library/Logs/PocketTTS/server-error.log</string>
+
+    <!-- Environment variables -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+
+    <!-- Run only when user is logged in -->
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+
+    <!-- Nice level (lower priority to not interfere with user tasks) -->
+    <key>Nice</key>
+    <integer>5</integer>
+
+    <!-- Throttle restart intervals to avoid rapid restart loops -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+</dict>
+</plist>

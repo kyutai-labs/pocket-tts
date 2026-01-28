@@ -1,0 +1,16 @@
+# Xcode
+.DS_Store
+.build/
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+
+# Swift Package Manager
+.swiftpm/
+Package.resolved
+
+# macOS
+.DS_Store
+.Spotlight-V100
+.Trashes

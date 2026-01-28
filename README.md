@@ -26,6 +26,7 @@ Supports Python 3.10, 3.11, 3.12, 3.13 and 3.14. Requires PyTorch 2.5+. Does not
 * Voice cloning
 * English only at the moment
 * Can handle infinitely long text inputs
+* **macOS Quick Action**: System-wide text reading from any application
 
 ## Trying it from the website, without installing anything
 
@@ -124,6 +125,58 @@ cd .. && npm run build:electron
 ```
 
 PyInstaller bundles the *installed* package, not the source files directly. Without reinstalling, your changes won't be included in the build.
+
+## macOS Quick Action (System-Wide Text Reading)
+
+A native macOS service that lets you read selected text aloud from any application using Pocket TTS.
+
+### Features
+
+- **System-wide integration**: Works in any macOS app (Safari, Mail, Notes, VS Code, etc.)
+- **Quick Action**: Right-click selected text → Services → "Read Selection with Pocket TTS"
+- **Progressive streaming**: Audio starts playing within 1-2 seconds
+- **Voice selection**: Uses the voice configured in menu bar app or config file
+- **Native Swift**: Lightweight (197 KB binary), instant startup
+
+### Installation
+
+1. **Install the Quick Action**:
+```bash
+cd macos-service/scripts
+./install-quick-action.sh
+```
+
+2. **Enable in System Settings**:
+   - System Settings → Keyboard → Shortcuts → Services
+   - Find "Read Selection with Pocket TTS" and enable it
+   - Optional: Assign a keyboard shortcut (e.g., ⌥⌘R)
+
+3. **Start the TTS server**:
+```bash
+# Option 1: Install LaunchAgent (auto-start on login)
+cd macos-service/scripts
+./install-service.sh
+
+# Option 2: Run manually
+uv run pocket-tts serve --port 8765
+```
+
+### Usage
+
+1. Select text anywhere on your Mac
+2. Right-click → Services → "Read Selection with Pocket TTS"
+3. Audio plays immediately using your selected voice
+
+### Components
+
+- **Quick Action**: Automator workflow that integrates with macOS Services menu
+- **CLI Tool**: Swift command-line tool (`pocket-tts-quick-action`) that handles TTS requests
+- **Menu Bar App**: Native app for voice selection and server monitoring (optional)
+- **LaunchAgent**: Background service that auto-starts the TTS server on login
+
+All components share configuration at `~/Library/Application Support/Pocket TTS/` and are compatible with the Electron desktop app.
+
+For more details, see [macos-service/README.md](macos-service/README.md) and [macos-service/PLAN.md](macos-service/PLAN.md).
 
 ## Using it as a Python library
 

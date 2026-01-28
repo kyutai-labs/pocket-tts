@@ -34,13 +34,42 @@ pocket-tts serve --host "localhost" --port 8080
 
 ### Custom Voice
 
+#### Set a different default voice
+
+By default, the server uses the "alba" voice for all requests if no `voice_url` is specified. You can change this via the `--voice` parameter.
+
 ```bash
-# Use different voice
+# Use a voice from hugging face
 pocket-tts serve --voice "hf://kyutai/tts-voices/jessica-jian/casual.wav"
 
 # Use local voice file
 pocket-tts serve --voice "./my_voice.wav"
+
+# Use local safetensors file
+pocket-tts serve --voice "./my_voice.safetensors"
 ```
+
+#### Custom Voices Directory
+
+You can place your own custom voices in the `voices/` directory under the project root. They will be made available to the server. A custom voice can be an audio file (prompt audio for cloning) or a .safetensors file (a voice embedding previously exported). Audio files will be automatically converted to safetensors on server start.
+
+For example, place `rob.wav` in `voices/`, then run:
+
+```bash
+# start server
+pocket-tts serve
+
+# get list of available voices
+curl http://localhost:8000/voices
+
+# generate audio and pipe result to ffplay
+curl -X POST http://localhost:8000/tts \
+   -F "text=Hello everyone. How is it going?" \
+   -F "voice_url=rob" | ffplay -autoexit -nodisp -f s16le -ar 24000 -
+```
+
+You can override the default location of the custom voices directory via the `serve` command's `--custom-voices-dir` parameter.
+
 ### Custom Model Config
 If you'd like to override the paths from which the models are loaded, you can provide a custom YAML configuration. 
 

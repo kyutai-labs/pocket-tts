@@ -1,3 +1,5 @@
+from pathlib import Path
+
 DEFAULT_AUDIO_PROMPT = "alba"
 DEFAULT_VARIANT = "b6369a24"
 DEFAULT_TEMPERATURE = 0.7
@@ -6,3 +8,4 @@ DEFAULT_NOISE_CLAMP = None
 DEFAULT_EOS_THRESHOLD = -4.0
 DEFAULT_FRAMES_AFTER_EOS = None
 MAX_TOKEN_PER_CHUNK = 50
+CUSTOM_VOICES_DIR = Path(__file__).resolve().parent.parent / "voices"

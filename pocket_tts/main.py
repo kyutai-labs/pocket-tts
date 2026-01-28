@@ -3,6 +3,7 @@ import logging
 import os
 import tempfile
 import threading
+from os.path import getmtime
 from pathlib import Path
 from queue import Queue
 
@@ -15,6 +16,7 @@ from typing_extensions import Annotated
 
 from pocket_tts.data.audio import stream_audio_chunks
 from pocket_tts.default_parameters import (
+    CUSTOM_VOICES_DIR,
     DEFAULT_AUDIO_PROMPT,
     DEFAULT_EOS_THRESHOLD,
     DEFAULT_FRAMES_AFTER_EOS,
@@ -42,6 +44,11 @@ cli_app = typer.Typer(
 # Global model instance
 tts_model: TTSModel | None = None
 global_model_state = None
+
+# dict of custom voices => their safetensors paths
+custom_voices: dict[str, Path] = {}
+
+SUPPORTED_AUDIO_SUFFIXES = [".wav", ".mp3", ".flac", ".ogg", ".aiff"]
 
 web_app = FastAPI(
     title="Kyutai Pocket TTS API", description="Text-to-Speech generation API", version="1.0.0"
@@ -133,18 +140,24 @@ def text_to_speech(
         raise HTTPException(status_code=400, detail="Cannot provide both voice_url and voice_wav")
 
     # Use the appropriate model state
-    if voice_url is not None:
+    if voice_url in custom_voices:
+        model_state = tts_model._cached_get_state_for_audio_prompt(custom_voices[voice_url])
+    elif voice_url is not None:
         if not (
             voice_url.startswith("http://")
             or voice_url.startswith("https://")
             or voice_url.startswith("hf://")
             or voice_url in PREDEFINED_VOICES
+            or voice_url.endswith(".safetensors")
+            and os.path.exists(voice_url)
         ):
             raise HTTPException(
-                status_code=400, detail="voice_url must start with http://, https://, or hf://"
+                status_code=400,
+                detail="voice_url not a predefined or custom voice or http://, https://, or hf://",
             )
-        model_state = tts_model._cached_get_state_for_audio_prompt(voice_url)
-        logging.warning("Using voice from URL: %s", voice_url)
+        else:
+            model_state = tts_model._cached_get_state_for_audio_prompt(voice_url)
+            logging.warning("Using voice from URL: %s", voice_url)
     elif voice_wav is not None:
         # Use uploaded voice file - preserve extension for format detection
         suffix = Path(voice_wav.filename).suffix if voice_wav.filename else ".wav"
@@ -173,6 +186,48 @@ def text_to_speech(
     )
 
 
+@web_app.get("/voices")
+def list_voices():
+    """
+    Return list of available voice style names.
+    """
+    return {"voices": sorted(list(custom_voices.keys()) + list(PREDEFINED_VOICES.keys()))}
+
+
+def load_custom_voices(in_path):
+    custom_voices.clear()
+    logger.info("Loading custom voices from {in_path}")
+
+    for path in Path(in_path).iterdir():
+        if not path.is_file():
+            continue
+        suffix = path.suffix.lower()
+        is_audio = suffix in SUPPORTED_AUDIO_SUFFIXES
+        if not is_audio and suffix != ".safetensors":  # unsupported file type
+            continue
+        voice = path.stem
+        if voice in PREDEFINED_VOICES:
+            logger.warn("Custom voice name '{voice}' conflicts with a predefined voice. Ignored")
+            continue
+        sft = path.with_suffix(".safetensors")
+        if is_audio:
+            if sft.exists() and getmtime(sft) >= getmtime(path):
+                # safetensors exist and is newer, skip
+                continue
+            try:
+                # we won't paternalistically truncate user's audio
+                # they can do it themselves or run export_voice CLI with --truncate
+                tts_model.save_audio_prompt(path, sft, truncate=False)
+            except Exception as e:
+                logger.error(f"❌ Unable to export voice '{voice}': {e}")
+                continue
+            logger.info(f"✅ Voice '{voice}' exported to '{sft}'")
+        # path is safetensors or audio was successfully converted
+        custom_voices[voice] = sft
+
+    logger.info(f"{len(custom_voices)} custom voices found in '{in_path}'")
+
+
 @cli_app.command()
 def serve(
     voice: Annotated[
@@ -187,6 +242,9 @@ def serve(
             help="Path to locally-saved model config .yaml file or model variant signature"
         ),
     ] = DEFAULT_VARIANT,
+    custom_voices_dir: Annotated[
+        str, typer.Option(help="Path to local custom voices directory")
+    ] = str(CUSTOM_VOICES_DIR),
 ):
     """Start the FastAPI server."""
 
@@ -196,6 +254,11 @@ def serve(
     # Pre-load the voice prompt
     global_model_state = tts_model.get_state_for_audio_prompt(voice)
     logger.info(f"The size of the model state is {size_of_dict(global_model_state) // 1e6} MB")
+    cvd = Path(custom_voices_dir)
+    if cvd.is_dir():
+        load_custom_voices(cvd)
+    else:
+        logger.warn(f"Custom voices directory {cvd} does not exist")
 
     uvicorn.run("pocket_tts.main:web_app", host=host, port=port, reload=reload)
 
@@ -314,7 +377,9 @@ def export_voice(
         return not url(path) and not likely_dir(path)
 
     def likely_dir(path):
-        return not url(path) and (path.endswith(("/", "\\")) or path == ".")
+        return (
+            isinstance(path, Path) or not url(path) and (path.endswith(("/", "\\")) or path == ".")
+        )
 
     def convert_one(in_path, out_path, join_path):
         """helper convert function"""
@@ -361,13 +426,7 @@ def export_voice(
                 # batch convert, output path must be directory, not file
                 out_path = Path("./")
             for path in Path(in_path).iterdir():
-                if path.is_file() and path.suffix.lower() in [
-                    ".wav",
-                    ".mp3",
-                    ".flac",
-                    ".ogg",
-                    ".aiff",
-                ]:
+                if path.is_file() and path.suffix.lower() in SUPPORTED_AUDIO_SUFFIXES:
                     if convert_one(path, out_path, True):
                         success_count += 1
         else:  # convert single file

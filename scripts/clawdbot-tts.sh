@@ -88,7 +88,15 @@ curl -s -X POST "$SERVER_URL/tts" \
 
 # Verify output
 if [ -f "$OUTPUT_FILE" ] && file "$OUTPUT_FILE" | grep -q "WAVE audio"; then
-    echo "$OUTPUT_FILE"
+    # Convert to mp3 for better Signal compatibility
+    MP3_FILE="${OUTPUT_FILE%.wav}.mp3"
+    if command -v ffmpeg &> /dev/null; then
+        ffmpeg -y -i "$OUTPUT_FILE" -c:a libmp3lame -q:a 2 "$MP3_FILE" 2>/dev/null
+        rm "$OUTPUT_FILE"  # Remove wav, keep mp3
+        echo "$MP3_FILE"
+    else
+        echo "$OUTPUT_FILE"
+    fi
 else
     echo "Error: Failed to generate audio"
     exit 1

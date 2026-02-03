@@ -11,9 +11,9 @@ plugins:
       handlers:
         python:
           options:
-            show_inheritance_diagram: true
-            heading_level: 2
+            heading_level: 1
             show_root_heading: true
+            type_parameter_headings: true
             show_symbol_type_heading: true
             show_symbol_type_toc: true
 

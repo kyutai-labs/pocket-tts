@@ -212,6 +212,17 @@ class TTSModel(nn.Module):
             FileNotFoundError: If the specified config file or model weights
                 are not found.
             ValueError: If the configuration is invalid or incompatible.
+
+        Example:
+            ```python
+            from pocket_tts import TTSModel
+
+            # Load with default settings
+            model = TTSModel.load_model()
+
+            # Load with custom parameters
+            model = TTSModel.load_model(variant="b6369a24", temp=0.5, lsd_decode_steps=5, eos_threshold=-3.0)
+            ```
         """
         if str(config).endswith(".yaml"):
             config_path = Path(config)
@@ -405,6 +416,21 @@ class TTSModel(nn.Module):
         Raises:
             ValueError: If text_to_generate is empty or invalid.
             RuntimeError: If generation fails due to model errors.
+
+        Example:
+            ```python
+            from pocket_tts import TTSModel
+
+            model = TTSModel.load_model()
+
+            voice_state = model.get_state_for_audio_prompt("hf://kyutai/tts-voices/alba-mackenna/casual.wav")
+
+            # Generate audio
+            audio = model.generate_audio(voice_state, "Hello world!", frames_after_eos=2, copy_state=True)
+
+            print(f"Generated audio shape: {audio.shape}")
+            print(f"Audio duration: {audio.shape[-1] / model.sample_rate:.2f} seconds")
+            ```
         """
         audio_chunks = []
         for chunk in self.generate_audio_stream(
@@ -456,6 +482,20 @@ class TTSModel(nn.Module):
         Raises:
             ValueError: If text_to_generate is empty or invalid.
             RuntimeError: If generation fails due to model errors or threading issues.
+
+        Example:
+            ```python
+            from pocket_tts import TTSModel
+
+            model = TTSModel.load_model()
+
+            voice_state = model.get_state_for_audio_prompt("hf://kyutai/tts-voices/alba-mackenna/casual.wav")
+            # Stream generation
+            for chunk in model.generate_audio_stream(voice_state, "Long text content..."):
+                # Process each chunk as it's generated
+                print(f"Generated chunk: {chunk.shape[0]} samples")
+                # Could save chunks to file or play in real-time
+            ```
 
         Note:
             This method uses multithreading to parallelize latent generation
@@ -660,6 +700,27 @@ class TTSModel(nn.Module):
             ValueError: If audio tensor is invalid or empty.
             RuntimeError: If audio processing or encoding fails.
 
+        Example:
+            ```python
+            from pocket_tts import TTSModel
+
+            model = TTSModel.load_model()
+            # From HuggingFace URL
+            voice_state = model.get_state_for_audio_prompt("hf://kyutai/tts-voices/alba-mackenna/casual.wav")
+
+            # From local file
+            voice_state = model.get_state_for_audio_prompt("./my_voice.wav")
+
+            # Reload state from a .safetensors file (much faster than extracting from an audio file)
+            voice_state = model.get_state_for_audio_prompt("./my_voices.safetensors")
+
+            # From HTTP URL
+            voice_state = model.get_state_for_audio_prompt(
+                "https://huggingface.co/kyutai/tts-voices/resolve"
+                "/main/expresso/ex01-ex02_default_001_channel1_168s.wav"
+            )
+            ```
+
         Note:
             - Audio is automatically resampled to the model's sample rate (24kHz)
             - The audio is encoded using the Mimi compression model and projected
@@ -747,6 +808,23 @@ class TTSModel(nn.Module):
             FileNotFoundError: If audio file path doesn't exist.
             ValueError: If audio tensor export path is invalid or empty.
             RuntimeError: If audio processing or encoding fails.
+
+        Example:
+            ```python
+            from pocket_tts import TTSModel
+
+            model = TTSModel.load_model()
+            # From HuggingFace URL
+            model.get_state_for_audio_prompt(
+                "hf://kyutai/tts-voices/alba-mackenna/casual.wav", "casual.safetensors"
+            )
+
+            # From local file (the .safetensors extension will be added automatically)
+            tensor = model.get_state_for_audio_prompt("./my_voice.wav", "my_voice")
+
+            # Use the tensor, Luke!
+            audio = model.generate_audio(tensor, "Hello world!")
+            ```
 
         Note:
             - Send resulting audio tensor to get_state_for_audio_prompt

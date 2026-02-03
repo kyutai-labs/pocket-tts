@@ -283,33 +283,6 @@ class TTSModel(nn.Module):
         conditioning = F.linear(latents, self.flow_lm.speaker_proj_weight)
         return conditioning
 
-    def _slice_kv_cache(self, model_state: dict, num_frames: int) -> None:
-        """Slice KV cache to only keep the first num_frames elements.
-
-        This optimizes memory usage when caching voice states by discarding
-        unused cache capacity beyond the actual audio prompt length.
-
-        Args:
-            model_state: The model state dict containing KV caches for all modules
-            num_frames: Number of frames to keep in the KV cache
-        """
-        original_size = 0
-        sliced_size = 0
-        for module_name, module_state in model_state.items():
-            if "cache" in module_state:
-                # KV cache has shape [2, batch_size, sequence_length, num_heads, dim_per_head]
-                cache = module_state["cache"]
-                original_size += cache.numel() * cache.element_size()
-                # Slice to keep only the first num_frames positions
-                module_state["cache"] = cache[:, :, :num_frames, :, :].clone()
-                sliced_size += module_state["cache"].numel() * module_state["cache"].element_size()
-
-        memory_saved_mb = (original_size - sliced_size) / (1024 * 1024)
-        logger.info(
-            f"Sliced KV cache from {original_size / (1024 * 1024):.1f} MB to {sliced_size / (1024 * 1024):.1f} MB "
-            f"(saved {memory_saved_mb:.1f} MB)"
-        )
-
     def _expand_kv_cache(self, model_state: dict, sequence_length: int) -> None:
         """Expand KV cache back to full sequence_length for generation.
 
@@ -348,14 +321,17 @@ class TTSModel(nn.Module):
             current_end = module_state.get("current_end")
             if current_end is not None:
                 return int(current_end.shape[0])
-        return 0
+        raise ValueError(
+            "Could not find current_end in model state, please open an issue "
+            "at https://github.com/kyutai-labs/pocket-tts/issues"
+        )
 
     @torch.no_grad
     def _decode_audio_worker(self, latents_queue: queue.Queue, result_queue: queue.Queue):
         """Worker thread function for decoding audio latents from queue with immediate streaming."""
         try:
             audio_chunks = []
-            mimi_context = max(1, int(self.config.mimi.transformer.context))
+            mimi_context = self.config.mimi.transformer.context
             mimi_state = init_states(self.mimi, batch_size=1, sequence_length=mimi_context)
             while True:
                 latent = latents_queue.get()
@@ -726,16 +702,14 @@ class TTSModel(nn.Module):
             with display_execution_time("Encoding audio prompt"):
                 prompt = self._encode_audio(audio_conditioning.unsqueeze(0).to(self.device))
 
-        prompt_length = int(prompt.shape[1]) if prompt.ndim >= 2 else 1
-        prompt_length = max(prompt_length, 1)
-        model_state = init_states(self.flow_lm, batch_size=1, sequence_length=prompt_length)
+        model_state = init_states(self.flow_lm, batch_size=1, sequence_length=prompt.shape[1])
 
         with display_execution_time("Prompting audio"):
             self._run_flow_lm_and_increment_step(model_state=model_state, audio_conditioning=prompt)
 
-        # Optimize memory by slicing KV cache to only keep frames from the audio prompt
-        num_audio_frames = prompt.shape[1]
-        self._slice_kv_cache(model_state, num_audio_frames)
+        logger.info(
+            "Size of the model state for audio prompt: %d MB", size_of_dict(model_state) // 1e6
+        )
 
         return model_state
 

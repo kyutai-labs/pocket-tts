@@ -76,7 +76,7 @@ def test_generate_with_custom_parameters(tmp_path):
             "generate",
             "--text",
             "Testing custom parameters.",
-            "--variant",
+            "--config",
             DEFAULT_VARIANT,
             "--temperature",
             "0.8",

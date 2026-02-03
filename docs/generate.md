@@ -22,7 +22,7 @@ This will generate a WAV file `./tts_output.wav` with the default text and voice
 
 ### Generation Parameters
 
-- `--variant VARIANT`: Model signature (default: "b6369a24")
+- `--config CONFIG_PATH`: Path to custom config.yaml (for loading local model files) or model signature (default: "b6369a24")
 - `--lsd-decode-steps LSD_DECODE_STEPS`: Number of generation steps (default: 1)
 - `--temperature TEMPERATURE`: Temperature for generation (default: 0.7)
 - `--noise-clamp NOISE_CLAMP`: Noise clamp value (default: None)
@@ -57,7 +57,11 @@ pocket-tts generate --voice "hf://kyutai/tts-voices/jessica-jian/casual.wav"
 
 # Use local voice file
 pocket-tts generate --voice "./my_voice.wav"
+
+# Use a safetensors file (such as one created using `pocket-tts export-voice`)
+pocket-tts generate --voice "./my_voice.safetensors"
 ```
+
 
 ### Quality Tuning
 
@@ -70,6 +74,19 @@ pocket-tts generate --temperature 1.0
 
 # Adjust EOS threshold, smaller means finishing earlier.
 pocket-tts generate --eos-threshold -3.0
+```
+
+### Custom Model Config
+
+If you'd like to override the paths from which the models are loaded, you can provide a custom YAML configuration. 
+
+Copy pocket_tts/config/b6369a24.yaml and change weights_path:, weights_path_without_voice_cloning: and tokenizer_path: to the paths of the models you want to load. 
+
+Then, use the --config option to point to your newly created config.
+
+```bash
+# Use a different config
+pocket-tts generate --config "C://pocket-tts/my_config.yaml"
 ```
 
 ## Output Format

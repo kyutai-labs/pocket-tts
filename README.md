@@ -144,9 +144,12 @@ We don't have official support for this yet, but you can try out one of these co
 - [ekzhang/jax-js](https://github.com/ekzhang/jax-js/tree/main/website/src/routes/tts): Using jax-js, a ML library for the web. Demo [here](https://jax-js.com/tts)
 - [KevinAHM/pocket-tts-onnx-export](https://github.com/KevinAHM/pocket-tts-onnx-export): Model exported to .onnx and run using [ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/). Demo [here](https://huggingface.co/spaces/KevinAHM/pocket-tts-web)
 
+## Alterative implementations
+- [jishnuvenugopal/pocket-tts-mlx](https://github.com/jishnuvenugopal/pocket-tts-mlx) - MLX backend optimized for Apple Silicon
+- [babybirdprd/pocket-tts](https://github.com/babybirdprd/pocket-tts) - Candle version (Rust) with WebAssembly and PyO3 bindings.
+
 ## Projects using Pocket TTS
 
-- [jishnuvenugopal/pocket-tts-mlx](https://github.com/jishnuvenugopal/pocket-tts-mlx) - MLX backend optimized for Apple Silicon
 - [lukasmwerner/pocket-reader](https://github.com/lukasmwerner/pocket-reader) - Browser screen reader
 - [ikidd/pocket-tts-wyoming](https://github.com/ikidd/pocket-tts-wyoming) - Docker container for pocket-tts using Wyoming protocol, ready for Home Assistant Voice use.
 - [slaughters85j/pocket-tts](https://github.com/slaughters85j/pocket-tts) - Mac Desktop App + macOS Quick Action

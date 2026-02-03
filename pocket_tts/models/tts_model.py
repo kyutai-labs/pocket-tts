@@ -560,8 +560,7 @@ class TTSModel(nn.Module):
     ):
         prepared = self.flow_lm.conditioner.prepare(text_to_generate)
         token_count = prepared.tokens.shape[1]
-        word_count = len(text_to_generate.split())
-        max_gen_len = self._estimate_max_gen_len(token_count, word_count)
+        max_gen_len = self._estimate_max_gen_len(token_count)
         current_end = self._flow_lm_current_end(model_state)
         required_len = current_end + token_count + max_gen_len
         self._expand_kv_cache(model_state, sequence_length=required_len)
@@ -713,14 +712,10 @@ class TTSModel(nn.Module):
 
         return model_state
 
-    def _estimate_max_gen_len(self, token_count: int, word_count: int | None = None) -> int:
-        if token_count > 0:
-            gen_len_sec = token_count / self._TOKENS_PER_SECOND_ESTIMATE + self._GEN_SECONDS_PADDING
-        else:
-            wc = word_count or 0
-            gen_len_sec = wc * 1.0 + self._GEN_SECONDS_PADDING
-        frame_rate = float(self.config.mimi.frame_rate)
-        return max(int(math.ceil(gen_len_sec * frame_rate)), 1)
+    def _estimate_max_gen_len(self, token_count: int) -> int:
+        gen_len_sec = token_count / self._TOKENS_PER_SECOND_ESTIMATE + self._GEN_SECONDS_PADDING
+        frame_rate = self.config.mimi.frame_rate
+        return math.ceil(gen_len_sec * frame_rate)
 
     @torch.no_grad
     def save_audio_prompt(

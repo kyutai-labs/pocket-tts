@@ -19,7 +19,7 @@ plugins:
 
 theme:
   name: material
-  logo: logo.png
+  logo: mascot.png
   icon:
     repo: fontawesome/brands/github
   features:

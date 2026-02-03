@@ -146,6 +146,7 @@ We don't have official support for this yet, but you can try out one of these co
 
 ## Projects using Pocket TTS
 
+- [jishnuvenugopal/pocket-tts-mlx](https://github.com/jishnuvenugopal/pocket-tts-mlx) - MLX backend optimized for Apple Silicon
 - [lukasmwerner/pocket-reader](https://github.com/lukasmwerner/pocket-reader) - Browser screen reader
 - [ikidd/pocket-tts-wyoming](https://github.com/ikidd/pocket-tts-wyoming) - Docker container for pocket-tts using Wyoming protocol, ready for Home Assistant Voice use.
 - [slaughters85j/pocket-tts](https://github.com/slaughters85j/pocket-tts) - Mac Desktop App + macOS Quick Action

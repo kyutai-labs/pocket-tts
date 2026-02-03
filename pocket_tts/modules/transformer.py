@@ -1,5 +1,3 @@
-from typing import Literal, NamedTuple
-
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -21,48 +19,6 @@ def complete_kv(
     return valid[0], valid[1]
 
 
-class RingKVCacheResult(NamedTuple):
-    keys: torch.Tensor
-    values: torch.Tensor
-    positions: torch.Tensor
-
-
-def complete_ring_kv(
-    cache: torch.Tensor, end_offset: torch.Tensor, k: torch.Tensor, v: torch.Tensor
-) -> RingKVCacheResult:
-    capacity = cache.shape[3]
-    assert k.shape[:-1] == v.shape[:-1], (k.shape, v.shape)
-    B, H, T, D = k.shape
-    assert T > 0
-    indexes = torch.arange(T, device=end_offset.device, dtype=end_offset.dtype)
-    indexes = indexes + end_offset.view(-1, 1)
-    indexes = indexes % capacity
-    # indexes is [B, T]
-    # k is [B, H, T, D]
-    # cache is [B, H, T', D]
-    this_indexes = indexes.view(B, 1, T, 1)
-    this_indexes = this_indexes.expand(-1, H, T, D)
-    cache[0].scatter_(2, this_indexes, k)
-    cache[1].scatter_(2, this_indexes, v)
-
-    keys = cache[0]
-    values = cache[1]
-
-    indexes = torch.arange(capacity, device=end_offset.device, dtype=torch.long)
-
-    # end_index correspond to the actual index where the last value was written.
-    last_offset = end_offset.view(-1, 1) + T - 1
-    end_index = last_offset % capacity
-    delta = indexes - end_index
-
-    positions = torch.where(delta <= 0, last_offset + delta, last_offset + delta - capacity)
-    end_offset[:] = end_offset + T
-    invalid = indexes >= end_offset.view(-1, 1)
-    positions = torch.where(invalid, torch.full_like(positions, -1), positions)
-
-    return RingKVCacheResult(keys, values, positions)
-
-
 def _build_attention_mask(
     pos_q: torch.Tensor, pos_k: torch.Tensor, context: int | None
 ) -> torch.Tensor:
@@ -78,10 +34,6 @@ def _build_attention_mask(
 #   - offset: torch.long[B]  # absolute time index for the next write / RoPE offset
 #                            # (batch must be in sync)
 #   - cache:  torch.[dtype][2, B, T, H, D]  # K/V stored contiguously along T (allocated capacity)
-# - Ring cache (Mimi / fixed context window):
-#   - offset:     torch.long[B]  # absolute time index for queries / RoPE offset
-#   - end_offset: torch.long[B]  # total number of keys written so far (used to mark invalid slots)
-#   - cache:      torch.[dtype][2, B, H, T, D]  # fixed-size ring buffer over T==capacity
 
 
 class _LinearKVCacheBackend:
@@ -110,47 +62,6 @@ class _LinearKVCacheBackend:
     def rope_offset(
         self, state: dict[str, torch.Tensor] | None, batch_size: int, device: torch.device
     ) -> torch.Tensor:
-        return state["offset"].view(-1)[0]
-
-    def append_and_get(
-        self, k: torch.Tensor, v: torch.Tensor, state: dict[str, torch.Tensor] | None
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        if state is None:
-            raise ValueError("model_state must be provided for linear cache mode")
-        cache_k, cache_v = complete_kv(state["cache"], state["offset"], k, v)
-        k_attn = cache_k.permute(0, 2, 1, 3)
-        v_attn = cache_v.permute(0, 2, 1, 3)
-        pos_k = torch.arange(k_attn.shape[2], device=k_attn.device, dtype=torch.long)
-        pos_k = pos_k.view(1, -1).expand(k_attn.shape[0], -1)
-        return k_attn, v_attn, pos_k, state["offset"]
-
-
-class _RingKVCacheBackend:
-    requires_state = False
-
-    def __init__(self, num_heads: int, dim_per_head: int):
-        self.num_heads = num_heads
-        self.dim_per_head = dim_per_head
-
-    def init_state(
-        self, batch_size: int, sequence_length: int, device: torch.device, dtype: torch.dtype
-    ) -> dict[str, torch.Tensor]:
-        return dict(
-            offset=torch.zeros(batch_size, dtype=torch.long, device=device),
-            end_offset=torch.zeros(batch_size, dtype=torch.long, device=device),
-            cache=torch.zeros(
-                (2, batch_size, self.num_heads, sequence_length, self.dim_per_head),
-                device=device,
-                dtype=dtype,
-            ),
-        )
-
-    def increment_step(self, state: dict[str, torch.Tensor], increment: int) -> None:
-        state["offset"] += increment
-
-    def rope_offset(
-        self, state: dict[str, torch.Tensor] | None, batch_size: int, device: torch.device
-    ) -> torch.Tensor:
         if state is None:
             return torch.zeros((), dtype=torch.long, device=device)
         return state["offset"].view(-1)[0]
@@ -158,15 +69,19 @@ class _RingKVCacheBackend:
     def append_and_get(
         self, k: torch.Tensor, v: torch.Tensor, state: dict[str, torch.Tensor] | None
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        k = k.permute(0, 2, 1, 3)
-        v = v.permute(0, 2, 1, 3)
         if state is None:
-            pos_k = torch.arange(k.shape[2], device=k.device, dtype=torch.long)
-            pos_k = pos_k.view(1, -1).expand(k.shape[0], -1)
-            offset = torch.zeros(k.shape[0], device=k.device, dtype=torch.long)
-            return k, v, pos_k, offset
-        result = complete_ring_kv(state["cache"], state["end_offset"], k, v)
-        return result.keys, result.values, result.positions, state["offset"]
+            k_attn = k.permute(0, 2, 1, 3)
+            v_attn = v.permute(0, 2, 1, 3)
+            pos_k = torch.arange(k_attn.shape[2], device=k_attn.device, dtype=torch.long)
+            pos_k = pos_k.view(1, -1).expand(k_attn.shape[0], -1)
+            offset = torch.zeros(k_attn.shape[0], device=k_attn.device, dtype=torch.long)
+            return k_attn, v_attn, pos_k, offset
+        cache_k, cache_v = complete_kv(state["cache"], state["offset"], k, v)
+        k_attn = cache_k.permute(0, 2, 1, 3)
+        v_attn = cache_v.permute(0, 2, 1, 3)
+        pos_k = torch.arange(k_attn.shape[2], device=k_attn.device, dtype=torch.long)
+        pos_k = pos_k.view(1, -1).expand(k_attn.shape[0], -1)
+        return k_attn, v_attn, pos_k, state["offset"]
 
 
 class StreamingMultiheadAttention(StatefulModule):
@@ -183,12 +98,7 @@ class StreamingMultiheadAttention(StatefulModule):
     """
 
     def __init__(
-        self,
-        embed_dim: int,
-        num_heads: int,
-        rope: RotaryEmbedding,
-        context: int | None = None,
-        cache_kind: Literal["linear", "ring"] | None = None,
+        self, embed_dim: int, num_heads: int, rope: RotaryEmbedding, context: int | None = None
     ):
         super().__init__()
 
@@ -197,15 +107,7 @@ class StreamingMultiheadAttention(StatefulModule):
         self.num_heads = num_heads
         self.context = context
         self.dim_per_head = embed_dim // num_heads
-        if cache_kind is None:
-            cache_kind = "ring" if context is not None else "linear"
-        self.cache_kind = cache_kind
-        if self.cache_kind == "ring" and self.context is None:
-            raise ValueError("context must be provided when cache_kind='ring'")
-        if self.cache_kind == "ring":
-            self._cache_backend = _RingKVCacheBackend(self.num_heads, self.dim_per_head)
-        else:
-            self._cache_backend = _LinearKVCacheBackend(self.num_heads, self.dim_per_head)
+        self._cache_backend = _LinearKVCacheBackend(self.num_heads, self.dim_per_head)
 
         out_dim = embed_dim
         num_kv = num_heads
@@ -225,8 +127,6 @@ class StreamingMultiheadAttention(StatefulModule):
 
     def forward(self, query: torch.Tensor, model_state: dict | None):
         state = None if model_state is None else self.get_state(model_state)
-        if state is None and self._cache_backend.requires_state:
-            raise ValueError("model_state must be provided for linear cache mode")
 
         projected = self.in_proj(query)
         # Reshape from (b, t, p*h*d) to (b, t, p, h, d) where p=3, h=num_heads

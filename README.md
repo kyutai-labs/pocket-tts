@@ -133,7 +133,7 @@ A native macOS service that lets you read selected text aloud from any applicati
 ### Features
 
 - **System-wide integration**: Works in any macOS app (Safari, Mail, Notes, VS Code, etc.)
-- **Quick Action**: Right-click selected text → Services → "Read Selection with Pocket TTS"
+- **Quick Action**: Right-click selected text → Services → "Read Selection with Pocket TTS" OR assign a keyboard shortcut like 'F19' in Settings>Keyboard>Keyboard Shortcuts...>Services>Text> Enable to the "Read Selection with Pocket TTS" checkbox option
 - **Progressive streaming**: Audio starts playing within 1-2 seconds
 - **Voice selection**: Uses the voice configured in menu bar app or config file
 - **Native Swift**: Lightweight (197 KB binary), instant startup

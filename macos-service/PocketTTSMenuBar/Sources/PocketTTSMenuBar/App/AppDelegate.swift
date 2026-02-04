@@ -138,6 +138,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     
     // MARK: - NSMenuDelegate
     
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        // Reload voices from disk before menu displays
+        voiceManager.reload()
+        refreshVoiceSubmenu()
+    }
+    
     func menuWillOpen(_ menu: NSMenu) {
         print("=== MENU WILL OPEN ===")
         print("Menu: \(Unmanaged.passUnretained(menu).toOpaque())")
@@ -146,6 +152,38 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     
     func menuDidClose(_ menu: NSMenu) {
         print("=== MENU DID CLOSE ===")
+    }
+    
+    /// Update voice submenu items without rebuilding entire menu
+    @MainActor
+    private func refreshVoiceSubmenu() {
+        // Find the "Select Voice" menu item
+        guard let selectVoiceItem = menu.items.first(where: { $0.title == "Select Voice" }),
+              let voiceMenu = selectVoiceItem.submenu else {
+            return
+        }
+        
+        // Clear existing items
+        voiceMenu.removeAllItems()
+        
+        // Rebuild voice items
+        let selectedVoiceId = configManager.config.selectedVoiceId
+        
+        for voice in voiceManager.voices {
+            let voiceItem = NSMenuItem(
+                title: "\(voice.name) (\(voice.type.rawValue))",
+                action: #selector(selectVoice(_:)),
+                keyEquivalent: ""
+            )
+            voiceItem.target = self
+            voiceItem.representedObject = voice
+            
+            if voice.id == selectedVoiceId {
+                voiceItem.state = .on
+            }
+            
+            voiceMenu.addItem(voiceItem)
+        }
     }
 
     private func setupObservers() {

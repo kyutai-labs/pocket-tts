@@ -789,6 +789,8 @@ def prepare_text_prompt(text: str) -> tuple[str, int]:
     if text == "":
         raise ValueError("Text prompt cannot be empty")
     text = text.replace("\n", " ").replace("\r", " ").replace("  ", " ")
+    # Normalize smart quotes to straight quotes
+    text = text.replace("’", "'").replace("‘", "'").replace("`", "'")
     number_of_words = len(text.split())
     if number_of_words <= 4:
         frames_after_eos_guess = 3

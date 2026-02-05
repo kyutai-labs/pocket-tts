@@ -53,6 +53,58 @@ Then, use the --config option to point to your newly created config.
 pocket-tts serve --config "C://pocket-tts/my_config.yaml"
 ```
 
+## OpenAI-Compatible Endpoint
+
+The server exposes `POST /v1/audio/speech`, a drop-in replacement for the
+[OpenAI TTS API](https://platform.openai.com/docs/api-reference/audio/createSpeech).
+Existing apps only need to change their `base_url` to point at Pocket TTS.
+
+### curl example
+
+```bash
+curl http://localhost:8000/v1/audio/speech \
+  -H "Content-Type: application/json" \
+  -d '{"model":"tts-1","input":"Hello world","voice":"alloy"}' \
+  --output speech.wav
+```
+
+### Voice mapping
+
+OpenAI voice names are mapped to Pocket TTS voices automatically.
+You can also use the native Pocket TTS names directly.
+
+| OpenAI voice | Pocket TTS voice |
+|-------------|------------------|
+| alloy       | alba             |
+| echo        | marius           |
+| fable       | javert           |
+| onyx        | jean             |
+| nova        | fantine          |
+| shimmer     | cosette          |
+| coral       | eponine          |
+| sage        | azelma           |
+
+### Using with the OpenAI Python client
+
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="http://localhost:8000/v1", api_key="not-needed")
+
+response = client.audio.speech.create(model="tts-1", voice="alloy", input="Hello from Pocket TTS!")
+response.stream_to_file("speech.wav")
+```
+
+### Supported parameters
+
+| Parameter        | Supported | Notes                                |
+|-----------------|-----------|--------------------------------------|
+| model           | ignored   | Only one model, any value accepted   |
+| input           | yes       | Text to speak                        |
+| voice           | yes       | OpenAI or Pocket TTS name            |
+| response_format | partial   | `wav` (default) and `pcm` supported  |
+| speed           | ignored   | Accepted but has no effect           |
+
 ## Web Interface
 
 Once the server is running, navigate to `http://localhost:8000` to access the web interface.

@@ -11,6 +11,7 @@ import uvicorn
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel, Field
 from typing_extensions import Annotated
 
 from pocket_tts.data.audio import stream_audio_chunks
@@ -168,6 +169,95 @@ def text_to_speech(
         media_type="audio/wav",
         headers={
             "Content-Disposition": "attachment; filename=generated_speech.wav",
+            "Transfer-Encoding": "chunked",
+        },
+    )
+
+
+# ------------------------------------------------------
+# OpenAI-compatible TTS endpoint
+# ------------------------------------------------------
+
+# Map OpenAI voice names to Pocket TTS voice names
+OPENAI_VOICE_MAP = {
+    "alloy": "alba",
+    "echo": "marius",
+    "fable": "javert",
+    "onyx": "jean",
+    "nova": "fantine",
+    "shimmer": "cosette",
+    "coral": "eponine",
+    "sage": "azelma",
+}
+
+POCKET_TTS_VOICES = {"alba", "marius", "javert", "jean", "fantine", "cosette", "eponine", "azelma"}
+
+
+class CreateSpeechRequest(BaseModel):
+    model: str
+    input: str
+    voice: str
+    response_format: str = "wav"
+    speed: float = Field(default=1.0, ge=0.25, le=4.0)
+
+
+def resolve_voice(voice: str) -> str | None:
+    """Resolve an OpenAI or Pocket TTS voice name to a Pocket TTS voice name."""
+    lower = voice.lower()
+    if lower in POCKET_TTS_VOICES:
+        return lower
+    return OPENAI_VOICE_MAP.get(lower)
+
+
+def generate_pcm_data_with_state(text_to_generate: str, model_state: dict):
+    """Yield raw 16-bit little-endian PCM chunks at 24 kHz."""
+    audio_chunks = tts_model.generate_audio_stream(
+        model_state=model_state, text_to_generate=text_to_generate
+    )
+    for chunk in audio_chunks:
+        chunk_int16 = (chunk.clamp(-1, 1) * 32767).short()
+        yield chunk_int16.detach().cpu().numpy().tobytes()
+
+
+@web_app.post("/v1/audio/speech")
+def create_speech(request: CreateSpeechRequest):
+    """OpenAI-compatible text-to-speech endpoint."""
+    if not request.input.strip():
+        raise HTTPException(status_code=400, detail="Input text cannot be empty.")
+
+    voice_name = resolve_voice(request.voice)
+    if voice_name is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown voice '{request.voice}'. "
+            f"Available voices: {sorted(POCKET_TTS_VOICES | set(OPENAI_VOICE_MAP))}",
+        )
+
+    if request.response_format not in ("wav", "pcm"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported response_format '{request.response_format}'. Use 'wav' or 'pcm'.",
+        )
+
+    if request.speed != 1.0:
+        logger.warning(
+            "speed=%.2f requested but speed control is not supported; ignoring", request.speed
+        )
+
+    model_state = tts_model._cached_get_state_for_audio_prompt(voice_name)
+
+    if request.response_format == "pcm":
+        return StreamingResponse(
+            generate_pcm_data_with_state(request.input, model_state),
+            media_type="audio/pcm",
+            headers={"Transfer-Encoding": "chunked"},
+        )
+
+    return StreamingResponse(
+        generate_data_with_state(request.input, model_state),
+        media_type="audio/wav",
+        headers={
+            "Content-Disposition": "attachment; filename=speech.wav",
             "Transfer-Encoding": "chunked",
         },
     )

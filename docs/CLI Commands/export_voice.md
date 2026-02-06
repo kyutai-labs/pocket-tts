@@ -1,4 +1,4 @@
-# Export Voice Command Documentation
+# Export Voice
 
 Kyutai Pocket TTS allows you to generate speech from an audio sample. However, processing an audio file each time is relatively slow and inefficient.
 

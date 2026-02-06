@@ -1,0 +1,66 @@
+site_name: Pocket TTS
+repo_url: https://github.com/kyutai-labs/pocket-tts
+repo_name: kyutai-labs/pocket-tts
+extra:
+  generator: false
+
+plugins:
+  - search
+  - autolinks
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            heading_level: 1
+            show_root_heading: true
+            type_parameter_headings: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+
+theme:
+  name: material
+  logo: mascot.png
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.footer
+    - content.code.copy
+    - content.code.select
+
+  palette:
+    # Palette toggle for automatic mode
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - admonition
+  - pymdownx.details
+
+docs_dir: docs-src
+site_dir: docs

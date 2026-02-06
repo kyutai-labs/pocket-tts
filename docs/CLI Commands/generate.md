@@ -1,4 +1,4 @@
-# Generate Command Documentation
+# Generate
 
 The `generate` command allows you to generate speech from text directly from the command line using Kyutai Pocket TTS.
 
@@ -62,7 +62,6 @@ pocket-tts generate --voice "./my_voice.wav"
 pocket-tts generate --voice "./my_voice.safetensors"
 ```
 
-
 ### Quality Tuning
 
 ```bash
@@ -78,9 +77,9 @@ pocket-tts generate --eos-threshold -3.0
 
 ### Custom Model Config
 
-If you'd like to override the paths from which the models are loaded, you can provide a custom YAML configuration. 
+If you'd like to override the paths from which the models are loaded, you can provide a custom YAML configuration.
 
-Copy pocket_tts/config/b6369a24.yaml and change weights_path:, weights_path_without_voice_cloning: and tokenizer_path: to the paths of the models you want to load. 
+Copy pocket_tts/config/b6369a24.yaml and change weights_path:, weights_path_without_voice_cloning: and tokenizer_path: to the paths of the models you want to load.
 
 Then, use the --config option to point to your newly created config.
 
@@ -92,6 +91,7 @@ pocket-tts generate --config "C://pocket-tts/my_config.yaml"
 ## Output Format
 
 The generate command always outputs WAV files in the following format:
+
 - **Sample Rate**: 24kHz
 - **Channels**: Mono
 - **Bit Depth**: 16-bit PCM

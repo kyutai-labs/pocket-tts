@@ -31,6 +31,10 @@ audio = ["soundfile>=0.12.0"]
 dev = [
     "coverage>=7.6.12",
     "line-profiler>=5.0.0",
+    "mkdocs>=1.6.1",
+    "mkdocs-autolinks-plugin>=0.7.1",
+    "mkdocs-material>=9.7.1",
+    "mkdocstrings-python>=2.0.1",
     "pytest>=9.0.2",
     "pytest-xdist>=3.8.0",
 ]

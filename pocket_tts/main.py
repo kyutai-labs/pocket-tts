@@ -1,6 +1,7 @@
 import io
 import logging
 import os
+import sys
 import tempfile
 import threading
 from pathlib import Path
@@ -243,6 +244,13 @@ def generate(
 
     log_level = logging.ERROR if quiet else logging.INFO
     with enable_logging("pocket_tts", log_level):
+        if text == "-":
+            # Read text from stdin
+            text = sys.stdin.read()
+
+        if not text.strip():
+            logger.error("No input received from stdin.")
+            raise typer.Exit(code=1)
         tts_model = TTSModel.load_model(
             config, temperature, lsd_decode_steps, noise_clamp, eos_threshold
         )

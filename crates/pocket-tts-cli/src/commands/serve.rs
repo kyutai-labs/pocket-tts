@@ -3,7 +3,7 @@
 //! Provides `pocket-tts serve` for HTTP API server.
 
 use anyhow::Result;
-use clap::Parser;
+use clap::{ArgAction, Parser};
 use owo_colors::OwoColorize;
 
 use crate::voice::PREDEFINED_VOICES;
@@ -41,6 +41,26 @@ pub struct ServeArgs {
     /// Use simulated int8 quantization for inference
     #[arg(long)]
     pub quantized: bool,
+
+    /// Maximum number of resolved voice states to keep in server LRU cache.
+    #[arg(long, default_value_t = 64)]
+    pub voice_cache_capacity: usize,
+
+    /// Comma-separated voices to prewarm at startup (e.g. "alba,marius").
+    #[arg(long, default_value = "alba")]
+    pub prewarm_voices: String,
+
+    /// Run a tiny startup warmup generation to reduce first-request latency.
+    #[arg(long, default_value_t = true, action = ArgAction::Set)]
+    pub warmup: bool,
+
+    /// Override OMP_NUM_THREADS before model load.
+    #[arg(long)]
+    pub omp_threads: Option<usize>,
+
+    /// Override MKL_NUM_THREADS before model load.
+    #[arg(long)]
+    pub mkl_threads: Option<usize>,
 }
 
 pub async fn run(args: ServeArgs) -> Result<()> {

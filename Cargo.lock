@@ -2587,7 +2587,7 @@ dependencies = [
 
 [[package]]
 name = "pocket-tts"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -2616,6 +2616,7 @@ dependencies = [
  "serde_yaml",
  "thiserror 2.0.18",
  "tokenizers",
+ "tracing",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -2623,7 +2624,7 @@ dependencies = [
 
 [[package]]
 name = "pocket-tts-bindings"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "candle-core",
@@ -2633,7 +2634,7 @@ dependencies = [
 
 [[package]]
 name = "pocket-tts-cli"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "assert_cmd",

@@ -1,7 +1,7 @@
 //! HTTP request handlers
 
-use crate::server::state::AppState;
-use crate::voice::resolve_voice;
+use crate::server::state::{AppState, VoiceStateCache};
+use crate::voice::{resolve_voice, voice_cache_key};
 #[cfg(feature = "web-ui")]
 use axum::response::Html;
 use axum::{
@@ -15,6 +15,9 @@ use axum::{
 use rust_embed::Embed;
 use serde::{Deserialize, Serialize};
 use tokio_stream::StreamExt as _;
+
+type SharedVoiceState = std::sync::Arc<pocket_tts::ModelState>;
+type VoiceCache = std::sync::Arc<std::sync::Mutex<VoiceStateCache>>;
 
 // Embed static files at compile time
 #[cfg(feature = "web-ui")]
@@ -93,6 +96,35 @@ struct ErrorResponse {
     error: String,
 }
 
+fn resolve_voice_cached(
+    model: &pocket_tts::TTSModel,
+    default_voice: &SharedVoiceState,
+    voice_cache: &VoiceCache,
+    voice_spec: Option<&str>,
+) -> anyhow::Result<SharedVoiceState> {
+    let Some(spec) = voice_spec else {
+        return Ok(default_voice.clone());
+    };
+
+    let key = voice_cache_key(spec);
+
+    {
+        let mut cache = voice_cache
+            .lock()
+            .map_err(|_| anyhow::anyhow!("voice cache lock poisoned"))?;
+        if let Some(cached) = cache.get(&key) {
+            return Ok(cached.clone());
+        }
+    }
+
+    let resolved = std::sync::Arc::new(resolve_voice(model, Some(spec))?);
+    let mut cache = voice_cache
+        .lock()
+        .map_err(|_| anyhow::anyhow!("voice cache lock poisoned"))?;
+    cache.put(key, resolved.clone());
+    Ok(resolved)
+}
+
 pub async fn generate(
     State(state): State<AppState>,
     Json(payload): Json<GenerateRequest>,
@@ -102,17 +134,15 @@ pub async fn generate(
 
     let model = state.model.clone();
     let default_voice = state.default_voice_state.clone();
+    let voice_cache = state.voice_cache.clone();
     let text = payload.text.clone();
     let voice_spec = payload.voice.clone();
 
     // Run generation in blocking thread
     let result = tokio::task::spawn_blocking(move || {
         // Resolve voice (use default if not specified)
-        let voice_state = if voice_spec.is_some() {
-            resolve_voice(&model, voice_spec.as_deref())?
-        } else {
-            (*default_voice).clone()
-        };
+        let voice_state =
+            resolve_voice_cached(&model, &default_voice, &voice_cache, voice_spec.as_deref())?;
 
         // Override model params if provided in request
         let mut model_cloned = (*model).clone();
@@ -188,6 +218,7 @@ pub async fn generate_stream(
 ) -> Response {
     let model = state.model.clone();
     let default_voice = state.default_voice_state.clone();
+    let voice_cache = state.voice_cache.clone();
     let text = payload.text.clone();
     let voice_spec = payload.voice.clone();
     let lock = state.lock.clone();
@@ -202,11 +233,8 @@ pub async fn generate_stream(
         let tx_inner = tx.clone();
         let result = tokio::task::spawn_blocking(move || {
             // Resolve voice
-            let voice_state = if voice_spec.is_some() {
-                resolve_voice(&model, voice_spec.as_deref())?
-            } else {
-                (*default_voice).clone()
-            };
+            let voice_state =
+                resolve_voice_cached(&model, &default_voice, &voice_cache, voice_spec.as_deref())?;
 
             // Override model params if provided in request
             let mut model_cloned = (*model).clone();

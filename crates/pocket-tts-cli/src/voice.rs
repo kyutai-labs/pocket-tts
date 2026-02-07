@@ -9,6 +9,7 @@
 use anyhow::{Context, Result};
 use pocket_tts::TTSModel;
 use pocket_tts::weights::download_if_necessary;
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 
 /// Predefined stock voices from kyutai/pocket-tts-without-voice-cloning
@@ -18,6 +19,50 @@ pub const PREDEFINED_VOICES: &[&str] = &[
 
 /// HuggingFace repo for stock voice embeddings
 const STOCK_VOICE_REPO: &str = "kyutai/pocket-tts-without-voice-cloning";
+
+/// Build a stable cache key for a voice specification.
+///
+/// File keys include mtime/size so updates invalidate cached entries.
+pub fn voice_cache_key(spec: &str) -> String {
+    let spec = spec.trim();
+
+    if PREDEFINED_VOICES.contains(&spec) {
+        return format!("stock:{spec}");
+    }
+    if spec.starts_with("hf://") {
+        return format!("hf:{spec}");
+    }
+
+    let path = PathBuf::from(spec);
+    if path.exists() {
+        let canonical = std::fs::canonicalize(&path).unwrap_or(path.clone());
+        let (mtime_secs, size) = std::fs::metadata(&canonical)
+            .ok()
+            .map(|m| {
+                let modified = m
+                    .modified()
+                    .ok()
+                    .and_then(|ts| ts.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                (modified, m.len())
+            })
+            .unwrap_or((0, 0));
+        return format!("file:{}:{mtime_secs}:{size}", canonical.display());
+    }
+
+    if is_base64_audio(spec) {
+        return format!("b64:{:016x}", hash_str(spec));
+    }
+
+    format!("raw:{}:{:016x}", spec.len(), hash_str(spec))
+}
+
+fn hash_str(s: &str) -> u64 {
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    s.hash(&mut h);
+    h.finish()
+}
 
 /// Resolve a voice specification to a ModelState
 ///
@@ -195,5 +240,19 @@ mod tests {
         assert!(!is_base64_audio("alba"));
         assert!(!is_base64_audio("/path/to/file.wav"));
         assert!(!is_base64_audio("short"));
+    }
+
+    #[test]
+    fn test_voice_cache_key_stock() {
+        assert_eq!(voice_cache_key("alba"), "stock:alba");
+    }
+
+    #[test]
+    fn test_voice_cache_key_base64() {
+        let k1 = voice_cache_key("data:audio/wav;base64,AAAA");
+        let k2 = voice_cache_key("data:audio/wav;base64,AAAB");
+        assert!(k1.starts_with("b64:"));
+        assert!(k2.starts_with("b64:"));
+        assert_ne!(k1, k2);
     }
 }

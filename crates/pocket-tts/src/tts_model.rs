@@ -35,6 +35,9 @@ pub struct TTSModel {
     /// End-of-sequence threshold
     pub eos_threshold: f32,
     pub noise_clamp: Option<f32>,
+    /// Optional override for voice-conditioning Mimi chunk size (in frames).
+    /// If `None`, an adaptive heuristic is used.
+    pub voice_prompt_chunk_frames: Option<usize>,
     /// Sample rate
     pub sample_rate: usize,
     /// Model dimension
@@ -414,6 +417,7 @@ impl TTSModel {
             lsd_decode_steps,
             eos_threshold,
             noise_clamp,
+            voice_prompt_chunk_frames: None,
             sample_rate: config.mimi.sample_rate,
             dim,
             ldim,
@@ -523,11 +527,12 @@ impl TTSModel {
             audio
         };
 
-        // Encode audio through Mimi in chunks to avoid OOM in SEANet Conv1d layers
-        // (A 5-minute audio at 24kHz creates ~1GB feature maps if processed at once)
-        let chunk_size = frame_size * 100; // ~100 frames per chunk (reduced from 500 to safe mem)
+        // Encode audio through Mimi in chunks to avoid OOM in SEANet Conv1d layers.
+        // Chunk size is adapted to prompt length unless explicitly overridden.
         let mut encoded_chunks = Vec::new();
         let (_b, _c, total_samples) = audio.dims3()?;
+        let chunk_frames = self.adaptive_voice_prompt_chunk_frames(total_samples, frame_size);
+        let chunk_size = frame_size * chunk_frames;
 
         for start in (0..total_samples).step_by(chunk_size) {
             let end = std::cmp::min(start + chunk_size, total_samples);
@@ -552,6 +557,23 @@ impl TTSModel {
         self.run_flow_lm_prompt(&conditioning, &mut flow_state)?;
 
         Ok(flow_state)
+    }
+
+    fn adaptive_voice_prompt_chunk_frames(&self, total_samples: usize, frame_size: usize) -> usize {
+        if let Some(override_frames) = self.voice_prompt_chunk_frames {
+            return override_frames.max(1);
+        }
+
+        let total_frames = total_samples.div_ceil(frame_size);
+        if total_frames <= 120 {
+            total_frames.max(1)
+        } else if total_frames <= 600 {
+            120
+        } else if total_frames <= 1800 {
+            180
+        } else {
+            240
+        }
     }
 
     /// Run flow LM with audio conditioning (used during prompting)
@@ -991,15 +1013,18 @@ impl TTSModel {
             // Passing text_embeddings again would cause duplicate/repeated speech.
             let text_tokens_to_pass = &empty_text_embeddings;
 
-            let (next_latent, is_eos) = match model.flow_lm.forward(
-                &backbone_input,
-                text_tokens_to_pass,
-                &mut state,
-                &time_embeddings,
-                model.temp,
-                model.eos_threshold,
-                step,
-            ) {
+            let (next_latent, is_eos) = match tracing::info_span!("flow_lm.forward", step = step)
+                .in_scope(|| {
+                    model.flow_lm.forward(
+                        &backbone_input,
+                        text_tokens_to_pass,
+                        &mut state,
+                        &time_embeddings,
+                        model.temp,
+                        model.eos_threshold,
+                        step,
+                    )
+                }) {
                 Ok(res) => res,
                 Err(e) => return Some(Err(anyhow::anyhow!(e))),
             };
@@ -1011,9 +1036,12 @@ impl TTSModel {
 
                 let mimi_input = next_latent_denorm.unsqueeze(1)?.transpose(1, 2)?;
                 let quantized = model.mimi.quantize(&mimi_input)?;
-                let audio = model
-                    .mimi
-                    .decode_from_latent(&quantized, &mut mimi_state, step)
+                let audio = tracing::info_span!("mimi.decode_from_latent", step = step)
+                    .in_scope(|| {
+                        model
+                            .mimi
+                            .decode_from_latent(&quantized, &mut mimi_state, step)
+                    })
                     .map_err(|e| anyhow::anyhow!(e))?;
 
                 // Removed redundant increment_steps("offset") for mimi

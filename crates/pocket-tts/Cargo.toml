@@ -41,6 +41,7 @@ hound.workspace = true
 rand.workspace = true
 rand_distr.workspace = true
 rayon = "1.11.0"
+tracing.workspace = true
 
 # Dependencies for all non-WASM targets
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -74,4 +75,8 @@ harness = false
 
 [[bench]]
 name = "attention_bench"
+harness = false
+
+[[bench]]
+name = "voice_state_bench"
 harness = false

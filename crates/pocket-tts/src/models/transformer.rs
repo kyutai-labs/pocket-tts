@@ -2,6 +2,7 @@ use crate::ModelState;
 use crate::modules::attention::StreamingMultiheadAttention;
 use crate::modules::mlp::{LayerNorm, LayerScale};
 use crate::modules::rope::RotaryEmbedding;
+use crate::voice_state::get_attention_cursor;
 use candle_core::{Result, Tensor};
 use candle_nn::{Linear, Module, VarBuilder};
 
@@ -141,16 +142,9 @@ impl StreamingTransformer {
         let mut x = x.clone();
         // Fetch current_pos once from the first attention layer's state to avoid redundant to_scalar calls.
         let first_layer_name = format!("{}.layers.0.self_attn", self.name);
-        let current_pos = model_state
-            .get(&first_layer_name)
-            .and_then(|s| s.get("pos"))
-            .and_then(|t| t.to_scalar::<u32>().ok())
-            .unwrap_or(0) as usize;
-        let current_len = model_state
-            .get(&first_layer_name)
-            .and_then(|s| s.get("l"))
-            .and_then(|t| t.to_scalar::<i64>().ok())
-            .unwrap_or(0) as usize;
+        let cursor = get_attention_cursor(model_state, &first_layer_name);
+        let current_pos = cursor.pos;
+        let current_len = cursor.len;
 
         for layer in &self.layers {
             x = layer.forward(&x, model_state, current_pos, current_len)?;

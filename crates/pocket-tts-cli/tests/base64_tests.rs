@@ -28,7 +28,7 @@ fn create_test_app() -> Option<axum::Router> {
         }
     };
 
-    let state = AppState::new(model, default_voice);
+    let state = AppState::new(model, default_voice, 64);
     Some(routes::create_router(state))
 }
 

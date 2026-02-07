@@ -23,7 +23,7 @@ metal = ["pocket-tts/metal", "candle-core/metal"]
 mkl = ["pocket-tts/mkl"]
 
 [dependencies]
-pocket-tts = { path = "../pocket-tts", version = "0.4.1" }
+pocket-tts = { path = "../pocket-tts", version = "0.5.0" }
 candle-core.workspace = true
 anyhow.workspace = true
 clap = { workspace = true, features = ["derive"] }

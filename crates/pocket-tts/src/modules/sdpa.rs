@@ -1,5 +1,22 @@
 use candle_core::{D, Result, Tensor};
 
+#[inline]
+fn can_skip_mask_for_single_query(
+    q_len: usize,
+    kv_len: usize,
+    is_causal: bool,
+    context_window: Option<usize>,
+) -> bool {
+    if !is_causal || q_len != 1 {
+        return false;
+    }
+
+    match context_window {
+        None => true,
+        Some(ctx) => kv_len <= ctx,
+    }
+}
+
 /// Memory-efficient Scaled Dot Product Attention
 ///
 /// Computes `softmax(Q @ K.T / sqrt(d) + mask) @ V` using tiling on the query dimension
@@ -40,12 +57,9 @@ pub fn sdpa(
         // Naive path (no tiling)
         let scores = (q.matmul(&k_t)? * scale)?;
 
-        // Generate mask
-        // Optimization: If q_len (t) is 1 and it's causal, everything is visible,
-        // so we can skip mask generation.
-        // Even with a context window, the attention.rs logic now prunes the KV cache
-        // to that window, so we can skip the windowed mask here as well.
-        let scores = if is_causal || context_window.is_some() {
+        let scores = if can_skip_mask_for_single_query(q_len, kv_len, is_causal, context_window) {
+            scores
+        } else if is_causal || context_window.is_some() {
             let mask = generate_mask_chunk(
                 0,
                 q_len,
@@ -178,25 +192,25 @@ pub fn sdpa_chunked(
     if k_chunks.len() == 1 {
         let k_t = k_chunks[0].transpose(2, 3)?;
         let scores = (q.matmul(&k_t)? * scale)?;
+        let kv_len = k_chunks[0].dims()[2];
 
-        let masked_scores = if is_causal || context_window.is_some() {
-            if q_len == 1 && context_window.is_none() {
+        let masked_scores =
+            if can_skip_mask_for_single_query(q_len, kv_len, is_causal, context_window) {
                 scores
-            } else {
+            } else if is_causal || context_window.is_some() {
                 let mask = generate_mask_chunk(
                     0,
                     q_len,
-                    k_chunks[0].dims()[2],
+                    kv_len,
                     q_len,
                     is_causal,
                     context_window,
                     device,
                 )?;
                 scores.broadcast_add(&mask)?
-            }
-        } else {
-            scores
-        };
+            } else {
+                scores
+            };
 
         let probs = candle_nn::ops::softmax(&masked_scores, D::Minus1)?;
         return probs.matmul(&v_chunks[0]);
@@ -217,10 +231,10 @@ pub fn sdpa_chunked(
     let all_scores = Tensor::cat(&score_chunks, 3)?;
 
     // 3. Apply masking
-    let masked_scores = if is_causal || context_window.is_some() {
-        if q_len == 1 && context_window.is_none() {
+    let masked_scores =
+        if can_skip_mask_for_single_query(q_len, total_kv_len, is_causal, context_window) {
             all_scores
-        } else {
+        } else if is_causal || context_window.is_some() {
             let mask = generate_mask_chunk(
                 0,
                 q_len,
@@ -231,10 +245,9 @@ pub fn sdpa_chunked(
                 device,
             )?;
             all_scores.broadcast_add(&mask)?
-        }
-    } else {
-        all_scores
-    };
+        } else {
+            all_scores
+        };
 
     // 4. Softmax
     let probs = candle_nn::ops::softmax(&masked_scores, D::Minus1)?;
@@ -308,5 +321,14 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn test_can_skip_mask_for_single_query() {
+        assert!(can_skip_mask_for_single_query(1, 64, true, None));
+        assert!(can_skip_mask_for_single_query(1, 64, true, Some(64)));
+        assert!(!can_skip_mask_for_single_query(1, 65, true, Some(64)));
+        assert!(!can_skip_mask_for_single_query(2, 64, true, None));
+        assert!(!can_skip_mask_for_single_query(1, 64, false, None));
     }
 }

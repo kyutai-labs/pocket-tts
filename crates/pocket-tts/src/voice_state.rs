@@ -6,6 +6,21 @@ use std::collections::HashMap;
 /// Model state type for stateful modules
 pub type ModelState = HashMap<String, HashMap<String, Tensor>>;
 
+/// Common per-attention state keys.
+pub const ATTN_POS_KEY: &str = "pos";
+pub const ATTN_LEN_KEY: &str = "l";
+pub const ATTN_HEAD_KEY: &str = "head";
+pub const ATTN_K_BUF_KEY: &str = "k_buf";
+pub const ATTN_V_BUF_KEY: &str = "v_buf";
+
+/// Cursor/scalar metadata for attention cache state.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AttentionCursor {
+    pub pos: usize,
+    pub len: usize,
+    pub head: usize,
+}
+
 /// Initialize empty model state for all stateful modules
 ///
 /// Creates a nested HashMap structure that will be populated
@@ -21,6 +36,63 @@ pub fn get_or_create_state<'a>(
     module_name: &str,
 ) -> &'a mut HashMap<String, Tensor> {
     state.entry(module_name.to_string()).or_default()
+}
+
+fn tensor_to_usize(t: &Tensor) -> Option<usize> {
+    if let Ok(v) = t.to_scalar::<i64>() {
+        return Some(v.max(0) as usize);
+    }
+    if let Ok(v) = t.to_scalar::<u32>() {
+        return Some(v as usize);
+    }
+    None
+}
+
+/// Read attention cursor values from a module state map.
+pub fn read_attention_cursor(module_state: &HashMap<String, Tensor>) -> AttentionCursor {
+    AttentionCursor {
+        pos: module_state
+            .get(ATTN_POS_KEY)
+            .and_then(tensor_to_usize)
+            .unwrap_or(0),
+        len: module_state
+            .get(ATTN_LEN_KEY)
+            .and_then(tensor_to_usize)
+            .unwrap_or(0),
+        head: module_state
+            .get(ATTN_HEAD_KEY)
+            .and_then(tensor_to_usize)
+            .unwrap_or(0),
+    }
+}
+
+/// Write attention cursor values into a module state map.
+pub fn write_attention_cursor(
+    module_state: &mut HashMap<String, Tensor>,
+    cursor: AttentionCursor,
+    device: &candle_core::Device,
+) -> Result<()> {
+    module_state.insert(
+        ATTN_POS_KEY.to_string(),
+        Tensor::new(cursor.pos as u32, device)?,
+    );
+    module_state.insert(
+        ATTN_LEN_KEY.to_string(),
+        Tensor::new(cursor.len as i64, device)?,
+    );
+    module_state.insert(
+        ATTN_HEAD_KEY.to_string(),
+        Tensor::new(cursor.head as i64, device)?,
+    );
+    Ok(())
+}
+
+/// Read attention cursor for a module name from a full model state.
+pub fn get_attention_cursor(state: &ModelState, module_name: &str) -> AttentionCursor {
+    state
+        .get(module_name)
+        .map(read_attention_cursor)
+        .unwrap_or_default()
 }
 
 /// Increment step counters in model state for all modules

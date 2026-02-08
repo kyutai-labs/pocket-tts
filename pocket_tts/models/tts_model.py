@@ -788,28 +788,28 @@ class TTSModel(nn.Module):
         return audio_conditioning
 
 def wordify_numbers(text):
-	def replace_num(match):
-		raw_str = match.group()
-		
-		# Check if it is an ordinal number (ends with st, nd, rd, or th)
-		# We use a simple check on the last two characters
-		suffixes = ('st', 'nd', 'rd', 'th')
-		is_ordinal = raw_str.lower().endswith(suffixes)
-		
-		if is_ordinal:
-			# Remove the suffix (last 2 chars) and commas to get the pure number
-			clean_str = raw_str[:-2].replace(',', '')
-			# Convert to ordinal word
-			return num2words(int(clean_str), to='ordinal')
-		
-		else:
-			# Standard Cardinal logic
-			clean_str = raw_str.replace(',', '')
-			if '.' in clean_str:
-				return num2words(float(clean_str))
-			else:
-				return num2words(int(clean_str))
-	return re.sub(r'\s*-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:st|nd|rd|th)?\s*', lambda m: f" {replace_num(m)} ", text)
+    def replace_num(match):
+        raw_str = match.group()
+        
+        # Check if it is an ordinal number (ends with st, nd, rd, or th)
+        # We use a simple check on the last two characters
+        suffixes = ('st', 'nd', 'rd', 'th')
+        is_ordinal = raw_str.lower().endswith(suffixes)
+        
+        if is_ordinal:
+            # Remove the suffix (last 2 chars) and commas to get the pure number
+            clean_str = raw_str[:-2].replace(',', '')
+            # Convert to ordinal word
+            return num2words(int(clean_str), to='ordinal')
+        
+        else:
+            # Standard Cardinal logic
+            clean_str = raw_str.replace(',', '')
+            if '.' in clean_str:
+                return num2words(float(clean_str))
+            else:
+                return num2words(int(clean_str))
+    return re.sub(r'\s*-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:st|nd|rd|th)?\s*', lambda m: f" {replace_num(m)} ", text)
 
 
 def prepare_text_prompt(text: str) -> tuple[str, int]:
@@ -817,7 +817,7 @@ def prepare_text_prompt(text: str) -> tuple[str, int]:
     if text == "":
         raise ValueError("Text prompt cannot be empty")
     text = unidecode(text) # get rid of unicode chars, converting them correctly
-	text = wordify_numbers(text) # turn numbers into words
+    text = wordify_numbers(text) # turn numbers into words
     text = text.replace("\n", " ").replace("\r", " ").replace("  ", " ")
     number_of_words = len(text.split())
     if number_of_words <= 4:

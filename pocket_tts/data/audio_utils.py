@@ -1,4 +1,4 @@
-"""Various utilities for audio convertion (pcm format, sample rate and channels),
+"""Various utilities for audio conversion (pcm format, sample rate and channels),
 and volume normalization."""
 
 import torch

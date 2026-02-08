@@ -1,5 +1,6 @@
 import copy
 import logging
+import math
 import os
 import queue
 import statistics
@@ -23,6 +24,7 @@ from pocket_tts.default_parameters import (
     DEFAULT_NOISE_CLAMP,
     DEFAULT_TEMPERATURE,
     DEFAULT_VARIANT,
+    MAX_TOKEN_PER_CHUNK,
 )
 from pocket_tts.models.flow_lm import FlowLMModel
 from pocket_tts.models.mimi import MimiModel
@@ -43,8 +45,20 @@ from pocket_tts.utils.weights_loading import get_flow_lm_state_dict, get_mimi_st
 torch.set_num_threads(1)
 logger = logging.getLogger(__name__)
 
+VOICE_CLONING_UNSUPPORTED = (
+    f"We could not download the weights for the model with voice cloning, "
+    f"but you're trying to use voice cloning. "
+    f"Without voice cloning, you can use our catalog of voices {list(PREDEFINED_VOICES)}. "
+    f"If you want access to the model with voice cloning, go to "
+    f"https://huggingface.co/kyutai/pocket-tts and accept the terms, "
+    f"then make sure you're logged in locally with `uvx hf auth login`."
+)
+
 
 class TTSModel(nn.Module):
+    _TOKENS_PER_SECOND_ESTIMATE = 3.0
+    _GEN_SECONDS_PADDING = 2.0
+
     def __init__(
         self,
         flow_lm: FlowLMModel,
@@ -163,8 +177,10 @@ class TTSModel(nn.Module):
 
         return tts_model
 
+    @classmethod
     def load_model(
-        variant: str = DEFAULT_VARIANT,
+        cls,
+        config: str | Path = DEFAULT_VARIANT,
         temp: float | int = DEFAULT_TEMPERATURE,
         lsd_decode_steps: int = DEFAULT_LSD_DECODE_STEPS,
         noise_clamp: float | int | None = DEFAULT_NOISE_CLAMP,
@@ -177,8 +193,8 @@ class TTSModel(nn.Module):
         with the specified generation parameters and ready for inference.
 
         Args:
-            variant: Model variant identifier corresponding to a config file name
-                (e.g., '610b0b2c'). Must match a YAML file in the config directory.
+            config: a path to a custom YAML config file saved locally (e.g., C://pocket_tts/pocket_tts_config.yaml)
+                or a model variant identifier (e.g., '610b0b2c'; must match a YAML file in the config directory).
             temp: Sampling temperature for generation. Higher values produce more
                 diverse but potentially lower quality output.
             lsd_decode_steps: Number of steps for Lagrangian Self Distillation
@@ -197,7 +213,13 @@ class TTSModel(nn.Module):
                 are not found.
             ValueError: If the configuration is invalid or incompatible.
         """
-        config = load_config(Path(__file__).parents[1] / f"config/{variant}.yaml")
+        if str(config).endswith(".yaml"):
+            config_path = Path(config)
+            config = load_config(config_path)
+            logger.info(f"Loading model from config at {config_path}...")
+        else:
+            config = load_config(Path(__file__).parents[1] / f"config/{config}.yaml")
+
         tts_model = TTSModel._from_pydantic_config_with_weights(
             config, temp, lsd_decode_steps, noise_clamp, eos_threshold
         )
@@ -261,12 +283,56 @@ class TTSModel(nn.Module):
         conditioning = F.linear(latents, self.flow_lm.speaker_proj_weight)
         return conditioning
 
+    def _expand_kv_cache(self, model_state: dict, sequence_length: int) -> None:
+        """Expand KV cache back to full sequence_length for generation.
+
+        When a model state is retrieved from cache with sliced KV caches,
+        this method expands them back to the full size needed for generation.
+
+        Args:
+            model_state: The model state dict containing potentially sliced KV caches
+            sequence_length: Target sequence length to expand caches to
+        """
+        for module_name, module_state in model_state.items():
+            if "cache" in module_state:
+                cache = module_state["cache"]
+                # KV cache has shape [2, batch_size, current_length, num_heads, dim_per_head]
+                current_length = cache.shape[2]
+                if current_length < sequence_length:
+                    # Create expanded cache filled with NaN for unused positions
+                    expanded_cache = torch.full(
+                        (
+                            cache.shape[0],
+                            cache.shape[1],
+                            sequence_length,
+                            cache.shape[3],
+                            cache.shape[4],
+                        ),
+                        float("NaN"),
+                        device=cache.device,
+                        dtype=cache.dtype,
+                    )
+                    # Copy existing data to the beginning
+                    expanded_cache[:, :, :current_length, :, :] = cache
+                    module_state["cache"] = expanded_cache
+
+    def _flow_lm_current_end(self, model_state: dict) -> int:
+        for module_state in model_state.values():
+            current_end = module_state.get("current_end")
+            if current_end is not None:
+                return int(current_end.shape[0])
+        raise ValueError(
+            "Could not find current_end in model state, please open an issue "
+            "at https://github.com/kyutai-labs/pocket-tts/issues"
+        )
+
     @torch.no_grad
     def _decode_audio_worker(self, latents_queue: queue.Queue, result_queue: queue.Queue):
         """Worker thread function for decoding audio latents from queue with immediate streaming."""
         try:
             audio_chunks = []
-            mimi_state = init_states(self.mimi, batch_size=1, sequence_length=1000)
+            mimi_context = self.config.mimi.transformer.context
+            mimi_state = init_states(self.mimi, batch_size=1, sequence_length=mimi_context)
             while True:
                 latent = latents_queue.get()
                 if latent is None:
@@ -303,6 +369,7 @@ class TTSModel(nn.Module):
         self,
         model_state: dict,
         text_to_generate: str,
+        max_tokens: int = MAX_TOKEN_PER_CHUNK,
         frames_after_eos: int | None = None,
         copy_state: bool = True,
     ) -> torch.Tensor:
@@ -345,6 +412,7 @@ class TTSModel(nn.Module):
             text_to_generate=text_to_generate,
             frames_after_eos=frames_after_eos,
             copy_state=copy_state,
+            max_tokens=max_tokens,
         ):
             audio_chunks.append(chunk)
         return torch.cat(audio_chunks, dim=0)
@@ -354,6 +422,7 @@ class TTSModel(nn.Module):
         self,
         model_state: dict,
         text_to_generate: str,
+        max_tokens: int = MAX_TOKEN_PER_CHUNK,
         frames_after_eos: int | None = None,
         copy_state: bool = True,
     ):
@@ -398,15 +467,20 @@ class TTSModel(nn.Module):
         # by using teacher forcing, but it would be a bit slower.
         # TODO: add the teacher forcing method for long texts where we use the audio of one chunk
         # as conditioning for the next chunk.
-        chunks = split_into_best_sentences(self.flow_lm.conditioner.tokenizer, text_to_generate)
+        chunks = split_into_best_sentences(
+            self.flow_lm.conditioner.tokenizer, text_to_generate, max_tokens
+        )
 
         for chunk in chunks:
             text_to_generate, frames_after_eos_guess = prepare_text_prompt(chunk)
             frames_after_eos_guess += 2
+            effective_frames = (
+                frames_after_eos if frames_after_eos is not None else frames_after_eos_guess
+            )
             yield from self._generate_audio_stream_short_text(
                 model_state=model_state,
                 text_to_generate=chunk,
-                frames_after_eos=frames_after_eos_guess,
+                frames_after_eos=effective_frames,
                 copy_state=copy_state,
             )
 
@@ -484,9 +558,12 @@ class TTSModel(nn.Module):
         latents_queue: queue.Queue,
         result_queue: queue.Queue,
     ):
-        gen_len_sec = len(text_to_generate.split()) * 1 + 2.0
-        max_gen_len = int(gen_len_sec * 12.5)
         prepared = self.flow_lm.conditioner.prepare(text_to_generate)
+        token_count = prepared.tokens.shape[1]
+        max_gen_len = self._estimate_max_gen_len(token_count)
+        current_end = self._flow_lm_current_end(model_state)
+        required_len = current_end + token_count + max_gen_len
+        self._expand_kv_cache(model_state, sequence_length=required_len)
 
         with display_execution_time("Prompting text"):
             self._run_flow_lm_and_increment_step(
@@ -565,9 +642,9 @@ class TTSModel(nn.Module):
         enables voice cloning and audio continuation with speaker consistency.
 
         Args:
-            audio_conditioning: Audio prompt to condition on. Can be:
-                - Path: Local file path to audio file
-                - str: URL to download audio file from
+            audio_conditioning: Audio prompt to condition (or .safetensors to load). Can be:
+                - Path: Local file path to audio file (or .safetensors)
+                - str: URL to download audio file (or .safetensors) from
                 - torch.Tensor: Pre-loaded audio tensor with shape [channels, samples]
             truncate: Whether to truncate long audio prompts to 30 seconds.
                 Helps prevent memory issues with very long inputs. Defaults to False.
@@ -590,19 +667,21 @@ class TTSModel(nn.Module):
             - Processing time is logged for performance monitoring
             - The state preserves speaker characteristics for voice cloning
         """
-        if isinstance(audio_conditioning, str) and audio_conditioning in PREDEFINED_VOICES:
+        if isinstance(audio_conditioning, (str, Path)) and str(audio_conditioning).endswith(
+            ".safetensors"
+        ):
+            if isinstance(audio_conditioning, str):
+                audio_conditioning = download_if_necessary(audio_conditioning)
+            import safetensors.torch
+
+            prompt = safetensors.torch.load_file(audio_conditioning)["audio_prompt"]
+        elif isinstance(audio_conditioning, str) and audio_conditioning in PREDEFINED_VOICES:
             # We get the audio conditioning directly from the safetensors file.
             prompt = load_predefined_voice(audio_conditioning)
         else:
             if not self.has_voice_cloning and isinstance(audio_conditioning, (str, Path)):
-                raise ValueError(
-                    f"We could not download the weights for the model with voice cloning, "
-                    f"but you're trying to use voice cloning. "
-                    f"Without voice cloning, you can use our catalog of voices {list(PREDEFINED_VOICES)}. "
-                    f"If you want access to the model with voice cloning, go to "
-                    f"https://huggingface.co/kyutai/pocket-tts and accept the terms, "
-                    f"then make sure you're logged in locally with `uvx hf auth login`."
-                )
+                raise ValueError(VOICE_CLONING_UNSUPPORTED)
+
             if isinstance(audio_conditioning, str):
                 audio_conditioning = download_if_necessary(audio_conditioning)
 
@@ -621,18 +700,88 @@ class TTSModel(nn.Module):
 
             with display_execution_time("Encoding audio prompt"):
                 prompt = self._encode_audio(audio_conditioning.unsqueeze(0).to(self.device))
-                # import safetensors.torch
-                # safetensors.torch.save_file(
-                #     {"audio_prompt": prompt},
-                #     "/projects/huggingface/pocket-tts/embeddings/cosette.safetensors"
-                # )
 
-        model_state = init_states(self.flow_lm, batch_size=1, sequence_length=1000)
+        model_state = init_states(self.flow_lm, batch_size=1, sequence_length=prompt.shape[1])
 
         with display_execution_time("Prompting audio"):
             self._run_flow_lm_and_increment_step(model_state=model_state, audio_conditioning=prompt)
 
+        logger.info(
+            "Size of the model state for audio prompt: %d MB", size_of_dict(model_state) // 1e6
+        )
+
         return model_state
+
+    def _estimate_max_gen_len(self, token_count: int) -> int:
+        gen_len_sec = token_count / self._TOKENS_PER_SECOND_ESTIMATE + self._GEN_SECONDS_PADDING
+        frame_rate = self.config.mimi.frame_rate
+        return math.ceil(gen_len_sec * frame_rate)
+
+    @torch.no_grad
+    def save_audio_prompt(
+        self,
+        audio_conditioning: Path | str | torch.Tensor,
+        export_path: Path | str,
+        truncate: bool = False,
+    ) -> torch.Tensor:
+        """Save audio prompt to .safetensors file
+
+        This method processes an audio prompt and exports it to a .safetensors file,
+        which can be loaded by get_state_for_audio_prompt in subsequent uses
+        without converting the audio again.
+
+        It also takes an already converted audio tensor and exports it as a .safetensors file
+
+        Args:
+            audio_conditioning: Audio to export
+                - Path: Local file path to audio file
+                - str: URL to download audio file
+                - torch.Tensor: Pre-loaded audio tensor with shape [channels, samples]
+            export_path: Path to output file
+            truncate: Whether to truncate long audio prompts to 30 seconds.
+
+        Returns:
+            Audio tensor of converted audio
+
+        Raises:
+            FileNotFoundError: If audio file path doesn't exist.
+            ValueError: If audio tensor export path is invalid or empty.
+            RuntimeError: If audio processing or encoding fails.
+
+        Note:
+            - Send resulting audio tensor to get_state_for_audio_prompt
+              in order to get the model state for generation.
+        """
+        if not export_path or not isinstance(export_path, (str, Path)):
+            raise ValueError("export_path must be of type str or Path")
+        export_path = Path(export_path).with_suffix(".safetensors")
+
+        if not self.has_voice_cloning and isinstance(audio_conditioning, (str, Path)):
+            raise ValueError(VOICE_CLONING_UNSUPPORTED)
+
+        if isinstance(audio_conditioning, str):
+            audio_conditioning = download_if_necessary(audio_conditioning)
+
+        if isinstance(audio_conditioning, Path):
+            audio, conditioning_sample_rate = audio_read(audio_conditioning)
+
+            if truncate:
+                max_samples = int(30 * conditioning_sample_rate)  # 30 seconds of audio
+                if audio.shape[-1] > max_samples:
+                    audio = audio[..., :max_samples]
+                    logger.info(f"Audio truncated to first 30 seconds ({max_samples} samples)")
+
+            audio_conditioning = convert_audio(
+                audio, conditioning_sample_rate, self.config.mimi.sample_rate, 1
+            )
+
+        with display_execution_time("Exporting audio prompt"):
+            prompt = self._encode_audio(audio_conditioning.unsqueeze(0).to(self.device))
+            import safetensors.torch
+
+            safetensors.torch.save_file({"audio_prompt": prompt}, export_path)
+
+        return audio_conditioning
 
 
 def prepare_text_prompt(text: str) -> tuple[str, int]:
@@ -665,7 +814,7 @@ def prepare_text_prompt(text: str) -> tuple[str, int]:
     return text, frames_after_eos_guess
 
 
-def split_into_best_sentences(tokenizer, text_to_generate: str) -> list[str]:
+def split_into_best_sentences(tokenizer, text_to_generate: str, max_tokens: int) -> list[str]:
     text_to_generate, _ = prepare_text_prompt(text_to_generate)
     text_to_generate = text_to_generate.strip()
     tokens = tokenizer(text_to_generate)
@@ -693,7 +842,7 @@ def split_into_best_sentences(tokenizer, text_to_generate: str) -> list[str]:
         text = tokenizer.sp.decode(list_of_tokens[start:end])
         nb_tokens_and_sentences.append((end - start, text))
 
-    max_nb_tokens_in_a_chunk = 50
+    max_nb_tokens_in_a_chunk = max_tokens
     chunks = []
     current_chunk = ""
     current_nb_of_tokens_in_chunk = 0

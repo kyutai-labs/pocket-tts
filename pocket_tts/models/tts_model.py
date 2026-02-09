@@ -789,7 +789,7 @@ class TTSModel(nn.Module):
 
 def wordify_numbers(text):
     def replace_num(match):
-        raw_str = match.group()
+        raw_str = match.group().strip()
         
         # Check if it is an ordinal number (ends with st, nd, rd, or th)
         # We use a simple check on the last two characters

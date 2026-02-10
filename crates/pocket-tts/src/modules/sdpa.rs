@@ -343,4 +343,43 @@ mod tests {
         assert!(!can_skip_mask_for_single_query(2, 64, true, None));
         assert!(!can_skip_mask_for_single_query(1, 64, false, None));
     }
+
+    #[test]
+    fn test_sdpa_handles_non_contiguous_inputs() -> Result<()> {
+        let device = Device::Cpu;
+        let scale = 1.0 / (64f64).sqrt();
+
+        // Q built from a transposed view.
+        let q_base = Tensor::zeros((1, 8, 64, 128), candle_core::DType::F32, &device)?;
+        let q = q_base.transpose(2, 3)?; // [1, 8, 128, 64]
+
+        // K is contiguous but K^T in SDPA is not, unless re-materialized.
+        let k = Tensor::zeros((1, 8, 1600, 64), candle_core::DType::F32, &device)?;
+
+        // V built from transpose + narrow view.
+        let v_base = Tensor::zeros((1, 8, 64, 1601), candle_core::DType::F32, &device)?;
+        let v = v_base.transpose(2, 3)?.narrow(2, 1, 1600)?; // [1, 8, 1600, 64]
+
+        let out = sdpa(&q, &k, &v, scale, true, None)?;
+        assert_eq!(out.dims(), &[1, 8, 128, 64]);
+        Ok(())
+    }
+
+    #[test]
+    fn test_sdpa_chunked_handles_non_contiguous_value_chunks() -> Result<()> {
+        let device = Device::Cpu;
+        let scale = 1.0 / (32f64).sqrt();
+
+        let q = Tensor::zeros((1, 4, 64, 32), candle_core::DType::F32, &device)?;
+        let k_full = Tensor::zeros((1, 4, 320, 32), candle_core::DType::F32, &device)?;
+        let v_base = Tensor::zeros((1, 4, 32, 321), candle_core::DType::F32, &device)?;
+        let v_full = v_base.transpose(2, 3)?.narrow(2, 1, 320)?; // [1, 4, 320, 32]
+
+        let k_chunks = vec![k_full.narrow(2, 0, 160)?, k_full.narrow(2, 160, 160)?];
+        let v_chunks = vec![v_full.narrow(2, 0, 160)?, v_full.narrow(2, 160, 160)?];
+
+        let out = sdpa_chunked(&q, &k_chunks, &v_chunks, scale, true, None)?;
+        assert_eq!(out.dims(), &[1, 4, 64, 32]);
+        Ok(())
+    }
 }

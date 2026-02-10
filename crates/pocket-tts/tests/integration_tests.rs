@@ -9,23 +9,50 @@ use pocket_tts::voice_state::init_states;
 use pocket_tts::weights::download_if_necessary;
 
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 /// Static OnceLock to share the model across tests, preventing concurrent downloads.
 static MODEL: OnceLock<TTSModel> = OnceLock::new();
 
 /// Static OnceLock for model loaded with custom params (for pause tests).
 static MODEL_WITH_PARAMS: OnceLock<TTSModel> = OnceLock::new();
+/// Shared lock for all gated model/token operations to avoid HF cache lock races.
+static MODEL_INIT_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn has_hf_token() -> bool {
+    std::env::var("HF_TOKEN")
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false)
+}
+
+fn require_hf_token(test_name: &str) -> bool {
+    if has_hf_token() {
+        true
+    } else {
+        eprintln!("Skipping {test_name}: HF_TOKEN is not set");
+        false
+    }
+}
+
+fn model_init_lock() -> &'static Mutex<()> {
+    MODEL_INIT_LOCK.get_or_init(|| Mutex::new(()))
+}
 
 /// Get or initialize the shared TTSModel instance.
 /// This ensures the model is loaded exactly once, preventing lock contention
 /// when multiple tests run in parallel.
 fn get_model() -> &'static TTSModel {
+    let _guard = model_init_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     MODEL.get_or_init(|| TTSModel::load("b6369a24").expect("Failed to load model"))
 }
 
 /// Get or initialize the shared TTSModel instance with custom parameters.
 fn get_model_with_params() -> &'static TTSModel {
+    let _guard = model_init_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     MODEL_WITH_PARAMS.get_or_init(|| {
         TTSModel::load_with_params(
             "b6369a24",
@@ -66,7 +93,14 @@ fn test_download_non_gated_tokenizer() {
 #[test]
 // #[ignore = "requires HF_TOKEN and gated model access"]
 fn test_download_gated_weights() {
+    if !require_hf_token("test_download_gated_weights") {
+        return;
+    }
+
     // Test downloading from gated repo (pocket-tts)
+    let _guard = model_init_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let path =
         "hf://kyutai/pocket-tts/tts_b6369a24.safetensors@427e3d61b276ed69fdd03de0d185fa8a8d97fc5b";
     let result = download_if_necessary(path);
@@ -76,6 +110,9 @@ fn test_download_gated_weights() {
 #[test]
 // #[ignore = "requires HF_TOKEN and model download"]
 fn test_tts_model_load() {
+    if !require_hf_token("test_tts_model_load") {
+        return;
+    }
     let model = get_model();
     assert_eq!(model.sample_rate, 24000);
     assert_eq!(model.dim, 1024);
@@ -85,6 +122,9 @@ fn test_tts_model_load() {
 #[test]
 // #[ignore = "requires HF_TOKEN and model download"]
 fn test_voice_cloning_from_ref_wav() {
+    if !require_hf_token("test_voice_cloning_from_ref_wav") {
+        return;
+    }
     let model = get_model();
 
     let ref_wav_path = get_ref_wav_path();
@@ -104,6 +144,9 @@ fn test_voice_cloning_from_ref_wav() {
 #[test]
 // #[ignore = "requires HF_TOKEN and model download"]
 fn test_audio_generation_produces_valid_output() {
+    if !require_hf_token("test_audio_generation_produces_valid_output") {
+        return;
+    }
     let model = get_model();
 
     let ref_wav_path = get_ref_wav_path();
@@ -143,6 +186,9 @@ fn test_audio_generation_produces_valid_output() {
 #[test]
 // #[ignore = "requires HF_TOKEN and model download"]
 fn test_mimi_encode_decode_roundtrip() {
+    if !require_hf_token("test_mimi_encode_decode_roundtrip") {
+        return;
+    }
     let model = get_model();
 
     let ref_wav_path = get_ref_wav_path();
@@ -217,6 +263,9 @@ fn test_mimi_encode_decode_roundtrip() {
 #[test]
 // #[ignore = "requires HF_TOKEN and model download"]
 fn test_generate_with_pauses_adds_silence() {
+    if !require_hf_token("test_generate_with_pauses_adds_silence") {
+        return;
+    }
     let model = get_model_with_params();
 
     let ref_wav_path = get_ref_wav_path();
@@ -279,7 +328,14 @@ fn test_generate_with_pauses_adds_silence() {
 // #[ignore = "requires HF_TOKEN and model download"]
 #[cfg(feature = "quantized")]
 fn test_load_quantized_model() {
+    if !require_hf_token("test_load_quantized_model") {
+        return;
+    }
+
     use pocket_tts::TTSModel;
+    let _guard = model_init_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let model = TTSModel::load_quantized("b6369a24").expect("Failed to load quantized model");
 
     // Verify model loaded

@@ -312,3 +312,79 @@ impl LUTConditioner {
         Ok(encoding.get_ids().len())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::LUTConditioner;
+
+    fn encode_varint(mut value: u64) -> Vec<u8> {
+        let mut out = Vec::new();
+        loop {
+            if value < 0x80 {
+                out.push(value as u8);
+                return out;
+            }
+            out.push(((value as u8) & 0x7f) | 0x80);
+            value >>= 7;
+        }
+    }
+
+    fn encode_piece(piece: &str, score: f32, piece_type: Option<u64>) -> Vec<u8> {
+        let mut msg = Vec::new();
+
+        // field 1: piece (string)
+        msg.push(0x0a);
+        msg.extend(encode_varint(piece.len() as u64));
+        msg.extend(piece.as_bytes());
+
+        // field 2: score (float, wire type 5)
+        msg.push(0x15);
+        msg.extend(score.to_le_bytes());
+
+        // field 3: type (varint)
+        if let Some(piece_type) = piece_type {
+            msg.push(0x18);
+            msg.extend(encode_varint(piece_type));
+        }
+
+        let mut outer = Vec::new();
+        // outer field 1: repeated SentencePiece message
+        outer.push(0x0a);
+        outer.extend(encode_varint(msg.len() as u64));
+        outer.extend(msg);
+        outer
+    }
+
+    #[test]
+    fn test_read_varint_multibyte() {
+        let data = [0xac, 0x02, 0x01];
+        let (first, pos) = LUTConditioner::read_varint(&data, 0).expect("first varint");
+        let (second, end) = LUTConditioner::read_varint(&data, pos).expect("second varint");
+        assert_eq!(first, 300);
+        assert_eq!(second, 1);
+        assert_eq!(end, data.len());
+    }
+
+    #[test]
+    fn test_parse_sentencepiece_vocab_extracts_pieces_and_unk() {
+        let mut model = Vec::new();
+        model.extend(encode_piece("<unk>", -1.0, Some(2)));
+        model.extend(encode_piece("hello", -2.5, Some(1)));
+
+        let (vocab, unk_id) =
+            LUTConditioner::parse_sentencepiece_vocab(&model).expect("parse sentencepiece vocab");
+
+        assert_eq!(unk_id, 0);
+        assert_eq!(vocab.len(), 2);
+        assert_eq!(vocab[0].0, "<unk>");
+        assert_eq!(vocab[1].0, "hello");
+        assert!((vocab[0].1 + 1.0).abs() < 1e-6);
+        assert!((vocab[1].1 + 2.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_parse_sentencepiece_vocab_rejects_empty_vocab() {
+        let err = LUTConditioner::parse_sentencepiece_vocab(&[]).expect_err("expected empty error");
+        assert!(err.to_string().contains("No vocabulary found"));
+    }
+}

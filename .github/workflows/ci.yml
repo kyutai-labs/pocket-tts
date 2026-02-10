@@ -77,16 +77,20 @@ jobs:
           cd crates/pocket-tts-cli/web
           bun install
           bun run build
-      - name: Run tests (Linux/Windows)
+      - name: Run pocket-tts tests (Linux/Windows)
         if: matrix.os != 'macos-latest'
-        run: |
-          cargo test --release -p pocket-tts --features quantized
-          cargo check --release -p pocket-tts-cli --tests --features quantized
-      - name: Run tests (macOS)
+        run: cargo test --release -p pocket-tts --features quantized
+      - name: Check pocket-tts-cli tests (Linux/Windows)
+        if: matrix.os != 'macos-latest'
+        run: cargo check --release -p pocket-tts-cli --tests --features quantized
+      - name: Run pocket-tts tests (macOS)
         if: matrix.os == 'macos-latest'
-        run: |
-          cargo test --release -p pocket-tts --features "quantized metal"
-          cargo check --release -p pocket-tts-cli --tests --features "quantized metal"
+        run: cargo test --release -p pocket-tts --features "quantized metal"
+        env:
+          RUSTFLAGS: "-C target-cpu=apple-m1 -C target-feature=+aes,+sha2"
+      - name: Check pocket-tts-cli tests (macOS)
+        if: matrix.os == 'macos-latest'
+        run: cargo check --release -p pocket-tts-cli --tests --features "quantized metal"
         env:
           RUSTFLAGS: "-C target-cpu=apple-m1 -C target-feature=+aes,+sha2"
 

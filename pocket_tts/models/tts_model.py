@@ -185,7 +185,9 @@ class TTSModel(nn.Module):
         lsd_decode_steps: int = DEFAULT_LSD_DECODE_STEPS,
         noise_clamp: float | int | None = DEFAULT_NOISE_CLAMP,
         eos_threshold: float = DEFAULT_EOS_THRESHOLD,
+        num_threads: int | None = None,
     ) -> Self:
+
         """Load a pre-trained TTS model with specified configuration.
 
         This class method loads a complete TTS model including the flow language model
@@ -213,6 +215,10 @@ class TTSModel(nn.Module):
                 are not found.
             ValueError: If the configuration is invalid or incompatible.
         """
+        if num_threads is not None:
+            torch.set_num_threads(num_threads)
+            logger.info(f"Torch CPU threads set to {num_threads}")
+
         if str(config).endswith(".yaml"):
             config_path = Path(config)
             config = load_config(config_path)

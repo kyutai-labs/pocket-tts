@@ -734,7 +734,6 @@ class TTSModel(nn.Module):
         ):
             if isinstance(audio_conditioning, str):
                 audio_conditioning = download_if_necessary(audio_conditioning)
-            import safetensors.torch
 
             prompt = safetensors.torch.load_file(audio_conditioning)["audio_prompt"]
         elif isinstance(audio_conditioning, str) and audio_conditioning in PREDEFINED_VOICES:

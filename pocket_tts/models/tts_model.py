@@ -10,6 +10,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import safetensors
+import safetensors.torch
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -940,3 +941,22 @@ def split_into_best_sentences(tokenizer, text_to_generate: str, max_tokens: int)
         chunks.append(current_chunk.strip())
 
     return chunks
+
+
+def export_model_state(model_state: dict[str, dict[str, torch.Tensor]], dest: str | Path):
+    dict_to_store = {}
+    for module_name, module_state in model_state.items():
+        for key, tensor_value in module_state.items():
+            dict_to_store[f"{module_name}/{key}"] = tensor_value
+
+    safetensors.torch.save_file(dict_to_store, dest)
+
+
+def load_model_state(source: str | Path) -> dict[str, dict[str, torch.Tensor]]:
+    result = {}
+    with safetensors.safe_open(source, framework="pt") as f:
+        for key in f.keys():
+            module_name, tensor_key = key.split("/")
+            result.setdefault(module_name, {})
+            result[module_name][tensor_key] = f.get_tensor(key)
+    return result

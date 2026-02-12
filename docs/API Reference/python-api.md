@@ -172,40 +172,13 @@ for chunk in model.generate_audio_stream(voice_state, "Long text content..."):
     # Could save chunks to file or play in real-time
 ```
 
-##### `save_audio_prompt(audio_conditioning, export_path, truncate=False)`
-
-Save audio prompt to a .safetensors file.
-
-**Parameters:**
-- `audio_conditioning` (Path | str | torch.Tensor): Audio file path, URL, or tensor
-- `export_path` (Path | str): .safetensors file path
-- `truncate` (bool): Whether to truncate the audio (default: False)
-
-**Returns:**
-- tensor of the converted audio.
-
-**Example:**
-```python
-from pocket_tts import TTSModel
-
-model = TTSModel.load_model()
-# From HuggingFace URL
-model.get_state_for_audio_prompt(
-    "hf://kyutai/tts-voices/alba-mackenna/casual.wav", "casual.safetensors"
-)
-
-# From local file (the .safetensors extension will be added automatically)
-tensor = model.get_state_for_audio_prompt("./my_voice.wav", "my_voice")
-
-# Use the tensor, Luke!
-audio = model.generate_audio(tensor, "Hello world!")
-```
 
 ## Functions
 
 ### export_model_state
 
-Export a model state (voice embedding) to a safetensors file for fast loading later.
+Export a model state for a given voice conditioning to a safetensors file for fast loading later.
+You can then load it again with the method `get_state_for_audio_prompt()`.
 
 **Parameters:**
 - `model_state` (dict): Model state dictionary from `get_state_for_audio_prompt()`
@@ -218,34 +191,17 @@ from pocket_tts import TTSModel, export_model_state
 model = TTSModel.load_model()
 
 # Get voice state from an audio file
-voice_state = model.get_state_for_audio_prompt("hf://kyutai/tts-voices/alba-mackenna/casual.wav")
+model_state_for_voice = model.get_state_for_audio_prompt(
+    "hf://kyutai/tts-voices/alba-mackenna/casual.wav"
+)
 
 # Export to safetensors for fast loading later
-export_model_state(voice_state, "my_voice.safetensors")
+export_model_state(model_state_for_voice, "my_voice.safetensors")
+
+# Quite fast, it's just loading the tensors without running any pytorch code
+model_state_for_voice_copy = model.get_state_for_audio_prompt("my_voice.safetensors")
 ```
 
-### import_model_state
-
-Import a model state (voice embedding) from a safetensors file.
-
-**Parameters:**
-- `source` (str | Path): Path to the safetensors file
-
-**Returns:**
-- `dict`: Model state dictionary ready to use with `generate_audio()`
-
-**Example:**
-```python
-from pocket_tts import TTSModel, import_model_state
-
-model = TTSModel.load_model()
-
-# Load a pre-exported voice state (much faster than processing audio)
-voice_state = import_model_state("my_voice.safetensors")
-
-# Generate audio
-audio = model.generate_audio(voice_state, "Hello world!")
-```
 
 ## Advanced Usage
 

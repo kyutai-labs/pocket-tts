@@ -32,13 +32,12 @@ from pocket_tts.models.mimi import MimiModel
 from pocket_tts.modules import mimi_transformer
 from pocket_tts.modules.dummy_quantizer import DummyQuantizer
 from pocket_tts.modules.seanet import SEANetDecoder, SEANetEncoder
-from pocket_tts.modules.stateful_module import increment_steps, init_states
+from pocket_tts.modules.stateful_module import StatefulModule, increment_steps, init_states
 from pocket_tts.utils.config import Config, load_config
 from pocket_tts.utils.utils import (
     PREDEFINED_VOICES,
     display_execution_time,
     download_if_necessary,
-    load_predefined_voice,
     size_of_dict,
 )
 from pocket_tts.utils.weights_loading import get_flow_lm_state_dict, get_mimi_state_dict
@@ -175,6 +174,13 @@ class TTSModel(nn.Module):
             )
         size_in_mb = size_of_dict(tts_model.state_dict()) // 1e6
         logging.info(f"TTS Model loaded successfully. Its size is {size_in_mb} MB")
+
+        # TODO: move this in the __init__ and make self.mimi in __init__
+        for top_module in (tts_model.flow_lm, tts_model.mimi):
+            for module_name, module in top_module.named_modules():
+                if not isinstance(module, StatefulModule):
+                    continue
+                module._module_absolute_name = module_name
 
         return tts_model
 
@@ -735,32 +741,33 @@ class TTSModel(nn.Module):
             if isinstance(audio_conditioning, str):
                 audio_conditioning = download_if_necessary(audio_conditioning)
 
-            prompt = safetensors.torch.load_file(audio_conditioning)["audio_prompt"]
+            return load_model_state(audio_conditioning)
+
         elif isinstance(audio_conditioning, str) and audio_conditioning in PREDEFINED_VOICES:
             # We get the audio conditioning directly from the safetensors file.
-            prompt = load_predefined_voice(audio_conditioning)
-        else:
-            if not self.has_voice_cloning and isinstance(audio_conditioning, (str, Path)):
-                raise ValueError(VOICE_CLONING_UNSUPPORTED)
+            return load_model_state(download_if_necessary(PREDEFINED_VOICES[audio_conditioning]))
 
-            if isinstance(audio_conditioning, str):
-                audio_conditioning = download_if_necessary(audio_conditioning)
+        if not self.has_voice_cloning and isinstance(audio_conditioning, (str, Path)):
+            raise ValueError(VOICE_CLONING_UNSUPPORTED)
 
-            if isinstance(audio_conditioning, Path):
-                audio, conditioning_sample_rate = audio_read(audio_conditioning)
+        if isinstance(audio_conditioning, str):
+            audio_conditioning = download_if_necessary(audio_conditioning)
 
-                if truncate:
-                    max_samples = int(30 * conditioning_sample_rate)  # 30 seconds of audio
-                    if audio.shape[-1] > max_samples:
-                        audio = audio[..., :max_samples]
-                        logger.info(f"Audio truncated to first 30 seconds ({max_samples} samples)")
+        if isinstance(audio_conditioning, Path):
+            audio, conditioning_sample_rate = audio_read(audio_conditioning)
 
-                audio_conditioning = convert_audio(
-                    audio, conditioning_sample_rate, self.config.mimi.sample_rate, 1
-                )
+            if truncate:
+                max_samples = int(30 * conditioning_sample_rate)  # 30 seconds of audio
+                if audio.shape[-1] > max_samples:
+                    audio = audio[..., :max_samples]
+                    logger.info(f"Audio truncated to first 30 seconds ({max_samples} samples)")
 
-            with display_execution_time("Encoding audio prompt"):
-                prompt = self._encode_audio(audio_conditioning.unsqueeze(0).to(self.device))
+            audio_conditioning = convert_audio(
+                audio, conditioning_sample_rate, self.config.mimi.sample_rate, 1
+            )
+
+        with display_execution_time("Encoding audio prompt"):
+            prompt = self._encode_audio(audio_conditioning.unsqueeze(0).to(self.device))
 
         model_state = init_states(self.flow_lm, batch_size=1, sequence_length=prompt.shape[1])
 
@@ -947,7 +954,6 @@ def export_model_state(model_state: dict[str, dict[str, torch.Tensor]], dest: st
     for module_name, module_state in model_state.items():
         for key, tensor_value in module_state.items():
             dict_to_store[f"{module_name}/{key}"] = tensor_value
-
     safetensors.torch.save_file(dict_to_store, dest)
 
 

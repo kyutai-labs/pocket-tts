@@ -113,10 +113,25 @@ audio = tts_model.generate_audio(voice_state, "Hello world, this is a test.")
 scipy.io.wavfile.write("output.wav", tts_model.sample_rate, audio.numpy())
 ```
 
-You can have multiple voice states around if 
-you have multiple voices you want to use. `load_model()` 
+You can have multiple voice states around if
+you have multiple voices you want to use. `load_model()`
 and `get_state_for_audio_prompt()` are relatively slow operations,
 so we recommend to keep the model and voice states in memory if you can.
+
+For faster voice loading, you can export voice states to safetensors files:
+```python
+from pocket_tts import TTSModel, export_model_state, import_model_state
+
+model = TTSModel.load_model()
+
+# Export a voice state for fast loading later
+voice_state = model.get_state_for_audio_prompt("alba")
+export_model_state(voice_state, "alba.safetensors")
+
+# Later, load it quickly (much faster than processing audio)
+voice_state = import_model_state("alba.safetensors")
+audio = model.generate_audio(voice_state, "Hello world!")
+```
 
 You can check out the [Python API documentation](https://github.com/kyutai-labs/pocket-tts/tree/main/docs/python-api.md) for more details and examples.
 

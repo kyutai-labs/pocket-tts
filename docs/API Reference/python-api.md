@@ -201,6 +201,52 @@ tensor = model.get_state_for_audio_prompt("./my_voice.wav", "my_voice")
 audio = model.generate_audio(tensor, "Hello world!")
 ```
 
+## Functions
+
+### export_model_state
+
+Export a model state (voice embedding) to a safetensors file for fast loading later.
+
+**Parameters:**
+- `model_state` (dict): Model state dictionary from `get_state_for_audio_prompt()`
+- `dest` (str | Path): Path to save the safetensors file
+
+**Example:**
+```python
+from pocket_tts import TTSModel, export_model_state
+
+model = TTSModel.load_model()
+
+# Get voice state from an audio file
+voice_state = model.get_state_for_audio_prompt("hf://kyutai/tts-voices/alba-mackenna/casual.wav")
+
+# Export to safetensors for fast loading later
+export_model_state(voice_state, "my_voice.safetensors")
+```
+
+### import_model_state
+
+Import a model state (voice embedding) from a safetensors file.
+
+**Parameters:**
+- `source` (str | Path): Path to the safetensors file
+
+**Returns:**
+- `dict`: Model state dictionary ready to use with `generate_audio()`
+
+**Example:**
+```python
+from pocket_tts import TTSModel, import_model_state
+
+model = TTSModel.load_model()
+
+# Load a pre-exported voice state (much faster than processing audio)
+voice_state = import_model_state("my_voice.safetensors")
+
+# Generate audio
+audio = model.generate_audio(voice_state, "Hello world!")
+```
+
 ## Advanced Usage
 
 ### Voice Management

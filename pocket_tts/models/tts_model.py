@@ -741,11 +741,11 @@ class TTSModel(nn.Module):
             if isinstance(audio_conditioning, str):
                 audio_conditioning = download_if_necessary(audio_conditioning)
 
-            return load_model_state(audio_conditioning)
+            return import_model_state(audio_conditioning)
 
         elif isinstance(audio_conditioning, str) and audio_conditioning in PREDEFINED_VOICES:
             # We get the audio conditioning directly from the safetensors file.
-            return load_model_state(download_if_necessary(PREDEFINED_VOICES[audio_conditioning]))
+            return import_model_state(download_if_necessary(PREDEFINED_VOICES[audio_conditioning]))
 
         if not self.has_voice_cloning and isinstance(audio_conditioning, (str, Path)):
             raise ValueError(VOICE_CLONING_UNSUPPORTED)
@@ -957,7 +957,7 @@ def export_model_state(model_state: dict[str, dict[str, torch.Tensor]], dest: st
     safetensors.torch.save_file(dict_to_store, dest)
 
 
-def load_model_state(source: str | Path) -> dict[str, dict[str, torch.Tensor]]:
+def import_model_state(source: str | Path) -> dict[str, dict[str, torch.Tensor]]:
     result = {}
     with safetensors.safe_open(source, framework="pt") as f:
         for key in f.keys():

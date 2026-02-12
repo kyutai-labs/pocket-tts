@@ -123,8 +123,7 @@ You can check out the [Python API documentation](https://github.com/kyutai-labs/
 ## Unsupported features
 
 At the moment, we do not support (but would love pull requests adding):
-- [Running the TTS inside a web browser (WebAssembly)](https://github.com/kyutai-labs/pocket-tts/issues/1)
-- [A compiled version with for example `torch.compile()` or `candle`.](https://github.com/kyutai-labs/pocket-tts/issues/2)
+
 - [Adding silence in the text input to generate pauses.](https://github.com/kyutai-labs/pocket-tts/issues/6)
 - [Quantization to run the computation in int8.](https://github.com/kyutai-labs/pocket-tts/issues/7)
 

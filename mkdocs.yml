@@ -62,5 +62,5 @@ markdown_extensions:
   - admonition
   - pymdownx.details
 
-docs_dir: docs-src
+docs_dir: docs
 site_dir: docs

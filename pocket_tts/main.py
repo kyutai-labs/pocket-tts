@@ -238,10 +238,6 @@ def generate(
     ] = MAX_TOKEN_PER_CHUNK,
 ):
     """Generate speech using Kyutai Pocket TTS."""
-    if "cuda" in device:
-        # Cuda graphs capturing does not play nice with multithreading.
-        os.environ["NO_CUDA_GRAPH"] = "1"
-
     log_level = logging.ERROR if quiet else logging.INFO
     with enable_logging("pocket_tts", log_level):
         if text == "-":
@@ -341,10 +337,6 @@ def export_voice(
             return False
         logger.info(f"✅ Successfully exported voice '{voice}' to '{out_path}'")
         return True
-
-    if "cuda" in device:
-        # Cuda graphs capturing does not play nice with multithreading.
-        os.environ["NO_CUDA_GRAPH"] = "1"
 
     log_level = logging.ERROR if quiet else logging.INFO
     success_count = 0

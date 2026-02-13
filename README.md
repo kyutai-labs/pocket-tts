@@ -123,8 +123,7 @@ You can check out the [Python API documentation](https://github.com/kyutai-labs/
 ## Unsupported features
 
 At the moment, we do not support (but would love pull requests adding):
-- [Running the TTS inside a web browser (WebAssembly)](https://github.com/kyutai-labs/pocket-tts/issues/1)
-- [A compiled version with for example `torch.compile()` or `candle`.](https://github.com/kyutai-labs/pocket-tts/issues/2)
+
 - [Adding silence in the text input to generate pauses.](https://github.com/kyutai-labs/pocket-tts/issues/6)
 - [Quantization to run the computation in int8.](https://github.com/kyutai-labs/pocket-tts/issues/7)
 
@@ -142,20 +141,23 @@ You can find development instructions in the [CONTRIBUTING.md](https://github.co
 Pocket TTS is small enough to run directly in your browser in WebAssembly/JavaScript.
 We don't have official support for this yet, but you can try out one of these community implementations:
 
-- [babybirdprd/pocket-tts](https://github.com/babybirdprd/pocket-tts): Candle version (Rust) with WebAssembly and PyO3 bindings, meaning it can run on the web too.
-- [ekzhang/jax-js](https://github.com/ekzhang/jax-js/tree/main/website/src/routes/tts): Using jax-js, a ML library for the web. Demo [here](https://jax-js.com/tts)
-- [KevinAHM/pocket-tts-onnx-export](https://github.com/KevinAHM/pocket-tts-onnx-export): Model exported to .onnx and run using [ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/). Demo [here](https://huggingface.co/spaces/KevinAHM/pocket-tts-web)
+- [pocket-tts-onnx-export](https://github.com/KevinAHM/pocket-tts-onnx-export) by @KevinAHM: Model exported to .onnx and run using [ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/). Demo [here](https://huggingface.co/spaces/KevinAHM/pocket-tts-web)
+- [pocket-tts](https://github.com/babybirdprd/pocket-tts) by @babybirdprd: Candle version (Rust) with WebAssembly and PyO3 bindings, meaning it can run on the web too.
+- [jax-js](https://github.com/ekzhang/jax-js/tree/main/website/src/routes/tts) by @ekzhang: Using jax-js, a ML library for the web. Demo [here](https://jax-js.com/tts)
+
 
 ## Alterative implementations
-- [jishnuvenugopal/pocket-tts-mlx](https://github.com/jishnuvenugopal/pocket-tts-mlx) - MLX backend optimized for Apple Silicon
-- [babybirdprd/pocket-tts](https://github.com/babybirdprd/pocket-tts) - Candle version (Rust) with WebAssembly and PyO3 bindings.
+- [pocket-tts-mlx](https://github.com/jishnuvenugopal/pocket-tts-mlx) by @jishnuvenugopal - MLX backend optimized for Apple Silicon
+- [pocket-tts](https://github.com/babybirdprd/pocket-tts) by @babybirdprd - Candle version (Rust) with WebAssembly and PyO3 bindings.
 
 ## Projects using Pocket TTS
 
-- [lukasmwerner/pocket-reader](https://github.com/lukasmwerner/pocket-reader) - Browser screen reader
-- [ikidd/pocket-tts-wyoming](https://github.com/ikidd/pocket-tts-wyoming) - Docker container for pocket-tts using Wyoming protocol, ready for Home Assistant Voice use.
-- [slaughters85j/pocket-tts](https://github.com/slaughters85j/pocket-tts) - Mac Desktop App + macOS Quick Action
-- [teddybear082/pocket-tts-openai_streaming_server](https://github.com/teddybear082/pocket-tts-openai_streaming_server) - OpenAI-compatible streaming server, dockerized and with an `.exe` release
+- [pocket-reader](https://github.com/lukasmwerner/pocket-reader) by @lukasmwerner- Browser screen reader
+- [pocket-tts-wyoming](https://github.com/ikidd/pocket-tts-wyoming) by @ikidd - Docker container for pocket-tts using Wyoming protocol, ready for Home Assistant Voice use.
+- [Sonorus](https://www.nexusmods.com/hogwartslegacy/mods/2409) by @KevinAHM - Talk to any named character in Hogwarts Legacy with their original voice.
+- [Mac pocket-tts](https://github.com/slaughters85j/pocket-tts) by @slaughters85j - Mac Desktop App + macOS Quick Action
+- [pocket-tts-openai_streaming_server](https://github.com/teddybear082/pocket-tts-openai_streaming_server) by @teddybear082 - OpenAI-compatible streaming server, dockerized and with an `.exe` release
+- [pocket-tts-unity](https://github.com/lookbe/pocket-tts-unity) by @lookbe - A Unity 6 integration for Pocket-TTS.
 
 ## Prohibited use
 

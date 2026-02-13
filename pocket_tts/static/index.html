@@ -111,7 +111,9 @@
     <script>
         class StreamingWavPlayer {
             constructor() {
-                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)(
+                    { latencyHint: "playback" }
+                );
                 this.sampleRate = 0;
                 this.numChannels = 0;
                 this.headerParsed = false;

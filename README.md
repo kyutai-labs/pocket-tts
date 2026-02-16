@@ -120,7 +120,7 @@ so we recommend to keep the model and voice states in memory if you can.
 
 For faster voice loading, you can export voice states to safetensors files:
 ```python
-from pocket_tts import TTSModel, export_model_state, import_model_state
+from pocket_tts import TTSModel, export_model_state
 
 model = TTSModel.load_model()
 

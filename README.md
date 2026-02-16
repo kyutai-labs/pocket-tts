@@ -125,12 +125,14 @@ from pocket_tts import TTSModel, export_model_state, import_model_state
 model = TTSModel.load_model()
 
 # Export a voice state for fast loading later
-voice_state = model.get_state_for_audio_prompt("alba")
-export_model_state(voice_state, "alba.safetensors")
+model_state = model.get_state_for_audio_prompt("some_voice.wav")
+export_model_state(model_state, "./some_voice.safetensors")
 
-# Later, load it quickly (much faster than processing audio)
-voice_state = import_model_state("alba.safetensors")
-audio = model.generate_audio(voice_state, "Hello world!")
+# Later, load it quickly, this is quite fast as it's just reading the kvcache
+# from disk and doesn't do any others computations.
+model_state_copy = model.get_state_for_audio_prompt("./some_voice.safetensors")
+
+audio = model.generate_audio(model_state_copy, "Hello world!")
 ```
 
 You can check out the [Python API documentation](https://github.com/kyutai-labs/pocket-tts/tree/main/docs/python-api.md) for more details and examples.

@@ -1144,6 +1144,7 @@ dev = [
     { name = "mkdocstrings-python" },
     { name = "pytest" },
     { name = "pytest-xdist" },
+    { name = "soundfile" },
 ]
 
 [package.metadata]
@@ -1177,6 +1178,7 @@ dev = [
     { name = "mkdocstrings-python", specifier = ">=2.0.1" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
+    { name = "soundfile" },
 ]
 
 [[package]]

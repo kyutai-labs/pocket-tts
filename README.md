@@ -12,7 +12,7 @@ Supports Python 3.10, 3.11, 3.12, 3.13 and 3.14. Requires PyTorch 2.5+. Does not
 [🤗 Hugging Face Model Card](https://huggingface.co/kyutai/pocket-tts) | 
 [⚙️ Tech report](https://kyutai.org/blog/2026-01-13-pocket-tts) |
 [📄 Paper](https://arxiv.org/abs/2509.06926) | 
-[📚 Documentation](https://github.com/kyutai-labs/pocket-tts/tree/main/docs)
+[📚 Documentation](https://kyutai-labs.github.io/pocket-tts/)
 
 
 ## Main takeaways
@@ -65,7 +65,7 @@ The `--voice` argument can also take a plain wav file as input for voice cloning
 You can use your own or check out our [voice repository](https://huggingface.co/kyutai/tts-voices).
 We recommend [cleaning the sample](https://podcast.adobe.com/en/enhance) before using it with Pocket TTS, because the audio quality of the sample is also reproduced.
 
-Feel free to check out the [generate documentation](https://github.com/kyutai-labs/pocket-tts/tree/main/docs/generate.md) for more details and examples.
+Feel free to check out the [generate documentation](https://kyutai-labs.github.io/pocket-tts/CLI%20Commands/generate/) for more details and examples.
 For trying multiple voices and prompts quickly, prefer using the `serve` command.
 
 ### The `serve` command
@@ -78,11 +78,11 @@ pocket-tts serve
 ```
 Navigate to `http://localhost:8000` to try the web interface, it's faster than the command line as the model is kept in memory between requests.
 
-You can check out the [serve documentation](https://github.com/kyutai-labs/pocket-tts/tree/main/docs/serve.md) for more details and examples.
+You can check out the [serve documentation](https://kyutai-labs.github.io/pocket-tts/CLI%20Commands/serve/) for more details and examples.
 
 ### The `export-voice` command
 
-Processing an audio file (e.g., a .wav or .mp3) for voice cloning is relatively slow, but loading a safetensors file -- a voice embedding converted from an audio file -- is very fast. You can use the `export-voice` command to do this conversion. See the [export-voice documentation](https://github.com/kyutai-labs/pocket-tts/tree/main/docs/export_voice.md) for more details and examples.
+Processing an audio file (e.g., a .wav or .mp3) for voice cloning is relatively slow, but loading a safetensors file -- a voice embedding converted from an audio file -- is very fast. You can use the `export-voice` command to do this conversion. See the [export-voice documentation](https://kyutai-labs.github.io/pocket-tts/CLI%20Commands/export_voice/) for more details and examples.
 
 
 ## Using it as a Python library
@@ -135,7 +135,7 @@ model_state_copy = model.get_state_for_audio_prompt("./some_voice.safetensors")
 audio = model.generate_audio(model_state_copy, "Hello world!")
 ```
 
-You can check out the [Python API documentation](https://github.com/kyutai-labs/pocket-tts/tree/main/docs/python-api.md) for more details and examples.
+You can check out the [Python API documentation](https://kyutai-labs.github.io/pocket-tts/API%20Reference/python-api/) for more details and examples.
 
 ## Unsupported features
 

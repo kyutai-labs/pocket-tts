@@ -14,7 +14,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 _voices_names = ["alba", "marius", "javert", "jean", "fantine", "cosette", "eponine", "azelma"]
 PREDEFINED_VOICES = {
     # don't forget to change this
-    x: f"hf://kyutai/pocket-tts-without-voice-cloning/embeddings/{x}.safetensors@d4fdd22ae8c8e1cb3634e150ebeff1dab2d16df3"
+    x: f"hf://kyutai/pocket-tts-without-voice-cloning/embeddings_v2/{x}.safetensors@2578fed2380333b621689eaed6fe144cf69dfeb3"
     for x in _voices_names
 }
 

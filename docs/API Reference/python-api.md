@@ -172,34 +172,36 @@ for chunk in model.generate_audio_stream(voice_state, "Long text content..."):
     # Could save chunks to file or play in real-time
 ```
 
-##### `save_audio_prompt(audio_conditioning, export_path, truncate=False)`
 
-Save audio prompt to a .safetensors file.
+## Functions
+
+### export_model_state
+
+Export a model state for a given voice conditioning to a safetensors file for fast loading later.
+You can then load it again with the method `get_state_for_audio_prompt()`.
 
 **Parameters:**
-- `audio_conditioning` (Path | str | torch.Tensor): Audio file path, URL, or tensor
-- `export_path` (Path | str): .safetensors file path
-- `truncate` (bool): Whether to truncate the audio (default: False)
-
-**Returns:**
-- tensor of the converted audio.
+- `model_state` (dict): Model state dictionary from `get_state_for_audio_prompt()`
+- `dest` (str | Path): Path to save the safetensors file
 
 **Example:**
 ```python
-from pocket_tts import TTSModel
+from pocket_tts import TTSModel, export_model_state
 
 model = TTSModel.load_model()
-# From HuggingFace URL
-model.get_state_for_audio_prompt(
-    "hf://kyutai/tts-voices/alba-mackenna/casual.wav", "casual.safetensors"
+
+# Get voice state from an audio file
+model_state_for_voice = model.get_state_for_audio_prompt(
+    "hf://kyutai/tts-voices/alba-mackenna/casual.wav"
 )
 
-# From local file (the .safetensors extension will be added automatically)
-tensor = model.get_state_for_audio_prompt("./my_voice.wav", "my_voice")
+# Export to safetensors for fast loading later
+export_model_state(model_state_for_voice, "my_voice.safetensors")
 
-# Use the tensor, Luke!
-audio = model.generate_audio(tensor, "Hello world!")
+# Quite fast, it's just loading the tensors without running any pytorch code
+model_state_for_voice_copy = model.get_state_for_audio_prompt("my_voice.safetensors")
 ```
+
 
 ## Advanced Usage
 

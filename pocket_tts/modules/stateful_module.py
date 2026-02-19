@@ -11,7 +11,6 @@ def init_states(
     for module_name, module in model.named_modules():
         if not isinstance(module, StatefulModule):
             continue
-        module._module_absolute_name = module_name
         module_state = module.init_state(batch_size, sequence_length=sequence_length)
         result[module_name] = module_state
     return result

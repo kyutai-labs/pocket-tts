@@ -85,8 +85,9 @@ class StreamingConv1d(StatefulModule):
         stride = self._stride
         # Effective kernel size accounting for dilation.
         kernel = self._effective_kernel_size
-        previous = torch.zeros(batch_size, self.conv.in_channels, kernel - stride)
-        first = torch.ones(batch_size, dtype=torch.bool)
+        device = self.conv.weight.device
+        previous = torch.zeros(batch_size, self.conv.in_channels, kernel - stride, device=device)
+        first = torch.ones(batch_size, dtype=torch.bool, device=device)
         return dict(previous=previous, first=first)
 
     def forward(self, x, model_state: dict | None):
@@ -144,7 +145,8 @@ class StreamingConvTranspose1d(StatefulModule):
     def init_state(self, batch_size: int, sequence_length: int) -> dict[str, torch.Tensor]:
         K = self._kernel_size
         S = self._stride
-        return dict(partial=torch.zeros(batch_size, self.convtr.out_channels, K - S))
+        device = self.convtr.weight.device
+        return dict(partial=torch.zeros(batch_size, self.convtr.out_channels, K - S, device=device))
 
     def forward(self, x, mimi_state: dict):
         layer_state = self.get_state(mimi_state)["partial"]

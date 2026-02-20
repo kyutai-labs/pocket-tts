@@ -86,3 +86,6 @@ profile_output*
 CLAUDE.md
 QWEN.md
 .claude/
+voices
+
+italk.yaml

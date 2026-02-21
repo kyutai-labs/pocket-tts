@@ -336,21 +336,26 @@ class TTSModel(nn.Module):
 
     def _flow_lm_current_end(self, model_state: dict) -> int:
         for module_state in model_state.values():
-            current_end = module_state.get("current_end")
-            if current_end is not None:
-                return int(current_end.shape[0])
+            offset = module_state.get("offset")
+            if offset is not None:
+                return int(offset.view(-1)[0].item())
         raise ValueError(
-            "Could not find current_end in model state, please open an issue "
+            "Could not find offset in model state, please open an issue "
             "at https://github.com/kyutai-labs/pocket-tts/issues"
         )
 
     @torch.no_grad
-    def _decode_audio_worker(self, latents_queue: queue.Queue, result_queue: queue.Queue):
+    def _decode_audio_worker(
+        self,
+        latents_queue: queue.Queue,
+        result_queue: queue.Queue,
+        mimi_sequence_length: int,
+        mimi_steps_per_latent: int,
+    ):
         """Worker thread function for decoding audio latents from queue with immediate streaming."""
         try:
             audio_chunks = []
-            mimi_context = self.config.mimi.transformer.context
-            mimi_state = init_states(self.mimi, batch_size=1, sequence_length=mimi_context)
+            mimi_state = init_states(self.mimi, batch_size=1, sequence_length=mimi_sequence_length)
             while True:
                 latent = latents_queue.get()
                 if latent is None:
@@ -361,7 +366,7 @@ class TTSModel(nn.Module):
 
                 t = time.monotonic()
                 audio_frame = self.mimi.decode_from_latent(quantized, mimi_state)
-                increment_steps(self.mimi, mimi_state, increment=16)
+                increment_steps(self.mimi, mimi_state, increment=mimi_steps_per_latent)
                 audio_frame_duration = audio_frame.shape[2] / self.config.mimi.sample_rate
                 # We could log the timings here.
                 logger.debug(
@@ -538,13 +543,21 @@ class TTSModel(nn.Module):
         if copy_state:
             model_state = copy.deepcopy(model_state)
 
+        prepared = self.flow_lm.conditioner.prepare(text_to_generate)
+        token_count = prepared.tokens.shape[1]
+        max_gen_len = self._estimate_max_gen_len(token_count)
+        mimi_steps_per_latent = int(self.mimi.encoder_frame_rate / self.mimi.frame_rate)
+        mimi_sequence_length = max_gen_len * mimi_steps_per_latent
+
         # Set up multithreaded generation and decoding
         latents_queue = queue.Queue()
         result_queue = queue.Queue()
 
         # Start decoder worker thread
         decoder_thread = threading.Thread(
-            target=self._decode_audio_worker, args=(latents_queue, result_queue), daemon=True
+            target=self._decode_audio_worker,
+            args=(latents_queue, result_queue, mimi_sequence_length, mimi_steps_per_latent),
+            daemon=True,
         )
         logger.info("starting timer now!")
         t_generating = time.monotonic()
@@ -553,7 +566,8 @@ class TTSModel(nn.Module):
         # Generate latents and add them to queue (decoder processes them in parallel)
         self._generate(
             model_state=model_state,
-            text_to_generate=text_to_generate,
+            prepared=prepared,
+            max_gen_len=max_gen_len,
             frames_after_eos=frames_after_eos,
             latents_queue=latents_queue,
             result_queue=result_queue,
@@ -600,14 +614,13 @@ class TTSModel(nn.Module):
     def _generate(
         self,
         model_state: dict,
-        text_to_generate: str,
+        prepared: TokenizedText,
+        max_gen_len: int,
         frames_after_eos: int,
         latents_queue: queue.Queue,
         result_queue: queue.Queue,
     ):
-        prepared = self.flow_lm.conditioner.prepare(text_to_generate)
         token_count = prepared.tokens.shape[1]
-        max_gen_len = self._estimate_max_gen_len(token_count)
         current_end = self._flow_lm_current_end(model_state)
         required_len = current_end + token_count + max_gen_len
         self._expand_kv_cache(model_state, sequence_length=required_len)
@@ -880,5 +893,13 @@ def _import_model_state(source: str | Path) -> dict[str, dict[str, torch.Tensor]
         for key in f.keys():
             module_name, tensor_key = key.split("/")
             result.setdefault(module_name, {})
-            result[module_name][tensor_key] = f.get_tensor(key)
+            if tensor_key == "current_end":
+                # we used the shape[0] as step index before for torch.compile() compatibility,
+                # but it's not needed anymore
+                tensor = f.get_tensor(key)
+                result[module_name]["offset"] = torch.full(
+                    (1,), fill_value=tensor.shape[0], dtype=torch.long, device=tensor.device
+                )
+            else:
+                result[module_name][tensor_key] = f.get_tensor(key)
     return result

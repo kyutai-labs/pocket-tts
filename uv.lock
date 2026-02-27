@@ -1152,7 +1152,7 @@ requires-dist = [
     { name = "beartype", specifier = ">=0.22.5" },
     { name = "einops", specifier = ">=0.4.0" },
     { name = "fastapi", specifier = ">=0.100" },
-    { name = "huggingface-hub", specifier = ">=0.10" },
+    { name = "huggingface-hub", specifier = ">=0.13.0" },
     { name = "numpy", specifier = ">=2" },
     { name = "pydantic", specifier = ">=2" },
     { name = "python-multipart", specifier = ">=0.0.21" },

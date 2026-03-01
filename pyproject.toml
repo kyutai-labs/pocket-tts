@@ -19,7 +19,7 @@ dependencies = [
     "python-multipart>=0.0.21",
     "scipy>=1.5.0",
     "einops>=0.4.0",
-    "huggingface_hub>=0.10",
+    "huggingface_hub>=0.13.0",
     "requests>=2.20.0",
 ]
 

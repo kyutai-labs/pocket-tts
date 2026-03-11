@@ -77,6 +77,7 @@ packages = ["pocket_tts"]
 
 [project.scripts]
 pocket-tts = "pocket_tts.main:cli_app"
+sd-pocket-tts = "pocket_tts.sd_pocket_tts:main"
 
 [tool.uv]
 exclude-newer = "7 days"

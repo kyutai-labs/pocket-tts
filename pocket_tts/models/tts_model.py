@@ -827,6 +827,39 @@ def prepare_text_prompt(text: str) -> tuple[str, int]:
     return text, frames_after_eos_guess
 
 
+def _find_boundary_indices(list_of_tokens: list[int], boundary_tokens: list[int]) -> list[int]:
+    """Find token indices where text should be split based on boundary tokens.
+
+    Returns a list of boundary positions used to slice segments. Each consecutive
+    pair (indices[i], indices[i+1]) defines one segment. The first element is
+    always 0 and the last is always len(list_of_tokens).
+    """
+    indices = [0]
+    previous_was_boundary = False
+    for idx, token in enumerate(list_of_tokens):
+        if token in boundary_tokens:
+            previous_was_boundary = True
+        else:
+            if previous_was_boundary:
+                indices.append(idx)
+            previous_was_boundary = False
+    indices.append(len(list_of_tokens))
+    return indices
+
+
+def _segments_from_boundaries(
+    list_of_tokens: list[int], boundary_indices: list[int], tokenizer
+) -> list[tuple[int, str]]:
+    """Decode token segments between boundary indices into (token_count, text) pairs."""
+    segments = []
+    for i in range(len(boundary_indices) - 1):
+        start = boundary_indices[i]
+        end = boundary_indices[i + 1]
+        text = tokenizer.sp.decode(list_of_tokens[start:end])
+        segments.append((end - start, text))
+    return segments
+
+
 def split_into_best_sentences(tokenizer, text_to_generate: str, max_tokens: int) -> list[str]:
     text_to_generate, _ = prepare_text_prompt(text_to_generate)
     text_to_generate = text_to_generate.strip()
@@ -834,32 +867,31 @@ def split_into_best_sentences(tokenizer, text_to_generate: str, max_tokens: int)
     list_of_tokens = tokens.tokens[0].tolist()
 
     _, *end_of_sentence_tokens = tokenizer(".!...?").tokens[0].tolist()
+    sentence_boundaries = _find_boundary_indices(list_of_tokens, end_of_sentence_tokens)
+    nb_tokens_and_sentences = _segments_from_boundaries(
+        list_of_tokens, sentence_boundaries, tokenizer
+    )
 
-    end_of_sentences_indices = [0]
-    previous_was_end_of_sentence_token = False
-
-    for token_idx, token in enumerate(list_of_tokens):
-        if token in end_of_sentence_tokens:
-            previous_was_end_of_sentence_token = True
+    # Sub-split oversized sentences on commas, semicolons, and colons to prevent skipped words
+    _, *fallback_tokens = tokenizer(",;:").tokens[0].tolist()
+    refined_segments = []
+    for nb_tokens, text in nb_tokens_and_sentences:
+        if nb_tokens <= max_tokens:
+            refined_segments.append((nb_tokens, text))
         else:
-            if previous_was_end_of_sentence_token:
-                end_of_sentences_indices.append(token_idx)
-            previous_was_end_of_sentence_token = False
-    end_of_sentences_indices.append(len(list_of_tokens))
-
-    nb_tokens_and_sentences = []
-    for i in range(len(end_of_sentences_indices) - 1):
-        # let's print
-        start = end_of_sentences_indices[i]
-        end = end_of_sentences_indices[i + 1]
-        text = tokenizer.sp.decode(list_of_tokens[start:end])
-        nb_tokens_and_sentences.append((end - start, text))
+            sub_tokens = tokenizer(text.strip()).tokens[0].tolist()
+            sub_boundaries = _find_boundary_indices(sub_tokens, fallback_tokens)
+            sub_segments = _segments_from_boundaries(sub_tokens, sub_boundaries, tokenizer)
+            if len(sub_segments) > 1:
+                refined_segments.extend(sub_segments)
+            else:
+                refined_segments.append((nb_tokens, text))
 
     max_nb_tokens_in_a_chunk = max_tokens
     chunks = []
     current_chunk = ""
     current_nb_of_tokens_in_chunk = 0
-    for nb_tokens, sentence in nb_tokens_and_sentences:
+    for nb_tokens, sentence in refined_segments:
         if current_chunk == "":
             current_chunk = sentence
             current_nb_of_tokens_in_chunk = nb_tokens
@@ -875,6 +907,16 @@ def split_into_best_sentences(tokenizer, text_to_generate: str, max_tokens: int)
 
     if current_chunk != "":
         chunks.append(current_chunk.strip())
+
+    for chunk in chunks:
+        chunk_tokens = tokenizer(chunk.strip()).tokens[0].tolist()
+        if len(chunk_tokens) > max_tokens:
+            logger.warning(
+                "Chunk has %d tokens (max %d), generation may skip words: '%.50s...'",
+                len(chunk_tokens),
+                max_tokens,
+                chunk,
+            )
 
     return chunks
 

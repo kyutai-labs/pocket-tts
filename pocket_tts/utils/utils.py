@@ -37,7 +37,7 @@ _ORIGINS_OF_PREDEFINED_VOICES = {
 
 PREDEFINED_VOICES = {
     # don't forget to change this
-    x: f"hf://kyutai/pocket-tts-without-voice-cloning/embeddings_v2/{x}.safetensors@2578fed2380333b621689eaed6fe144cf69dfeb3"
+    x: f"hf://kyutai/pocket-tts-without-voice-cloning/embeddings_v3/{x}.safetensors@075c0abfe7e41450521b0200b5168cfbc16bc77b"
     for x in _ORIGINS_OF_PREDEFINED_VOICES
 }
 

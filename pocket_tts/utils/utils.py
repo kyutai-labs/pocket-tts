@@ -68,6 +68,17 @@ def size_of_dict(state_dict: dict) -> int:
     return total_size
 
 
+class sentence_length_warning:
+    def __init__(self, token_count: int | None = None):
+        self.logger = logging.getLogger(__name__)
+        if token_count is not None:
+            self.logger.warning(
+                "Long sentence detected (%d tokens), some parts may be left out", token_count
+            )
+        else:
+            self.logger.warning("Long sentence detected, some parts may be left out")
+
+
 class display_execution_time:
     def __init__(self, task_name: str, print_output: bool = True):
         self.task_name = task_name

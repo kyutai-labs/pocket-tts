@@ -25,6 +25,7 @@ dependencies = [
 
 [project.optional-dependencies]
 audio = ["soundfile>=0.12.0"]
+quantize = ["torchao>=0.16.0"]
 
 
 [dependency-groups]

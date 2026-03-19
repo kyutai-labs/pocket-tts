@@ -188,11 +188,14 @@ def serve(
             help="Path to locally-saved model config .yaml file or model variant signature"
         ),
     ] = DEFAULT_VARIANT,
+    quantize: Annotated[
+        bool, typer.Option(help="Apply int8 quantization to reduce memory usage")
+    ] = False,
 ):
     """Start the FastAPI server."""
 
     global tts_model, global_model_state
-    tts_model = TTSModel.load_model(config)
+    tts_model = TTSModel.load_model(config, quantize=quantize)
 
     # Pre-load the voice prompt
     global_model_state = tts_model.get_state_for_audio_prompt(voice)
@@ -236,6 +239,9 @@ def generate(
     max_tokens: Annotated[
         int, typer.Option(help="Maximum number of tokens per chunk.")
     ] = MAX_TOKEN_PER_CHUNK,
+    quantize: Annotated[
+        bool, typer.Option(help="Apply int8 quantization to reduce memory usage")
+    ] = False,
 ):
     """Generate speech using Kyutai Pocket TTS."""
     log_level = logging.ERROR if quiet else logging.INFO
@@ -248,7 +254,7 @@ def generate(
             logger.error("No input received from stdin.")
             raise typer.Exit(code=1)
         tts_model = TTSModel.load_model(
-            config, temperature, lsd_decode_steps, noise_clamp, eos_threshold
+            config, temperature, lsd_decode_steps, noise_clamp, eos_threshold, quantize=quantize
         )
         tts_model.to(device)
 

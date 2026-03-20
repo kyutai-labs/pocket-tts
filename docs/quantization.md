@@ -42,26 +42,26 @@ Benchmarks on the full eval paragraph across 8 voices, 5 isolated runs per confi
 
 ### x86 (FBGEMM, ubuntu-latest GitHub Actions runner)
 
-| Config | Runtime Memory | RTS | Speedup vs Baseline |
-|--------|---------------|-----|---------------------|
-| baseline | 450 MB | 3.17x | -- |
-| **attention_ffn (default)** | **234 MB** | **4.04x** | **1.27x** |
-| all | 206 MB | 4.01x | 1.26x |
+| Config                      | Runtime Memory | RTS       | Speedup vs Baseline |
+| --------------------------- | -------------- | --------- | ------------------- |
+| baseline                    | 450 MB         | 3.17x     | --                  |
+| **attention_ffn (default)** | **234 MB**     | **4.04x** | **1.27x**           |
+| all                         | 206 MB         | 4.01x     | 1.26x               |
 
 ### ARM (QNNPACK, Apple M4 MacBook Air, torchao backend)
 
-| Config | Runtime Memory | RTS | Speedup vs Baseline |
-|--------|---------------|-----|---------------------|
-| baseline | 450 MB | 6.58x | -- |
-| **attention_ffn (default)** | **234 MB** | **7.63x** | **1.16x** |
+| Config                      | Runtime Memory | RTS       | Speedup vs Baseline |
+| --------------------------- | -------------- | --------- | ------------------- |
+| baseline                    | 450 MB         | 6.33x     | --                  |
+| **attention_ffn (default)** | **234 MB**     | **7.76x** | **1.23x**           |
 
-With the `torch.ao` fallback (torch 2.5-2.9), ARM performance is ~11% slower than baseline rather than faster. Upgrading to torch 2.10+ with torchao is recommended for ARM users.
+With the `torch.ao` fallback (torch 2.5-2.9), ARM performance is ~16% slower than baseline rather than faster. Upgrading to torch 2.10+ with torchao is recommended for ARM users.
 
 ## Quality
 
 Quantization has no measurable impact on speech quality:
 
-- **WER (Word Error Rate)**: baseline 0.199 vs quantized 0.218 (+0.019, within generation variance)
+- **WER (Word Error Rate)**: WER delta for the default attention_ffn config is −0.022 ±0.032 - the ± range crosses zero, meaning the delta is indistinguishable from measurement noise.
 - **Subjective listening**: no audible difference across all 8 voices
 
 ## Advanced Usage
@@ -78,8 +78,8 @@ model = TTSModel.load_model(quantize=True, quantize_groups={"ffn"})
 
 Available groups:
 
-| Group | Params | Description |
-|-------|--------|-------------|
-| `attention` | ~25M | Q/K/V/output projections in transformer layers |
-| `ffn` | ~50M | Feed-forward linear layers in transformer layers |
-| `flow_net` | ~7M | MLP sampler / flow matching network |
+| Group       | Params | Description                                      |
+| ----------- | ------ | ------------------------------------------------ |
+| `attention` | ~25M   | Q/K/V/output projections in transformer layers   |
+| `ffn`       | ~50M   | Feed-forward linear layers in transformer layers |
+| `flow_net`  | ~7M    | MLP sampler / flow matching network              |

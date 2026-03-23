@@ -38,7 +38,6 @@ from pocket_tts.utils.utils import (
     PREDEFINED_VOICES,
     display_execution_time,
     download_if_necessary,
-    sentence_length_warning,
     size_of_dict,
 )
 from pocket_tts.utils.weights_loading import get_flow_lm_state_dict, get_mimi_state_dict
@@ -828,23 +827,6 @@ def prepare_text_prompt(text: str) -> tuple[str, int]:
     return text, frames_after_eos_guess
 
 
-def _warn_if_long_sentences(
-    list_of_tokens: list[int], full_stop_token: int, max_continuous_tokens: int = 90
-) -> None:
-    """Warn if any run of tokens between full stops exceeds max_continuous_tokens."""
-    count = 0
-    for token in list_of_tokens:
-        if token == full_stop_token:
-            if count > max_continuous_tokens:
-                sentence_length_warning(count)
-            count = 0
-        else:
-            count += 1
-    # Check the final segment after the last full stop
-    if count > max_continuous_tokens:
-        sentence_length_warning(count)
-
-
 def split_into_best_sentences(tokenizer, text_to_generate: str, max_tokens: int) -> list[str]:
     text_to_generate, _ = prepare_text_prompt(text_to_generate)
     text_to_generate = text_to_generate.strip()
@@ -852,8 +834,6 @@ def split_into_best_sentences(tokenizer, text_to_generate: str, max_tokens: int)
     list_of_tokens = tokens.tokens[0].tolist()
 
     _, *end_of_sentence_tokens = tokenizer(".!...?").tokens[0].tolist()
-    _, full_stop_token, *_ = tokenizer(".").tokens[0].tolist()
-    _warn_if_long_sentences(list_of_tokens, full_stop_token)
 
     end_of_sentences_indices = [0]
     previous_was_end_of_sentence_token = False
@@ -873,7 +853,12 @@ def split_into_best_sentences(tokenizer, text_to_generate: str, max_tokens: int)
         start = end_of_sentences_indices[i]
         end = end_of_sentences_indices[i + 1]
         text = tokenizer.sp.decode(list_of_tokens[start:end])
-        nb_tokens_and_sentences.append((end - start, text))
+        nb_tokens_for_this_sentence = end - start
+        nb_tokens_and_sentences.append((nb_tokens_for_this_sentence, text))
+        if nb_tokens_for_this_sentence >= max_tokens:
+            logger.warning(
+                f"Your sentence '{text}' is too long, it has {nb_tokens_for_this_sentence} tokens"
+            )
 
     max_nb_tokens_in_a_chunk = max_tokens
     chunks = []

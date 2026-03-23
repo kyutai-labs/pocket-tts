@@ -35,6 +35,21 @@ class SentencePieceTokenizer:
         return TokenizedText(torch.tensor(self.sp.encode(text, out_type=int))[None, :])
 
 
+DEFAULT_TOKENIZER_N_BINS = 4000
+DEFAULT_TOKENIZER_PATH = (
+    "hf://kyutai/pocket-tts-without-voice-cloning/"
+    "tokenizer.model@d4fdd22ae8c8e1cb3634e150ebeff1dab2d16df3"
+)
+
+
+def get_default_tokenizer() -> SentencePieceTokenizer:
+    """Return a SentencePieceTokenizer with the default model path and vocab size.
+
+    Downloads the tokenizer model from HuggingFace on first use.
+    """
+    return SentencePieceTokenizer(DEFAULT_TOKENIZER_N_BINS, DEFAULT_TOKENIZER_PATH)
+
+
 class LUTConditioner(BaseConditioner):
     """Lookup table TextConditioner.
 

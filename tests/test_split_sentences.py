@@ -2,17 +2,13 @@
 
 import pytest
 
-from pocket_tts.conditioners.text import SentencePieceTokenizer
+from pocket_tts.conditioners.text import get_default_tokenizer
 from pocket_tts.models.tts_model import split_into_best_sentences
 
 
 @pytest.fixture(scope="session")
 def tokenizer():
-    return SentencePieceTokenizer(
-        4000,
-        "hf://kyutai/pocket-tts-without-voice-cloning/"
-        "tokenizer.model@d4fdd22ae8c8e1cb3634e150ebeff1dab2d16df3",
-    )
+    return get_default_tokenizer()
 
 
 def test_short_text_single_chunk(tokenizer):
@@ -115,8 +111,7 @@ def test_oversized_clause_without_commas_still_returns(tokenizer):
     # 20 words with no punctuation at all - no way to split
     text = " ".join(f"word{i}" for i in range(20))
     chunks = split_into_best_sentences(tokenizer, text, 5)
-    assert len(chunks) >= 1
-    rejoined = " ".join(chunks).lower()
-    # All words should still be present even though the chunk is oversized
-    for i in range(20):
-        assert f"word{i}" in rejoined, f"'word{i}' should be preserved"
+    assert len(chunks) == 1
+    # prepare_text_prompt capitalizes the first char and adds a trailing period,
+    # so compare case-insensitively and strip punctuation
+    assert chunks[0].lower().rstrip(".") == text.lower()

@@ -11,11 +11,34 @@ from torch import nn
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 
-_voices_names = ["alba", "marius", "javert", "jean", "fantine", "cosette", "eponine", "azelma"]
+_ORIGINS_OF_PREDEFINED_VOICES = {
+    "cosette": "hf://kyutai/tts-voices/expresso/ex04-ex02_confused_001_channel1_499s.wav",
+    "marius": "hf://kyutai/tts-voices/voice-donations/Selfie.wav",
+    "javert": "hf://kyutai/tts-voices/voice-donations/Butter.wav",
+    "alba": "hf://kyutai/tts-voices/alba-mackenna/casual.wav",
+    "jean": "hf://kyutai/tts-voices/ears/p010/freeform_speech_01_enhanced.wav",
+    "anna": "hf://kyutai/tts-voices/vctk/p228_023_enhanced.wav",
+    "vera": "hf://kyutai/tts-voices/vctk/p229_023_enhanced.wav",
+    "fantine": "hf://kyutai/tts-voices/vctk/p244_023_enhanced.wav",
+    "charles": "hf://kyutai/tts-voices/vctk/p254_023_enhanced.wav",
+    "paul": "hf://kyutai/tts-voices/vctk/p259_023_enhanced.wav",
+    "eponine": "hf://kyutai/tts-voices/vctk/p262_023_enhanced.wav",
+    "azelma": "hf://kyutai/tts-voices/vctk/p303_023_enhanced.wav",
+    "george": "hf://kyutai/tts-voices/vctk/p315_023_enhanced.wav",
+    "mary": "hf://kyutai/tts-voices/vctk/p333_023_enhanced.wav",
+    "jane": "hf://kyutai/tts-voices/vctk/p339_023_enhanced.wav",
+    "michael": "hf://kyutai/tts-voices/vctk/p360_023_enhanced.wav",
+    "eve": "hf://kyutai/tts-voices/vctk/p361_023_enhanced.wav",
+    "bill_boerst": "hf://kyutai/tts-voices/voice-zero/bill_boerst.wav",
+    "peter_yearsley": "hf://kyutai/tts-voices/voice-zero/peter_yearsley.wav",
+    "stuart_bell": "hf://kyutai/tts-voices/voice-zero/stuart_bell.wav",
+    "caro_davy": "hf://kyutai/tts-voices/voice-zero/caro_davy.wav",
+}
+
 PREDEFINED_VOICES = {
     # don't forget to change this
-    x: f"hf://kyutai/pocket-tts-without-voice-cloning/embeddings_v2/{x}.safetensors@2578fed2380333b621689eaed6fe144cf69dfeb3"
-    for x in _voices_names
+    x: f"hf://kyutai/pocket-tts-without-voice-cloning/embeddings_v3/{x}.safetensors@075c0abfe7e41450521b0200b5168cfbc16bc77b"
+    for x in _ORIGINS_OF_PREDEFINED_VOICES
 }
 
 

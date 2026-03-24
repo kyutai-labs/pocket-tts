@@ -3,6 +3,10 @@ Dynamic int8 quantization for pocket-tts.
 
 Uses torchao if available (torch 2.10+ with C++ extensions), otherwise
 falls back to torch.ao.quantization (deprecated but functional on torch 2.5-2.9).
+
+Quantizes attention (Q/K/V/output projections) and FFN (linear1/linear2) layers
+in the FlowLM transformer. The flow matching network and Mimi VAE decoder
+remain in float32.
 """
 
 import logging
@@ -13,28 +17,8 @@ import torch.nn as nn
 
 logger = logging.getLogger(__name__)
 
-# The recommended quantization config: best balance of speed and quality.
-# - x86 (FBGEMM): ~27% faster than baseline
-# - ARM (QNNPACK via torchao): ~16% faster than baseline
-# - Runtime memory: ~48% reduction
-# - No measurable impact on speech quality (WER unchanged)
+# Used by load_model(quantize=True) to specify which layer groups to quantize.
 RECOMMENDED_CONFIG = {"attention", "ffn"}
-
-# All available quantization configs for evaluation/benchmarking.
-# Groups correspond to functional parts of the FlowLM model:
-#   "attention" — Q/K/V/output projections in transformer layers (~25M params)
-#   "ffn"       — feed-forward linear1/linear2 in transformer layers (~50M params)
-#   "flow_net"  — MLP sampler / flow matching network (~7M params)
-CONFIGS = {
-    "baseline": set(),
-    "all": {"attention", "ffn", "flow_net"},
-    "attention_ffn": {"attention", "ffn"},
-    "attention": {"attention"},
-    "ffn": {"ffn"},
-    "flow_net": {"flow_net"},
-    "flow_net_attention": {"flow_net", "attention"},
-    "ffn_flow_net": {"ffn", "flow_net"},
-}
 
 
 def _get_backend():
@@ -96,86 +80,49 @@ def apply_dynamic_int8(flow_lm: nn.Module, quantize_groups: set[str]) -> nn.Modu
     backend = _get_backend()
     logger.info("Using quantization backend: %s", backend)
 
-    quantized_count = 0
-
     if backend == "torchao":
-        quantized_count = _apply_torchao(flow_lm, quantize_groups)
+        _apply_torchao(flow_lm, quantize_groups)
     else:
-        quantized_count = _apply_torch_ao(flow_lm, quantize_groups)
+        _apply_torch_ao(flow_lm, quantize_groups)
 
-    logger.info("Quantized %d Linear modules (groups: %s)", quantized_count, quantize_groups)
     return flow_lm
 
 
-def _apply_torchao(flow_lm: nn.Module, quantize_groups: set[str]) -> int:
+def _apply_torchao(flow_lm: nn.Module, quantize_groups: set[str]) -> None:
     """Apply quantization using torchao backend."""
-    quantized_count = 0
-
     if "flow_net" in quantize_groups:
         _quantize_module_torchao(flow_lm.flow_net)
-        quantized_count += sum(
-            1 for _, m in flow_lm.flow_net.named_modules() if isinstance(m, nn.Linear)
-        )
-        logger.info("Quantized flow_net (MLP sampler)")
 
-    if "attention" in quantize_groups or "ffn" in quantize_groups:
-        for layer in flow_lm.transformer.layers:
-            if "attention" in quantize_groups:
-                _quantize_module_torchao(layer.self_attn)
-                quantized_count += 2
+    for layer in flow_lm.transformer.layers:
+        if "attention" in quantize_groups:
+            _quantize_module_torchao(layer.self_attn)
 
-            if "ffn" in quantize_groups:
-                wrapper1 = nn.Sequential(layer.linear1)
-                wrapper2 = nn.Sequential(layer.linear2)
-                _quantize_module_torchao(wrapper1)
-                _quantize_module_torchao(wrapper2)
-                layer.linear1 = wrapper1[0]
-                layer.linear2 = wrapper2[0]
-                quantized_count += 2
-
-    return quantized_count
+        if "ffn" in quantize_groups:
+            wrapper1 = nn.Sequential(layer.linear1)
+            wrapper2 = nn.Sequential(layer.linear2)
+            _quantize_module_torchao(wrapper1)
+            _quantize_module_torchao(wrapper2)
+            layer.linear1 = wrapper1[0]
+            layer.linear2 = wrapper2[0]
 
 
-def _apply_torch_ao(flow_lm: nn.Module, quantize_groups: set[str]) -> int:
+def _apply_torch_ao(flow_lm: nn.Module, quantize_groups: set[str]) -> None:
     """Apply quantization using deprecated torch.ao backend (fallback)."""
     from torch.ao.quantization import quantize_dynamic
 
     _ensure_quantization_engine()
-    quantized_count = 0
 
     if "flow_net" in quantize_groups:
         quantize_dynamic(flow_lm.flow_net, {nn.Linear}, dtype=torch.qint8, inplace=True)
-        quantized_count += sum(
-            1 for _, m in flow_lm.flow_net.named_modules() if isinstance(m, nn.Linear)
-        )
-        logger.info("Quantized flow_net (MLP sampler)")
 
-    if "attention" in quantize_groups or "ffn" in quantize_groups:
-        for layer in flow_lm.transformer.layers:
-            if "attention" in quantize_groups:
-                quantize_dynamic(layer.self_attn, {nn.Linear}, dtype=torch.qint8, inplace=True)
-                quantized_count += 2
+    for layer in flow_lm.transformer.layers:
+        if "attention" in quantize_groups:
+            quantize_dynamic(layer.self_attn, {nn.Linear}, dtype=torch.qint8, inplace=True)
 
-            if "ffn" in quantize_groups:
-                layer.linear1 = quantize_dynamic(
-                    nn.Sequential(layer.linear1), {nn.Linear}, dtype=torch.qint8
-                )[0]
-                layer.linear2 = quantize_dynamic(
-                    nn.Sequential(layer.linear2), {nn.Linear}, dtype=torch.qint8
-                )[0]
-                quantized_count += 2
-
-    return quantized_count
-
-
-def get_model_size_mb(model: nn.Module) -> float:
-    """Returns model size in MB by serializing to a byte buffer.
-
-    This correctly accounts for quantized weights stored in packed params,
-    which don't appear in .parameters().
-    """
-    import io
-
-    buf = io.BytesIO()
-    torch.save(model.state_dict(), buf)
-    return buf.tell() / (1024**2)
+        if "ffn" in quantize_groups:
+            layer.linear1 = quantize_dynamic(
+                nn.Sequential(layer.linear1), {nn.Linear}, dtype=torch.qint8
+            )[0]
+            layer.linear2 = quantize_dynamic(
+                nn.Sequential(layer.linear2), {nn.Linear}, dtype=torch.qint8
+            )[0]

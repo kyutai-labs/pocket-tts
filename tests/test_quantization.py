@@ -8,15 +8,17 @@ Verifies:
 4. Backend detection works
 """
 
-import subprocess
-
 import torch
+from typer.testing import CliRunner
 
 from pocket_tts import TTSModel
+from pocket_tts.main import cli_app
 from pocket_tts.quantization import _get_backend
 
 SHORT_TEXT = "Hello, this is a test."
 TEST_VOICE = "alba"
+
+runner = CliRunner()
 
 
 def test_quantized_model_produces_audio():
@@ -43,14 +45,13 @@ def test_quantize_flag_applies_quantization():
     )
 
 
-def test_cli_quantize_flag():
-    result = subprocess.run(
-        ["uv", "run", "pocket-tts", "generate", "--quantize", "--text", SHORT_TEXT, "-q"],
-        capture_output=True,
-        text=True,
-        timeout=120,
+def test_cli_quantize_flag(tmp_path):
+    output_file = tmp_path / "quantized_output.wav"
+    result = runner.invoke(
+        cli_app,
+        ["generate", "--quantize", "--text", SHORT_TEXT, "--output-path", str(output_file), "-q"],
     )
-    assert result.returncode == 0, f"CLI failed: {result.stderr}"
+    assert result.exit_code == 0, f"CLI failed: {result.output}"
 
 
 def test_backend_detection():

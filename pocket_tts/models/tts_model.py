@@ -40,6 +40,7 @@ from pocket_tts.utils.utils import (
     download_if_necessary,
     size_of_dict,
 )
+from pocket_tts.quantization import RECOMMENDED_CONFIG, apply_dynamic_int8
 from pocket_tts.utils.weights_loading import get_flow_lm_state_dict, get_mimi_state_dict
 
 torch.set_num_threads(1)
@@ -193,7 +194,6 @@ class TTSModel(nn.Module):
         noise_clamp: float | int | None = DEFAULT_NOISE_CLAMP,
         eos_threshold: float = DEFAULT_EOS_THRESHOLD,
         quantize: bool = False,
-        quantize_groups: set[str] | None = None,
     ) -> Self:
         """Load a pre-trained TTS model with specified configuration.
 
@@ -212,14 +212,11 @@ class TTSModel(nn.Module):
                 is applied. Helps prevent extreme values in generation.
             eos_threshold: Threshold for end-of-sequence detection. Higher values
                 make the model more likely to continue generating.
-            quantize: If True, apply dynamic int8 quantization to reduce runtime
-                memory and improve inference speed. Uses the recommended config
-                (attention + FFN layers) by default.
+            quantize: If True, apply dynamic int8 quantization to the transformer's
+                attention and FFN layers. Reduces runtime memory by ~48% and improves
+                inference speed by ~27% on x86 (FBGEMM).
                 No measurable impact on speech quality (WER unchanged).
                 For optimized performance, install torchao: ``pip install pocket-tts[quantize]``
-            quantize_groups: Advanced — override which layer groups to quantize.
-                Valid keys: "attention", "ffn", "flow_net".
-                Defaults to the recommended set when quantize=True.
 
         Returns:
             TTSModel: Fully initialized model with loaded weights on cpu, ready for
@@ -239,9 +236,6 @@ class TTSModel(nn.Module):
 
             # Load with int8 quantization
             model = TTSModel.load_model(quantize=True)
-
-            # Load with custom quantization groups
-            model = TTSModel.load_model(quantize=True, quantize_groups={"attention", "ffn", "flow_net"})
             ```
         """
         if str(config).endswith(".yaml"):
@@ -256,10 +250,7 @@ class TTSModel(nn.Module):
         )
 
         if quantize:
-            from pocket_tts.quantization import RECOMMENDED_CONFIG, apply_dynamic_int8
-
-            groups = quantize_groups if quantize_groups is not None else RECOMMENDED_CONFIG
-            apply_dynamic_int8(tts_model.flow_lm, groups)
+            apply_dynamic_int8(tts_model.flow_lm, RECOMMENDED_CONFIG)
 
         return tts_model
 

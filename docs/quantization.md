@@ -64,22 +64,13 @@ Quantization has no measurable impact on speech quality:
 - **WER (Word Error Rate)**: WER delta for the default attention_ffn config is −0.022 ±0.032 - the ± range crosses zero, meaning the delta is indistinguishable from measurement noise.
 - **Subjective listening**: no audible difference across all 8 voices
 
-## Advanced Usage
+## What gets quantized
 
-Override which layer groups to quantize:
-
-```python
-# Quantize everything (maximum memory savings)
-model = TTSModel.load_model(quantize=True, quantize_groups={"attention", "ffn", "flow_net"})
-
-# Quantize only FFN layers
-model = TTSModel.load_model(quantize=True, quantize_groups={"ffn"})
-```
-
-Available groups:
+When `quantize=True`, the following layer groups in the FlowLM transformer are quantized to int8:
 
 | Group       | Params | Description                                      |
 | ----------- | ------ | ------------------------------------------------ |
 | `attention` | ~25M   | Q/K/V/output projections in transformer layers   |
 | `ffn`       | ~50M   | Feed-forward linear layers in transformer layers |
-| `flow_net`  | ~7M    | MLP sampler / flow matching network              |
+
+The flow matching network (`flow_net`, ~7M params) and the Mimi VAE decoder (convolutional) remain in float32.

@@ -30,7 +30,29 @@ import scipy.io.wavfile
 import torch
 
 from pocket_tts import TTSModel
-from pocket_tts.quantization import CONFIGS, apply_dynamic_int8, get_model_size_mb
+from pocket_tts.quantization import apply_dynamic_int8
+
+# Quantization configs for benchmarking. Each maps to a set of layer group keys.
+CONFIGS = {
+    "baseline": set(),
+    "all": {"attention", "ffn", "flow_net"},
+    "attention_ffn": {"attention", "ffn"},
+    "attention": {"attention"},
+    "ffn": {"ffn"},
+    "flow_net": {"flow_net"},
+    "flow_net_attention": {"flow_net", "attention"},
+    "ffn_flow_net": {"ffn", "flow_net"},
+}
+
+
+def get_model_size_mb(model: torch.nn.Module) -> float:
+    """Returns model size in MB by serializing to a byte buffer."""
+    import io
+
+    buf = io.BytesIO()
+    torch.save(model.state_dict(), buf)
+    return buf.tell() / (1024**2)
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)

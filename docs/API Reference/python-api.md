@@ -16,17 +16,16 @@ import scipy.io.wavfile
 
 # Load the model
 tts_model = TTSModel.load_model()
+tts_model.to("cuda")  # Optional: 3x faster on GPU
 
-# Get voice state from an audio file
-voice_state = tts_model.get_state_for_audio_prompt(
-    "hf://kyutai/tts-voices/alba-mackenna/casual.wav"
-)
+# Get voice state (automatically on same device as model)
+voice_state = tts_model.get_state_for_audio_prompt("alba")
 
 # Generate audio
 audio = tts_model.generate_audio(voice_state, "Hello world, this is a test.")
 
 # Save to file
-scipy.io.wavfile.write("output.wav", tts_model.sample_rate, audio.numpy())
+scipy.io.wavfile.write("output.wav", tts_model.sample_rate, audio.cpu().numpy())
 ```
 
 ## Core Classes
@@ -49,17 +48,24 @@ Load and return a TTSModel instance with pre-trained weights.
 - `eos_threshold` (float): Threshold for end-of-sequence detection (default: -4.0)
 
 **Returns:**
-- `TTSModel`: Loaded model instance on CPU
+- `TTSModel`: Loaded model instance on CPU. Use `model.to("cuda")` for GPU acceleration.
 
 **Example:**
 ```python
 from pocket_tts import TTSModel
 
-# Load with default settings
+# Load with default settings (CPU)
 model = TTSModel.load_model()
 
+# Load and move to GPU for faster inference
+model = TTSModel.load_model()
+model.to("cuda")
+
+# Load with INT8 quantization (reduces memory ~35%)
+model = TTSModel.load_model(quantize=True)
+
 # Load with custom parameters
-model = TTSModel.load_model(variant="b6369a24", temp=0.5, lsd_decode_steps=5, eos_threshold=-3.0)
+model = TTSModel.load_model(temp=0.5, lsd_decode_steps=5, eos_threshold=-3.0)
 ```
 
 #### Properties
@@ -98,14 +104,17 @@ Extract model state for a given audio file or URL (voice cloning), or load from 
 - `truncate` (bool): Whether to truncate the audio (default: False)
 
 **Returns:**
-- `dict`: Model state dictionary containing hidden states and positional information
+- `dict`: Model state dictionary containing hidden states and positional information.
+  The state is automatically placed on the same device as the model.
 
 **Example:**
 ```python
 from pocket_tts import TTSModel
 
 model = TTSModel.load_model()
-# From HuggingFace URL
+model.to("cuda")  # Optional: GPU acceleration
+
+# From HuggingFace URL - state is automatically on CUDA if model is
 voice_state = model.get_state_for_audio_prompt("hf://kyutai/tts-voices/alba-mackenna/casual.wav")
 
 # From local file
@@ -163,9 +172,11 @@ Generate audio streaming chunks from text input.
 from pocket_tts import TTSModel
 
 model = TTSModel.load_model()
+model.to("cuda")  # Optional: GPU acceleration
 
-voice_state = model.get_state_for_audio_prompt("hf://kyutai/tts-voices/alba-mackenna/casual.wav")
-# Stream generation
+voice_state = model.get_state_for_audio_prompt("alba")
+
+# Stream generation - chunks are yielded as they're generated
 for chunk in model.generate_audio_stream(voice_state, "Long text content..."):
     # Process each chunk as it's generated
     print(f"Generated chunk: {chunk.shape[0]} samples")
@@ -202,6 +213,50 @@ export_model_state(model_state_for_voice, "my_voice.safetensors")
 model_state_for_voice_copy = model.get_state_for_audio_prompt("my_voice.safetensors")
 ```
 
+
+## GPU Acceleration
+
+By default, the model runs on CPU. For significantly faster inference (3x+ speedup), move the model to CUDA:
+
+```python
+from pocket_tts import TTSModel
+
+model = TTSModel.load_model()
+model.to("cuda")  # Move model to GPU
+
+# Voice state is automatically placed on the same device as the model
+voice_state = model.get_state_for_audio_prompt("alba")
+
+# Generation now runs on GPU with Flash Attention
+audio = model.generate_audio(voice_state, "Hello world!")
+```
+
+### torch.compile() (Optional)
+
+For additional optimization, you can compile the model:
+
+```python
+import torch
+from pocket_tts import TTSModel
+
+model = TTSModel.load_model()
+model.to("cuda")
+
+# Compile for faster inference (first run will be slower due to compilation)
+model.flow_lm = torch.compile(model.flow_lm, mode="reduce-overhead")
+
+voice_state = model.get_state_for_audio_prompt("alba")
+audio = model.generate_audio(voice_state, "Hello world!")
+```
+
+### Performance Tips
+
+- **GPU vs CPU**: GPU provides ~3x speedup (13x vs 4x real-time factor)
+- **Flash Attention**: Automatically enabled on CUDA, provides ~5% improvement
+- **torch.compile()**: Minimal additional benefit for this model (already memory-bound)
+- **INT8 Quantization**: Use `TTSModel.load_model(quantize=True)` to reduce memory by ~35%
+
+See [benchmark results](../benchmark_results.md) for detailed performance data.
 
 ## Advanced Usage
 

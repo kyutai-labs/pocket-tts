@@ -3,6 +3,9 @@ from abc import ABC, abstractmethod
 import torch
 from torch import nn
 
+# torch.compile() wraps modules and adds this prefix to names
+_TORCH_COMPILE_PREFIX = "_orig_mod."
+
 
 def init_states(
     model: nn.Module, batch_size: int, sequence_length: int
@@ -19,11 +22,17 @@ def init_states(
 def increment_steps(
     module: nn.Module, model_state: dict[str, dict[str, torch.Tensor]], increment: int = 1
 ):
-    # print("incrementing steps by", increment)
     for module_name, module in module.named_modules():
         if not isinstance(module, StatefulModule):
             continue
-        module.increment_step(model_state[module_name], increment)
+        # Handle both compiled and non-compiled module names
+        if module_name in model_state:
+            module.increment_step(model_state[module_name], increment)
+        elif module_name.startswith(_TORCH_COMPILE_PREFIX):
+            # State was created without prefix, strip it to look up
+            orig_name = module_name[len(_TORCH_COMPILE_PREFIX) :]
+            if orig_name in model_state:
+                module.increment_step(model_state[orig_name], increment)
 
 
 class StatefulModule(ABC, nn.Module):
@@ -40,5 +49,21 @@ class StatefulModule(ABC, nn.Module):
         pass
 
     def get_state(self, model_state: dict[str, dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
-        """Get the state for this module from the model state."""
-        return model_state[self._module_absolute_name]
+        """Get the state for this module from the model state.
+
+        Handles torch.compile() which adds '_orig_mod.' prefix to module names.
+        """
+        name = self._module_absolute_name
+        # Direct lookup (non-compiled case)
+        if name in model_state:
+            return model_state[name]
+        # Handle torch.compile(): state keys have _orig_mod. prefix
+        compiled_name = _TORCH_COMPILE_PREFIX + name
+        if compiled_name in model_state:
+            return model_state[compiled_name]
+        # Helpful error message
+        available = list(model_state.keys())[:5]
+        raise KeyError(
+            f"State not found for module '{name}'. "
+            f"Available keys (first 5): {available}."
+        )

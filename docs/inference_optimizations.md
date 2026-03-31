@@ -56,7 +56,7 @@ model.to("cuda")
 
 **Difficulty:** Easy
 **Expected Impact:** Medium (20-40% speedup)
-**Status:** [ ] Not tested
+**Status:** [x] Working
 
 PyTorch 2.0+ can compile models for faster execution.
 
@@ -68,7 +68,8 @@ model.flow_lm = torch.compile(model.flow_lm, mode="reduce-overhead")
 **Notes:**
 - First inference will be slow (compilation)
 - `mode="reduce-overhead"` is best for small batches
-- May have compatibility issues with dynamic shapes
+- Requires CUDA for best results
+- The benchmark script supports `--compile` flag for easy testing
 
 ---
 

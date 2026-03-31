@@ -43,7 +43,6 @@ from pocket_tts.utils.utils import (
 )
 from pocket_tts.utils.weights_loading import get_flow_lm_state_dict, get_mimi_state_dict
 
-torch.set_num_threads(1)
 logger = logging.getLogger(__name__)
 
 VOICE_CLONING_UNSUPPORTED = (
@@ -219,8 +218,8 @@ class TTSModel(nn.Module):
                 For optimized performance, install torchao: ``pip install pocket-tts[quantize]``
 
         Returns:
-            TTSModel: Fully initialized model with loaded weights on cpu, ready for
-                text-to-speech generation.
+            TTSModel: Fully initialized model with loaded weights, ready for
+                text-to-speech generation. Call .to("cuda") to move to GPU.
 
         Raises:
             FileNotFoundError: If the specified config file or model weights
@@ -765,44 +764,48 @@ class TTSModel(nn.Module):
             if isinstance(audio_conditioning, str):
                 audio_conditioning = download_if_necessary(audio_conditioning)
 
-            return _import_model_state(audio_conditioning)
+            model_state = _import_model_state(audio_conditioning)
 
         elif isinstance(audio_conditioning, str) and audio_conditioning in PREDEFINED_VOICES:
             # We get the audio conditioning directly from the safetensors file.
-            return _import_model_state(download_if_necessary(PREDEFINED_VOICES[audio_conditioning]))
-
-        if not self.has_voice_cloning and isinstance(audio_conditioning, (str, Path)):
-            raise ValueError(VOICE_CLONING_UNSUPPORTED)
-
-        if isinstance(audio_conditioning, str):
-            audio_conditioning = download_if_necessary(audio_conditioning)
-
-        if isinstance(audio_conditioning, Path):
-            audio, conditioning_sample_rate = audio_read(audio_conditioning)
-
-            if truncate:
-                max_samples = int(30 * conditioning_sample_rate)  # 30 seconds of audio
-                if audio.shape[-1] > max_samples:
-                    audio = audio[..., :max_samples]
-                    logger.info(f"Audio truncated to first 30 seconds ({max_samples} samples)")
-
-            audio_conditioning = convert_audio(
-                audio, conditioning_sample_rate, self.config.mimi.sample_rate, 1
+            model_state = _import_model_state(
+                download_if_necessary(PREDEFINED_VOICES[audio_conditioning])
             )
 
-        with display_execution_time("Encoding audio prompt"):
-            prompt = self._encode_audio(audio_conditioning.unsqueeze(0).to(self.device))
+        else:
+            if not self.has_voice_cloning and isinstance(audio_conditioning, (str, Path)):
+                raise ValueError(VOICE_CLONING_UNSUPPORTED)
 
-        model_state = init_states(self.flow_lm, batch_size=1, sequence_length=prompt.shape[1])
+            if isinstance(audio_conditioning, str):
+                audio_conditioning = download_if_necessary(audio_conditioning)
 
-        with display_execution_time("Prompting audio"):
-            self._run_flow_lm_and_increment_step(model_state=model_state, audio_conditioning=prompt)
+            if isinstance(audio_conditioning, Path):
+                audio, conditioning_sample_rate = audio_read(audio_conditioning)
 
-        logger.info(
-            "Size of the model state for audio prompt: %d MB", size_of_dict(model_state) // 1e6
-        )
+                if truncate:
+                    max_samples = int(30 * conditioning_sample_rate)  # 30 seconds of audio
+                    if audio.shape[-1] > max_samples:
+                        audio = audio[..., :max_samples]
+                        logger.info(f"Audio truncated to first 30 seconds ({max_samples} samples)")
 
-        return model_state
+                audio_conditioning = convert_audio(
+                    audio, conditioning_sample_rate, self.config.mimi.sample_rate, 1
+                )
+
+            with display_execution_time("Encoding audio prompt"):
+                prompt = self._encode_audio(audio_conditioning.unsqueeze(0).to(self.device))
+
+            model_state = init_states(self.flow_lm, batch_size=1, sequence_length=prompt.shape[1])
+
+            with display_execution_time("Prompting audio"):
+                self._run_flow_lm_and_increment_step(model_state=model_state, audio_conditioning=prompt)
+
+            logger.info(
+                "Size of the model state for audio prompt: %d MB", size_of_dict(model_state) // 1e6
+            )
+
+        # Ensure state is on the same device as the model
+        return _move_state_to_device(model_state, self.device)
 
     def _estimate_max_gen_len(self, token_count: int) -> int:
         gen_len_sec = token_count / self._TOKENS_PER_SECOND_ESTIMATE + self._GEN_SECONDS_PADDING
@@ -955,4 +958,17 @@ def _import_model_state(source: str | Path) -> dict[str, dict[str, torch.Tensor]
                 )
             else:
                 result[module_name][tensor_key] = f.get_tensor(key)
+    return result
+
+
+def _move_state_to_device(state: dict, device: str | torch.device) -> dict:
+    """Recursively move all tensors in a nested state dict to the specified device."""
+    result = {}
+    for key, value in state.items():
+        if isinstance(value, dict):
+            result[key] = _move_state_to_device(value, device)
+        elif isinstance(value, torch.Tensor):
+            result[key] = value.to(device)
+        else:
+            result[key] = value
     return result

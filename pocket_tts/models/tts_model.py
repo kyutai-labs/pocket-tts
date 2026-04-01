@@ -318,6 +318,15 @@ class TTSModel(nn.Module):
 
     def _encode_audio(self, audio: torch.Tensor) -> torch.Tensor:
         encoded = self.mimi.encode_to_latent(audio)
+
+        # sanity check
+        mimi_state = init_states(self.mimi, batch_size=1, sequence_length=10000)
+
+        resored_audio = self.mimi.decode_from_latent(encoded.transpose(-1, -2), mimi_state)
+        import scipy.io.wavfile
+
+        scipy.io.wavfile.write("restored_audio.wav", self.sample_rate, resored_audio.numpy())
+
         latents = encoded.transpose(-1, -2).to(torch.float32)
         conditioning = F.linear(latents, self.flow_lm.speaker_proj_weight)
         return conditioning

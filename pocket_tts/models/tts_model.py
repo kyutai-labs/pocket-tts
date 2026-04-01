@@ -11,6 +11,7 @@ from pathlib import Path
 
 import safetensors
 import safetensors.torch
+import scipy.io.wavfile
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -36,6 +37,7 @@ from pocket_tts.modules.stateful_module import StatefulModule, increment_steps, 
 from pocket_tts.quantization import RECOMMENDED_CONFIG, apply_dynamic_int8
 from pocket_tts.utils.config import Config, load_config
 from pocket_tts.utils.utils import (
+    DEBUG_MIMI,
     PREDEFINED_VOICES,
     display_execution_time,
     download_if_necessary,
@@ -316,16 +318,22 @@ class TTSModel(nn.Module):
         )
         return output_embeddings[:, None, :], is_eos
 
+    def _decode_and_dump(self, encoded: torch.Tensor, filename: str):
+        mimi_state = init_states(self.mimi, batch_size=1, sequence_length=10000)
+        if encoded.shape[1] == self.mimi.quantizer.dimension:
+            latent_to_decode = self.mimi.quantizer(encoded)
+        else:
+            latent_to_decode = encoded
+        resored_audio = self.mimi.decode_from_latent(latent_to_decode, mimi_state)
+        scipy.io.wavfile.write(filename, self.sample_rate, resored_audio.numpy())
+        logger.info("Saved restored audio from Mimi encoding to %s for debugging", filename)
+
     def _encode_audio(self, audio: torch.Tensor) -> torch.Tensor:
         encoded = self.mimi.encode_to_latent(audio)
 
-        # sanity check
-        mimi_state = init_states(self.mimi, batch_size=1, sequence_length=10000)
-        latent_to_decode = self.mimi.quantizer(encoded)
-        resored_audio = self.mimi.decode_from_latent(latent_to_decode, mimi_state)
-        import scipy.io.wavfile
-
-        scipy.io.wavfile.write("restored_audio.wav", self.sample_rate, resored_audio.numpy())
+        if DEBUG_MIMI:
+            # sanity check
+            self._decode_and_dump(encoded, "debug_encoded_latent_decoded.wav")
 
         latents = encoded.transpose(-1, -2).to(torch.float32)
         conditioning = F.linear(latents, self.flow_lm.speaker_proj_weight)

@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from huggingface_hub import hf_hub_download
 from torch import nn
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
+DEBUG_MIMI = os.environ.get("DEBUG_MIMI", "0") == "1"
 
 _ORIGINS_OF_PREDEFINED_VOICES = {
     "cosette": "hf://kyutai/tts-voices/expresso/ex04-ex02_confused_001_channel1_499s.wav",

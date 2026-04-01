@@ -1,9 +1,8 @@
-# sig: b6369a24
-
 weights_path: hf://kyutai/pocket-tts/tts_b6369a24.safetensors@427e3d61b276ed69fdd03de0d185fa8a8d97fc5b
 weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/tts_b6369a24.safetensors@d4fdd22ae8c8e1cb3634e150ebeff1dab2d16df3
 
 flow_lm:
+  insert_bos_before_voice: false
   dtype: float32
   flow:
     depth: 6
@@ -24,6 +23,8 @@ flow_lm:
 mimi:
   dtype: float32
   sample_rate: 24000
+  inner_dim: 512
+  outer_dim: 512
   channels: 1
   frame_rate: 12.5
   seanet:

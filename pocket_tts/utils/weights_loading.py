@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import safetensors
+import torch
 
 
 def get_flow_lm_state_dict(path: Path) -> dict:
@@ -50,12 +51,11 @@ def get_mimi_state_dict(path: Path) -> dict:
                 key_v = new_key + "_v"
                 weight_v = f.get_tensor(key_v)
                 weight_g = f.get_tensor(key_g)
-                import torch.nn.functional
 
                 new_key = new_key.replace(".conv.conv.", ".conv.").replace(
                     ".convtr.convtr.", ".convtr."
                 )
-                state_dict[new_key] = weight_g * torch.nn.functional.normalize(weight_v, dim=0)
+                state_dict[new_key] = torch._weight_norm(weight_v, weight_g, dim=0)
                 continue
 
             if key in [

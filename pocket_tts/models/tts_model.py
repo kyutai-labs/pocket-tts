@@ -321,8 +321,8 @@ class TTSModel(nn.Module):
 
         # sanity check
         mimi_state = init_states(self.mimi, batch_size=1, sequence_length=10000)
-
-        resored_audio = self.mimi.decode_from_latent(encoded.transpose(-1, -2), mimi_state)
+        latent_to_decode = self.mimi.quantizer(encoded)
+        resored_audio = self.mimi.decode_from_latent(latent_to_decode, mimi_state)
         import scipy.io.wavfile
 
         scipy.io.wavfile.write("restored_audio.wav", self.sample_rate, resored_audio.numpy())
@@ -854,8 +854,8 @@ def prepare_text_prompt(text: str) -> tuple[str, int]:
 
     # The model does not perform well when there are very few tokens, so
     # we can add empty spaces at the beginning to increase the token count.
-    if len(text.split()) < 5:
-        text = " " * 8 + text
+    # if len(text.split()) < 5:
+    #    text = " " * 8 + text
 
     return text, frames_after_eos_guess
 

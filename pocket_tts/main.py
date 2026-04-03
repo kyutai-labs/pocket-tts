@@ -26,7 +26,7 @@ from pocket_tts.default_parameters import (
 )
 from pocket_tts.models.tts_model import TTSModel, export_model_state
 from pocket_tts.utils.logging_utils import enable_logging
-from pocket_tts.utils.utils import PREDEFINED_VOICES, size_of_dict
+from pocket_tts.utils.utils import _ORIGINS_OF_PREDEFINED_VOICES, size_of_dict
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +138,7 @@ def text_to_speech(
             voice_url.startswith("http://")
             or voice_url.startswith("https://")
             or voice_url.startswith("hf://")
-            or voice_url in PREDEFINED_VOICES
+            or voice_url in _ORIGINS_OF_PREDEFINED_VOICES
         ):
             raise HTTPException(
                 status_code=400, detail="voice_url must start with http://, https://, or hf://"

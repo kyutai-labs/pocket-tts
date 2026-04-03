@@ -5,7 +5,6 @@ import time
 from pathlib import Path
 
 import requests
-import safetensors.torch
 import torch
 from huggingface_hub import hf_hub_download
 from torch import nn
@@ -37,11 +36,9 @@ _ORIGINS_OF_PREDEFINED_VOICES = {
     "caro_davy": "hf://kyutai/tts-voices/voice-zero/caro_davy.wav",
 }
 
-PREDEFINED_VOICES = {
-    # don't forget to change this
-    x: f"hf://kyutai/pocket-tts-without-voice-cloning/embeddings_v3/{x}.safetensors@075c0abfe7e41450521b0200b5168cfbc16bc77b"
-    for x in _ORIGINS_OF_PREDEFINED_VOICES
-}
+
+def get_predefined_voice(language: str, name: str) -> str:
+    return f"hf://kyutai/pocket-tts/languages/{language}/embeddings/{name}.safetensors@e76a307772f0aa53e41a5dc2f4f52b0cc58d45b7"
 
 
 def make_cache_directory() -> Path:
@@ -115,14 +112,3 @@ def download_if_necessary(file_path: str) -> Path:
         return Path(cached_file)
     else:
         return Path(file_path)
-
-
-def load_predefined_voice(voice_name: str) -> torch.Tensor:
-    if voice_name not in PREDEFINED_VOICES:
-        raise ValueError(
-            f"Predefined voice '{voice_name}' not found"
-            f", available voices are {list(PREDEFINED_VOICES)}."
-        )
-    voice_file = download_if_necessary(PREDEFINED_VOICES[voice_name])
-    # There is only one tensor in the file.
-    return safetensors.torch.load_file(voice_file)["audio_prompt"]

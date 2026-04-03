@@ -36,10 +36,11 @@ from pocket_tts.modules.stateful_module import StatefulModule, increment_steps, 
 from pocket_tts.quantization import RECOMMENDED_CONFIG, apply_dynamic_int8
 from pocket_tts.utils.config import CONFIGS_DIR, Config, load_config
 from pocket_tts.utils.utils import (
+    _ORIGINS_OF_PREDEFINED_VOICES,
     DEBUG_MIMI,
-    PREDEFINED_VOICES,
     display_execution_time,
     download_if_necessary,
+    get_predefined_voice,
     size_of_dict,
 )
 from pocket_tts.utils.weights_loading import get_flow_lm_state_dict, get_mimi_state_dict
@@ -50,7 +51,7 @@ logger = logging.getLogger(__name__)
 VOICE_CLONING_UNSUPPORTED = (
     f"We could not download the weights for the model with voice cloning, "
     f"but you're trying to use voice cloning. "
-    f"Without voice cloning, you can use our catalog of voices {list(PREDEFINED_VOICES)}. "
+    f"Without voice cloning, you can use our catalog of voices {list(_ORIGINS_OF_PREDEFINED_VOICES.keys())}. "
     f"If you want access to the model with voice cloning, go to "
     f"https://huggingface.co/kyutai/pocket-tts and accept the terms, "
     f"then make sure you're logged in locally with `uvx hf auth login`."
@@ -69,6 +70,7 @@ class TTSModel(nn.Module):
         noise_clamp: float | None,
         eos_threshold,
         config: Config,
+        origin: Path | None = None,
     ):
         super().__init__()
         self.flow_lm = flow_lm
@@ -78,6 +80,7 @@ class TTSModel(nn.Module):
         self.eos_threshold = eos_threshold
         self.config = config
         self.has_voice_cloning = True
+        self.origin = origin
 
     @property
     def device(self) -> str:
@@ -89,22 +92,36 @@ class TTSModel(nn.Module):
 
     @classmethod
     def _from_pydantic_config(
-        cls, config: Config, temp, lsd_decode_steps, noise_clamp: float | None, eos_threshold
+        cls,
+        config: Config,
+        temp,
+        lsd_decode_steps,
+        noise_clamp: float | None,
+        eos_threshold,
+        origin: Path | None,
     ) -> Self:
         flow_lm = FlowLMModel.from_pydantic_config(
             config.flow_lm,
             latent_dim=config.mimi.quantizer.dimension,
             insert_bos_before_voice=config.flow_lm.insert_bos_before_voice,
         )
-        tts_model = cls(flow_lm, temp, lsd_decode_steps, noise_clamp, eos_threshold, config)
+        tts_model = cls(
+            flow_lm, temp, lsd_decode_steps, noise_clamp, eos_threshold, config, origin=origin
+        )
         return tts_model
 
     @classmethod
     def _from_pydantic_config_with_weights(
-        cls, config: Config, temp, lsd_decode_steps, noise_clamp: float | None, eos_threshold
+        cls,
+        config: Config,
+        temp,
+        lsd_decode_steps,
+        noise_clamp: float | None,
+        eos_threshold,
+        origin: Path | None = None,
     ) -> Self:
         tts_model = cls._from_pydantic_config(
-            config, temp, lsd_decode_steps, noise_clamp, eos_threshold
+            config, temp, lsd_decode_steps, noise_clamp, eos_threshold, origin=origin
         )
         tts_model.flow_lm.speaker_proj_weight = torch.nn.Parameter(
             torch.zeros(
@@ -185,6 +202,10 @@ class TTSModel(nn.Module):
                 "No weights_path specified for FlowLM or TTSModel, model is uninitialized!"
             )
         size_in_mb = size_of_dict(tts_model.state_dict()) // 1e6
+        if os.environ.get("POCKET_TTS_SAVE_WEIGHTS", "0") == "1":
+            save_path = "./model.safetensors"
+            safetensors.torch.save_file(tts_model.state_dict(), save_path)
+            logger.info(f"Saved TTSModel weights to {save_path}")
         logging.info(f"TTS Model loaded successfully. Its size is {size_in_mb} MB")
 
         # TODO: move this in the __init__ and make self.mimi in __init__
@@ -261,15 +282,15 @@ class TTSModel(nn.Module):
             language = "english_v2"  # default
         if language is not None:
             config = CONFIGS_DIR / f"{language}.yaml"
-        if str(config).endswith(".yaml"):
-            config_path = Path(config)
-            config = load_config(config_path)
-            logger.info(f"Loading model from config at {config_path}...")
-        else:
-            config = load_config(Path(__file__).parents[1] / f"config/{config}.yaml")
+        config = Path(config)
+        if config.suffix not in (".yaml", ".yml"):
+            raise ValueError("Config should be a path to a YAML file ending with .yaml")
+        config_path = Path(config)
+        config = load_config(config_path)
+        logger.info(f"Loading model from config at {config_path}...")
 
         tts_model = TTSModel._from_pydantic_config_with_weights(
-            config, temp, lsd_decode_steps, noise_clamp, eos_threshold
+            config, temp, lsd_decode_steps, noise_clamp, eos_threshold, origin=config_path
         )
 
         if quantize:
@@ -805,9 +826,22 @@ class TTSModel(nn.Module):
 
             return _import_model_state(audio_conditioning)
 
-        elif isinstance(audio_conditioning, str) and audio_conditioning in PREDEFINED_VOICES:
+        elif (
+            isinstance(audio_conditioning, str)
+            and audio_conditioning in _ORIGINS_OF_PREDEFINED_VOICES
+        ):
             # We get the audio conditioning directly from the safetensors file.
-            return _import_model_state(download_if_necessary(PREDEFINED_VOICES[audio_conditioning]))
+            if self.origin is None or not self.origin.is_relative_to(CONFIGS_DIR):
+                raise ValueError(
+                    f"Cannot use predefined voices when the model "
+                    f"is not loaded from a config associated with a language."
+                    f"Here the origin is {self.origin}"
+                )
+            return _import_model_state(
+                download_if_necessary(
+                    get_predefined_voice(language=self.origin.stem, name=audio_conditioning)
+                )
+            )
 
         if not self.has_voice_cloning and isinstance(audio_conditioning, (str, Path)):
             raise ValueError(VOICE_CLONING_UNSUPPORTED)

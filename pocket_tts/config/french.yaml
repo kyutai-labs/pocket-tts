@@ -1,4 +1,4 @@
-# sig: a0ac5076.yaml
+# sig: cce00dfe.yaml
 
 weights_path: ./model.safetensors
 weights_path_without_voice_cloning: null
@@ -57,4 +57,4 @@ mimi:
   quantizer:
     dimension: 32
     output_dimension: 512
-  # weights_path: codec.safetensors
+  #weights_path: codec.safetensors

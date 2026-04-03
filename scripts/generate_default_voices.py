@@ -3,7 +3,7 @@ import scipy.io.wavfile
 from pocket_tts import TTSModel, export_model_state
 from pocket_tts.utils.utils import _ORIGINS_OF_PREDEFINED_VOICES
 
-model = TTSModel.load_model()
+model = TTSModel.load_model(language="english_v2")
 
 for voice_name, voice_origin in _ORIGINS_OF_PREDEFINED_VOICES.items():
     print(f"Processing voice: {voice_name} from origin: {voice_origin}")

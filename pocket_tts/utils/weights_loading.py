@@ -39,6 +39,7 @@ def get_mimi_state_dict(path: Path) -> dict:
                 or key == "model.quantizer.logvar_proj.weight"
                 or "_codebook" in key
                 or key.endswith(".weight_v")
+                or key == "quantizer.logvar_proj.weight"  # this is new
             ):
                 # skip vq weights
                 continue

@@ -1,7 +1,7 @@
 # sig: a0ac5076.yaml
 
-weights_path: ./model.safetensors
-weights_path_without_voice_cloning: null
+weights_path: hf://kyutai/pocket-tts/languages/english_v2/model.safetensors@e76a307772f0aa53e41a5dc2f4f52b0cc58d45b7
+weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/english_v2/model.safetensors@e76a307772f0aa53e41a5dc2f4f52b0cc58d45b7
 
 flow_lm:
   insert_bos_before_voice: true

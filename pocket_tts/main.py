@@ -185,7 +185,7 @@ def serve(
         str | None,
         typer.Option(
             help="Language for the TTS model. "
-            "'english_v1', 'english_v2', 'french', 'german', 'portuguese', 'italian'."
+            "'english_v1', 'english_v2', 'french', 'german', 'portuguese', 'italian', 'spanish'."
             " Uncompatible with the config argument. Default is 'english_v2'.",
             show_default=False,
         ),

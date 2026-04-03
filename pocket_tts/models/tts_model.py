@@ -214,8 +214,11 @@ class TTSModel(nn.Module):
         with the specified generation parameters and ready for inference.
 
         Args:
-            config: a path to a custom YAML config file saved locally (e.g., C://pocket_tts/pocket_tts_config.yaml)
-                or a model variant identifier (e.g., '610b0b2c'; must match a YAML file in the config directory).
+            language: Optional language identifier to select a predefined config. Incompatible with
+                the `config` argument. Available options
+                are `"english_v1"`, `"english_v2"`, `"french"`, `"portuguese"`, `"spanish"`, `"german"`, `"italian"`.
+                If no config and languages are provided, defaults to `"english_v2"`.
+            config: A path to a custom YAML config file saved locally (e.g., `"C://pocket_tts/pocket_tts_config.yaml"`).
             temp: Sampling temperature for generation. Higher values produce more
                 diverse but potentially lower quality output.
             lsd_decode_steps: Number of steps for Lagrangian Self Distillation
@@ -250,6 +253,10 @@ class TTSModel(nn.Module):
             model = TTSModel.load_model(quantize=True)
             ```
         """
+        if config is not None and language is not None:
+            raise ValueError(
+                "Cannot specify both config and language, please choose one or the other."
+            )
         if config is None and language is None:
             language = "english_v2"  # default
         if language is not None:

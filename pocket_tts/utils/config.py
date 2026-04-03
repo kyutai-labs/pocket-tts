@@ -5,6 +5,8 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict
 
+CONFIGS_DIR = Path(__file__).parent.parent / "config"
+
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -117,7 +119,12 @@ def load_config(yaml_path: str | Path) -> Config:
     yaml_path = Path(yaml_path)
 
     if not yaml_path.exists():
-        raise FileNotFoundError(f"Config file not found: {yaml_path}")
+        if yaml_path.is_relative_to(CONFIGS_DIR):
+            raise FileNotFoundError(
+                f"Config file not found: {yaml_path}. "
+                f"Did you make a typo? Available languages: {[p.stem for p in CONFIGS_DIR.glob('*.yaml')]}"
+            )
+        raise FileNotFoundError(f"Config file not found: {yaml_path}. Did you make a typo?")
 
     with open(yaml_path, "r") as f:
         config_dict = yaml.safe_load(f)

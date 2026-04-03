@@ -22,7 +22,6 @@ from pocket_tts.default_parameters import (
     DEFAULT_LSD_DECODE_STEPS,
     DEFAULT_NOISE_CLAMP,
     DEFAULT_TEMPERATURE,
-    DEFAULT_VARIANT,
     MAX_TOKEN_PER_CHUNK,
 )
 from pocket_tts.models.tts_model import TTSModel, export_model_state
@@ -182,12 +181,22 @@ def serve(
     host: Annotated[str, typer.Option(help="Host to bind to")] = "localhost",
     port: Annotated[int, typer.Option(help="Port to bind to")] = 8000,
     reload: Annotated[bool, typer.Option(help="Enable auto-reload")] = False,
-    config: Annotated[
-        str,
+    language: Annotated[
+        str | None,
         typer.Option(
-            help="Path to locally-saved model config .yaml file or model variant signature"
+            help="Language for the TTS model. "
+            "'english_v1', 'english_v2', 'french', 'german', 'portuguese', 'italian'."
+            " Uncompatible with the config argument. Default is 'english_v2'.",
+            show_default=False,
         ),
-    ] = DEFAULT_VARIANT,
+    ] = None,
+    config: Annotated[
+        str | None,
+        typer.Option(
+            help="Path to locally-saved model config .yaml file. "
+            "Incompatible with the language argument. If not provided, will use the default English model."
+        ),
+    ] = None,
     quantize: Annotated[
         bool, typer.Option(help="Apply int8 quantization to reduce memory usage")
     ] = False,
@@ -195,7 +204,7 @@ def serve(
     """Start the FastAPI server."""
 
     global tts_model, global_model_state
-    tts_model = TTSModel.load_model(config, quantize=quantize)
+    tts_model = TTSModel.load_model(language=language, config=config, quantize=quantize)
 
     # Pre-load the voice prompt
     global_model_state = tts_model.get_state_for_audio_prompt(voice)
@@ -218,9 +227,22 @@ def generate(
         str, typer.Option(help="Path to audio conditioning file (voice to clone)")
     ] = DEFAULT_AUDIO_PROMPT,
     quiet: Annotated[bool, typer.Option("-q", "--quiet", help="Disable logging output")] = False,
+    language: Annotated[
+        str | None,
+        typer.Option(
+            help="Language for the TTS model. "
+            "'english_v1', 'english_v2', 'french', 'german', 'portuguese', 'italian'."
+            " Uncompatible with the config argument. Default is 'english_v2'.",
+            show_default=False,
+        ),
+    ] = None,
     config: Annotated[
-        str, typer.Option(help="Model signature or path to config .yaml file")
-    ] = DEFAULT_VARIANT,
+        str | None,
+        typer.Option(
+            help="Path to locally-saved model config .yaml file. "
+            "Incompatible with the language argument. If not provided, will use the default English model."
+        ),
+    ] = None,
     lsd_decode_steps: Annotated[
         int, typer.Option(help="Number of generation steps")
     ] = DEFAULT_LSD_DECODE_STEPS,
@@ -254,7 +276,13 @@ def generate(
             logger.error("No input received from stdin.")
             raise typer.Exit(code=1)
         tts_model = TTSModel.load_model(
-            config, temperature, lsd_decode_steps, noise_clamp, eos_threshold, quantize=quantize
+            language=language,
+            config=config,
+            temp=temperature,
+            lsd_decode_steps=lsd_decode_steps,
+            noise_clamp=noise_clamp,
+            eos_threshold=eos_threshold,
+            quantize=quantize,
         )
         tts_model.to(device)
 
@@ -293,13 +321,28 @@ def export_voice(
     ],
     export_path: Annotated[str, typer.Argument(help="Output file or directory")],
     quiet: Annotated[bool, typer.Option("-q", "--quiet", help="Disable logging output")] = False,
-    config: Annotated[str, typer.Option(help="Model config path or signature")] = DEFAULT_VARIANT,
+    language: Annotated[
+        str | None,
+        typer.Option(
+            help="Language for the TTS model. "
+            "'english_v1', 'english_v2', 'french', 'german', 'portuguese', 'italian'."
+            " Uncompatible with the config argument. Default is 'english_v2'.",
+            show_default=False,
+        ),
+    ] = None,
+    config: Annotated[
+        str | None,
+        typer.Option(
+            help="Path to locally-saved model config .yaml file. "
+            "Incompatible with the language argument. If not provided, will use the default English model."
+        ),
+    ] = None,
 ):
     """Convert and save audio to .safetensors file"""
 
     log_level = logging.ERROR if quiet else logging.INFO
     with enable_logging("pocket_tts", log_level):
-        tts_model = TTSModel.load_model(config)
+        tts_model = TTSModel.load_model(language=language, config=config)
         model_state = tts_model.get_state_for_audio_prompt(
             audio_conditioning=audio_path, truncate=True
         )

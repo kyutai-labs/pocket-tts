@@ -25,7 +25,6 @@ from pocket_tts.default_parameters import (
     DEFAULT_LSD_DECODE_STEPS,
     DEFAULT_NOISE_CLAMP,
     DEFAULT_TEMPERATURE,
-    DEFAULT_VARIANT,
     MAX_TOKEN_PER_CHUNK,
 )
 from pocket_tts.models.flow_lm import FlowLMModel
@@ -35,7 +34,7 @@ from pocket_tts.modules.dummy_quantizer import DummyQuantizer
 from pocket_tts.modules.seanet import SEANetDecoder, SEANetEncoder
 from pocket_tts.modules.stateful_module import StatefulModule, increment_steps, init_states
 from pocket_tts.quantization import RECOMMENDED_CONFIG, apply_dynamic_int8
-from pocket_tts.utils.config import Config, load_config
+from pocket_tts.utils.config import CONFIGS_DIR, Config, load_config
 from pocket_tts.utils.utils import (
     DEBUG_MIMI,
     PREDEFINED_VOICES,
@@ -200,7 +199,8 @@ class TTSModel(nn.Module):
     @classmethod
     def load_model(
         cls,
-        config: str | Path = DEFAULT_VARIANT,
+        language: str | None = None,
+        config: str | Path | None = None,
         temp: float | int = DEFAULT_TEMPERATURE,
         lsd_decode_steps: int = DEFAULT_LSD_DECODE_STEPS,
         noise_clamp: float | int | None = DEFAULT_NOISE_CLAMP,
@@ -250,6 +250,10 @@ class TTSModel(nn.Module):
             model = TTSModel.load_model(quantize=True)
             ```
         """
+        if config is None and language is None:
+            language = "english_v2"  # default
+        if language is not None:
+            config = CONFIGS_DIR / f"{language}.yaml"
         if str(config).endswith(".yaml"):
             config_path = Path(config)
             config = load_config(config_path)

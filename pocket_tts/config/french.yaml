@@ -1,6 +1,6 @@
 # sig: cce00dfe.yaml
 
-weights_path: ./model.safetensors
+weights_path: null
 weights_path_without_voice_cloning: null
 
 flow_lm:
@@ -20,7 +20,7 @@ flow_lm:
     n_bins: 4000
     tokenizer: sentencepiece
     tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/tokenizer.model@d4fdd22ae8c8e1cb3634e150ebeff1dab2d16df3
-  #weights_path: partial_distill.safetensors
+  weights_path: fr_partial.safetensors
 
 mimi:
   dtype: float32
@@ -57,4 +57,4 @@ mimi:
   quantizer:
     dimension: 32
     output_dimension: 512
-  #weights_path: codec.safetensors
+  weights_path: codec.safetensors

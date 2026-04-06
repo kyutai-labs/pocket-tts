@@ -106,5 +106,12 @@ echo
 echo "Press ENTER to continue"
 read
 
+# Enable PocketTTS automatically after install (CPU mode).
+# This creates the start.sh marker used by DwemerDistro startup and
+# "Configure Installed Components" status checks.
+ln -sf "$REPO_DIR/start-cpu.sh" "$REPO_DIR/start.sh"
+chmod +x "$REPO_DIR/start-cpu.sh" "$REPO_DIR/start.sh"
+echo "PocketTTS service enabled (CPU mode)."
+
 # Launch the service
 python3 bridge_api.py

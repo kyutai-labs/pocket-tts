@@ -4,4 +4,5 @@ DEFAULT_LSD_DECODE_STEPS = 1
 DEFAULT_NOISE_CLAMP = None
 DEFAULT_EOS_THRESHOLD = -4.0
 DEFAULT_FRAMES_AFTER_EOS = None
+# TODO: make this dynamic since english_v2 supports bigger chunks
 MAX_TOKEN_PER_CHUNK = 50

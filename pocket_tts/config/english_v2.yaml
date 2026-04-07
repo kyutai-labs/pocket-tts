@@ -2,8 +2,7 @@
 
 weights_path: hf://kyutai/pocket-tts/languages/english_v2/model.safetensors@4079fd73cbd1e83cfd47b8fe87c2b5765ab67a0c
 weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/english_v2/model.safetensors@4079fd73cbd1e83cfd47b8fe87c2b5765ab67a0c
-weights_path: null
-weights_path_without_voice_cloning: null
+
 
 flow_lm:
   insert_bos_before_voice: true

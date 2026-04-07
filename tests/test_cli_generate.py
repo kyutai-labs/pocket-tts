@@ -6,7 +6,6 @@ import pytest
 from typer.testing import CliRunner
 
 from pocket_tts.data.audio import audio_read
-from pocket_tts.default_parameters import DEFAULT_VARIANT
 from pocket_tts.main import cli_app
 
 other_voice = "https://huggingface.co/kyutai/tts-voices/resolve/main/expresso/ex01-ex02_default_001_channel1_168s.wav"
@@ -76,8 +75,8 @@ def test_generate_with_custom_parameters(tmp_path):
             "generate",
             "--text",
             "Testing custom parameters.",
-            "--config",
-            DEFAULT_VARIANT,
+            "--language",
+            "english_v2",
             "--temperature",
             "0.8",
             "--lsd-decode-steps",

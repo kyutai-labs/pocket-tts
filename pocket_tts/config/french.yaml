@@ -1,7 +1,8 @@
-# sig: cce00dfe.yaml
+# sig: a0ac5076.yaml
 
 weights_path: null
 weights_path_without_voice_cloning: null
+
 
 flow_lm:
   insert_bos_before_voice: true
@@ -14,13 +15,13 @@ flow_lm:
     hidden_scale: 4
     max_period: 10000
     num_heads: 16
-    num_layers: 6
+    num_layers: 24
   lookup_table:
     dim: 1024
     n_bins: 4000
     tokenizer: sentencepiece
     tokenizer_path: test_fr_4000.model
-  weights_path: fr_partial.safetensors
+  weights_path: partial.safetensors
 
 mimi:
   dtype: float32

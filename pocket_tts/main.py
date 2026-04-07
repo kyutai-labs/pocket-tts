@@ -26,7 +26,7 @@ from pocket_tts.default_parameters import (
 )
 from pocket_tts.models.tts_model import TTSModel, export_model_state
 from pocket_tts.utils.logging_utils import enable_logging
-from pocket_tts.utils.utils import _ORIGINS_OF_PREDEFINED_VOICES, size_of_dict
+from pocket_tts.utils.utils import _ORIGINS_OF_PREDEFINED_VOICES
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,6 @@ cli_app = typer.Typer(
 
 # Global model instance
 tts_model: TTSModel | None = None
-global_model_state = None
 
 web_app = FastAPI(
     title="Kyutai Pocket TTS API", description="Text-to-Speech generation API", version="1.0.0"
@@ -129,6 +128,9 @@ def text_to_speech(
     if not text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
+    if voice_url is None and voice_wav is None:
+        voice_url = DEFAULT_AUDIO_PROMPT
+
     if voice_url is not None and voice_wav is not None:
         raise HTTPException(status_code=400, detail="Cannot provide both voice_url and voice_wav")
 
@@ -160,8 +162,7 @@ def text_to_speech(
         finally:
             os.unlink(temp_file_path)
     else:
-        # Use default global model state
-        model_state = global_model_state
+        raise HTTPException(status_code=500, detail="This should never happen.")
 
     return StreamingResponse(
         generate_data_with_state(text, model_state),
@@ -203,12 +204,8 @@ def serve(
 ):
     """Start the FastAPI server."""
 
-    global tts_model, global_model_state
+    global tts_model
     tts_model = TTSModel.load_model(language=language, config=config, quantize=quantize)
-
-    # Pre-load the voice prompt
-    global_model_state = tts_model.get_state_for_audio_prompt(voice)
-    logger.info(f"The size of the model state is {size_of_dict(global_model_state) // 1e6} MB")
 
     uvicorn.run("pocket_tts.main:web_app", host=host, port=port, reload=reload)
 

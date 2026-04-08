@@ -3,7 +3,7 @@ import scipy.io.wavfile
 from pocket_tts import TTSModel, export_model_state
 from pocket_tts.utils.utils import _ORIGINS_OF_PREDEFINED_VOICES
 
-model = TTSModel.load_model(language="english_v2")
+model = TTSModel.load_model(language="french_24l")
 
 for voice_name, voice_origin in _ORIGINS_OF_PREDEFINED_VOICES.items():
     print(f"Processing voice: {voice_name} from origin: {voice_origin}")
@@ -16,7 +16,8 @@ for voice_name, voice_origin in _ORIGINS_OF_PREDEFINED_VOICES.items():
     )
 
     audio = model.generate_audio(
-        model_state_copy, "Hello, it's a good day, isn't it? I hope you are doing well."
+        model_state_copy,
+        "Bonjour, c'est une belle journée, n'est-ce pas ? J'espère que vous allez bien.",
     )
     scipy.io.wavfile.write(
         f"./built-in-voices-generated/{voice_name}.wav", model.sample_rate, audio.numpy()

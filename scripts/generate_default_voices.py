@@ -18,7 +18,8 @@ for voice_name, voice_origin in _ORIGINS_OF_PREDEFINED_VOICES.items():
     )
 
     audio = model.generate_audio(
-        model_state_copy, "Por favor, escríbeme un poema corto sobre el mar y las estrellas."
+        model_state_copy,
+        "Il sole tramonta lentamente dietro le montagne, tingendo il cielo di arancione e rosa.",
     )
     scipy.io.wavfile.write(
         f"./built-in-voices-generated/{voice_name}.wav", model.sample_rate, audio.numpy()

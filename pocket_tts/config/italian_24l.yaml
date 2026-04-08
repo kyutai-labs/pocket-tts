@@ -1,7 +1,7 @@
-# sig: a0ac5076.yaml
+# sig: 6ec79d0f
 
-weights_path: null
-weights_path_without_voice_cloning: null
+weights_path: hf://kyutai/pocket-tts/languages/italian_24l/model.safetensors@de47252346dfe5d3140ad2cdf4f688d8adff3161
+weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/italian_24l/model.safetensors@de47252346dfe5d3140ad2cdf4f688d8adff3161
 
 
 flow_lm:
@@ -20,7 +20,7 @@ flow_lm:
     dim: 1024
     n_bins: 4000
     tokenizer: sentencepiece
-    tokenizer_path: test_fr_4000.model
+    tokenizer_path:  hf://kyutai/pocket-tts/languages/italian_24l/tokenizer.model@de47252346dfe5d3140ad2cdf4f688d8adff3161
   weights_path: partial.safetensors
 
 mimi:

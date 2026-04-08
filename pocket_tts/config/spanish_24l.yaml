@@ -1,4 +1,4 @@
-# sig: a0ac5076.yaml
+# sig: afd6403b
 
 weights_path: hf://kyutai/pocket-tts/languages/spanish_24l/model.safetensors@18bd4020e5a388710303bbe2696ab289ef134aad
 weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/spanish_24l/model.safetensors@18bd4020e5a388710303bbe2696ab289ef134aad

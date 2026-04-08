@@ -122,7 +122,7 @@ def text_to_speech(
 
     Args:
         text: Text to convert to speech
-        voice_url: Optional voice URL (http://, https://, or hf://)
+        voice_url: Optional built-in voice name (e.g., "alba"), or voice URL (http://, https://, or hf://)
         voice_wav: Optional uploaded voice file (mutually exclusive with voice_url)
     """
     if not text.strip():
@@ -183,8 +183,8 @@ def serve(
         str | None,
         typer.Option(
             help="Language for the TTS model. "
-            "'english_v1', 'english_v2', 'french', 'german', 'portuguese', 'italian', 'spanish'."
-            " Uncompatible with the config argument. Default is 'english_v2'.",
+            "'english_v1', 'english_v2', 'french_24l', 'german_24l', 'portuguese', 'italian', 'spanish'."
+            " Incompatible with the config argument. Default is 'english_v2'.",
             show_default=False,
         ),
     ] = None,
@@ -224,9 +224,15 @@ def generate(
     language: Annotated[
         str | None,
         typer.Option(
-            help="Language for the TTS model. "
-            "'english_v1', 'english_v2', 'french', 'german', 'portuguese', 'italian'."
-            " Uncompatible with the config argument. Default is 'english_v2'.",
+            help=(
+                "Language for the TTS model. "
+                "'english_v1', 'english_v2', 'french_24l', 'spanish_24l',"
+                "'german_24l', 'portuguese_24l', 'italian_24l'."
+                " Incompatible with the config argument. Default is 'english_v2'. "
+                "The '24l' variants are bigger models, "
+                "not distilled yet and here only as preview. They're not the final "
+                "models for those languages."
+            ),
             show_default=False,
         ),
     ] = None,
@@ -318,9 +324,15 @@ def export_voice(
     language: Annotated[
         str | None,
         typer.Option(
-            help="Language for the TTS model. "
-            "'english_v1', 'english_v2', 'french', 'german', 'portuguese', 'italian'."
-            " Uncompatible with the config argument. Default is 'english_v2'.",
+            help=(
+                "Language for the TTS model. "
+                "'english_v1', 'english_v2', 'french_24l', 'german_24l','spanish_24l',"
+                " 'portuguese_24l', 'italian_24l'."
+                " Incompatible with the config argument. Default is 'english_v2'. "
+                "The '24l' variants are bigger models, "
+                "not distilled yet and here only as preview. They're not the final "
+                "models for those languages."
+            ),
             show_default=False,
         ),
     ] = None,

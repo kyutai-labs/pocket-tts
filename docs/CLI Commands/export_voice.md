@@ -24,7 +24,8 @@ Only the first 30 seconds of the audio file will be processed.
 ### Options
 
 - `--quiet`: Do not print any output except errors.
-- `--config`: Model config path or signature
+- `--language`: Language for the TTS model, one of `'english_v1'`, `'english_v2'`, `'french_24l'`, `'german_24l'`, `'portuguese_24l'`, `'italian_24l'`, `'spanish_24l'` (default: `english_v2`). Incompatible with `--config`. The "24l" variants are bigger models, not distilled yet and here only as preview. They're not the final models for those languages.
+- `--config`: Model config local yaml path. Incompatible with `--language`.
 
 ## Examples
 

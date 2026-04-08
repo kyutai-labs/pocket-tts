@@ -24,11 +24,11 @@ Supports Python 3.10, 3.11, 3.12, 3.13 and 3.14. Requires PyTorch 2.5+. Does not
 * Uses only 2 CPU cores
 * Python API and CLI
 * Voice cloning
-* English only at the moment
+* Multi-language support: english_v1, english_v2, french, german, portuguese, italian, spanish
 * Can handle infinitely long text inputs
 * [Can run on client-side in the browser](#in-browser-implementations)
 
-More languages are planned: See our [official announcement](https://github.com/kyutai-labs/pocket-tts/issues/118)
+Additional languages may be added in the future.
 
 ## Trying it from the website, without installing anything
 
@@ -48,6 +48,8 @@ uvx pocket-tts generate
 pocket-tts generate
 ```
 Modify the voice with `--voice` and the text with `--text`. We provide a small catalog of voices.
+Choose a pretrained language model with `--language` when running `generate`, `export-voice`, or `serve` (default: `english_v2`).
+The `--config` option accepts only a local YAML path for custom weights.
 
 You can take a look at [this page](https://huggingface.co/kyutai/tts-voices) which details the licenses
 for each voice.

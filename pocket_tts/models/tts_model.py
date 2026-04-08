@@ -194,11 +194,7 @@ class TTSModel(nn.Module):
             tts_model.mimi.load_state_dict(mimi_state, strict=True)
 
         tts_model.mimi.eval()
-        # tts_model.to(dtype=torch.float32)
 
-        # uncomment to save the weights
-        # tts_model = tts_model.to(dtype=torch.bfloat16)
-        # safetensors.torch.save_file(tts_model.state_dict(), "tts_b6369a24.safetensors")
         if config.weights_path is not None:
             logger.info(f"Loading TTSModel weights from {config.weights_path}")
             try:
@@ -251,7 +247,7 @@ class TTSModel(nn.Module):
             language: Optional language identifier to select a predefined config. Incompatible with
                 the `config` argument. Available options
                 are `"english_v1"`, `"english_v2"`, `"french"`, `"portuguese"`, `"spanish"`, `"german"`, `"italian"`.
-                If no config and languages are provided, defaults to `"english_v2"`.
+                If neither `config` nor `language` is provided, defaults to `"english_v2"`.
             config: A path to a custom YAML config file saved locally (e.g., `"C://pocket_tts/pocket_tts_config.yaml"`).
             temp: Sampling temperature for generation. Higher values produce more
                 diverse but potentially lower quality output.

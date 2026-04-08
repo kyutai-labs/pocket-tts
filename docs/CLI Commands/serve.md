@@ -14,12 +14,12 @@ This starts a server on `http://localhost:8000` with the default voice model.
 
 ## Command Options
 
-- `--voice VOICE`: Path to voice prompt audio file (voice to clone) (default: "hf://kyutai/tts-voices/alba-mackenna/casual.wav")
 - `--host HOST`: Host to bind to (default: "localhost")
 - `--port PORT`: Port to bind to (default: 8000)
 - `--reload`: Enable auto-reload for development
-- `--config`: Path to a custom config .yaml
-
+- `--language`: Language for the TTS model, one of `'english_v1'`, `'english_v2'`, `'french_24l'`, `'german_24l'`, `'portuguese_24l'`, `'italian_24l'`, `'spanish_24l'` (default: `english_v2`). Incompatible with `--config`. The "24l" variants are bigger models, not distilled yet and here only as preview. They're not the final models for those languages.
+- `--config`: Path to a custom config .yaml. Incompatible with `--language`.
+- `--quantize`: Use int8 quantization for the model (default: False). This can reduce memory usage and increase speed, with minimal impact on audio quality.
 ## Examples
 
 ### Basic Server
@@ -32,21 +32,17 @@ pocket-tts serve
 pocket-tts serve --host "localhost" --port 8080
 ```
 
-### Custom Voice
-
+### Custom Language
+To select the default language model, pass `--language`:
 ```bash
-# Use different voice
-pocket-tts serve --voice "hf://kyutai/tts-voices/jessica-jian/casual.wav"
-
-# Use local voice file
-pocket-tts serve --voice "./my_voice.wav"
+pocket-tts serve --language french_24l
 ```
 
 ### Custom Model Config
 
 If you'd like to override the paths from which the models are loaded, you can provide a custom YAML configuration.
 
-Copy pocket_tts/config/b6369a24.yaml and change weights_path:, weights_path_without_voice_cloning: and tokenizer_path: to the paths of the models you want to load.
+Copy one of the files in `pocket_tts/config` (for example `pocket_tts/config/english_v2.yaml`) and change `weights_path`, `weights_path_without_voice_cloning:`, and `tokenizer_path:` to the paths of the models you want to load.
 
 Then, use the --config option to point to your newly created config.
 
@@ -60,4 +56,3 @@ pocket-tts serve --config "C://pocket-tts/my_config.yaml"
 Once the server is running, navigate to `http://localhost:8000` to access the web interface.
 
 For more advanced usage, see the [Python API documentation](python-api.md) for direct integration with the TTS model.
-

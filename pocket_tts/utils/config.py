@@ -113,6 +113,7 @@ class Config(StrictModel):
     mimi: MimiConfig
     weights_path: str | None = None
     weights_path_without_voice_cloning: str | None = None
+    pad_with_spaces_for_short_inputs: bool = False
 
 
 def load_config(yaml_path: str | Path) -> Config:

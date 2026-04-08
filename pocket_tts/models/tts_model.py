@@ -71,6 +71,7 @@ class TTSModel(nn.Module):
         eos_threshold,
         config: Config,
         origin: Path | None = None,
+        pad_with_spaces_for_short_inputs: bool = False,
     ):
         super().__init__()
         self.flow_lm = flow_lm
@@ -81,6 +82,7 @@ class TTSModel(nn.Module):
         self.config = config
         self.has_voice_cloning = True
         self.origin = origin
+        self.pad_with_spaces_for_short_inputs: bool = pad_with_spaces_for_short_inputs
 
     @property
     def device(self) -> str:
@@ -106,7 +108,14 @@ class TTSModel(nn.Module):
             insert_bos_before_voice=config.flow_lm.insert_bos_before_voice,
         )
         tts_model = cls(
-            flow_lm, temp, lsd_decode_steps, noise_clamp, eos_threshold, config, origin=origin
+            flow_lm,
+            temp,
+            lsd_decode_steps,
+            noise_clamp,
+            eos_threshold,
+            config,
+            origin=origin,
+            pad_with_spaces_for_short_inputs=config.pad_with_spaces_for_short_inputs,
         )
         return tts_model
 
@@ -590,11 +599,16 @@ class TTSModel(nn.Module):
         # TODO: add the teacher forcing method for long texts where we use the audio of one chunk
         # as conditioning for the next chunk.
         chunks = split_into_best_sentences(
-            self.flow_lm.conditioner.tokenizer, text_to_generate, max_tokens
+            self.flow_lm.conditioner.tokenizer,
+            text_to_generate,
+            max_tokens,
+            self.pad_with_spaces_for_short_inputs,
         )
 
         for chunk in chunks:
-            text_to_generate, frames_after_eos_guess = prepare_text_prompt(chunk)
+            text_to_generate, frames_after_eos_guess = prepare_text_prompt(
+                chunk, self.pad_with_spaces_for_short_inputs
+            )
             frames_after_eos_guess += 2
             effective_frames = (
                 frames_after_eos if frames_after_eos is not None else frames_after_eos_guess
@@ -885,7 +899,7 @@ class TTSModel(nn.Module):
         return math.ceil(gen_len_sec * frame_rate)
 
 
-def prepare_text_prompt(text: str) -> tuple[str, int]:
+def prepare_text_prompt(text: str, pad_with_spaces_for_short_inputs: bool) -> tuple[str, int]:
     text = text.strip()
     if text == "":
         raise ValueError("Text prompt cannot be empty")
@@ -907,8 +921,8 @@ def prepare_text_prompt(text: str) -> tuple[str, int]:
 
     # The model does not perform well when there are very few tokens, so
     # we can add empty spaces at the beginning to increase the token count.
-    # if len(text.split()) < 5:
-    #    text = " " * 8 + text
+    if pad_with_spaces_for_short_inputs and len(text.split()) < 5:
+        text = " " * 8 + text
 
     return text, frames_after_eos_guess
 
@@ -946,8 +960,10 @@ def _segments_from_boundaries(
     return segments
 
 
-def split_into_best_sentences(tokenizer, text_to_generate: str, max_tokens: int) -> list[str]:
-    text_to_generate, _ = prepare_text_prompt(text_to_generate)
+def split_into_best_sentences(
+    tokenizer, text_to_generate: str, max_tokens: int, pad_with_spaces_for_short_inputs: bool
+) -> list[str]:
+    text_to_generate, _ = prepare_text_prompt(text_to_generate, pad_with_spaces_for_short_inputs)
     text_to_generate = text_to_generate.strip()
     tokens = tokenizer(text_to_generate)
     list_of_tokens = tokens.tokens[0].tolist()

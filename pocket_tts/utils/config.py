@@ -114,6 +114,7 @@ class Config(StrictModel):
     weights_path: str | None = None
     weights_path_without_voice_cloning: str | None = None
     pad_with_spaces_for_short_inputs: bool = False
+    model_recommended_frames_after_eos: int | None = None
 
 
 def load_config(yaml_path: str | Path) -> Config:

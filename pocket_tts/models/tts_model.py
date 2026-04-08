@@ -72,6 +72,7 @@ class TTSModel(nn.Module):
         config: Config,
         origin: Path | None = None,
         pad_with_spaces_for_short_inputs: bool = False,
+        model_recommended_frames_after_eos: int | None = None,
     ):
         super().__init__()
         self.flow_lm = flow_lm
@@ -83,6 +84,7 @@ class TTSModel(nn.Module):
         self.has_voice_cloning = True
         self.origin = origin
         self.pad_with_spaces_for_short_inputs: bool = pad_with_spaces_for_short_inputs
+        self.model_recommended_frames_after_eos = model_recommended_frames_after_eos
 
     @property
     def device(self) -> str:
@@ -116,6 +118,7 @@ class TTSModel(nn.Module):
             config,
             origin=origin,
             pad_with_spaces_for_short_inputs=config.pad_with_spaces_for_short_inputs,
+            model_recommended_frames_after_eos=config.model_recommended_frames_after_eos,
         )
         return tts_model
 
@@ -593,6 +596,8 @@ class TTSModel(nn.Module):
             and audio decoding. Generation performance is logged including
             real-time factor (RTF) metrics.
         """
+        if frames_after_eos is None:
+            frames_after_eos = self.model_recommended_frames_after_eos
 
         # This is a very simplistic way of handling long texts. We could do much better
         # by using teacher forcing, but it would be a bit slower.

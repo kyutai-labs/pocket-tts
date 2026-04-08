@@ -19,7 +19,7 @@ for voice_name, voice_origin in _ORIGINS_OF_PREDEFINED_VOICES.items():
 
     audio = model.generate_audio(
         model_state_copy,
-        "Il sole tramonta lentamente dietro le montagne, tingendo il cielo di arancione e rosa.",
+        "O sol nasceu lentamente atrás das montanhas, pintando o céu de tons dourados e rosados.",
     )
     scipy.io.wavfile.write(
         f"./built-in-voices-generated/{voice_name}.wav", model.sample_rate, audio.numpy()

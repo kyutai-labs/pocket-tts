@@ -176,9 +176,6 @@ def text_to_speech(
 
 @cli_app.command()
 def serve(
-    voice: Annotated[
-        str, typer.Option(help="Path to voice prompt audio file (voice to clone)")
-    ] = DEFAULT_AUDIO_PROMPT,
     host: Annotated[str, typer.Option(help="Host to bind to")] = "localhost",
     port: Annotated[int, typer.Option(help="Port to bind to")] = 8000,
     reload: Annotated[bool, typer.Option(help="Enable auto-reload")] = False,

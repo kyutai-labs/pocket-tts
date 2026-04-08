@@ -22,6 +22,7 @@ from pocket_tts.data.audio import audio_read
 from pocket_tts.data.audio_utils import convert_audio
 from pocket_tts.default_parameters import (
     DEFAULT_EOS_THRESHOLD,
+    DEFAULT_LANGUAGE,
     DEFAULT_LSD_DECODE_STEPS,
     DEFAULT_NOISE_CLAMP,
     DEFAULT_TEMPERATURE,
@@ -291,7 +292,7 @@ class TTSModel(nn.Module):
                 "Cannot specify both config and language, please choose one or the other."
             )
         if config is None and language is None:
-            language = "english_v2"  # default
+            language = DEFAULT_LANGUAGE
         if language is not None:
             config = CONFIGS_DIR / f"{language}.yaml"
         config = Path(config)

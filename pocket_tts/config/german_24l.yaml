@@ -1,7 +1,7 @@
-# sig: a0ac5076.yaml
+# sig: 085f1405.yaml
 
-weights_path: null
-weights_path_without_voice_cloning: null
+weights_path: hf://kyutai/pocket-tts/languages/spanish_24l/model.safetensors@8ccf2e2309223460012ffb93e0c6e5cb355bc1d3
+weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/spanish_24l/model.safetensors@8ccf2e2309223460012ffb93e0c6e5cb355bc1d3
 
 
 flow_lm:
@@ -20,8 +20,8 @@ flow_lm:
     dim: 1024
     n_bins: 4000
     tokenizer: sentencepiece
-    tokenizer_path: test_fr_4000.model
-  weights_path: partial.safetensors
+    tokenizer_path: hf://kyutai/pocket-tts/languages/spanish_24l/tokenizer.model@8ccf2e2309223460012ffb93e0c6e5cb355bc1d3
+  #weights_path: partial.safetensors
 
 mimi:
   dtype: float32
@@ -58,4 +58,4 @@ mimi:
   quantizer:
     dimension: 32
     output_dimension: 512
-  weights_path: codec.safetensors
+  #weights_path: codec.safetensors

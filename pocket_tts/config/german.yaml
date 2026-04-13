@@ -1,7 +1,7 @@
-# sig: 709d9f84.yaml
+# sig: ba9816ab.yaml
 
-weights_path: hf://kyutai/pocket-tts/languages/french_24l/model.safetensors@ac2153decc511b3a81e71b9c8b9afa2d391eeef4
-weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/french_24l/model.safetensors@ac2153decc511b3a81e71b9c8b9afa2d391eeef4
+weights_path: hf://kyutai/pocket-tts/languages/german/model.safetensors@25443bdc51dd9d08cca86e0f080d25e8a05c39b3
+weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/german/model.safetensors@25443bdc51dd9d08cca86e0f080d25e8a05c39b3
 
 
 flow_lm:
@@ -15,13 +15,12 @@ flow_lm:
     hidden_scale: 4
     max_period: 10000
     num_heads: 16
-    num_layers: 24
+    num_layers: 6
   lookup_table:
     dim: 1024
     n_bins: 4000
     tokenizer: sentencepiece
-    # TODO: use the without-voice-cloning repo
-    tokenizer_path: hf://kyutai/pocket-tts/languages/french_24l/tokenizer.model@ac2153decc511b3a81e71b9c8b9afa2d391eeef4
+    tokenizer_path: hf://kyutai/pocket-tts/languages/german/tokenizer.model@25443bdc51dd9d08cca86e0f080d25e8a05c39b3
   #weights_path: partial.safetensors
 
 mimi:

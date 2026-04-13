@@ -21,7 +21,7 @@ flow_lm:
     n_bins: 4000
     tokenizer: sentencepiece
     tokenizer_path:  hf://kyutai/pocket-tts/languages/italian_24l/tokenizer.model@de47252346dfe5d3140ad2cdf4f688d8adff3161
-  weights_path: partial.safetensors
+  #weights_path: partial.safetensors
 
 mimi:
   dtype: float32
@@ -58,4 +58,4 @@ mimi:
   quantizer:
     dimension: 32
     output_dimension: 512
-  weights_path: codec.safetensors
+  #weights_path: codec.safetensors

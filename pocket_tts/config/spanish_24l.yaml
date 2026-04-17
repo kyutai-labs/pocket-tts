@@ -1,7 +1,7 @@
 # sig: afd6403b
 
-weights_path: hf://kyutai/pocket-tts/languages/spanish_24l/model.safetensors@18bd4020e5a388710303bbe2696ab289ef134aad
-weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/spanish_24l/model.safetensors@18bd4020e5a388710303bbe2696ab289ef134aad
+weights_path: hf://kyutai/pocket-tts/languages/spanish_24l/model.safetensors@39592ff23c9ef80098bb74895d104c26275fe2c9
+weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/spanish_24l/model.safetensors@d29db7978e464fb90cb3359ee0c69a273b9142cc
 
 
 flow_lm:
@@ -20,7 +20,7 @@ flow_lm:
     dim: 1024
     n_bins: 4000
     tokenizer: sentencepiece
-    tokenizer_path: hf://kyutai/pocket-tts/languages/spanish_24l/tokenizer.model@18bd4020e5a388710303bbe2696ab289ef134aad
+    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/languages/spanish_24l/tokenizer.model@d29db7978e464fb90cb3359ee0c69a273b9142cc
   #weights_path: partial.safetensors
 
 mimi:

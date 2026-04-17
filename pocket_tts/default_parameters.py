@@ -1,9 +1,9 @@
 DEFAULT_AUDIO_PROMPT = "alba"
-DEFAULT_LANGUAGE = "english_v2"
+DEFAULT_LANGUAGE = "english"
 DEFAULT_TEMPERATURE = 0.7
 DEFAULT_LSD_DECODE_STEPS = 1
 DEFAULT_NOISE_CLAMP = None
 DEFAULT_EOS_THRESHOLD = -4.0
 DEFAULT_FRAMES_AFTER_EOS = None
-# TODO: make this dynamic since english_v2 supports bigger chunks
+# TODO: make this dynamic since english_2026-04 supports bigger chunks
 MAX_TOKEN_PER_CHUNK = 50

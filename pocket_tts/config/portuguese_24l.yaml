@@ -1,7 +1,7 @@
 # sig: 56579f81
 
-weights_path: hf://kyutai/pocket-tts/languages/portuguese_24l/model.safetensors@cc74835f6789d51379f20e6e8e4ae3a9b14d7415
-weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/portuguese_24l/model.safetensors@cc74835f6789d51379f20e6e8e4ae3a9b14d7415
+weights_path: hf://kyutai/pocket-tts/languages/portuguese_24l/model.safetensors@39592ff23c9ef80098bb74895d104c26275fe2c9
+weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/portuguese_24l/model.safetensors@d29db7978e464fb90cb3359ee0c69a273b9142cc
 
 
 flow_lm:
@@ -20,7 +20,7 @@ flow_lm:
     dim: 1024
     n_bins: 4000
     tokenizer: sentencepiece
-    tokenizer_path: hf://kyutai/pocket-tts/languages/portuguese_24l/tokenizer.model@cc74835f6789d51379f20e6e8e4ae3a9b14d7415
+    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/languages/portuguese_24l/tokenizer.model@d29db7978e464fb90cb3359ee0c69a273b9142cc
   #weights_path: partial.safetensors
 
 mimi:

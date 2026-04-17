@@ -42,7 +42,7 @@ The main class for text-to-speech generation.
 Load and return a TTSModel instance with pre-trained weights.
 
 **Parameters:**
-- `language` (str | None): Name of built-in language config to load. Supported values: `"english_v1"`, `"english_v2"`, `"french_24l"`, `"german_24l"`, `"portuguese_24l"`, `"italian_24l"`, `"spanish_24l"`. If both `language` and `config` are omitted, defaults to `"english_v2"`. The "24l" variants are larger models that are not distilled yet and are here only as a preview. They're not the final models for those languages.
+- `language` (str | None): Name of built-in language config to load. Supported values: `"english_2026-01"`, `"english_2026-04"`, `"english"`, `"french_24l"`, `"german_24l"`, `"portuguese_24l"`, `"italian_24l"`, `"spanish_24l"`. If both `language` and `config` are omitted, defaults to `"english"`, which is the same model as `"english_2026-04"`. The "24l" variants are larger models that are not distilled yet and are here only as a preview.
 - `config` (str | None): Path to model config YAML file. Incompatible with `language`.
 - `temp` (float): Sampling temperature for generation (default: 0.7)
 - `lsd_decode_steps` (int): Number of generation steps (default: 1)
@@ -61,7 +61,9 @@ from pocket_tts import TTSModel
 model = TTSModel.load_model()
 
 # Load with custom parameters
-model = TTSModel.load_model(language="english_v1", temp=0.5, lsd_decode_steps=5, eos_threshold=-3.0)
+model = TTSModel.load_model(
+    language="english_2026-01", temp=0.5, lsd_decode_steps=5, eos_threshold=-3.0
+)
 ```
 
 #### Properties

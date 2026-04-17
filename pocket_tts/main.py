@@ -183,8 +183,8 @@ def serve(
         str | None,
         typer.Option(
             help="Language for the TTS model. "
-            "'english_v1', 'english_v2', 'french_24l', 'german_24l', 'portuguese', 'italian', 'spanish'."
-            " Incompatible with the config argument. Default is 'english_v2'.",
+            "'english_2026-01', 'english_2026-04', 'english', 'french_24l', 'german_24l', 'portuguese', 'italian', 'spanish'."
+            " Incompatible with the config argument. Default is 'english', which is the same model as 'english_2026-04'.",
             show_default=False,
         ),
     ] = None,
@@ -226,9 +226,9 @@ def generate(
         typer.Option(
             help=(
                 "Language for the TTS model. "
-                "'english_v1', 'english_v2', 'french_24l', 'spanish_24l',"
+                "'english_2026-01', 'english_2026-04', 'english', 'french_24l', 'spanish_24l',"
                 "'german_24l', 'portuguese_24l', 'italian_24l'."
-                " Incompatible with the config argument. Default is 'english_v2'. "
+                " Incompatible with the config argument. Default is 'english', which is the same model as 'english_2026-04'. "
                 "The '24l' variants are bigger models, "
                 "not distilled yet and here only as preview. They're not the final "
                 "models for those languages."
@@ -326,12 +326,11 @@ def export_voice(
         typer.Option(
             help=(
                 "Language for the TTS model. "
-                "'english_v1', 'english_v2', 'french_24l', 'german_24l','spanish_24l',"
+                "'english_2026-01', 'english_2026-04', 'english', 'french_24l', 'german_24l','spanish_24l',"
                 " 'portuguese_24l', 'italian_24l'."
-                " Incompatible with the config argument. Default is 'english_v2'. "
+                " Incompatible with the config argument. Default is 'english', which is the same model as 'english_2026-04'. "
                 "The '24l' variants are bigger models, "
-                "not distilled yet and here only as preview. They're not the final "
-                "models for those languages."
+                "not distilled yet and here only as preview."
             ),
             show_default=False,
         ),

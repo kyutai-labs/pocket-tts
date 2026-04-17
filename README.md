@@ -24,7 +24,7 @@ Supports Python 3.10, 3.11, 3.12, 3.13 and 3.14. Requires PyTorch 2.5+. Does not
 * Uses only 2 CPU cores
 * Python API and CLI
 * Voice cloning
-* Multi-language support: english_v1, english_v2, french, german, portuguese, italian, spanish
+* Multi-language support: english, french, german, portuguese, italian, spanish
 * Can handle infinitely long text inputs
 * [Can run on client-side in the browser](#in-browser-implementations)
 

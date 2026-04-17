@@ -74,6 +74,7 @@ class TTSModel(nn.Module):
         origin: Path | None = None,
         pad_with_spaces_for_short_inputs: bool = False,
         model_recommended_frames_after_eos: int | None = None,
+        remove_semicolons: bool = False,
     ):
         super().__init__()
         self.flow_lm = flow_lm
@@ -86,6 +87,7 @@ class TTSModel(nn.Module):
         self.origin = origin
         self.pad_with_spaces_for_short_inputs: bool = pad_with_spaces_for_short_inputs
         self.model_recommended_frames_after_eos = model_recommended_frames_after_eos
+        self.remove_semicolons = remove_semicolons
 
     @property
     def device(self) -> str:
@@ -120,6 +122,7 @@ class TTSModel(nn.Module):
             origin=origin,
             pad_with_spaces_for_short_inputs=config.pad_with_spaces_for_short_inputs,
             model_recommended_frames_after_eos=config.model_recommended_frames_after_eos,
+            remove_semicolons=config.remove_semicolons,
         )
         return tts_model
 
@@ -605,11 +608,12 @@ class TTSModel(nn.Module):
             text_to_generate,
             max_tokens,
             self.pad_with_spaces_for_short_inputs,
+            remove_semicolons=self.remove_semicolons,
         )
 
         for chunk in chunks:
             text_to_generate, frames_after_eos_guess = prepare_text_prompt(
-                chunk, self.pad_with_spaces_for_short_inputs
+                chunk, self.pad_with_spaces_for_short_inputs, self.remove_semicolons
             )
             frames_after_eos_guess += 2
             effective_frames = (
@@ -901,11 +905,15 @@ class TTSModel(nn.Module):
         return math.ceil(gen_len_sec * frame_rate)
 
 
-def prepare_text_prompt(text: str, pad_with_spaces_for_short_inputs: bool) -> tuple[str, int]:
+def prepare_text_prompt(
+    text: str, pad_with_spaces_for_short_inputs: bool, remove_semicolons: bool
+) -> tuple[str, int]:
     text = text.strip()
     if text == "":
         raise ValueError("Text prompt cannot be empty")
     text = text.replace("\n", " ").replace("\r", " ").replace("  ", " ")
+    if remove_semicolons:
+        text = text.replace(";", ",")
     number_of_words = len(text.split())
     if number_of_words <= 4:
         frames_after_eos_guess = 3
@@ -963,9 +971,15 @@ def _segments_from_boundaries(
 
 
 def split_into_best_sentences(
-    tokenizer, text_to_generate: str, max_tokens: int, pad_with_spaces_for_short_inputs: bool
+    tokenizer,
+    text_to_generate: str,
+    max_tokens: int,
+    pad_with_spaces_for_short_inputs: bool,
+    remove_semicolons: bool,
 ) -> list[str]:
-    text_to_generate, _ = prepare_text_prompt(text_to_generate, pad_with_spaces_for_short_inputs)
+    text_to_generate, _ = prepare_text_prompt(
+        text_to_generate, pad_with_spaces_for_short_inputs, remove_semicolons
+    )
     text_to_generate = text_to_generate.strip()
     tokens = tokenizer(text_to_generate)
     list_of_tokens = tokens.tokens[0].tolist()

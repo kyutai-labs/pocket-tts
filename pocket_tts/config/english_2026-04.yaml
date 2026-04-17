@@ -1,7 +1,7 @@
-# sig: c4aa5cc9.yaml
+# sig: a0ac5076.yaml
 
-weights_path: hf://kyutai/pocket-tts/languages/french/model.safetensors@25443bdc51dd9d08cca86e0f080d25e8a05c39b3
-weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/french/model.safetensors@25443bdc51dd9d08cca86e0f080d25e8a05c39b3
+weights_path: hf://kyutai/pocket-tts/languages/english_2026-04/model.safetensors@4079fd73cbd1e83cfd47b8fe87c2b5765ab67a0c
+weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/english_2026-04/model.safetensors@4079fd73cbd1e83cfd47b8fe87c2b5765ab67a0c
 
 
 flow_lm:
@@ -20,8 +20,8 @@ flow_lm:
     dim: 1024
     n_bins: 4000
     tokenizer: sentencepiece
-    tokenizer_path: hf://kyutai/pocket-tts/languages/french/tokenizer.model@25443bdc51dd9d08cca86e0f080d25e8a05c39b3
-  #weights_path: partial.safetensors
+    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/languages/english_2026-04/tokenizer.model@d4fdd22ae8c8e1cb3634e150ebeff1dab2d16df3
+  #weights_path: final.safetensors
 
 mimi:
   dtype: float32

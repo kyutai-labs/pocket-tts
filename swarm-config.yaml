@@ -1,0 +1,89 @@
+services:
+  traefik:
+    image: traefik:v3.6.7
+    command:
+      # Swarm provider configuration
+      - "--providers.swarm.endpoint=unix:///var/run/docker.sock"
+      - "--providers.swarm.exposedByDefault=false"
+
+      # EntryPoints for HTTP and HTTPS
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+
+      # Redirect HTTP to HTTPS
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+
+      # Let's Encrypt configuration
+      - "--certificatesResolvers.letsencrypt.acme.httpChallenge.entryPoint=web"
+      - "--certificatesResolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesResolvers.letsencrypt.acme.email=gabriel@kyutai.org"
+      - "--certificatesResolvers.letsencrypt.acme.httpChallenge=true"
+      - "--log.level=TRACE"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - letsencrypt:/letsencrypt
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+
+  backend-english:
+    image: rg.fr-par.scw.cloud/namespace-unruffled-tereshkova/pocket-tts-server-english:${COMMIT_SHA}
+    build:
+      context: .
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.server-english.rule=Host(`pocket-tts-api.kyutai.org`) && PathPrefix(`/english`)"
+        - "traefik.http.routers.server-english.middlewares=strip-api-english"
+        - "traefik.http.middlewares.strip-api-english.replacepathregex.regex=^/english/(.*)"
+        - "traefik.http.middlewares.strip-api-english.replacepathregex.replacement=/$$1"
+        - "traefik.http.routers.server-english.entrypoints=websecure"
+        - "traefik.http.routers.server-english.tls=true"
+        - "traefik.http.routers.server-english.tls.certresolver=letsencrypt"
+        - "traefik.http.services.server-english.loadbalancer.server.port=80"
+        - "traefik.http.routers.server-english.priority=100"
+
+  backend-german:
+    image: rg.fr-par.scw.cloud/namespace-unruffled-tereshkova/pocket-tts-server-german:${COMMIT_SHA}
+    build:
+      context: .
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.server-german.rule=Host(`pocket-tts-api.kyutai.org`) && PathPrefix(`/german`)"
+        - "traefik.http.routers.server-german.middlewares=strip-api-german"
+        - "traefik.http.middlewares.strip-api-german.replacepathregex.regex=^/german/(.*)"
+        - "traefik.http.middlewares.strip-api-german.replacepathregex.replacement=/$$1"
+        - "traefik.http.routers.server-german.entrypoints=websecure"
+        - "traefik.http.routers.server-german.tls=true"
+        - "traefik.http.routers.server-german.tls.certresolver=letsencrypt"
+        - "traefik.http.services.server-german.loadbalancer.server.port=80"
+        - "traefik.http.routers.server-german.priority=100"
+
+
+volumes:
+  letsencrypt:
+  portainer_data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  agent_network:
+    driver: overlay
+    attachable: true
+    driver_opts:
+      encrypted: "true"
+  default:
+    driver: overlay
+    attachable: true
+    driver_opts:
+      encrypted: "true"

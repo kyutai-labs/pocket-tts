@@ -76,7 +76,7 @@ def test_generate_with_custom_parameters(tmp_path):
             "--text",
             "Testing custom parameters.",
             "--language",
-            "english_v2",
+            "english",
             "--temperature",
             "0.8",
             "--lsd-decode-steps",

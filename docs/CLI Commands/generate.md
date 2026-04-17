@@ -81,7 +81,7 @@ pocket-tts generate --eos-threshold -3.0
 
 If you'd like to override the paths from which the models are loaded, you can provide a custom YAML configuration.
 
-Copy one of the files in `pocket_tts/config` (for example `pocket_tts/config/english_v2.yaml`) and change `weights_path`, `weights_path_without_voice_cloning`, and `tokenizer_path` to the paths of the models you want to load.
+Copy one of the files in `pocket_tts/config` (for example `pocket_tts/config/english.yaml`) and change `weights_path`, `weights_path_without_voice_cloning`, and `tokenizer_path` to the paths of the models you want to load.
 
 Then, use the --config option to point to your newly created config.
 

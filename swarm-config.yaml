@@ -122,6 +122,24 @@ services:
         - "traefik.http.services.server-portuguese.loadbalancer.server.port=80"
         - "traefik.http.routers.server-portuguese.priority=100"
 
+  backend-spanish:
+    image: rg.fr-par.scw.cloud/namespace-unruffled-tereshkova/pocket-tts-server:${COMMIT_SHA}
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+    command: ["serve", "--port", "80", "--host", "0.0.0.0", "--language", "spanish", "--quantize"]
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.server-spanish.rule=Host(`pocket-tts-api.kyutai.org`) && PathPrefix(`/spanish`)"
+        - "traefik.http.routers.server-spanish.middlewares=strip-api-spanish"
+        - "traefik.http.middlewares.strip-api-spanish.replacepathregex.regex=^/spanish/(.*)"
+        - "traefik.http.middlewares.strip-api-spanish.replacepathregex.replacement=/$$1"
+        - "traefik.http.routers.server-spanish.entrypoints=websecure"
+        - "traefik.http.routers.server-spanish.tls=true"
+        - "traefik.http.routers.server-spanish.tls.certresolver=letsencrypt"
+        - "traefik.http.services.server-spanish.loadbalancer.server.port=80"
+        - "traefik.http.routers.server-spanish.priority=100"
+
 
 volumes:
   letsencrypt:

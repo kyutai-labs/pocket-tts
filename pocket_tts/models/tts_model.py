@@ -293,6 +293,10 @@ class TTSModel(nn.Module):
         if config is None and language is None:
             language = DEFAULT_LANGUAGE
         if language is not None:
+            if language == "french":
+                raise ValueError(
+                    "The french model is not ready yet, please use 'french_24l' instead."
+                )
             config = CONFIGS_DIR / f"{language}.yaml"
         config = Path(config)
         if config.suffix not in (".yaml", ".yml"):

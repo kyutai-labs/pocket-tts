@@ -36,7 +36,7 @@ services:
     image: rg.fr-par.scw.cloud/namespace-unruffled-tereshkova/pocket-tts-server:${COMMIT_SHA}
     volumes:
       - hf-cache:/root/.cache/huggingface
-    command: ["serve", "--port", "80", "--host", "0.0.0.0", "--language", "english"]
+    command: ["serve", "--port", "80", "--host", "0.0.0.0", "--language", "english", "--quantize"]
     deploy:
       labels:
         - "traefik.enable=true"
@@ -54,7 +54,7 @@ services:
     image: rg.fr-par.scw.cloud/namespace-unruffled-tereshkova/pocket-tts-server:${COMMIT_SHA}
     volumes:
       - hf-cache:/root/.cache/huggingface
-    command: ["serve", "--port", "80", "--host", "0.0.0.0", "--language", "german"]
+    command: ["serve", "--port", "80", "--host", "0.0.0.0", "--language", "german", "--quantize"]
     deploy:
       labels:
         - "traefik.enable=true"
@@ -90,7 +90,7 @@ services:
     image: rg.fr-par.scw.cloud/namespace-unruffled-tereshkova/pocket-tts-server:${COMMIT_SHA}
     volumes:
       - hf-cache:/root/.cache/huggingface
-    command: ["serve", "--port", "80", "--host", "0.0.0.0", "--language", "italian"]
+    command: ["serve", "--port", "80", "--host", "0.0.0.0", "--language", "italian", "--quantize"]
     deploy:
       labels:
         - "traefik.enable=true"
@@ -108,7 +108,7 @@ services:
     image: rg.fr-par.scw.cloud/namespace-unruffled-tereshkova/pocket-tts-server:${COMMIT_SHA}
     volumes:
       - hf-cache:/root/.cache/huggingface
-    command: ["serve", "--port", "80", "--host", "0.0.0.0", "--language", "portuguese"]
+    command: ["serve", "--port", "80", "--host", "0.0.0.0", "--language", "portuguese", "--quantize"]
     deploy:
       labels:
         - "traefik.enable=true"

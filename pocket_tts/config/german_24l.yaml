@@ -3,6 +3,7 @@
 weights_path: hf://kyutai/pocket-tts/languages/german_24l/model.safetensors@39592ff23c9ef80098bb74895d104c26275fe2c9
 weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/german_24l/model.safetensors@d29db7978e464fb90cb3359ee0c69a273b9142cc
 
+remove_semicolons: true
 
 flow_lm:
   insert_bos_before_voice: true

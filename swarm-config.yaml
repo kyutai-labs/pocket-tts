@@ -32,11 +32,12 @@ services:
           - node.role == manager
 
   backend-english:
-    image: rg.fr-par.scw.cloud/namespace-unruffled-tereshkova/pocket-tts-server-english:${COMMIT_SHA}
+    image: rg.fr-par.scw.cloud/namespace-unruffled-tereshkova/pocket-tts-server:${COMMIT_SHA}
     build:
       context: .
     volumes:
       - hf-cache:/root/.cache/huggingface
+      - uv-cache:/root/.cache/uv
     deploy:
       labels:
         - "traefik.enable=true"
@@ -51,11 +52,13 @@ services:
         - "traefik.http.routers.server-english.priority=100"
 
   backend-german:
-    image: rg.fr-par.scw.cloud/namespace-unruffled-tereshkova/pocket-tts-server-german:${COMMIT_SHA}
+    image: rg.fr-par.scw.cloud/namespace-unruffled-tereshkova/pocket-tts-server:${COMMIT_SHA}
+    
     build:
       context: .
     volumes:
       - hf-cache:/root/.cache/huggingface
+      - uv-cache:/root/.cache/uv
     deploy:
       labels:
         - "traefik.enable=true"
@@ -72,16 +75,10 @@ services:
 
 volumes:
   letsencrypt:
-  portainer_data:
-  prometheus-data:
-  grafana-data:
+  hf-cache:
+  uv-cache:
 
 networks:
-  agent_network:
-    driver: overlay
-    attachable: true
-    driver_opts:
-      encrypted: "true"
   default:
     driver: overlay
     attachable: true

@@ -68,6 +68,60 @@ services:
         - "traefik.http.services.server-german.loadbalancer.server.port=80"
         - "traefik.http.routers.server-german.priority=100"
 
+  backend-french:
+    image: rg.fr-par.scw.cloud/namespace-unruffled-tereshkova/pocket-tts-server:${COMMIT_SHA}
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+    command: ["serve", "--port", "80", "--host", "0.0.0.0", "--language", "french_24l"]
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.server-french.rule=Host(`pocket-tts-api.kyutai.org`) && PathPrefix(`/french`)"
+        - "traefik.http.routers.server-french.middlewares=strip-api-french"
+        - "traefik.http.middlewares.strip-api-french.replacepathregex.regex=^/french/(.*)"
+        - "traefik.http.middlewares.strip-api-french.replacepathregex.replacement=/$$1"
+        - "traefik.http.routers.server-french.entrypoints=websecure"
+        - "traefik.http.routers.server-french.tls=true"
+        - "traefik.http.routers.server-french.tls.certresolver=letsencrypt"
+        - "traefik.http.services.server-french.loadbalancer.server.port=80"
+        - "traefik.http.routers.server-french.priority=100"
+
+  backend-italian:
+    image: rg.fr-par.scw.cloud/namespace-unruffled-tereshkova/pocket-tts-server:${COMMIT_SHA}
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+    command: ["serve", "--port", "80", "--host", "0.0.0.0", "--language", "italian"]
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.server-italian.rule=Host(`pocket-tts-api.kyutai.org`) && PathPrefix(`/italian`)"
+        - "traefik.http.routers.server-italian.middlewares=strip-api-italian"
+        - "traefik.http.middlewares.strip-api-italian.replacepathregex.regex=^/italian/(.*)"
+        - "traefik.http.middlewares.strip-api-italian.replacepathregex.replacement=/$$1"
+        - "traefik.http.routers.server-italian.entrypoints=websecure"
+        - "traefik.http.routers.server-italian.tls=true"
+        - "traefik.http.routers.server-italian.tls.certresolver=letsencrypt"
+        - "traefik.http.services.server-italian.loadbalancer.server.port=80"
+        - "traefik.http.routers.server-italian.priority=100"
+
+  backend-portuguese:
+    image: rg.fr-par.scw.cloud/namespace-unruffled-tereshkova/pocket-tts-server:${COMMIT_SHA}
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+    command: ["serve", "--port", "80", "--host", "0.0.0.0", "--language", "portuguese"]
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.server-portuguese.rule=Host(`pocket-tts-api.kyutai.org`) && PathPrefix(`/portuguese`)"
+        - "traefik.http.routers.server-portuguese.middlewares=strip-api-portuguese"
+        - "traefik.http.middlewares.strip-api-portuguese.replacepathregex.regex=^/portuguese/(.*)"
+        - "traefik.http.middlewares.strip-api-portuguese.replacepathregex.replacement=/$$1"
+        - "traefik.http.routers.server-portuguese.entrypoints=websecure"
+        - "traefik.http.routers.server-portuguese.tls=true"
+        - "traefik.http.routers.server-portuguese.tls.certresolver=letsencrypt"
+        - "traefik.http.services.server-portuguese.loadbalancer.server.port=80"
+        - "traefik.http.routers.server-portuguese.priority=100"
+
 
 volumes:
   letsencrypt:

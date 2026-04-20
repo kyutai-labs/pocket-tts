@@ -11,7 +11,7 @@ import typer
 import uvicorn
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from typing_extensions import Annotated
 
 from pocket_tts.data.audio import stream_audio_chunks
@@ -23,6 +23,7 @@ from pocket_tts.default_parameters import (
     DEFAULT_NOISE_CLAMP,
     DEFAULT_TEMPERATURE,
     MAX_TOKEN_PER_CHUNK,
+    get_default_text_for_language,
 )
 from pocket_tts.models.tts_model import TTSModel, export_model_state
 from pocket_tts.utils.logging_utils import enable_logging
@@ -58,11 +59,17 @@ web_app.add_middleware(
 )
 
 
-@web_app.get("/")
+@web_app.get("/", response_class=HTMLResponse)
 async def root():
     """Serve the frontend."""
     static_path = Path(__file__).parent / "static" / "index.html"
-    return FileResponse(static_path)
+    content = static_path.read_text()
+    # Replace the placeholder with the actual default text prompt
+    print(str(tts_model.origin))
+    content = content.replace(
+        "DEFAULT_TEXT_PROMPT", get_default_text_for_language(str(tts_model.origin))
+    )
+    return content
 
 
 @web_app.get("/health")
@@ -214,9 +221,7 @@ def serve(
 
 @cli_app.command()
 def generate(
-    text: Annotated[
-        str, typer.Option(help="Text to generate")
-    ] = "Hello world. I am Kyutai's Pocket TTS. I'm fast enough to run on small CPUs. I hope you'll like me.",
+    text: Annotated[str, typer.Option(help="Text to generate")] = None,
     voice: Annotated[
         str, typer.Option(help="Path to audio conditioning file (voice to clone)")
     ] = DEFAULT_AUDIO_PROMPT,
@@ -268,6 +273,8 @@ def generate(
     """Generate speech using Kyutai Pocket TTS."""
     log_level = logging.ERROR if quiet else logging.INFO
     with enable_logging("pocket_tts", log_level):
+        if text is None:
+            text = get_default_text_for_language(language)
         if text == "-":
             # Read text from stdin
             text = sys.stdin.read()

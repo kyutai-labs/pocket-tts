@@ -314,7 +314,9 @@
                     formData.append('voice_url', voiceUrl);
                 }
 
-                const response = await fetch('/tts', {
+                const ttsEndpoint = `${window.location.pathname.replace(/\/+$/, '')}/tts`;
+
+                const response = await fetch(ttsEndpoint, {
                     method: 'POST',
                     body: formData
                 });

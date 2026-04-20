@@ -4,7 +4,7 @@ weights_path: hf://kyutai/pocket-tts/languages/french_24l/model.safetensors@3959
 weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/french_24l/model.safetensors@d29db7978e464fb90cb3359ee0c69a273b9142cc
 
 remove_semicolons: true
-model_recommended_frames_after_eos: 12
+model_recommended_frames_after_eos: 8
 
 flow_lm:
   insert_bos_before_voice: true

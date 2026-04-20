@@ -43,7 +43,7 @@ DEFAULT_TEXT_FOR_LANGUAGE = {
 
 
 def get_default_text_for_language(language: str | None) -> str:
-    for lang, text in DEFAULT_TEXT_FOR_LANGUAGE.items():
-        if lang in language:
+    for key, text in DEFAULT_TEXT_FOR_LANGUAGE.items():
+        if language is not None and key in language:
             return text
     return DEFAULT_TEXT_FOR_LANGUAGE[DEFAULT_LANGUAGE]

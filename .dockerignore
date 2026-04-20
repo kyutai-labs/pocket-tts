@@ -4,3 +4,4 @@ __pycache__
 *.pyc
 tests/test_custom_path.py
 temp_models/
+/.venv/

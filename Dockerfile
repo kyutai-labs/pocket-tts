@@ -11,4 +11,4 @@ RUN uv run pocket-tts serve --help && \
     rm -rf /root/.cache/uv && \
     uv run pocket-tts serve --help
 
-CMD ["uv", "run", "pocket-tts", "serve"]
+ENTRYPOINT ["uv", "run", "pocket-tts"]

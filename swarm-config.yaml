@@ -1,3 +1,4 @@
+
 services:
   traefik:
     image: traefik:v3.6.7
@@ -35,9 +36,14 @@ services:
     image: rg.fr-par.scw.cloud/namespace-unruffled-tereshkova/pocket-tts-server:${COMMIT_SHA}
     build:
       context: .
+      dockerfile: Dockerfile.swarm
+      x-bake:
+        platforms:
+          - linux/arm64
     volumes:
       - hf-cache:/root/.cache/huggingface
       - uv-cache:/root/.cache/uv
+    command: ["--language", "english"]
     deploy:
       labels:
         - "traefik.enable=true"
@@ -53,12 +59,16 @@ services:
 
   backend-german:
     image: rg.fr-par.scw.cloud/namespace-unruffled-tereshkova/pocket-tts-server:${COMMIT_SHA}
-    
     build:
       context: .
+      dockerfile: Dockerfile.swarm
+      x-bake:
+        platforms:
+          - linux/arm64
     volumes:
       - hf-cache:/root/.cache/huggingface
       - uv-cache:/root/.cache/uv
+    command: ["--language", "german"]
     deploy:
       labels:
         - "traefik.enable=true"

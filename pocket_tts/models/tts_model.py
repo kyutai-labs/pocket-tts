@@ -90,8 +90,8 @@ class TTSModel(nn.Module):
         self.remove_semicolons = remove_semicolons
 
     @property
-    def device(self) -> str:
-        return next(self.parameters()).device.type
+    def device(self) -> torch.device:
+        return next(self.parameters()).device
 
     @property
     def sample_rate(self) -> int:
@@ -848,7 +848,7 @@ class TTSModel(nn.Module):
             if isinstance(audio_conditioning, str):
                 audio_conditioning = download_if_necessary(audio_conditioning)
 
-            return _import_model_state(audio_conditioning)
+            return _import_model_state(audio_conditioning, self.device)
 
         elif (
             isinstance(audio_conditioning, str)
@@ -864,7 +864,8 @@ class TTSModel(nn.Module):
             return _import_model_state(
                 download_if_necessary(
                     get_predefined_voice(language=self.origin.stem, name=audio_conditioning)
-                )
+                ),
+                self.device,
             )
 
         if not self.has_voice_cloning and isinstance(audio_conditioning, (str, Path)):
@@ -1051,7 +1052,9 @@ def export_model_state(model_state: dict[str, dict[str, torch.Tensor]], dest: st
     safetensors.torch.save_file(dict_to_store, dest)
 
 
-def _import_model_state(source: str | Path) -> dict[str, dict[str, torch.Tensor]]:
+def _import_model_state(
+    source: str | Path, device: torch.device
+) -> dict[str, dict[str, torch.Tensor]]:
     result = {}
     with safetensors.safe_open(source, framework="pt") as f:
         for key in f.keys():
@@ -1062,8 +1065,8 @@ def _import_model_state(source: str | Path) -> dict[str, dict[str, torch.Tensor]
                 # but it's not needed anymore
                 tensor = f.get_tensor(key)
                 result[module_name]["offset"] = torch.full(
-                    (1,), fill_value=tensor.shape[0], dtype=torch.long, device=tensor.device
+                    (1,), fill_value=tensor.shape[0], dtype=torch.long, device=device
                 )
             else:
-                result[module_name][tensor_key] = f.get_tensor(key)
+                result[module_name][tensor_key] = f.get_tensor(key).to(device)
     return result

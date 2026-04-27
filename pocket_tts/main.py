@@ -9,12 +9,12 @@ from queue import Queue
 
 import typer
 import uvicorn
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 from typing_extensions import Annotated
 
-from pocket_tts.data.audio import stream_audio_chunks
+from pocket_tts.data.audio import StreamingWAVWriter, stream_audio_chunks
 from pocket_tts.default_parameters import (
     DEFAULT_AUDIO_PROMPT,
     DEFAULT_EOS_THRESHOLD,
@@ -77,7 +77,7 @@ async def health():
     return {"status": "healthy"}
 
 
-def write_to_queue(queue, text_to_generate, model_state):
+def write_to_queue(queue, text_to_generate, model_state, stop_event: threading.Event):
     """Allows writing to the StreamingResponse as if it were a file."""
 
     class FileLikeToQueue(io.IOBase):
@@ -85,6 +85,8 @@ def write_to_queue(queue, text_to_generate, model_state):
             self.queue = queue
 
         def write(self, data):
+            if stop_event.is_set():
+                return 0
             self.queue.put(data)
 
         def flush(self):
@@ -96,30 +98,46 @@ def write_to_queue(queue, text_to_generate, model_state):
     audio_chunks = tts_model.generate_audio_stream(
         model_state=model_state, text_to_generate=text_to_generate
     )
-    stream_audio_chunks(FileLikeToQueue(queue), audio_chunks, tts_model.config.mimi.sample_rate)
+    writer = StreamingWAVWriter(FileLikeToQueue(queue), tts_model.config.mimi.sample_rate)
+    try:
+        writer.write_header(tts_model.config.mimi.sample_rate)
+        for chunk in audio_chunks:
+            if stop_event.is_set():
+                break
+            writer.write_pcm_data(chunk)
+    finally:
+        writer.finalize()
 
 
-def generate_data_with_state(text_to_generate: str, model_state: dict):
+async def generate_data_with_state(request: Request, text_to_generate: str, model_state: dict):
     queue = Queue()
+    stop_event = threading.Event()
 
     # Run your function in a thread
-    thread = threading.Thread(target=write_to_queue, args=(queue, text_to_generate, model_state))
+    thread = threading.Thread(
+        target=write_to_queue, args=(queue, text_to_generate, model_state, stop_event)
+    )
     thread.start()
 
     # Yield data as it becomes available
-    i = 0
-    while True:
-        data = queue.get()
-        if data is None:
-            break
-        i += 1
-        yield data
+    try:
+        while True:
+            if await request.is_disconnected():
+                stop_event.set()
+                break
 
-    thread.join()
+            data = queue.get()
+            if data is None:
+                break
+            yield data
+    finally:
+        stop_event.set()
+        thread.join()
 
 
 @web_app.post("/tts")
 def text_to_speech(
+    request: Request,
     text: str = Form(...),
     voice_url: str | None = Form(None),
     voice_wav: UploadFile | None = File(None),
@@ -172,7 +190,7 @@ def text_to_speech(
         raise HTTPException(status_code=500, detail="This should never happen.")
 
     return StreamingResponse(
-        generate_data_with_state(text, model_state),
+        generate_data_with_state(request, text, model_state),
         media_type="audio/wav",
         headers={
             "Content-Disposition": "attachment; filename=generated_speech.wav",

@@ -20,9 +20,9 @@ DEFAULT_TEXT_FOR_LANGUAGE = {
         "J'espère que vous m'aimerez."
     ),
     "german": (
-        "Hallo Welt. Ich bin Kyutais Pocket TTS. "
-        "Ich bin schnell genug, um auf kleinen CPUs zu laufen. "
-        "Ich hoffe, du wirst mich mögen."
+        "Hallo Welt. Ich bin Pocket TTS von Kyutai. "
+        "Ich bin schnell genug, um auch auf kleinen CPUs zu laufen. "
+        "Ich hoffe, ich gefalle dir."
     ),
     "portuguese": (
         "Olá mundo. Eu sou o Pocket TTS da Kyutai. "

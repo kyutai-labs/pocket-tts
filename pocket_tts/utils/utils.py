@@ -34,6 +34,8 @@ _ORIGINS_OF_PREDEFINED_VOICES = {
     "peter_yearsley": "hf://kyutai/tts-voices/voice-zero/peter_yearsley.wav",
     "stuart_bell": "hf://kyutai/tts-voices/voice-zero/stuart_bell.wav",
     "caro_davy": "hf://kyutai/tts-voices/voice-zero/caro_davy.wav",
+    "giovanni": "hf://kyutai/pocket-tts/common_voice_it_36520747-enhanced-v2.mp3@e95049da45365249c49f6fcb1ff974dd21bd2874",
+    "lola": "hf://kyutai/pocket-tts/common_voice_es_19762977-enhanced-v2.mp3@e95049da45365249c49f6fcb1ff974dd21bd2874",
 }
 
 

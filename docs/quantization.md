@@ -17,7 +17,7 @@ pocket-tts serve --quantize
 from pocket_tts import TTSModel
 
 model = TTSModel.load_model(quantize=True)
-voice_state = model.get_state_for_audio_prompt("alba")
+voice_state = model.get_state_for_audio_prompt("alba")  # en
 audio = model.generate_audio(voice_state, "Hello world!")
 ```
 

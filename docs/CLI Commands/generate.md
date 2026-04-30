@@ -17,7 +17,7 @@ This will generate a WAV file `./tts_output.wav` with the default text and voice
 ### Core Options
 
 - `--text TEXT`: Text to generate (default: "Hello world! I am Kyutai Pocket TTS. I'm fast enough to run on small CPUs. I hope you'll like me.")
-- `--voice VOICE`: Path to audio conditioning file (voice to clone) (default: "hf://kyutai/tts-voices/alba-mackenna/casual.wav"). Urls and local paths are supported.
+- `--voice VOICE`: Path to audio conditioning file (voice to clone). Defaults to a built-in voice chosen from the language: `giovanni` (it) for italian, `lola` (es) for spanish, `alba` (en) otherwise. Urls and local paths are supported.
 - `--output-path OUTPUT_PATH`: Output path for generated audio (default: "./tts_output.wav")
 - `--language LANGUAGE`: Language for the TTS model, one of `'english_2026-01'`, `'english_2026-04'`, `'english'`, `'french_24l'`, `'german_24l'`, `'portuguese_24l'`, `'italian_24l'`, `'spanish_24l'` (default: `english`, which is the same model as `'english_2026-04'`). Incompatible with `--config`. The "24l" variants are bigger models, not distilled yet and here only as preview.
 

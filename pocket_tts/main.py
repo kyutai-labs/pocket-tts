@@ -24,6 +24,7 @@ from pocket_tts.default_parameters import (
     DEFAULT_TEMPERATURE,
     MAX_TOKEN_PER_CHUNK,
     get_default_text_for_language,
+    get_default_voice_for_language,
 )
 from pocket_tts.models.tts_model import TTSModel, export_model_state
 from pocket_tts.utils.logging_utils import enable_logging
@@ -136,7 +137,7 @@ def text_to_speech(
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
     if voice_url is None and voice_wav is None:
-        voice_url = DEFAULT_AUDIO_PROMPT
+        voice_url = get_default_voice_for_language(str(tts_model.origin))
 
     if voice_url is not None and voice_wav is not None:
         raise HTTPException(status_code=400, detail="Cannot provide both voice_url and voice_wav")
@@ -223,7 +224,15 @@ def serve(
 def generate(
     text: Annotated[str, typer.Option(help="Text to generate")] = None,
     voice: Annotated[
-        str, typer.Option(help="Path to audio conditioning file (voice to clone)")
+        str | None,
+        typer.Option(
+            help=(
+                "Path to audio conditioning file (voice to clone). "
+                "Defaults to a built-in voice chosen from the language: "
+                "'giovanni' for italian, 'lola' for spanish, 'alba' otherwise."
+            ),
+            show_default=False,
+        ),
     ] = DEFAULT_AUDIO_PROMPT,
     quiet: Annotated[bool, typer.Option("-q", "--quiet", help="Disable logging output")] = False,
     language: Annotated[
@@ -293,6 +302,8 @@ def generate(
         )
         tts_model.to(device)
 
+        if voice is None:
+            voice = get_default_voice_for_language(language)
         model_state_for_voice = tts_model.get_state_for_audio_prompt(voice)
         # Stream audio generation directly to file or stdout
         audio_chunks = tts_model.generate_audio_stream(

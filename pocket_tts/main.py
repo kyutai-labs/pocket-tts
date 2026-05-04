@@ -228,7 +228,8 @@ def generate(
             help=(
                 "Path to audio conditioning file (voice to clone). "
                 "Defaults to a built-in voice chosen from the language: "
-                "'giovanni' for italian, 'lola' for spanish, 'alba' otherwise."
+                "'giovanni' for italian, 'lola' for spanish, 'juergen' for german, "
+                "'rafael' for portuguese, 'estelle' for french, 'alba' otherwise."
             ),
             show_default=False,
         ),

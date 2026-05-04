@@ -43,7 +43,7 @@ _ORIGINS_OF_PREDEFINED_VOICES = {
 
 
 def get_predefined_voice(language: str, name: str) -> str:
-    return f"hf://kyutai/pocket-tts/languages/{language}/embeddings/{name}.safetensors@4c8ad48f8a003909bc4f1122cbe88a4252124621"
+    return f"hf://kyutai/pocket-tts-without-voice-cloning/languages/{language}/embeddings/{name}.safetensors@e041936c75475d350b405bc870bcf7c22da4e9e6"
 
 
 def make_cache_directory() -> Path:

@@ -295,7 +295,7 @@ class TTSModel(nn.Module):
         if language is not None:
             if language == "french":
                 raise ValueError(
-                    "The french model is not ready yet, please use 'french_24l' instead."
+                    "For technical reasons, only a larger 24-layer model is available for French. Please use the 'french_24l' language instead."
                 )
             config = CONFIGS_DIR / f"{language}.yaml"
         config = Path(config)

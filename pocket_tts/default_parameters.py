@@ -1,4 +1,3 @@
-DEFAULT_AUDIO_PROMPT = "alba"
 DEFAULT_LANGUAGE = "english"
 DEFAULT_TEMPERATURE = 0.7
 DEFAULT_LSD_DECODE_STEPS = 1
@@ -41,9 +40,25 @@ DEFAULT_TEXT_FOR_LANGUAGE = {
     ),
 }
 
+DEFAULT_VOICE_FOR_LANGUAGE = {
+    "italian": "giovanni",
+    "spanish": "lola",
+    "german": "juergen",
+    "portuguese": "rafael",
+    "french": "estelle",
+}
+DEFAULT_VOICE_FALLBACK = "alba"
+
 
 def get_default_text_for_language(language: str | None) -> str:
     for key, text in DEFAULT_TEXT_FOR_LANGUAGE.items():
         if language is not None and key in language:
             return text
     return DEFAULT_TEXT_FOR_LANGUAGE[DEFAULT_LANGUAGE]
+
+
+def get_default_voice_for_language(language: str | None) -> str:
+    for key, voice in DEFAULT_VOICE_FOR_LANGUAGE.items():
+        if language is not None and key in language:
+            return voice
+    return DEFAULT_VOICE_FALLBACK

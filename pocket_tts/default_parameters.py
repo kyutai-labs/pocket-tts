@@ -41,7 +41,13 @@ DEFAULT_TEXT_FOR_LANGUAGE = {
     ),
 }
 
-DEFAULT_VOICE_FOR_LANGUAGE = {"italian": "giovanni", "spanish": "lola"}
+DEFAULT_VOICE_FOR_LANGUAGE = {
+    "italian": "giovanni",
+    "spanish": "lola",
+    "german": "juergen",
+    "portuguese": "rafael",
+    "french": "estelle",
+}
 DEFAULT_VOICE_FALLBACK = "alba"
 
 

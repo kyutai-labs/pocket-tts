@@ -48,7 +48,7 @@ uvx pocket-tts generate
 pocket-tts generate
 ```
 Modify the voice with `--voice` and the text with `--text`. We provide a small catalog of voices.
-Choose a pretrained language model with `--language` when running `generate`, `export-voice`, or `serve` (default: `english`).
+Choose a pretrained language model with `--language` when running `generate`, `export-voice`, or `serve` (default: `english`). Non-english languages have also biggers 24 layers variants that are higher quality but slower. You can select them by using for example `--language italian_24l`.
 The `--config` option accepts only a local YAML path for custom weights.
 
 You can take a look at [this page](https://huggingface.co/kyutai/tts-voices) which details the licenses

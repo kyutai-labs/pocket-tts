@@ -9,7 +9,7 @@ group "default" {
 target "pocket-tts-server" {
   context = "."
   dockerfile = "Dockerfile"
-  platforms = ["linux/arm64", "linux/amd64"]
+  platforms = ["linux/amd64"]
   tags = [
     "rg.fr-par.scw.cloud/namespace-unruffled-tereshkova/pocket-tts-server:${COMMIT_SHA}"
   ]

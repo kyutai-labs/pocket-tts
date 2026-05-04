@@ -16,7 +16,6 @@ from typing_extensions import Annotated
 
 from pocket_tts.data.audio import stream_audio_chunks
 from pocket_tts.default_parameters import (
-    DEFAULT_AUDIO_PROMPT,
     DEFAULT_EOS_THRESHOLD,
     DEFAULT_FRAMES_AFTER_EOS,
     DEFAULT_LSD_DECODE_STEPS,
@@ -233,7 +232,7 @@ def generate(
             ),
             show_default=False,
         ),
-    ] = DEFAULT_AUDIO_PROMPT,
+    ] = None,
     quiet: Annotated[bool, typer.Option("-q", "--quiet", help="Disable logging output")] = False,
     language: Annotated[
         str | None,

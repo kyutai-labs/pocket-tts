@@ -147,6 +147,27 @@ def test_generate_long_text(tmp_path):
     assert audio.shape[1] > 24000 * 10  # At least 10 second of audio
 
 
+def test_generate_long_text_with_teacher_forcing(tmp_path):
+    """Long-text generation with --teacher-forcing produces valid audio across chunks."""
+    long_text = "This is a longer text to test the TTS system. " * 5
+    output_file = tmp_path / "long_text_teacher_forced.wav"
+
+    result = runner.invoke(
+        cli_app,
+        ["generate", "--text", long_text, "--teacher-forcing", "--output-path", str(output_file)],
+    )
+
+    assert result.exit_code == 0
+    assert output_file.exists()
+
+    audio, sample_rate = audio_read(str(output_file))
+    assert audio.shape[0] == 1
+    assert audio.shape[1] > 0
+    assert sample_rate == 24000
+    # Should still produce a substantial amount of audio for this many sentences.
+    assert audio.shape[1] > 24000 * 10
+
+
 def test_generate_multiple_runs(tmp_path):
     """Test multiple consecutive generate commands."""
     for i in range(3):

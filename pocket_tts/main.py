@@ -42,6 +42,8 @@ cli_app = typer.Typer(
 
 # Global model instance
 tts_model: TTSModel | None = None
+# Whether to apply cross-chunk teacher forcing for this server's requests.
+teacher_forcing_enabled: bool = False
 
 web_app = FastAPI(
     title="Kyutai Pocket TTS API", description="Text-to-Speech generation API", version="1.0.0"
@@ -94,7 +96,9 @@ def write_to_queue(queue, text_to_generate, model_state):
             self.queue.put(None)
 
     audio_chunks = tts_model.generate_audio_stream(
-        model_state=model_state, text_to_generate=text_to_generate
+        model_state=model_state,
+        text_to_generate=text_to_generate,
+        teacher_forcing=teacher_forcing_enabled,
     )
     stream_audio_chunks(FileLikeToQueue(queue), audio_chunks, tts_model.config.mimi.sample_rate)
 
@@ -205,11 +209,19 @@ def serve(
     quantize: Annotated[
         bool, typer.Option(help="Apply int8 quantization to reduce memory usage")
     ] = False,
+    teacher_forcing: Annotated[
+        bool,
+        typer.Option(
+            help="Apply cross-chunk teacher forcing for every request handled by this server. "
+            "Slower per request, but reduces intonation drift across chunk boundaries on long inputs."
+        ),
+    ] = False,
 ):
     """Start the FastAPI server."""
 
-    global tts_model
+    global tts_model, teacher_forcing_enabled
     tts_model = TTSModel.load_model(language=language, config=config, quantize=quantize)
+    teacher_forcing_enabled = teacher_forcing
 
     uvicorn.run("pocket_tts.main:web_app", host=host, port=port, reload=reload)
 
@@ -278,6 +290,14 @@ def generate(
     quantize: Annotated[
         bool, typer.Option(help="Apply int8 quantization to reduce memory usage")
     ] = False,
+    teacher_forcing: Annotated[
+        bool,
+        typer.Option(
+            help="When the input is split into multiple chunks, generate each chunk after the "
+            "first by re-prompting with the previous chunk's text and using its audio latents "
+            "as a teacher-forced prefix. Slower, but reduces intonation drift across chunks."
+        ),
+    ] = False,
 ):
     """Generate speech using Kyutai Pocket TTS."""
     log_level = logging.ERROR if quiet else logging.INFO
@@ -311,6 +331,7 @@ def generate(
             text_to_generate=text,
             frames_after_eos=frames_after_eos,
             max_tokens=max_tokens,
+            teacher_forcing=teacher_forcing,
         )
 
         stream_audio_chunks(output_path, audio_chunks, tts_model.config.mimi.sample_rate)

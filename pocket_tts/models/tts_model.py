@@ -3,6 +3,7 @@ import logging
 import math
 import os
 import queue
+import re
 import statistics
 import threading
 import time
@@ -975,6 +976,22 @@ def _segments_from_boundaries(
     return segments
 
 
+_DECIMAL_RE = re.compile(r"(\d+)\.(\d+)")
+
+
+def _normalize_decimals(text: str) -> str:
+    """Replace decimal numbers with spoken form to avoid spurious sentence splits.
+
+    The sentence splitter treats every period token as a potential boundary.
+    Decimals like '98.6' therefore get incorrectly split into '98.' and '6…',
+    producing broken audio output.  Rewriting to '98 point 6' before tokenisation
+    removes the period from the token stream so the splitter never sees it.
+
+    Only digit·period·digit patterns are rewritten; prose punctuation is untouched.
+    """
+    return _DECIMAL_RE.sub(r"\1 point \2", text)
+
+
 def split_into_best_sentences(
     tokenizer,
     text_to_generate: str,
@@ -985,6 +1002,7 @@ def split_into_best_sentences(
     text_to_generate, _ = prepare_text_prompt(
         text_to_generate, pad_with_spaces_for_short_inputs, remove_semicolons
     )
+    text_to_generate = _normalize_decimals(text_to_generate)
     text_to_generate = text_to_generate.strip()
     tokens = tokenizer(text_to_generate)
     list_of_tokens = tokens.tokens[0].tolist()

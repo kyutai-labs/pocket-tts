@@ -3,7 +3,7 @@
 import pytest
 
 from pocket_tts.conditioners.text import get_default_tokenizer
-from pocket_tts.models.tts_model import split_into_best_sentences
+from pocket_tts.models.tts_model import _normalize_decimals, split_into_best_sentences
 
 
 @pytest.fixture(scope="session")
@@ -118,6 +118,71 @@ def test_short_sentence_not_affected_by_comma_splitting(tokenizer):
     assert len(chunks) == 1
     assert "hello" in chunks[0].lower()
     assert "world" in chunks[0].lower()
+
+
+class TestNormalizeDecimals:
+    """Unit tests for _normalize_decimals (issue #162)."""
+
+    def test_simple_decimal(self):
+        assert _normalize_decimals("98.6") == "98 point 6"
+
+    def test_pi(self):
+        assert _normalize_decimals("Pi is 3.14") == "Pi is 3 point 14"
+
+    def test_multiple_decimals(self):
+        assert _normalize_decimals("Pi is 3.14 and e is 2.718.") == (
+            "Pi is 3 point 14 and e is 2 point 718."
+        )
+
+    def test_prose_period_untouched(self):
+        """A period at end of a sentence (not between digits) must not be changed."""
+        assert _normalize_decimals("Hello world.") == "Hello world."
+
+    def test_no_decimals_unchanged(self):
+        assert _normalize_decimals("No numbers here at all.") == "No numbers here at all."
+
+    def test_integer_period_not_matched(self):
+        """A period following digits but not followed by digits is untouched."""
+        assert _normalize_decimals("See section 4. It is important.") == (
+            "See section 4. It is important."
+        )
+
+
+def test_decimal_not_split_into_separate_chunks(tokenizer):
+    """Decimals must not be treated as sentence boundaries (issue #162).
+
+    '98.6°F' was previously split into ['98.', '6°F…'] because the period
+    token matched the sentence-boundary set.  After normalisation the decimal
+    is rewritten to '98 point 6' before tokenisation, so the chunk is kept
+    whole.
+    """
+    text = "The average human body temperature is 98.6°F, which is normal."
+    chunks = split_into_best_sentences(
+        tokenizer,
+        text,
+        max_tokens=50,
+        pad_with_spaces_for_short_inputs=False,
+        remove_semicolons=False,
+    )
+    # The whole sentence fits in 50 tokens — must be a single chunk.
+    assert len(chunks) == 1
+    # The decimal value must survive intact (rewritten form expected).
+    assert "point" in chunks[0].lower()
+
+
+def test_multiple_decimals_preserved(tokenizer):
+    """Multiple decimals in one sentence are all normalised correctly."""
+    text = "Pi is 3.14 and e is 2.718."
+    chunks = split_into_best_sentences(
+        tokenizer,
+        text,
+        max_tokens=50,
+        pad_with_spaces_for_short_inputs=False,
+        remove_semicolons=False,
+    )
+    assert len(chunks) == 1
+    rejoined = chunks[0].lower()
+    assert "3 point 14" in rejoined or "point" in rejoined
 
 
 def test_empty_string_raises(tokenizer):

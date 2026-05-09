@@ -614,6 +614,7 @@ class TTSModel(nn.Module):
             max_tokens,
             self.pad_with_spaces_for_short_inputs,
             remove_semicolons=self.remove_semicolons,
+            language=self.origin.stem if self.origin is not None else "english",
         )
 
         for chunk in chunks:
@@ -978,18 +979,42 @@ def _segments_from_boundaries(
 
 _DECIMAL_RE = re.compile(r"(\d+)\.(\d+)")
 
+# Spoken form of the decimal point for each supported language config stem.
+# Languages not listed here fall back to "point".
+_DECIMAL_WORD: dict[str, str] = {
+    "english": "point",
+    "french": "virgule",
+    "french_24l": "virgule",
+    "german": "Komma",
+    "german_24l": "Komma",
+    "spanish": "coma",
+    "spanish_24l": "coma",
+    "portuguese": "vírgula",
+    "portuguese_24l": "vírgula",
+    "italian": "virgola",
+    "italian_24l": "virgola",
+}
 
-def _normalize_decimals(text: str) -> str:
-    """Replace decimal numbers with spoken form to avoid spurious sentence splits.
+
+def _normalize_decimals(text: str, language: str = "english") -> str:
+    """Replace decimal numbers with their spoken form to avoid spurious sentence splits.
 
     The sentence splitter treats every period token as a potential boundary.
     Decimals like '98.6' therefore get incorrectly split into '98.' and '6…',
-    producing broken audio output.  Rewriting to '98 point 6' before tokenisation
+    producing broken audio output.  Rewriting to the appropriate spoken form
+    (e.g. '98 point 6' in English, '98 Komma 6' in German) before tokenisation
     removes the period from the token stream so the splitter never sees it.
 
     Only digit·period·digit patterns are rewritten; prose punctuation is untouched.
+
+    Args:
+        text: The input text to normalise.
+        language: Language config stem (e.g. ``"english"``, ``"german"``).
+            Controls the spoken word used for the decimal separator.
+            Defaults to ``"english"`` (spoken form: ``"point"``).
     """
-    return _DECIMAL_RE.sub(r"\1 point \2", text)
+    word = _DECIMAL_WORD.get(language, "point")
+    return _DECIMAL_RE.sub(rf"\1 {word} \2", text)
 
 
 def split_into_best_sentences(
@@ -998,11 +1023,12 @@ def split_into_best_sentences(
     max_tokens: int,
     pad_with_spaces_for_short_inputs: bool,
     remove_semicolons: bool,
+    language: str = "english",
 ) -> list[str]:
     text_to_generate, _ = prepare_text_prompt(
         text_to_generate, pad_with_spaces_for_short_inputs, remove_semicolons
     )
-    text_to_generate = _normalize_decimals(text_to_generate)
+    text_to_generate = _normalize_decimals(text_to_generate, language=language)
     text_to_generate = text_to_generate.strip()
     tokens = tokenizer(text_to_generate)
     list_of_tokens = tokens.tokens[0].tolist()

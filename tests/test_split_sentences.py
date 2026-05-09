@@ -3,7 +3,11 @@
 import pytest
 
 from pocket_tts.conditioners.text import get_default_tokenizer
-from pocket_tts.models.tts_model import _normalize_decimals, split_into_best_sentences
+from pocket_tts.models.tts_model import (
+    _DECIMAL_WORD,
+    _normalize_decimals,
+    split_into_best_sentences,
+)
 
 
 @pytest.fixture(scope="session")
@@ -146,6 +150,44 @@ class TestNormalizeDecimals:
         assert _normalize_decimals("See section 4. It is important.") == (
             "See section 4. It is important."
         )
+
+    def test_german_uses_komma(self):
+        assert _normalize_decimals("37.0°C", language="german") == "37 Komma 0°C"
+
+    def test_french_uses_virgule(self):
+        assert _normalize_decimals("3.14", language="french") == "3 virgule 14"
+
+    def test_french_24l_uses_virgule(self):
+        assert _normalize_decimals("3.14", language="french_24l") == "3 virgule 14"
+
+    def test_spanish_uses_coma(self):
+        assert _normalize_decimals("2.5", language="spanish") == "2 coma 5"
+
+    def test_portuguese_uses_virgula(self):
+        assert _normalize_decimals("1.5", language="portuguese") == "1 vírgula 5"
+
+    def test_italian_uses_virgola(self):
+        assert _normalize_decimals("9.8", language="italian") == "9 virgola 8"
+
+    def test_unknown_language_falls_back_to_point(self):
+        assert _normalize_decimals("3.14", language="klingon") == "3 point 14"
+
+    def test_all_supported_languages_have_mapping(self):
+        """Every language config that pocket-tts ships must have an entry in _DECIMAL_WORD."""
+        expected = {
+            "english",
+            "french",
+            "french_24l",
+            "german",
+            "german_24l",
+            "spanish",
+            "spanish_24l",
+            "portuguese",
+            "portuguese_24l",
+            "italian",
+            "italian_24l",
+        }
+        assert expected == set(_DECIMAL_WORD.keys())
 
 
 def test_decimal_not_split_into_separate_chunks(tokenizer):

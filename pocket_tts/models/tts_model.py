@@ -4,8 +4,8 @@ import math
 import os
 import queue
 import statistics
-import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from pathlib import Path
 
@@ -88,6 +88,7 @@ class TTSModel(nn.Module):
         self.pad_with_spaces_for_short_inputs: bool = pad_with_spaces_for_short_inputs
         self.model_recommended_frames_after_eos = model_recommended_frames_after_eos
         self.remove_semicolons = remove_semicolons
+        self.threads = ThreadPoolExecutor(max_workers=2)
 
     @property
     def device(self) -> torch.device:
@@ -648,14 +649,15 @@ class TTSModel(nn.Module):
         result_queue = queue.Queue()
 
         # Start decoder worker thread
-        decoder_thread = threading.Thread(
-            target=self._decode_audio_worker,
-            args=(latents_queue, result_queue, mimi_sequence_length, mimi_steps_per_latent),
-            daemon=True,
+        decoder_future = self.threads.submit(
+            self._decode_audio_worker,
+            latents_queue,
+            result_queue,
+            mimi_sequence_length,
+            mimi_steps_per_latent,
         )
         logger.info("starting timer now!")
         t_generating = time.monotonic()
-        decoder_thread.start()
 
         # Generate latents and add them to queue (decoder processes them in parallel)
         self._generate(
@@ -682,13 +684,13 @@ class TTSModel(nn.Module):
             elif result[0] == "error":
                 # Wait for decoder thread to finish cleanly before propagating error
                 with display_execution_time("Waiting for mimi decoder to finish"):
-                    decoder_thread.join()
+                    decoder_future.result()
                 # Propagate error
                 raise result[1]
 
         # Wait for decoder thread to finish cleanly
         with display_execution_time("Waiting for mimi decoder to finish"):
-            decoder_thread.join()
+            decoder_future.result()
 
         # Print timing information
         duration_generated_audio = int(
@@ -738,8 +740,7 @@ class TTSModel(nn.Module):
                 if result_queue is not None:
                     result_queue.put(("error", e))
 
-        generation_thread = threading.Thread(target=run_generation, daemon=True)
-        generation_thread.start()
+        self.threads.submit(run_generation)
 
     @torch.no_grad
     def _autoregressive_generation(

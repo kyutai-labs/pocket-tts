@@ -977,44 +977,108 @@ def _segments_from_boundaries(
     return segments
 
 
-_DECIMAL_RE = re.compile(r"(\d+)\.(\d+)")
+# Patterns for "atoms" — substrings that contain split-relevant punctuation
+# but should never be treated as sentence boundaries (decimals, URLs, emails,
+# honorifics, common abbreviations).  Order matters in :func:`_atom_patterns_for`:
+# email comes before URL so the URL pattern doesn't consume the domain part of
+# an email; URL comes before the digit pattern so IP-like labels in URLs are
+# captured as one atom.
+_EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b")
+_URL_RE = re.compile(r"\b(?:https?://)?(?:[\w-]+\.)+[a-zA-Z]{2,}(?:/\S*)?")
+# Number with an internal '.' or ',' separator: decimals (98.6, 37,0) and
+# thousands separators (1,000, 1.000) in any locale.
+_DIGIT_NUMBER_RE = re.compile(r"\d+(?:[.,]\d+)+")
 
-# Spoken form of the decimal point for each supported language config stem.
-# Languages not listed here fall back to "point".
-_DECIMAL_WORD: dict[str, str] = {
-    "english": "point",
-    "french": "virgule",
-    "french_24l": "virgule",
-    "german": "Komma",
-    "german_24l": "Komma",
-    "spanish": "coma",
-    "spanish_24l": "coma",
-    "portuguese": "vírgula",
-    "portuguese_24l": "vírgula",
-    "italian": "virgola",
-    "italian_24l": "virgola",
+# Per-language honorifics and common abbreviations.  Keys use the base language
+# name; "_24l" variants are stripped before lookup in :func:`_atom_patterns_for`.
+_HONORIFICS: dict[str, list[str]] = {
+    "english": [
+        r"\bMr\.",
+        r"\bMrs\.",
+        r"\bMs\.",
+        r"\bDr\.",
+        r"\bProf\.",
+        r"\bSr\.",
+        r"\bJr\.",
+        r"\bSt\.",
+        r"\bRev\.",
+    ],
+    "french": [r"\bMme\.", r"\bMlle\.", r"\bDr\.", r"\bPr\.", r"\bM\."],
+    "german": [r"\bHr\.", r"\bFr\.", r"\bDr\.", r"\bProf\."],
+    "spanish": [r"\bSra\.", r"\bSrta\.", r"\bDra\.", r"\bSr\.", r"\bDr\.", r"\bProf\."],
+    "italian": [r"\bDott\.", r"\bSig\.", r"\bDr\.", r"\bProf\."],
+    "portuguese": [r"\bSra\.", r"\bSrta\.", r"\bDra\.", r"\bSr\.", r"\bDr\.", r"\bProf\."],
+}
+
+_ABBREVIATIONS: dict[str, list[str]] = {
+    "english": [r"\be\.g\.", r"\bi\.e\.", r"\betc\.", r"\bvs\."],
+    "french": [r"\bp\.ex\.", r"\bex\."],
+    "german": [r"\bz\.B\.", r"\bbzw\.", r"\busw\.", r"\bd\.h\."],
 }
 
 
-def _normalize_decimals(text: str, language: str = "english") -> str:
-    """Replace decimal numbers with their spoken form to avoid spurious sentence splits.
+def _atom_patterns_for(language: str) -> list[re.Pattern]:
+    """Return the ordered list of atom patterns to apply for ``language``.
 
-    The sentence splitter treats every period token as a potential boundary.
-    Decimals like '98.6' therefore get incorrectly split into '98.' and '6…',
-    producing broken audio output.  Rewriting to the appropriate spoken form
-    (e.g. '98 point 6' in English, '98 Komma 6' in German) before tokenisation
-    removes the period from the token stream so the splitter never sees it.
+    Patterns are returned in priority order: more specific patterns (email,
+    URL) come first so that broader patterns can't consume parts of them.
+    Per-language honorifics and abbreviations are appended after the
+    language-agnostic patterns.
+    """
+    base_lang = language.removesuffix("_24l") if language else "english"
+    patterns: list[re.Pattern] = [_EMAIL_RE, _URL_RE, _DIGIT_NUMBER_RE]
+    for source in (_HONORIFICS, _ABBREVIATIONS):
+        patterns.extend(re.compile(p) for p in source.get(base_lang, []))
+    return patterns
 
-    Only digit·period·digit patterns are rewritten; prose punctuation is untouched.
+
+def _make_placeholder(index: int) -> str:
+    """Build a unique letter-only placeholder for the ``index``-th atom.
+
+    Letter-only guarantees the placeholder contains no character the splitter
+    treats as a boundary, so it survives sentence splitting as a single opaque
+    token sequence.
+    """
+    return f"AaaaAtomAaaa{index:04d}Zzzz"
+
+
+def _protect_atoms(text: str, language: str = "english") -> tuple[str, dict[str, str]]:
+    """Replace splitter-confusing substrings with opaque placeholders.
+
+    The sentence splitter treats every period, comma, semicolon, and colon
+    token as a potential boundary.  That breaks decimals (``98.6``, ``37,0``),
+    honorifics (``Dr. Smith``), URLs (``example.com``), emails, and similar
+    atomic substrings that contain those characters internally.  This function
+    finds such atoms and replaces each with a placeholder containing no
+    boundary characters, so the splitter sees them as opaque words.  Restore
+    the originals in each output chunk via :func:`_restore_atoms`.
 
     Args:
-        text: The input text to normalise.
-        language: Language config stem (e.g. ``"english"``, ``"german"``).
-            Controls the spoken word used for the decimal separator.
-            Defaults to ``"english"`` (spoken form: ``"point"``).
+        text: The input text to scan.
+        language: Language config stem (e.g. ``"english"``, ``"german_24l"``).
+            Controls which honorifics and abbreviations are recognised.
+
+    Returns:
+        A pair ``(modified_text, atoms)`` where ``atoms`` maps each
+        placeholder back to the original substring it replaced.
     """
-    word = _DECIMAL_WORD.get(language, "point")
-    return _DECIMAL_RE.sub(rf"\1 {word} \2", text)
+    atoms: dict[str, str] = {}
+    for pattern in _atom_patterns_for(language):
+
+        def replace(match: re.Match) -> str:
+            placeholder = _make_placeholder(len(atoms))
+            atoms[placeholder] = match.group(0)
+            return placeholder
+
+        text = pattern.sub(replace, text)
+    return text, atoms
+
+
+def _restore_atoms(text: str, atoms: dict[str, str]) -> str:
+    """Restore original substrings replaced by :func:`_protect_atoms`."""
+    for placeholder, original in atoms.items():
+        text = text.replace(placeholder, original)
+    return text
 
 
 def split_into_best_sentences(
@@ -1028,8 +1092,11 @@ def split_into_best_sentences(
     text_to_generate, _ = prepare_text_prompt(
         text_to_generate, pad_with_spaces_for_short_inputs, remove_semicolons
     )
-    text_to_generate = _normalize_decimals(text_to_generate, language=language)
     text_to_generate = text_to_generate.strip()
+    # Mask atoms (decimals, URLs, emails, honorifics, abbreviations) so the
+    # splitter doesn't break them on internal punctuation.  Originals are
+    # restored in each chunk before returning.
+    text_to_generate, atoms = _protect_atoms(text_to_generate, language=language)
     tokens = tokenizer(text_to_generate)
     list_of_tokens = tokens.tokens[0].tolist()
 
@@ -1074,6 +1141,8 @@ def split_into_best_sentences(
 
     if current_chunk != "":
         chunks.append(current_chunk.strip())
+
+    chunks = [_restore_atoms(chunk, atoms) for chunk in chunks]
 
     for chunk in chunks:
         chunk_tokens = tokenizer(chunk.strip()).tokens[0].tolist()

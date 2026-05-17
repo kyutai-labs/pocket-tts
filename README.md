@@ -41,18 +41,18 @@ You can use pocket-tts directly from the command line.
 
 ### ⚠️ Virtual Environment Note
 
-If you are using your own virtual environment, you may see a warning like:
+If you are using a custom virtual environment, you may see a warning like:
+`VIRTUAL_ENV does not match the project environment`
 
-VIRTUAL_ENV does not match the project environment
-
-This happens because `uv` may try to create its own environment.
+This happens because `uv` may create its own environment by default.
 
 To use your currently activated environment, run:
-
+```bash
 uv run --active pocket-tts generate
 
- We recommend using
-`uv` as it installs any dependencies on the fly in an isolated environment (uv installation instructions [here](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)).
+```
+
+We recommend using `uv` as it installs any dependencies on the fly in an isolated environment (uv installation instructions [here](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)).
 You can also use `pip install pocket-tts` to install it manually.
 
 This will generate a wav file `./tts_output.wav` saying the default text with the default voice, and display some speed statistics.

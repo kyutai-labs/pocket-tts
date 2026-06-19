@@ -209,6 +209,7 @@ We don't have official support for this yet, but you can try out one of these co
 - [openclaw-pocketts.cpp](https://github.com/dodgyrabbit/openclaw-pockettts.cpp) by @dodgyrabbit - A Docker container with the PocketTTS.cpp version, packaged for easy integration with OpenClaw.
 - [tts-audiobook-tool](https://github.com/zeropointnine/tts-audiobook-tool) by @zeropointnine - Multi-model audiobook generator with automatic error detection, 48khz upscaling, synced browser reader, stand-alone server-mode.
 - [seshat-tts](https://github.com/scriptriva/seshat-tts) by @scriptriva - Accessibility tool that provides real-time audio synthesis for games and apps. It also features a voice manager capable of cloning voices based on user presets.
+- [LocalVocal.ai](https://localvocal.ai) by @joshwhiton - Fully local conversational voice-harness for Macs with Apple Silicon. Includes voice-activity & turn detection, dictation, voice cloning, CLI to talk to Claude, Codex... and more.
 
 
 ## Prohibited use

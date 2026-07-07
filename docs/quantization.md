@@ -28,7 +28,7 @@ Quantization works out of the box on any supported PyTorch version (2.5+) using 
 For optimized performance, install `torchao` (requires torch 2.10+):
 
 ```bash
-pip install pocket-tts[quantize]
+pip install 'pocket-tts[quantize]'
 ```
 
 The quantization module automatically selects the best available backend:

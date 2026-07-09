@@ -8,6 +8,7 @@ import threading
 import time
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import safetensors
 import safetensors.torch
@@ -625,7 +626,7 @@ class TTSModel(nn.Module):
             )
             yield from self._generate_audio_stream_short_text(
                 model_state=model_state,
-                text_to_generate=chunk,
+                text_to_generate=text_to_generate,
                 frames_after_eos=effective_frames,
                 copy_state=copy_state,
             )
@@ -731,12 +732,13 @@ class TTSModel(nn.Module):
                 )
             except Exception as e:
                 logger.error(f"Error in autoregressive generation: {e}")
+                # Report the generation error before stopping the decoder. Otherwise
+                # the decoder can publish "done" first and hide the exception.
+                if result_queue is not None:
+                    result_queue.put(("error", e))
                 # Signal decoder to stop by putting None (completion sentinel)
                 if latents_queue is not None:
                     latents_queue.put(None)
-                # Report error to main thread
-                if result_queue is not None:
-                    result_queue.put(("error", e))
 
         generation_thread = threading.Thread(target=run_generation, daemon=True)
         generation_thread.start()
@@ -842,8 +844,8 @@ class TTSModel(nn.Module):
             - Processing time is logged for performance monitoring
             - The state preserves speaker characteristics for voice cloning
         """
-        if isinstance(audio_conditioning, (str, Path)) and str(audio_conditioning).endswith(
-            ".safetensors"
+        if isinstance(audio_conditioning, (str, Path)) and _is_safetensors_source(
+            audio_conditioning
         ):
             if isinstance(audio_conditioning, str):
                 audio_conditioning = download_if_necessary(audio_conditioning)
@@ -1050,6 +1052,15 @@ def export_model_state(model_state: dict[str, dict[str, torch.Tensor]], dest: st
         for key, tensor_value in module_state.items():
             dict_to_store[f"{module_name}/{key}"] = tensor_value
     safetensors.torch.save_file(dict_to_store, dest)
+
+
+def _is_safetensors_source(source: str | Path) -> bool:
+    source_text = str(source)
+    if source_text.startswith(("http://", "https://")):
+        source_text = urlsplit(source_text).path
+    elif source_text.startswith("hf://"):
+        source_text = source_text.rsplit("@", 1)[0]
+    return source_text.endswith(".safetensors")
 
 
 def _import_model_state(

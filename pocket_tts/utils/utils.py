@@ -3,6 +3,7 @@ import logging
 import os
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 import torch
@@ -95,9 +96,8 @@ class display_execution_time:
 def download_if_necessary(file_path: str) -> Path:
     if file_path.startswith("http://") or file_path.startswith("https://"):
         cache_dir = make_cache_directory()
-        cached_file = cache_dir / (
-            hashlib.sha256(file_path.encode()).hexdigest() + "." + file_path.split(".")[-1]
-        )
+        suffix = Path(urlparse(file_path).path).suffix
+        cached_file = cache_dir / (hashlib.sha256(file_path.encode()).hexdigest() + suffix)
         if not cached_file.exists():
             response = requests.get(file_path)
             response.raise_for_status()

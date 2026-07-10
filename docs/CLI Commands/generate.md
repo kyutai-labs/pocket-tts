@@ -32,7 +32,7 @@ This will generate a WAV file `./tts_output.wav` with the default text and voice
 
 ### Performance Options
 
-- `--device DEVICE`: Device to use (default: "cpu", you may not get a speedup by using a gpu since it's a small model)
+- `--device DEVICE`: Device to use (default: "cpu"). Whether GPU helps is hardware-dependent — see the main [README's "Running on GPU" section](../../README.md#running-on-gpu) for measured numbers (no speedup observed on some CPUs with strong single-thread performance like Apple Silicon, but a measured ~2.6x speedup on a cloud x86 VM with a Tesla T4).
 - `--quantize`: Use int8 quantization for the model (default: False). This can reduce memory usage and increase speed, with minimal impact on audio quality.
 - `--quiet`, `-q`: Disable logging output
 

@@ -180,8 +180,11 @@ scipy.io.wavfile.write("output.wav", tts_model.sample_rate, audio.detach().cpu()
 ```
 
 A few things to be aware of if you want to use the GPU:
-- The `generate` CLI command has an undocumented `--device` option (defaults to `cpu`); the
-  `serve` command and the Docker image do not expose any device option and will always run on CPU.
+- The `generate` CLI command has a `--device` option (defaults to `cpu`, documented in the
+  [CLI reference](docs/CLI%20Commands/generate.md) — note that page's own description ("you may not
+  get a speedup by using a gpu since it's a small model") is what this section is correcting, based
+  on the T4 measurements above); the `serve` command and the Docker image do not expose any device
+  option and will always run on CPU.
 - `pip install pocket-tts` / `uv add pocket-tts` install whatever `torch` build is current on
   PyPI, which may require a newer CUDA version than your driver supports. In that case
   `torch.cuda.is_available()` silently returns `False` (you'll only see a `UserWarning` about an
@@ -189,10 +192,12 @@ A few things to be aware of if you want to use the GPU:
   CUDA version explicitly, e.g. `pip install torch --index-url https://download.pytorch.org/whl/cu121`.
 - `quantize=True` (int8 dynamic quantization) only works on CPU; calling it on a model moved to
   CUDA raises `NotImplementedError: Could not run 'quantized::linear_dynamic' ... 'CUDA' backend`.
-  Additionally, as of this writing the optional `torchao` backend (`pip install pocket-tts[quantize]`)
-  requires `torch>=2.11`, which is newer than every currently released stable `torch`; installing it
-  will break `quantize=True` even on CPU. Don't install this extra until the repo documents a
-  compatible `torch` version.
+  Separately, the optional `torchao` backend (`pip install pocket-tts[quantize]`) declares
+  `torch>=2.11` — fine with a fresh install (torch 2.11+ is on PyPI as of this writing), but if
+  you've pinned an older `torch` (e.g. to match an older GPU driver's CUDA build, per the point
+  above), adding this extra can pull in a `torchao` that's incompatible with your pinned `torch`
+  and break `quantize=True` even on CPU. Match `torchao`'s `torch` requirement to whatever `torch`
+  you actually have installed.
 
 ## Unsupported features
 

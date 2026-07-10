@@ -157,14 +157,53 @@ audio = model.generate_audio(model_state_copy, "Hello world!")
 
 You can check out the [Python API documentation](https://kyutai-labs.github.io/pocket-tts/API%20Reference/python-api/) for more details and examples.
 
+## Running on GPU
+
+Pocket TTS is designed to run on CPU, and on hardware with strong single-thread CPU performance
+(e.g. Apple Silicon) we did not observe a GPU speedup, notably because we use a batch size of 1
+and a very small model. However, this turns out to be hardware-dependent: measured on a cloud x86
+VM (4 vCPUs) with a Tesla T4, moving the model to GPU gave a consistent ~2.6x speedup over CPU
+(RTF ~2.3-2.5x on CPU vs. ~6.28x on GPU, for both short and long input text). If your CPU is
+thread-limited or otherwise weaker than a modern laptop chip, it's worth trying the GPU.
+
+This is not officially supported (there is no `device` argument on `TTSModel.load_model()`), but
+since `TTSModel` is a regular `nn.Module` you can move it yourself:
+
+```python
+tts_model = TTSModel.load_model()
+tts_model.to("cuda")
+...
+audio = tts_model.generate_audio(voice_state, "Hello world, this is a test.")
+# generate_audio() returns a tensor on the same device as the model, so on GPU you need
+# to move it back to CPU before calling .numpy():
+scipy.io.wavfile.write("output.wav", tts_model.sample_rate, audio.detach().cpu().numpy())
+```
+
+A few things to be aware of if you want to use the GPU:
+- The `generate` CLI command has an undocumented `--device` option (defaults to `cpu`); the
+  `serve` command and the Docker image do not expose any device option and will always run on CPU.
+- `pip install pocket-tts` / `uv add pocket-tts` install whatever `torch` build is current on
+  PyPI, which may require a newer CUDA version than your driver supports. In that case
+  `torch.cuda.is_available()` silently returns `False` (you'll only see a `UserWarning` about an
+  outdated driver, not an error). If this happens, install a `torch` build matching your driver's
+  CUDA version explicitly, e.g. `pip install torch --index-url https://download.pytorch.org/whl/cu121`.
+- `quantize=True` (int8 dynamic quantization) only works on CPU; calling it on a model moved to
+  CUDA raises `NotImplementedError: Could not run 'quantized::linear_dynamic' ... 'CUDA' backend`.
+  Additionally, as of this writing the optional `torchao` backend (`pip install pocket-tts[quantize]`)
+  requires `torch>=2.11`, which is newer than every currently released stable `torch`; installing it
+  will break `quantize=True` even on CPU. Don't install this extra until the repo documents a
+  compatible `torch` version.
+
 ## Unsupported features
 
 At the moment, we do not support (but would love pull requests adding):
 
 - [Adding silence in the text input to generate pauses.](https://github.com/kyutai-labs/pocket-tts/issues/6)
 
-We tried running this TTS model on the GPU but did not observe a speedup compared to CPU execution,
-notably because we use a batch size of 1 and a very small model.
+We tried running this TTS model on the GPU but did not observe a speedup compared to CPU execution
+on hardware with very strong single-thread CPU performance, notably because we use a batch size of
+1 and a very small model. See the ["Running on GPU"](#running-on-gpu) section above for measurements
+on other hardware and caveats if you want to try it yourself.
 
 ## Development and local setup
 

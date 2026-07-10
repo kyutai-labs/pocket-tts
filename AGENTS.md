@@ -105,7 +105,16 @@ This is a pure Python package with Rust extensions in `training/rust_exts/audio_
 
 - **Thread Safety**: The code is NOT thread-safe. Server mode does not support concurrent requests.
 - **Batching**: Batch size is always 1. No batching support currently.
-- **Device**: Defaults to CPU. GPU does not provide speedup for this small model.
+- **Device**: Defaults to CPU. Whether GPU helps is hardware-dependent: on hardware with strong
+  single-thread CPU performance (e.g. Apple Silicon) we did not observe a speedup, but on a cloud
+  x86 VM with a Tesla T4, `.to("cuda")` measured ~2.6x speedup over CPU (RTF ~2.3-2.5x CPU vs.
+  ~6.28x GPU). There is no `device` argument on `TTSModel.load_model()` (the `generate` CLI has an
+  undocumented `--device`; `serve` and Docker have none and are CPU-only). `generate_audio()`
+  returns a tensor on the model's device, so code moved to GPU must call `.detach().cpu().numpy()`
+  instead of `.numpy()`. `quantize=True` is CPU-only and raises `NotImplementedError` on CUDA; the
+  optional `torchao` backend currently requires `torch>=2.11`, newer than any released stable
+  `torch`, so installing it breaks `quantize=True` even on CPU. See README's "Running on GPU"
+  section for details.
 - **Torch Threads**: `torch.set_num_threads(1)` in `tts_model.py` for optimal CPU performance
 - **dtype**: Models use float32 by default (configurable in YAML)
 - **Beartype**: Runtime type checking is enabled via beartype claw in `__init__.py`

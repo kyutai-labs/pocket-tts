@@ -18,4 +18,4 @@ from pocket_tts.models.tts_model import (  # noqa: E402
 # TTSModel.generate_audio_stream
 # TTSModel.get_state_for_audio_prompt
 
-__all__ = ["TTSModel", "export_model_state", "parse_pause_tags", "has_pause_tags"]
+__all__ = ["TTSModel", "export_model_state", "has_pause_tags", "parse_pause_tags"]

@@ -2,6 +2,11 @@
 
 <img width="1446" height="622" alt="pocket-tts-logo-v2-transparent" src="https://github.com/user-attachments/assets/637b5ed6-831f-4023-9b4c-741be21ab238" />
 
+[![PyPI version](https://img.shields.io/pypi/v/pocket-tts)](https://pypi.org/project/pocket-tts/)
+[![Python versions](https://img.shields.io/pypi/pyversions/pocket-tts)](https://pypi.org/project/pocket-tts/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Documentation](https://img.shields.io/badge/docs-website-blue)](https://kyutai-labs.github.io/pocket-tts/)
+
 A lightweight text-to-speech (TTS) application designed to run efficiently on CPUs.
 Forget about the hassle of using GPUs and web APIs serving TTS models. With Kyutai's Pocket TTS, generating audio is just a pip install and a function call away.
 
@@ -14,6 +19,29 @@ Supports Python 3.10, 3.11, 3.12, 3.13 and 3.14. Requires PyTorch 2.5+. Does not
 [📄 Paper](https://arxiv.org/abs/2509.06926) | 
 [📚 Documentation](https://kyutai-labs.github.io/pocket-tts/)
 
+
+## Quick start
+
+Generate speech with the default voice and text:
+
+```bash
+uvx pocket-tts generate
+```
+
+For installation options, voices, and Python usage, see the sections below or the
+[documentation](https://kyutai-labs.github.io/pocket-tts/). Want to help? Read the
+[contributing guide](CONTRIBUTING.md).
+
+## Contents
+
+- [Main takeaways](#main-takeaways)
+- [Command-line interface](#trying-it-with-the-cli)
+- [Python library](#using-it-as-a-python-library)
+- [Development](#development-and-local-setup)
+- [In-browser implementations](#in-browser-implementations)
+- [Alternative implementations](#alternative-implementations)
+- [Projects using Pocket TTS](#projects-using-pocket-tts)
+- [License](#license)
 
 ## Main takeaways
 * Runs on CPU
@@ -182,7 +210,7 @@ We don't have official support for this yet, but you can try out one of these co
 - [jax-js](https://github.com/ekzhang/jax-js/tree/main/website/src/routes/tts) by @ekzhang: Using jax-js, a ML library for the web. Demo [here](https://jax-js.com/tts)
 
 
-## Alterative implementations
+## Alternative implementations
 - [pocket-tts-mlx](https://github.com/jishnuvenugopal/pocket-tts-mlx) by @jishnuvenugopal - MLX backend optimized for Apple Silicon
 - [pocket-tts-xn](https://github.com/LaurentMazare/xn/tree/main/pocket-tts) by @LaurentMazare - A Rust port of Pocket TTS implemented with XN.
 - [pocket-tts-candle](https://github.com/babybirdprd/pocket-tts) by @babybirdprd - Candle version (Rust) with WebAssembly and PyO3 bindings.
@@ -215,6 +243,10 @@ We don't have official support for this yet, but you can try out one of these co
 ## Prohibited use
 
 Use of our model must comply with all applicable laws and regulations and must not result in, involve, or facilitate any illegal, harmful, deceptive, fraudulent, or unauthorized activity. Prohibited uses include, without limitation, voice impersonation or cloning without explicit and lawful consent; misinformation, disinformation, or deception (including fake news, fraudulent calls, or presenting generated content as genuine recordings of real people or events); and the generation of unlawful, harmful, libelous, abusive, harassing, discriminatory, hateful, or privacy-invasive content. We disclaim all liability for any non-compliant use.
+
+## License
+
+Pocket TTS is released under the [MIT License](LICENSE).
 
 
 ## Authors

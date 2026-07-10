@@ -3,6 +3,7 @@ import logging
 import math
 import os
 import queue
+import re
 import statistics
 import threading
 import time
@@ -488,6 +489,9 @@ class TTSModel(nn.Module):
         and returns it as a single tensor. It internally uses the streaming
         generation method but collects all chunks before returning.
 
+        Supports [pause:Xs] and [pause:Xms] tags to insert silence between
+        segments (e.g. "Hello. [pause:1s] World.").
+
         This method is NOT thread-safe; separate model instances should be used
         for concurrent generation.
 
@@ -506,7 +510,7 @@ class TTSModel(nn.Module):
                 If False, modifies the input state in-place. Defaults to True.
 
         Returns:
-            torch.Tensor: Generated audio tensor with shape [channels, samples]
+            torch.Tensor: Generated audio tensor with shape [samples]
                 at the model's sample rate (typically 24kHz). The audio is
                 normalized and ready for playback or saving.
                 You can get the sample rate from the `sample_rate` attribute.
@@ -525,6 +529,9 @@ class TTSModel(nn.Module):
 
             # Generate audio
             audio = model.generate_audio(voice_state, "Hello world!", frames_after_eos=2, copy_state=True)
+
+            # With pauses
+            audio = model.generate_audio(voice_state, "Hello. [pause:1s] How are you?")
 
             print(f"Generated audio shape: {audio.shape}")
             print(f"Audio duration: {audio.shape[-1] / model.sample_rate:.2f} seconds")
@@ -603,6 +610,12 @@ class TTSModel(nn.Module):
         if frames_after_eos is None:
             frames_after_eos = self.model_recommended_frames_after_eos
 
+        if has_pause_tags(text_to_generate):
+            yield from self._generate_audio_stream_paused(
+                model_state, text_to_generate, max_tokens, frames_after_eos, copy_state
+            )
+            return
+
         # This is a very simplistic way of handling long texts. We could do much better
         # by using teacher forcing, but it would be a bit slower.
         # TODO: add the teacher forcing method for long texts where we use the audio of one chunk
@@ -615,6 +628,57 @@ class TTSModel(nn.Module):
             remove_semicolons=self.remove_semicolons,
         )
 
+        for chunk in chunks:
+            text_to_generate, frames_after_eos_guess = prepare_text_prompt(
+                chunk, self.pad_with_spaces_for_short_inputs, self.remove_semicolons
+            )
+            frames_after_eos_guess += 2
+            effective_frames = (
+                frames_after_eos if frames_after_eos is not None else frames_after_eos_guess
+            )
+            yield from self._generate_audio_stream_short_text(
+                model_state=model_state,
+                text_to_generate=chunk,
+                frames_after_eos=effective_frames,
+                copy_state=copy_state,
+            )
+
+    @torch.no_grad
+    def _generate_audio_stream_paused(
+        self,
+        model_state: dict,
+        text_to_generate: str,
+        max_tokens: int,
+        frames_after_eos: int | None,
+        copy_state: bool,
+    ):
+        """Generate audio with [pause:Xs] tags by splitting text and inserting silence."""
+        pause_segments = parse_pause_tags(text_to_generate)
+        for segment, pause_after in pause_segments:
+            if segment:
+                yield from self._generate_audio_stream_for_segment(
+                    model_state=model_state,
+                    text_to_generate=segment,
+                    max_tokens=max_tokens,
+                    frames_after_eos=frames_after_eos,
+                    copy_state=copy_state,
+                )
+            if pause_after is not None:
+                silence_length = int(pause_after * self.sample_rate)
+                yield torch.zeros(silence_length, device=self.device)
+
+    @torch.no_grad
+    def _generate_audio_stream_for_segment(
+        self, model_state, text_to_generate, max_tokens, frames_after_eos, copy_state
+    ):
+        """Generate audio for a single text segment (used by pause handling)."""
+        chunks = split_into_best_sentences(
+            self.flow_lm.conditioner.tokenizer,
+            text_to_generate,
+            max_tokens,
+            self.pad_with_spaces_for_short_inputs,
+            remove_semicolons=self.remove_semicolons,
+        )
         for chunk in chunks:
             text_to_generate, frames_after_eos_guess = prepare_text_prompt(
                 chunk, self.pad_with_spaces_for_short_inputs, self.remove_semicolons
@@ -908,6 +972,47 @@ class TTSModel(nn.Module):
         gen_len_sec = token_count / self._TOKENS_PER_SECOND_ESTIMATE + self._GEN_SECONDS_PADDING
         frame_rate = self.config.mimi.frame_rate
         return math.ceil(gen_len_sec * frame_rate)
+
+
+_PAUSE_PATTERN = re.compile(r"\[pause:(\d+\.?\d*)\s*s\]|\[pause:(\d+)\s*ms\]", re.IGNORECASE)
+
+
+def parse_pause_tags(text: str) -> list[tuple[str, float | None]]:
+    """Split text on [pause:Xs] or [pause:Xms] markers.
+
+    Returns a list of (segment_text, pause_seconds_after) tuples.
+    pause_seconds_after is None for the last segment.
+
+    Example:
+        >>> parse_pause_tags("Hello. [pause:1s] World.")
+        [("Hello.", 1.0), ("World.", None)]
+
+        >>> parse_pause_tags("A [pause:500ms] B")
+        [("A", 0.5), ("B", None)]
+    """
+    parts = []
+    last_end = 0
+    for match in _PAUSE_PATTERN.finditer(text):
+        segment = text[last_end:match.start()].strip()
+        secs_val = match.group(1)
+        if secs_val is not None:
+            duration = float(secs_val)
+        else:
+            duration = float(match.group(2)) / 1000.0
+        if segment or last_end == 0:
+            parts.append((segment, duration))
+        last_end = match.end()
+    remainder = text[last_end:].strip()
+    if remainder:
+        parts.append((remainder, None))
+    elif parts:
+        parts[-1] = (parts[-1][0], None)
+    return parts if parts else [(text, None)]
+
+
+def has_pause_tags(text: str) -> bool:
+    """Check if text contains pause tags."""
+    return bool(_PAUSE_PATTERN.search(text))
 
 
 def prepare_text_prompt(

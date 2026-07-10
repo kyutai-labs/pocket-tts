@@ -28,8 +28,7 @@ from pocket_tts import TTSModel
 
 # Short, fixed text so runs are comparable across machines / PRs.
 DEFAULT_BENCH_TEXT = (
-    "The quick brown fox jumps over the lazy dog. "
-    "Benchmarking inference latency on CPU and GPU."
+    "The quick brown fox jumps over the lazy dog. Benchmarking inference latency on CPU and GPU."
 )
 DEFAULT_VOICE = "alba"
 

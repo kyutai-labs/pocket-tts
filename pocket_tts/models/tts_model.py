@@ -993,7 +993,7 @@ def parse_pause_tags(text: str) -> list[tuple[str, float | None]]:
     parts = []
     last_end = 0
     for match in _PAUSE_PATTERN.finditer(text):
-        segment = text[last_end:match.start()].strip()
+        segment = text[last_end : match.start()].strip()
         secs_val = match.group(1)
         if secs_val is not None:
             duration = float(secs_val)

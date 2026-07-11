@@ -131,8 +131,7 @@ def test_empty_string_raises(tokenizer):
 def test_decimals_are_not_split_on_period(tokenizer):
     """Decimal periods must not be treated as sentence boundaries (issue #162)."""
     text = (
-        "The average human body temperature is 98.6°F, "
-        "which is a common decimal used in medicine."
+        "The average human body temperature is 98.6°F, which is a common decimal used in medicine."
     )
     chunks = split_into_best_sentences(
         tokenizer, text, 50, pad_with_spaces_for_short_inputs=False, remove_semicolons=False

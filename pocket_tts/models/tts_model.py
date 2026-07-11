@@ -942,20 +942,48 @@ def prepare_text_prompt(
     return text, frames_after_eos_guess
 
 
-def _find_boundary_indices(list_of_tokens: list[int], boundary_tokens: list[int]) -> list[int]:
+def _is_decimal_period_boundary(
+    list_of_tokens: list[int], segment_start_idx: int, tokenizer
+) -> bool:
+    """Return True when segment_start_idx begins right after a decimal period."""
+    prefix = tokenizer.sp.decode(list_of_tokens[:segment_start_idx])
+    suffix = tokenizer.sp.decode(list_of_tokens[segment_start_idx:])
+    return (
+        len(prefix) >= 2
+        and prefix[-1] == "."
+        and prefix[-2].isdigit()
+        and bool(suffix)
+        and suffix[0].isdigit()
+    )
+
+
+def _find_boundary_indices(
+    list_of_tokens: list[int],
+    boundary_tokens: list[int],
+    tokenizer=None,
+    skip_decimal_periods: bool = False,
+) -> list[int]:
     """Find token indices where text should be split based on boundary tokens.
 
     Returns a list of boundary positions used to slice segments. Each consecutive
     pair (indices[i], indices[i+1]) defines one segment. The first element is
     always 0 and the last is always len(list_of_tokens).
     """
+    boundary_set = set(boundary_tokens)
     indices = [0]
     previous_was_boundary = False
     for idx, token in enumerate(list_of_tokens):
-        if token in boundary_tokens:
+        if token in boundary_set:
             previous_was_boundary = True
         else:
             if previous_was_boundary:
+                if (
+                    skip_decimal_periods
+                    and tokenizer is not None
+                    and _is_decimal_period_boundary(list_of_tokens, idx, tokenizer)
+                ):
+                    previous_was_boundary = False
+                    continue
                 indices.append(idx)
             previous_was_boundary = False
     indices.append(len(list_of_tokens))
@@ -990,7 +1018,9 @@ def split_into_best_sentences(
     list_of_tokens = tokens.tokens[0].tolist()
 
     _, *end_of_sentence_tokens = tokenizer(".!...?").tokens[0].tolist()
-    sentence_boundaries = _find_boundary_indices(list_of_tokens, end_of_sentence_tokens)
+    sentence_boundaries = _find_boundary_indices(
+        list_of_tokens, end_of_sentence_tokens, tokenizer, skip_decimal_periods=True
+    )
     nb_tokens_and_sentences = _segments_from_boundaries(
         list_of_tokens, sentence_boundaries, tokenizer
     )

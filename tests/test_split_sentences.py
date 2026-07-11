@@ -128,6 +128,64 @@ def test_empty_string_raises(tokenizer):
         )
 
 
+def test_decimals_are_not_split_on_period(tokenizer):
+    """Decimal periods must not be treated as sentence boundaries (issue #162)."""
+    text = (
+        "The average human body temperature is 98.6°F, "
+        "which is a common decimal used in medicine."
+    )
+    chunks = split_into_best_sentences(
+        tokenizer, text, 50, pad_with_spaces_for_short_inputs=False, remove_semicolons=False
+    )
+    assert len(chunks) == 1
+    assert "98.6" in chunks[0]
+    assert "98. 6" not in chunks[0]
+
+
+def test_multiple_decimals_in_one_sentence(tokenizer):
+    """Several decimals in one sentence should stay intact."""
+    text = "Pi is 3.14 and e is 2.718."
+    chunks = split_into_best_sentences(
+        tokenizer, text, 50, pad_with_spaces_for_short_inputs=False, remove_semicolons=False
+    )
+    assert len(chunks) == 1
+    assert "3.14" in chunks[0]
+    assert "2.718" in chunks[0]
+    assert "3. 14" not in chunks[0]
+    assert "2. 718" not in chunks[0]
+
+
+def test_decimal_followed_by_sentence_boundary(tokenizer):
+    """Decimals should be preserved while real sentence boundaries still split."""
+    text = (
+        "The average human body temperature is 98.6°F, "
+        "which is a common decimal used in medicine. "
+        "Pi is 3.14 and e is 2.718."
+    )
+    chunks = split_into_best_sentences(
+        tokenizer, text, 20, pad_with_spaces_for_short_inputs=False, remove_semicolons=False
+    )
+    assert len(chunks) >= 2
+    rejoined = " ".join(chunks)
+    assert "98.6" in rejoined
+    assert "3.14" in rejoined
+    assert "2.718" in rejoined
+    assert "98. 6" not in rejoined
+    assert "3. 14" not in rejoined
+
+
+def test_sentence_period_after_decimal_still_splits(tokenizer):
+    """A period ending a sentence after a decimal is still a boundary."""
+    text = "Version 2.0 is out. Pi is 3.14."
+    chunks = split_into_best_sentences(
+        tokenizer, text, 50, pad_with_spaces_for_short_inputs=False, remove_semicolons=False
+    )
+    assert len(chunks) == 1
+    assert "2.0" in chunks[0]
+    assert "3.14" in chunks[0]
+    assert "2. 0" not in chunks[0]
+
+
 def test_oversized_clause_without_commas_still_returns(tokenizer):
     """A long clause with no split points should still be returned (not dropped)."""
     # 20 words with no punctuation at all - no way to split

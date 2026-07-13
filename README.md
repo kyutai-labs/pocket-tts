@@ -120,10 +120,16 @@ uv add pocket-tts
 ### CPU-only installation
 
 On Linux, PyPI serves the CUDA build of PyTorch by default, so `pip install pocket-tts` also
-downloads the `nvidia-*` CUDA runtime wheels (~3 GB), even though pocket-tts runs on CPU.
-To get the CPU build instead (~200 MB, no NVIDIA packages), install from the PyTorch CPU index:
+downloads the `nvidia-*` CUDA runtime wheels, even though pocket-tts runs on CPU. This adds
+several gigabytes to the install (with torch 2.13, roughly 3 GB instead of 200 MB). Installing
+from the PyTorch CPU index pulls the CPU build and no NVIDIA packages:
 ```bash
 pip install pocket-tts --extra-index-url https://download.pytorch.org/whl/cpu
+```
+
+To run the CLI without installing, pass the same index to `uvx`:
+```bash
+uvx --index https://download.pytorch.org/whl/cpu pocket-tts generate
 ```
 
 With `uv`, declare the index explicitly in your project:

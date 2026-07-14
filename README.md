@@ -98,6 +98,12 @@ pocket-tts serve
 ```
 Navigate to `http://localhost:8000` to try the web interface, it's faster than the command line as the model is kept in memory between requests.
 
+The server also exposes an OpenAI API-compatible endpoint (`/v1/audio/speech`) and supports loading custom voices from a folder:
+```bash
+uvx pocket-tts serve --voices-folder ./my_voices
+```
+All `.wav`, `.mp3`, and `.safetensors` files in the folder are registered as voices (filename without extension = voice name).
+
 You can check out the [serve documentation](https://kyutai-labs.github.io/pocket-tts/CLI%20Commands/serve/) for more details and examples.
 
 ### The `export-voice` command

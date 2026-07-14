@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 from typing_extensions import Annotated
 
+from pocket_tts import openai_api
 from pocket_tts.data.audio import stream_audio_chunks
 from pocket_tts.default_parameters import (
     DEFAULT_EOS_THRESHOLD,
@@ -57,6 +58,7 @@ web_app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+web_app.include_router(openai_api.router)
 
 
 @web_app.get("/", response_class=HTMLResponse)
@@ -205,11 +207,33 @@ def serve(
     quantize: Annotated[
         bool, typer.Option(help="Apply int8 quantization to reduce memory usage")
     ] = False,
+    voices_folder: Annotated[
+        str | None,
+        typer.Option(
+            help="Path to a folder containing voice files (.wav, .mp3, .safetensors). "
+            "File names (without extension) become voice names for the /v1/audio/speech endpoint."
+        ),
+    ] = None,
 ):
     """Start the FastAPI server."""
 
     global tts_model
     tts_model = TTSModel.load_model(language=language, config=config, quantize=quantize)
+    openai_api.set_model(tts_model)
+
+    # Load custom voices from folder
+    if voices_folder is not None:
+        voices_dir = Path(voices_folder)
+        if not voices_dir.is_dir():
+            logger.error("Voices folder not found: %s", voices_folder)
+            raise typer.Exit(code=1)
+        custom_voices = {}
+        for ext in (".wav", ".mp3", ".safetensors"):
+            for filepath in voices_dir.glob(f"*{ext}"):
+                name = filepath.stem
+                custom_voices[name] = str(filepath)
+                logger.info("Registered custom voice '%s' from %s", name, filepath)
+        openai_api.set_custom_voices(custom_voices)
 
     uvicorn.run("pocket_tts.main:web_app", host=host, port=port, reload=reload)
 

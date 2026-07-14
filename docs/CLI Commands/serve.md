@@ -20,6 +20,8 @@ This starts a server on `http://localhost:8000` with the default voice model.
 - `--language`: Language for the TTS model, one of `'english_2026-01'`, `'english_2026-04'`, `'english'`, `'french_24l'`, `'german_24l'`, `'portuguese_24l'`, `'italian_24l'`, `'spanish_24l'` (default: `english`, which is the same model as `'english_2026-04'`). Incompatible with `--config`. The "24l" variants are bigger models, not distilled yet and here only as preview.
 - `--config`: Path to a custom config .yaml. Incompatible with `--language`.
 - `--quantize`: Use int8 quantization for the model (default: False). This can reduce memory usage and increase speed, with minimal impact on audio quality.
+- `--voices-folder PATH`: Path to a folder containing custom voice files (`.wav`, `.mp3`, `.safetensors`). File names without extension become voice names available on the `/v1/audio/speech` endpoint.
+
 ## Examples
 
 ### Basic Server
@@ -30,10 +32,15 @@ pocket-tts serve
 
 # Custom host and port
 pocket-tts serve --host "localhost" --port 8080
+
+# With custom voices folder
+pocket-tts serve --voices-folder ./my_voices
 ```
 
 ### Custom Language
+
 To select the default language model, pass `--language`:
+
 ```bash
 pocket-tts serve --language french_24l
 ```
@@ -50,6 +57,16 @@ Then, use the --config option to point to your newly created config.
 # Use a different config
 pocket-tts serve --config "C://pocket-tts/my_config.yaml"
 ```
+
+### Custom Voices Folder
+
+Place voice files in a folder and register them all at once:
+
+```bash
+pocket-tts serve --voices-folder ./my_voices
+```
+
+All `.wav`, `.mp3`, and `.safetensors` files in the folder are loaded as custom voices. The filename without extension becomes the voice name (e.g., `my_speaker.wav` → voice name `my_speaker`). Custom voices are available on the `/v1/audio/speech` [OpenAI-compatible endpoint](openai-api.md).
 
 ## Web Interface
 

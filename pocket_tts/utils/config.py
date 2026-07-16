@@ -116,6 +116,7 @@ class Config(StrictModel):
     pad_with_spaces_for_short_inputs: bool = False
     remove_semicolons: bool = False
     model_recommended_frames_after_eos: int | None = None
+    default_temperature: float = 0.7
 
 
 def load_config(yaml_path: str | Path) -> Config:

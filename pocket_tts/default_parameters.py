@@ -1,9 +1,5 @@
 DEFAULT_LANGUAGE = "english"
 DEFAULT_TEMPERATURE = 0.7
-# Human evals (pairwise, 400 judgments) preferred the English model at a lower
-# temperature: same intelligibility (WER), speaker similarity and speech rate,
-# noticeably better perceived quality.
-DEFAULT_TEMPERATURE_FOR_LANGUAGE = {"english": 0.3}
 DEFAULT_LSD_DECODE_STEPS = 1
 DEFAULT_NOISE_CLAMP = None
 DEFAULT_EOS_THRESHOLD = -4.0
@@ -59,13 +55,6 @@ def get_default_text_for_language(language: str | None) -> str:
         if language is not None and key in language:
             return text
     return DEFAULT_TEXT_FOR_LANGUAGE[DEFAULT_LANGUAGE]
-
-
-def get_default_temperature_for_language(language: str | None) -> float:
-    for key, temperature in DEFAULT_TEMPERATURE_FOR_LANGUAGE.items():
-        if language is not None and key in language:
-            return temperature
-    return DEFAULT_TEMPERATURE
 
 
 def get_default_voice_for_language(language: str | None) -> str:

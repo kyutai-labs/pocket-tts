@@ -2,6 +2,8 @@
 
 weights_path: hf://kyutai/pocket-tts/languages/english_2026-04/model.safetensors@19f95fe2df36e79fbd9f10008595cc4c977a0fcc
 weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/english_2026-04/model.safetensors@d29db7978e464fb90cb3359ee0c69a273b9142cc
+# Human evals preferred this model at 0.3 (equal WER/similarity/speech rate).
+default_temperature: 0.3
 
 
 flow_lm:

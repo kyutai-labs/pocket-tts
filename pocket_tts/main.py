@@ -262,8 +262,8 @@ def generate(
     temperature: Annotated[
         float | None,
         typer.Option(
-            help="Temperature for generation. Defaults to the model's tuned value "
-            "(0.3 for English, 0.7 for other languages)."
+            help="Temperature for generation. Defaults to the model's recommended "
+            "value from its config (0.3 for the English model, 0.7 otherwise)."
         ),
     ] = None,
     noise_clamp: Annotated[float, typer.Option(help="Noise clamp value")] = DEFAULT_NOISE_CLAMP,

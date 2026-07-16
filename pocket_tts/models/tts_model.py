@@ -25,8 +25,8 @@ from pocket_tts.default_parameters import (
     DEFAULT_LANGUAGE,
     DEFAULT_LSD_DECODE_STEPS,
     DEFAULT_NOISE_CLAMP,
-    DEFAULT_TEMPERATURE,
     MAX_TOKEN_PER_CHUNK,
+    get_default_temperature_for_language,
 )
 from pocket_tts.models.flow_lm import FlowLMModel
 from pocket_tts.models.mimi import MimiModel
@@ -234,7 +234,7 @@ class TTSModel(nn.Module):
         cls,
         language: str | None = None,
         config: str | Path | None = None,
-        temp: float | int = DEFAULT_TEMPERATURE,
+        temp: float | int | None = None,
         lsd_decode_steps: int = DEFAULT_LSD_DECODE_STEPS,
         noise_clamp: float | int | None = DEFAULT_NOISE_CLAMP,
         eos_threshold: float = DEFAULT_EOS_THRESHOLD,
@@ -253,7 +253,8 @@ class TTSModel(nn.Module):
                 If neither `config` nor `language` is provided, defaults to `"english", which is the same model as 'english_2026-04'`.
             config: A path to a custom YAML config file saved locally (e.g., `"C://pocket_tts/pocket_tts_config.yaml"`).
             temp: Sampling temperature for generation. Higher values produce more
-                diverse but potentially lower quality output.
+                diverse but potentially lower quality output. If None, defaults to
+                the language's tuned value (0.3 for English, 0.7 otherwise).
             lsd_decode_steps: Number of steps for Lagrangian Self Distillation
                 decoding. More steps can improve quality but increase computation.
             noise_clamp: Maximum value for noise sampling. If None, no clamping
@@ -292,6 +293,8 @@ class TTSModel(nn.Module):
             )
         if config is None and language is None:
             language = DEFAULT_LANGUAGE
+        if temp is None:
+            temp = get_default_temperature_for_language(language)
         if language is not None:
             if language == "french":
                 raise ValueError(

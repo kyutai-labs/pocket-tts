@@ -20,7 +20,6 @@ from pocket_tts.default_parameters import (
     DEFAULT_FRAMES_AFTER_EOS,
     DEFAULT_LSD_DECODE_STEPS,
     DEFAULT_NOISE_CLAMP,
-    DEFAULT_TEMPERATURE,
     MAX_TOKEN_PER_CHUNK,
     get_default_text_for_language,
     get_default_voice_for_language,
@@ -261,8 +260,12 @@ def generate(
         int, typer.Option(help="Number of generation steps")
     ] = DEFAULT_LSD_DECODE_STEPS,
     temperature: Annotated[
-        float, typer.Option(help="Temperature for generation")
-    ] = DEFAULT_TEMPERATURE,
+        float | None,
+        typer.Option(
+            help="Temperature for generation. Defaults to the model's tuned value "
+            "(0.3 for English, 0.7 for other languages)."
+        ),
+    ] = None,
     noise_clamp: Annotated[float, typer.Option(help="Noise clamp value")] = DEFAULT_NOISE_CLAMP,
     eos_threshold: Annotated[float, typer.Option(help="EOS threshold")] = DEFAULT_EOS_THRESHOLD,
     frames_after_eos: Annotated[

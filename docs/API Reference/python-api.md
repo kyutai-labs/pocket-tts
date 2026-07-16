@@ -37,14 +37,14 @@ The main class for text-to-speech generation.
 
 #### Class Methods
 
-##### `load_model(language=None, config=None, temp=0.7, lsd_decode_steps=1, noise_clamp=None, eos_threshold=-4.0, quantize=False)`
+##### `load_model(language=None, config=None, temp=None, lsd_decode_steps=1, noise_clamp=None, eos_threshold=-4.0, quantize=False)`
 
 Load and return a TTSModel instance with pre-trained weights.
 
 **Parameters:**
 - `language` (str | None): Name of built-in language config to load. Supported values: `"english_2026-01"`, `"english_2026-04"`, `"english"`, `"french_24l"`, `"german_24l"`, `"portuguese_24l"`, `"italian_24l"`, `"spanish_24l"`. If both `language` and `config` are omitted, defaults to `"english"`, which is the same model as `"english_2026-04"`. The "24l" variants are larger models that are not distilled yet and are here only as a preview.
 - `config` (str | None): Path to model config YAML file. Incompatible with `language`.
-- `temp` (float): Sampling temperature for generation (default: 0.7)
+- `temp` (float | None): Sampling temperature for generation. `None` uses the language's tuned default: 0.3 for English, 0.7 for other languages.
 - `lsd_decode_steps` (int): Number of generation steps (default: 1)
 - `noise_clamp` (float | None): Maximum value for noise sampling (default: None)
 - `eos_threshold` (float): Threshold for end-of-sequence detection (default: -4.0)

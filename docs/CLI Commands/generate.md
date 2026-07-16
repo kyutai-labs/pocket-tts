@@ -25,7 +25,7 @@ This will generate a WAV file `./tts_output.wav` with the default text and voice
 
 - `--config CONFIG_PATH`: Path to custom config.yaml (for loading local model files). Incompatible with `--language`.
 - `--lsd-decode-steps LSD_DECODE_STEPS`: Number of generation steps (default: 1)
-- `--temperature TEMPERATURE`: Temperature for generation (default: 0.7)
+- `--temperature TEMPERATURE`: Temperature for generation (default: the model's tuned value — 0.3 for English, 0.7 for other languages)
 - `--noise-clamp NOISE_CLAMP`: Noise clamp value (default: None)
 - `--eos-threshold EOS_THRESHOLD`: EOS threshold (default: -4.0)
 - `--frames-after-eos FRAMES_AFTER_EOS`: Number of frames to generate after EOS (default: None, auto-calculated based on the text length). Each frame is 80ms.

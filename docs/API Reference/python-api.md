@@ -157,7 +157,8 @@ print(f"Audio duration: {audio.shape[-1] / model.sample_rate:.2f} seconds")
 
 Generate audio streaming chunks from text input.
 
-**Parameters:** Same as `generate_audio()`
+**Parameters:** Same as `generate_audio()`, plus:
+- `stop` (threading.Event | None): Optional event for cancelling the generation. Once set, no new frames are generated and the stream ends early.
 
 **Yields:**
 - `torch.Tensor`: Audio chunks with shape [samples]

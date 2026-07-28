@@ -107,8 +107,15 @@ class StreamingWAVWriter:
         self.wave_writer.writeframesraw(bytes(num_silence_samples * 2))
 
         if self.wave_writer:
-            # do not update the header for unseekable streams
-            self.wave_writer._patchheader = lambda: None
+            # On seekable streams (files), let close() patch the header so
+            # the frame count matches the actual data. On unseekable streams
+            # (stdout, HTTP), _patchheader would crash on seek(), so suppress
+            # it there. Players that read data-chunk size get the right
+            # duration either way.
+            try:
+                self.output_stream.tell()
+            except (OSError, AttributeError, ValueError):
+                self.wave_writer._patchheader = lambda: None
             self.wave_writer.close()
 
 

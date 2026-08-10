@@ -20,27 +20,55 @@ logger = logging.getLogger(__name__)
 FIRST_CHUNK_LENGTH_SECONDS = float(os.environ.get("FIRST_CHUNK_LENGTH_SECONDS", "0"))
 
 
-def audio_read(filepath: str | Path) -> tuple[torch.Tensor, int]:
-    """Read audio file. WAV uses built-in wave module; other formats require soundfile."""
-    filepath = Path(filepath)
+# Integer PCM sample widths, in bytes, that map directly onto a numpy dtype.
+# 24-bit (3 bytes) has no numpy equivalent and is handled separately.
+_PCM_DTYPES = {1: np.uint8, 2: "<i2", 4: "<i4"}
 
-    if filepath.suffix.lower() == ".wav":
-        # Use built-in wave module for WAV files
-        with wave.open(str(filepath), "rb") as wav_file:
-            sample_rate = wav_file.getframerate()
-            n_channels = wav_file.getnchannels()
-            raw_data = wav_file.readframes(-1)
-            samples = np.frombuffer(raw_data, dtype=np.int16).astype(np.float32) / 32768.0
-            if n_channels > 1:
-                samples = samples.reshape(-1, n_channels).mean(axis=1)
-            return torch.from_numpy(samples).unsqueeze(0), sample_rate
 
-    # For non-WAV formats, use soundfile (optional dependency)
+def _decode_pcm(raw_data: bytes, sample_width: int) -> np.ndarray:
+    """Decode little-endian integer PCM bytes to float32 samples in [-1, 1]."""
+    usable = len(raw_data) - len(raw_data) % sample_width
+    raw_data = raw_data[:usable]
+
+    if sample_width == 3:
+        # No 24-bit numpy dtype exists, so widen each sample to 32 bits by
+        # padding the low-order byte, which preserves both value and sign.
+        as_bytes = np.frombuffer(raw_data, dtype=np.uint8).reshape(-1, 3)
+        widened = np.zeros((as_bytes.shape[0], 4), dtype=np.uint8)
+        widened[:, 1:] = as_bytes
+        samples = widened.view("<i4").reshape(-1)
+        return samples.astype(np.float32) / 2147483648.0
+
+    samples = np.frombuffer(raw_data, dtype=_PCM_DTYPES[sample_width])
+    if sample_width == 1:
+        # 8-bit WAV is the odd one out: unsigned, centered on 128.
+        return (samples.astype(np.float32) - 128.0) / 128.0
+    return samples.astype(np.float32) / float(2 ** (8 * sample_width - 1))
+
+
+def _read_wav_with_stdlib(filepath: Path) -> tuple[torch.Tensor, int]:
+    """Read an integer-PCM WAV file using the standard library only."""
+    with wave.open(str(filepath), "rb") as wav_file:
+        sample_rate = wav_file.getframerate()
+        n_channels = wav_file.getnchannels()
+        sample_width = wav_file.getsampwidth()
+        if sample_width not in (1, 2, 3, 4):
+            raise wave.Error(f"unsupported sample width: {sample_width} bytes")
+        raw_data = wav_file.readframes(-1)
+
+    samples = _decode_pcm(raw_data, sample_width)
+    if n_channels > 1:
+        samples = samples[: len(samples) - len(samples) % n_channels]
+        samples = samples.reshape(-1, n_channels).mean(axis=1)
+    return torch.from_numpy(samples).unsqueeze(0), sample_rate
+
+
+def _read_with_soundfile(filepath: Path) -> tuple[torch.Tensor, int]:
     try:
         import soundfile as sf
     except ImportError as e:
         raise ImportError(
-            "soundfile is required to read non-WAV audio files. "
+            f"soundfile is required to read {filepath.name}. "
             "Install with: `pip install soundfile` or `uvx --with soundfile`"
         ) from e
 
@@ -50,6 +78,21 @@ def audio_read(filepath: str | Path) -> tuple[torch.Tensor, int]:
     else:
         wav = torch.from_numpy(data.mean(axis=1)).unsqueeze(0)
     return wav, sample_rate
+
+
+def audio_read(filepath: str | Path) -> tuple[torch.Tensor, int]:
+    """Read audio file. WAV uses built-in wave module; other formats require soundfile."""
+    filepath = Path(filepath)
+
+    if filepath.suffix.lower() == ".wav":
+        try:
+            return _read_wav_with_stdlib(filepath)
+        except wave.Error:
+            # The stdlib only handles plain integer PCM. Float-encoded and
+            # WAVE_FORMAT_EXTENSIBLE files still work through soundfile.
+            logger.debug("Falling back to soundfile for %s", filepath)
+
+    return _read_with_soundfile(filepath)
 
 
 class StreamingWAVWriter:

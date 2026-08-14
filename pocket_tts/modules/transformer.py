@@ -3,9 +3,9 @@ import torch.nn as nn
 from torch.nn import functional as F
 from typing_extensions import Self
 
+from pocket_tts.modules.attention import StreamingMultiheadAttention
 from pocket_tts.modules.layer_scale import LayerScale
 from pocket_tts.modules.rope import RotaryEmbedding
-from pocket_tts.modules.attention import StreamingMultiheadAttention
 from pocket_tts.utils.config import FlowLMTransformerConfig
 
 

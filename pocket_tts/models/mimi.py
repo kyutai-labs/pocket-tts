@@ -5,7 +5,7 @@ from torch import nn
 
 from pocket_tts.modules.conv import pad_for_conv1d
 from pocket_tts.modules.dummy_quantizer import DummyQuantizer
-from pocket_tts.modules.mimi_transformer import ProjectedTransformer
+from pocket_tts.modules.transformer import ProjectedTransformer
 from pocket_tts.modules.resample import ConvDownsample1d, ConvTrUpsample1d
 from pocket_tts.modules.seanet import SEANetDecoder, SEANetEncoder
 

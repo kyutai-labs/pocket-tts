@@ -30,7 +30,7 @@ from pocket_tts.default_parameters import (
 )
 from pocket_tts.models.flow_lm import FlowLMModel
 from pocket_tts.models.mimi import MimiModel
-from pocket_tts.modules import mimi_transformer
+from pocket_tts.modules import transformer
 from pocket_tts.modules.dummy_quantizer import DummyQuantizer
 from pocket_tts.modules.seanet import SEANetDecoder, SEANetEncoder
 from pocket_tts.modules.stateful_module import StatefulModule, increment_steps, init_states
@@ -167,8 +167,8 @@ class TTSModel(nn.Module):
         encoder = SEANetEncoder(**mimi_config["seanet"])
         decoder = SEANetDecoder(**mimi_config["seanet"])
 
-        encoder_transformer = mimi_transformer.ProjectedTransformer(**mimi_config["transformer"])
-        decoder_transformer = mimi_transformer.ProjectedTransformer(**mimi_config["transformer"])
+        encoder_transformer = transformer.ProjectedTransformer(**mimi_config["transformer"])
+        decoder_transformer = transformer.ProjectedTransformer(**mimi_config["transformer"])
         quantizer = DummyQuantizer(**mimi_config["quantizer"])
 
         tts_model.mimi = MimiModel(

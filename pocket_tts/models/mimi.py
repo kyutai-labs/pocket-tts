@@ -87,7 +87,9 @@ class MimiModel(nn.Module):
         raise NotImplementedError()
 
     def decode_from_latent(self, latent: torch.Tensor, mimi_state) -> torch.Tensor:
-        latent = self.quantizer(latent)
+        """Decodes [B, T, C] quantizer-space latents (as produced by
+        encode_to_latent or the flow LM) back to audio."""
+        latent = self.quantizer(latent.transpose(-1, -2))
         emb = self._to_encoder_framerate(latent, mimi_state)
         (emb,) = self.decoder_transformer(emb, mimi_state)
         out = self.decoder(emb, mimi_state)
@@ -101,7 +103,7 @@ class MimiModel(nn.Module):
             x (torch.Tensor): Float tensor of shape [B, C, T].
 
         Returns:
-            Unquantized embeddings.
+            Unquantized embeddings of shape [B, T, C].
         """
         assert x.dim() == 3, (
             f"CompressionModel._encode_to_unquantized_latent expects audio of shape [B, C, T] but got {x.shape}"
@@ -117,4 +119,4 @@ class MimiModel(nn.Module):
 
         (emb,) = self.encoder_transformer(emb, model_state=None)
         emb = self._to_framerate(emb)
-        return emb
+        return emb.transpose(-1, -2)

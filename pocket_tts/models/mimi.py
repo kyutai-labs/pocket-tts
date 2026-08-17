@@ -87,6 +87,7 @@ class MimiModel(nn.Module):
         raise NotImplementedError()
 
     def decode_from_latent(self, latent: torch.Tensor, mimi_state) -> torch.Tensor:
+        latent = self.quantizer(latent)
         emb = self._to_encoder_framerate(latent, mimi_state)
         (emb,) = self.decoder_transformer(emb, mimi_state)
         out = self.decoder(emb, mimi_state)

@@ -372,11 +372,7 @@ class TTSModel(nn.Module):
 
     def _decode_and_dump(self, encoded: torch.Tensor, filename: str):
         mimi_state = init_states(self.mimi, batch_size=1, sequence_length=10000)
-        if encoded.shape[1] == self.mimi.quantizer.dimension:
-            latent_to_decode = self.mimi.quantizer(encoded)
-        else:
-            latent_to_decode = encoded
-        resored_audio = self.mimi.decode_from_latent(latent_to_decode, mimi_state)
+        resored_audio = self.mimi.decode_from_latent(encoded, mimi_state)
         scipy.io.wavfile.write(filename, self.sample_rate, resored_audio.numpy())
         logger.info("Saved restored audio from Mimi encoding to %s for debugging", filename)
 
@@ -452,10 +448,9 @@ class TTSModel(nn.Module):
                     break
                 mimi_decoding_input = latent * self.flow_lm.emb_std + self.flow_lm.emb_mean
                 transposed = mimi_decoding_input.transpose(-1, -2)
-                quantized = self.mimi.quantizer(transposed)
 
                 t = time.monotonic()
-                audio_frame = self.mimi.decode_from_latent(quantized, mimi_state)
+                audio_frame = self.mimi.decode_from_latent(transposed, mimi_state)
                 increment_steps(self.mimi, mimi_state, increment=mimi_steps_per_latent)
                 audio_frame_duration = audio_frame.shape[2] / self.config.mimi.sample_rate
                 # We could log the timings here.

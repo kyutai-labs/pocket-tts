@@ -3,6 +3,7 @@ import logging
 import math
 import os
 import queue
+import re
 import statistics
 import threading
 import time
@@ -26,6 +27,8 @@ from pocket_tts.default_parameters import (
     DEFAULT_LANGUAGE,
     DEFAULT_LSD_DECODE_STEPS,
     DEFAULT_NOISE_CLAMP,
+    DEFAULT_PAUSE_SECONDS,
+    MAX_PAUSE_SECONDS,
     MAX_TOKEN_PER_CHUNK,
 )
 from pocket_tts.models.flow_lm import FlowLMModel
@@ -601,32 +604,47 @@ class TTSModel(nn.Module):
         if frames_after_eos is None:
             frames_after_eos = self.model_recommended_frames_after_eos
 
-        # This is a very simplistic way of handling long texts. We could do much better
-        # by using teacher forcing, but it would be a bit slower.
-        # TODO: add the teacher forcing method for long texts where we use the audio of one chunk
-        # as conditioning for the next chunk.
-        chunks = split_into_best_sentences(
-            self.flow_lm.conditioner.tokenizer,
-            text_to_generate,
-            max_tokens,
-            self.pad_with_spaces_for_short_inputs,
-            remove_semicolons=self.remove_semicolons,
-        )
+        # Pause markers are handled before anything else, because
+        # prepare_text_prompt would otherwise capitalise and punctuate them.
+        parts = split_on_pauses(text_to_generate)
+        if not parts:
+            raise ValueError("Text prompt cannot be empty")
 
-        for chunk in chunks:
-            text_to_generate, frames_after_eos_guess = prepare_text_prompt(
-                chunk, self.pad_with_spaces_for_short_inputs, self.remove_semicolons
+        for part in parts:
+            if isinstance(part, float):
+                yield self._silence(part)
+                continue
+
+            # This is a very simplistic way of handling long texts. We could do much better
+            # by using teacher forcing, but it would be a bit slower.
+            # TODO: add the teacher forcing method for long texts where we use the audio of one
+            # chunk as conditioning for the next chunk.
+            chunks = split_into_best_sentences(
+                self.flow_lm.conditioner.tokenizer,
+                part,
+                max_tokens,
+                self.pad_with_spaces_for_short_inputs,
+                remove_semicolons=self.remove_semicolons,
             )
-            frames_after_eos_guess += 2
-            effective_frames = (
-                frames_after_eos if frames_after_eos is not None else frames_after_eos_guess
-            )
-            yield from self._generate_audio_stream_short_text(
-                model_state=model_state,
-                text_to_generate=text_to_generate,
-                frames_after_eos=effective_frames,
-                copy_state=copy_state,
-            )
+
+            for chunk in chunks:
+                prompt, frames_after_eos_guess = prepare_text_prompt(
+                    chunk, self.pad_with_spaces_for_short_inputs, self.remove_semicolons
+                )
+                frames_after_eos_guess += 2
+                effective_frames = (
+                    frames_after_eos if frames_after_eos is not None else frames_after_eos_guess
+                )
+                yield from self._generate_audio_stream_short_text(
+                    model_state=model_state,
+                    text_to_generate=prompt,
+                    frames_after_eos=effective_frames,
+                    copy_state=copy_state,
+                )
+
+    def _silence(self, seconds: float) -> torch.Tensor:
+        """Silent audio, shaped like the chunks generate_audio_stream yields."""
+        return torch.zeros(int(round(seconds * self.sample_rate)), dtype=torch.float32)
 
     @torch.no_grad
     def _generate_audio_stream_short_text(
@@ -907,6 +925,126 @@ class TTSModel(nn.Module):
         gen_len_sec = token_count / self._TOKENS_PER_SECOND_ESTIMATE + self._GEN_SECONDS_PADDING
         frame_rate = self.config.mimi.frame_rate
         return math.ceil(gen_len_sec * frame_rate)
+
+
+# SSML <break strength="..."/> values, in seconds. The spec defines the names
+# but not the durations; these are the conventional mappings used by other
+# engines.
+SSML_BREAK_STRENGTHS = {
+    "none": 0.0,
+    "x-weak": 0.1,
+    "weak": 0.25,
+    "medium": 0.5,
+    "strong": 0.75,
+    "x-strong": 1.0,
+}
+
+# Either the shorthand "[pause]" / "[pause:1.5]" or an SSML "<break .../>".
+PAUSE_PATTERN = re.compile(
+    r"""
+      \[\s*pause\s*(?::\s*(?P<shorthand>[0-9]*\.?[0-9]+)\s*)?\]
+    | <\s*break\b(?P<attrs>[^>]*?)/?\s*>
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+_SPEAK_TAG = re.compile(r"</?\s*speak\b[^>]*>", re.IGNORECASE)
+_CLOSING_BREAK = re.compile(r"</\s*break\s*>", re.IGNORECASE)
+_ANY_TAG = re.compile(r"<\s*/?\s*([a-zA-Z][\w-]*)\b[^>]*>")
+_BREAK_TIME = re.compile(r"""time\s*=\s*["']?\s*([0-9]*\.?[0-9]+)\s*(ms|s)\b""", re.IGNORECASE)
+_BREAK_STRENGTH = re.compile(r"""strength\s*=\s*["']?\s*([a-zA-Z-]+)""", re.IGNORECASE)
+
+
+def _break_seconds(attrs: str, default_seconds: float) -> float:
+    """Read the duration out of a <break> tag's attributes."""
+    time_match = _BREAK_TIME.search(attrs)
+    if time_match is not None:
+        value = float(time_match.group(1))
+        return value / 1000.0 if time_match.group(2).lower() == "ms" else value
+
+    strength_match = _BREAK_STRENGTH.search(attrs)
+    if strength_match is not None:
+        name = strength_match.group(1).lower()
+        if name not in SSML_BREAK_STRENGTHS:
+            raise ValueError(
+                f"Unknown <break strength='{name}'>. "
+                f"Valid values: {', '.join(SSML_BREAK_STRENGTHS)}."
+            )
+        return SSML_BREAK_STRENGTHS[name]
+
+    return default_seconds
+
+
+def split_on_pauses(
+    text: str,
+    default_seconds: float = DEFAULT_PAUSE_SECONDS,
+    max_seconds: float = MAX_PAUSE_SECONDS,
+) -> list[str | float]:
+    """Split text on pause markers into speakable text and silences.
+
+    Two syntaxes are accepted, and they can be mixed freely:
+
+    ==========================  ========================================
+    ``[pause]``                 ``default_seconds`` of silence
+    ``[pause:1.5]``             1.5 seconds
+    ``<break time="500ms"/>``   0.5 seconds (SSML)
+    ``<break time="2s"/>``      2 seconds (SSML)
+    ``<break strength="weak"/>``  see :data:`SSML_BREAK_STRENGTHS`
+    ``<break/>``                ``default_seconds``
+    ==========================  ========================================
+
+    A surrounding ``<speak>`` wrapper is stripped, since real SSML documents
+    have one. Any *other* SSML tag raises ``ValueError`` rather than being
+    dropped or read aloud - pocket-tts cannot do prosody, emphasis or phonemes,
+    and silently ignoring those tags would produce quietly wrong output.
+
+    Durations are clamped to ``max_seconds``.
+
+    Returns a list whose items are either ``str`` (speak this) or ``float``
+    (stay silent for this many seconds). Text with no markers returns a
+    single-element list, so existing callers are unaffected.
+
+        >>> split_on_pauses("Ready. [pause:1.5] Go.")
+        ['Ready. ', 1.5, ' Go.']
+        >>> split_on_pauses('Ready. <break time="1.5s"/> Go.')
+        ['Ready. ', 1.5, ' Go.']
+    """
+    text = _SPEAK_TAG.sub("", text)
+    text = _CLOSING_BREAK.sub("", text)
+
+    unsupported = {
+        m.group(1).lower() for m in _ANY_TAG.finditer(text) if m.group(1).lower() != "break"
+    }
+    if unsupported:
+        listed = ", ".join(f"<{name}>" for name in sorted(unsupported))
+        raise ValueError(
+            f"Unsupported SSML tag(s): {listed}. Pocket TTS supports <break> only "
+            f"(and an optional <speak> wrapper); remove the others."
+        )
+
+    parts: list[str | float] = []
+    cursor = 0
+
+    for match in PAUSE_PATTERN.finditer(text):
+        before = text[cursor : match.start()]
+        if before.strip():
+            parts.append(before)
+
+        if match.group("shorthand") is not None:
+            seconds = float(match.group("shorthand"))
+        elif match.group("attrs") is not None:
+            seconds = _break_seconds(match.group("attrs"), default_seconds)
+        else:
+            seconds = default_seconds
+
+        parts.append(min(max(seconds, 0.0), max_seconds))
+        cursor = match.end()
+
+    tail = text[cursor:]
+    if tail.strip():
+        parts.append(tail)
+
+    return parts
 
 
 def prepare_text_prompt(

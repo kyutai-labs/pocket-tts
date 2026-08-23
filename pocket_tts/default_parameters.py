@@ -7,6 +7,12 @@ DEFAULT_FRAMES_AFTER_EOS = None
 # TODO: make this dynamic since english_2026-04 supports bigger chunks
 MAX_TOKEN_PER_CHUNK = 50
 
+# Pause markers in the text input, e.g. "Wait. [pause:1.5] Now listen."
+# A bare "[pause]" uses DEFAULT_PAUSE_SECONDS. Durations are clamped to
+# MAX_PAUSE_SECONDS so a typo cannot generate hours of silence.
+DEFAULT_PAUSE_SECONDS = 0.5
+MAX_PAUSE_SECONDS = 10.0
+
 DEFAULT_TEXT_FOR_LANGUAGE = {
     "english": (
         "Hello world. I am Kyutai's Pocket TTS. "

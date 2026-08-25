@@ -14,6 +14,10 @@ Supports Python 3.10, 3.11, 3.12, 3.13 and 3.14. Requires PyTorch 2.5+. Does not
 [📄 Paper](https://arxiv.org/abs/2509.06926) | 
 [📚 Documentation](https://kyutai-labs.github.io/pocket-tts/)
 
+> [!NOTE]
+> **New (August 2026):** We've released the training code! Check out [`training/`](https://github.com/kyutai-labs/pocket-tts/blob/main/training/README.md) to start training your own models.
+> Open a PR to add your model to the [Models trained by the community](#models-trained-by-the-community) section.
+
 
 ## Main takeaways
 * Runs on CPU
@@ -255,7 +259,14 @@ or with `hf://...`
 uvx pocket-tts generate --config hf://user/repo/config_file.yaml@commit_hash
 ```
 
-- Be the first to add your model here! Head to the [training readme](https://github.com/kyutai-labs/pocket-tts/blob/main/training/README.md) to get started!
+### List of community-trained models
+
+- [pocket-tts-czech](https://huggingface.co/vvolhejn/pocket-tts-czech) by @vvolhejn (trained internally at Kyutai):
+```bash
+uvx pocket-tts generate --config hf://vvolhejn/pocket-tts-czech/czech.yaml@7b7760dd0fe994a0800f2fdbc837dc4b8f219d1c
+```
+
+Want your model here? Head to the [training Readme](https://github.com/kyutai-labs/pocket-tts/blob/main/training/README.md) to get started!
 
 ## Projects using Pocket TTS
 

@@ -243,6 +243,8 @@ uvx pocket-tts generate --config https://raw.githubusercontent.com/kyutai-labs/p
 
 It also works with huggingface urls like `hf://kyutai/pocket-tts/config/english_2026-04.yaml` or local paths like `./english_2026-04.yaml`.
 
+The pre-made voices listed above are embeddings precomputed with our released weights, so they are not available for community models. With `--config`, `--voice` defaults to [alba's audio file](https://huggingface.co/kyutai/tts-voices/blob/main/alba-mackenna/casual.wav), which any model can clone. Pass your own audio file to `--voice` to use another voice.
+
 We recommend inserting the commit hash somehow in the url to avoid breaking changes by the model authors. For example:
 
 ```bash

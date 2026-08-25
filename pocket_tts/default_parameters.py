@@ -1,3 +1,5 @@
+from pocket_tts.utils.utils import _ORIGINS_OF_PREDEFINED_VOICES
+
 DEFAULT_LANGUAGE = "english"
 DEFAULT_TEMPERATURE = 0.7
 DEFAULT_SAMPLER_DECODE_STEPS = 1
@@ -48,6 +50,10 @@ DEFAULT_VOICE_FOR_LANGUAGE = {
     "french": "estelle",
 }
 DEFAULT_VOICE_FALLBACK = "alba"
+# Predefined voices are states precomputed with the released weights of a language model,
+# so neither a custom config nor a training checkpoint can use them. For those we default
+# to the audio file behind the fallback voice: any model can clone it.
+DEFAULT_VOICE_FOR_CUSTOM_MODEL = _ORIGINS_OF_PREDEFINED_VOICES[DEFAULT_VOICE_FALLBACK]
 
 
 def get_default_text_for_language(language: str | None) -> str:
@@ -57,7 +63,16 @@ def get_default_text_for_language(language: str | None) -> str:
     return DEFAULT_TEXT_FOR_LANGUAGE[DEFAULT_LANGUAGE]
 
 
-def get_default_voice_for_language(language: str | None) -> str:
+def get_default_voice_for_language(
+    language: str | None, config: str | None = None, checkpoint: str | None = None
+) -> str:
+    """The voice to use when the user didn't pick one.
+
+    `config` and `checkpoint` both mean custom weights, which cannot use the predefined
+    voices, hence the audio file instead of the voice name.
+    """
+    if config is not None or checkpoint is not None:
+        return DEFAULT_VOICE_FOR_CUSTOM_MODEL
     for key, voice in DEFAULT_VOICE_FOR_LANGUAGE.items():
         if language is not None and key in language:
             return voice

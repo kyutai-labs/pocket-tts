@@ -41,6 +41,8 @@ cli_app = typer.Typer(
 
 # Global model instance
 tts_model: TTSModel | None = None
+# Voice served when a request doesn't specify one, resolved from the `serve` options.
+default_voice: str | None = None
 
 web_app = FastAPI(
     title="Kyutai Pocket TTS API", description="Text-to-Speech generation API", version="1.0.0"
@@ -135,7 +137,7 @@ def text_to_speech(
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
     if voice_url is None and voice_wav is None:
-        voice_url = get_default_voice_for_language(str(tts_model.origin))
+        voice_url = default_voice
 
     if voice_url is not None and voice_wav is not None:
         raise HTTPException(status_code=400, detail="Cannot provide both voice_url and voice_wav")
@@ -207,8 +209,9 @@ def serve(
 ):
     """Start the FastAPI server."""
 
-    global tts_model
+    global tts_model, default_voice
     tts_model = TTSModel.load_model(language=language, config=config, quantize=quantize)
+    default_voice = get_default_voice_for_language(language, config)
 
     uvicorn.run("pocket_tts.main:web_app", host=host, port=port, reload=reload)
 
@@ -228,7 +231,9 @@ def generate(
                 "Path to audio conditioning file (voice to clone). "
                 "Defaults to a built-in voice chosen from the language: "
                 "'giovanni' for italian, 'lola' for spanish, 'juergen' for german, "
-                "'rafael' for portuguese, 'estelle' for french, 'alba' otherwise."
+                "'rafael' for portuguese, 'estelle' for french, 'alba' otherwise. "
+                "With the config or checkpoint argument, defaults to alba's audio file, "
+                "which any model can clone."
             ),
             show_default=False,
         ),
@@ -317,7 +322,7 @@ def generate(
         tts_model.to(device)
 
         if voice is None:
-            voice = get_default_voice_for_language(language)
+            voice = get_default_voice_for_language(language, config, checkpoint)
         model_state_for_voice = tts_model.get_state_for_audio_prompt(voice)
         # Stream audio generation directly to file or stdout
         audio_chunks = tts_model.generate_audio_stream(

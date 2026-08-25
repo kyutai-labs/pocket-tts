@@ -42,7 +42,7 @@ def test_load_model():
 
     # Load with custom parameters
     model = TTSModel.load_model(
-        language="english_2026-01", temp=0.5, lsd_decode_steps=5, eos_threshold=-3.0
+        language="english_2026-01", temp=0.5, sampler_decode_steps=5, eos_threshold=-3.0
     )
 
 

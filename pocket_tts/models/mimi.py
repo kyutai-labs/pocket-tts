@@ -120,3 +120,27 @@ class MimiModel(nn.Module):
         (emb,) = self.encoder_transformer(emb, model_state=None)
         emb = self._to_framerate(emb)
         return emb.transpose(-1, -2)
+
+
+def build_mimi(config) -> MimiModel:
+    """MimiModel from a pocket-tts config's `mimi` section."""
+    from pocket_tts.modules import transformer
+    from pocket_tts.modules.dummy_quantizer import DummyQuantizer
+    from pocket_tts.modules.seanet import SEANetDecoder, SEANetEncoder
+
+    mimi_config = config.model_dump()
+    encoder = SEANetEncoder(**mimi_config["seanet"])
+    decoder = SEANetDecoder(**mimi_config["seanet"])
+    return MimiModel(
+        encoder,
+        decoder,
+        DummyQuantizer(**mimi_config["quantizer"]),
+        channels=mimi_config["channels"],
+        sample_rate=mimi_config["sample_rate"],
+        frame_rate=mimi_config["frame_rate"],
+        encoder_frame_rate=mimi_config["sample_rate"] / encoder.hop_length,
+        inner_dim=mimi_config["inner_dim"],
+        outer_dim=mimi_config["outer_dim"],
+        encoder_transformer=transformer.ProjectedTransformer(**mimi_config["transformer"]),
+        decoder_transformer=transformer.ProjectedTransformer(**mimi_config["transformer"]),
+    )

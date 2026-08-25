@@ -5,6 +5,8 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict
 
+from pocket_tts.utils.utils import download_if_necessary
+
 CONFIGS_DIR = Path(__file__).parent.parent / "config"
 
 
@@ -16,6 +18,9 @@ class StrictModel(BaseModel):
 class FlowConfig(StrictModel):
     dim: int
     depth: int
+    # "lsd" (2 time conditions, 1-step decode) or "flow_matching" (1 time
+    # condition, Euler integration; needs >= 16 decode steps).
+    type: str = "lsd"
 
 
 # Transformer configuration for FlowLM
@@ -120,7 +125,7 @@ class Config(StrictModel):
 
 
 def load_config(yaml_path: str | Path) -> Config:
-    yaml_path = Path(yaml_path)
+    yaml_path = download_if_necessary(str(yaml_path))
 
     if not yaml_path.exists():
         if yaml_path.is_relative_to(CONFIGS_DIR):

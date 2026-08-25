@@ -29,8 +29,11 @@ quantize = ["torchao>=0.16.0"]
 
 
 [dependency-groups]
+# Also covers training the models in training/ (see training/README.md) and
+# scoring with training/eval/librispeech.py. Inference needs none of this.
 dev = [
     "coverage>=7.6.12",
+    "jiwer>=3.0",
     "line-profiler>=5.0.0",
     "mkdocs>=1.6.1",
     "mkdocs-autolinks-plugin>=0.7.1",
@@ -38,19 +41,17 @@ dev = [
     "mkdocstrings-python>=2.0.1",
     "pytest>=9.0.2",
     "pytest-xdist>=3.8.0",
+    "pyyaml>=6.0",
     "soundfile",
+    "sphn>=0.1.4",
+    "torchaudio",
+    # scripts/align_data.py: wav2vec2 CTC forced alignment of the manifests
+    "transformers>=4.40",
+    "tqdm>=4.60",
+    "utmos-pytorch>=0.1.0",
+    "whisper-normalizer>=0.0.10",
 ]
 
-
-[tool.uv.sources]
-torch = [
-    { index = "pytorch-cpu" },
-]
-
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-explicit = true
 
 [tool.ruff]
 line-length = 100

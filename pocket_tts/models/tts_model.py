@@ -24,15 +24,12 @@ from pocket_tts.data.audio_utils import convert_audio
 from pocket_tts.default_parameters import (
     DEFAULT_EOS_THRESHOLD,
     DEFAULT_LANGUAGE,
-    DEFAULT_LSD_DECODE_STEPS,
     DEFAULT_NOISE_CLAMP,
+    DEFAULT_SAMPLER_DECODE_STEPS,
     MAX_TOKEN_PER_CHUNK,
 )
 from pocket_tts.models.flow_lm import FlowLMModel
-from pocket_tts.models.mimi import MimiModel
-from pocket_tts.modules import transformer
-from pocket_tts.modules.dummy_quantizer import DummyQuantizer
-from pocket_tts.modules.seanet import SEANetDecoder, SEANetEncoder
+from pocket_tts.models.mimi import build_mimi
 from pocket_tts.modules.stateful_module import StatefulModule, increment_steps, init_states
 from pocket_tts.quantization import RECOMMENDED_CONFIG, apply_dynamic_int8
 from pocket_tts.utils.config import CONFIGS_DIR, Config, load_config
@@ -44,10 +41,23 @@ from pocket_tts.utils.utils import (
     get_predefined_voice,
     size_of_dict,
 )
-from pocket_tts.utils.weights_loading import get_flow_lm_state_dict, get_mimi_state_dict
+from pocket_tts.utils.weights_loading import (
+    get_flow_lm_state_dict,
+    get_mimi_state_dict,
+    get_training_checkpoint_state_dicts,
+)
 
 torch.set_num_threads(1)
 logger = logging.getLogger(__name__)
+
+
+def stamp_state_names(tts_model) -> None:
+    """StatefulModules find their slice of the state dict by absolute name."""
+    for top_module in (tts_model.flow_lm, tts_model.mimi):
+        for module_name, module in top_module.named_modules():
+            if isinstance(module, StatefulModule):
+                module._module_absolute_name = module_name
+
 
 VOICE_CLONING_UNSUPPORTED = (
     f"We could not download the weights for the model with voice cloning, "
@@ -67,7 +77,7 @@ class TTSModel(nn.Module):
         self,
         flow_lm: FlowLMModel,
         temp: float,
-        lsd_decode_steps: int,
+        sampler_decode_steps: int,
         noise_clamp: float | None,
         eos_threshold,
         config: Config,
@@ -79,7 +89,7 @@ class TTSModel(nn.Module):
         super().__init__()
         self.flow_lm = flow_lm
         self.temp = temp
-        self.lsd_decode_steps = lsd_decode_steps
+        self.sampler_decode_steps = sampler_decode_steps
         self.noise_clamp = noise_clamp
         self.eos_threshold = eos_threshold
         self.config = config
@@ -102,7 +112,7 @@ class TTSModel(nn.Module):
         cls,
         config: Config,
         temp,
-        lsd_decode_steps,
+        sampler_decode_steps,
         noise_clamp: float | None,
         eos_threshold,
         origin: Path | None,
@@ -115,7 +125,7 @@ class TTSModel(nn.Module):
         tts_model = cls(
             flow_lm,
             temp,
-            lsd_decode_steps,
+            sampler_decode_steps,
             noise_clamp,
             eos_threshold,
             config,
@@ -126,18 +136,60 @@ class TTSModel(nn.Module):
         )
         return tts_model
 
+    has_custom_weights: bool = False
+
+    def load_training_checkpoint(self, path: str | Path, use_ema: bool = True) -> None:
+        """Load weights from a training checkpoint (.pt) into a config-built model."""
+        self.has_custom_weights = True
+        flow_lm_state, mimi_state = get_training_checkpoint_state_dicts(Path(path), use_ema)
+        config = self.config
+        self.flow_lm.speaker_proj_weight = torch.nn.Parameter(
+            torch.zeros(
+                (
+                    config.flow_lm.transformer.d_model,
+                    config.mimi.inner_dim or config.mimi.seanet.dimension,
+                ),
+                dtype=torch.float32,
+            )
+        )
+        self.flow_lm.load_state_dict(flow_lm_state, strict=True)
+        self.mimi = build_mimi(config.mimi).to(device="cpu")
+        # Training freezes Mimi and does not checkpoint it, so its weights come
+        # from the config -- either its own safetensors or the packaged bundle.
+        if mimi_state:
+            self.mimi.load_state_dict(mimi_state, strict=False)
+        elif config.mimi.weights_path is not None:
+            self.mimi.load_state_dict(
+                get_mimi_state_dict(download_if_necessary(config.mimi.weights_path)), strict=True
+            )
+        else:
+            if config.weights_path is None:
+                raise ValueError("no Mimi weights: set mimi.weights_path or weights_path")
+            try:
+                bundle = download_if_necessary(config.weights_path)
+            except Exception:
+                self.has_voice_cloning = False
+                bundle = download_if_necessary(config.weights_path_without_voice_cloning)
+            bundled = safetensors.torch.load_file(bundle)
+            self.mimi.load_state_dict(
+                {k.removeprefix("mimi."): v for k, v in bundled.items() if k.startswith("mimi.")},
+                strict=True,
+            )
+        self.mimi.eval()
+        stamp_state_names(self)
+
     @classmethod
     def _from_pydantic_config_with_weights(
         cls,
         config: Config,
         temp,
-        lsd_decode_steps,
+        sampler_decode_steps,
         noise_clamp: float | None,
         eos_threshold,
         origin: Path | None = None,
     ) -> Self:
         tts_model = cls._from_pydantic_config(
-            config, temp, lsd_decode_steps, noise_clamp, eos_threshold, origin=origin
+            config, temp, sampler_decode_steps, noise_clamp, eos_threshold, origin=origin
         )
         tts_model.flow_lm.speaker_proj_weight = torch.nn.Parameter(
             torch.zeros(
@@ -159,31 +211,7 @@ class TTSModel(nn.Module):
             )
             tts_model.flow_lm.load_state_dict(state_dict_flowlm, strict=True)
 
-        # safetensors.torch.save_file(tts_model.state_dict(), "7442637a.safetensors")
-        # Create mimi config directly from the provided config using model_dump
-        mimi_config = config.mimi.model_dump()
-
-        # Build mimi model from config
-        encoder = SEANetEncoder(**mimi_config["seanet"])
-        decoder = SEANetDecoder(**mimi_config["seanet"])
-
-        encoder_transformer = transformer.ProjectedTransformer(**mimi_config["transformer"])
-        decoder_transformer = transformer.ProjectedTransformer(**mimi_config["transformer"])
-        quantizer = DummyQuantizer(**mimi_config["quantizer"])
-
-        tts_model.mimi = MimiModel(
-            encoder,
-            decoder,
-            quantizer,
-            channels=mimi_config["channels"],
-            sample_rate=mimi_config["sample_rate"],
-            frame_rate=mimi_config["frame_rate"],
-            encoder_frame_rate=mimi_config["sample_rate"] / encoder.hop_length,
-            inner_dim=mimi_config["inner_dim"],
-            outer_dim=mimi_config["outer_dim"],
-            encoder_transformer=encoder_transformer,
-            decoder_transformer=decoder_transformer,
-        ).to(device="cpu")
+        tts_model.mimi = build_mimi(config.mimi).to(device="cpu")
 
         # Load mimi weights from the config safetensors file with complete mapping for strict loading
 
@@ -220,13 +248,7 @@ class TTSModel(nn.Module):
             logger.info(f"Saved TTSModel weights to {save_path}")
         logging.info(f"TTS Model loaded successfully. Its size is {size_in_mb} MB")
 
-        # TODO: move this in the __init__ and make self.mimi in __init__
-        for top_module in (tts_model.flow_lm, tts_model.mimi):
-            for module_name, module in top_module.named_modules():
-                if not isinstance(module, StatefulModule):
-                    continue
-                module._module_absolute_name = module_name
-
+        stamp_state_names(tts_model)
         return tts_model
 
     @classmethod
@@ -235,10 +257,12 @@ class TTSModel(nn.Module):
         language: str | None = None,
         config: str | Path | None = None,
         temp: float | int | None = None,
-        lsd_decode_steps: int = DEFAULT_LSD_DECODE_STEPS,
+        sampler_decode_steps: int = DEFAULT_SAMPLER_DECODE_STEPS,
         noise_clamp: float | int | None = DEFAULT_NOISE_CLAMP,
         eos_threshold: float = DEFAULT_EOS_THRESHOLD,
         quantize: bool = False,
+        checkpoint: str | Path | None = None,
+        lsd_decode_steps: int | None = None,
     ) -> Self:
         """Load a pre-trained TTS model with specified configuration.
 
@@ -251,17 +275,22 @@ class TTSModel(nn.Module):
                 the `config` argument. Available options
                 are `"english_2026-01"`, `"english_2026-04"`, `"english"`, `"french_24l"`, `"german_24l"`, `"portuguese"`, `"italian"`, `"spanish_24l"`.
                 If neither `config` nor `language` is provided, defaults to `"english", which is the same model as 'english_2026-04'`.
-            config: A path to a custom YAML config file saved locally (e.g., `"C://pocket_tts/pocket_tts_config.yaml"`).
+            config: A path to a custom YAML config file: a local path (e.g., `"C://pocket_tts/pocket_tts_config.yaml"`),
+                an `https://` URL, or an `hf://` path (e.g. `"hf://<repo_id>/<path>[@revision]"`).
             temp: Sampling temperature for generation. Higher values produce more
                 diverse but potentially lower quality output. If None, defaults to
                 the model's recommended value from its config file
                 (``default_temperature``, e.g. 0.3 for the English model).
-            lsd_decode_steps: Number of steps for Lagrangian Self Distillation
+            sampler_decode_steps: Number of steps for Lagrangian Self Distillation
                 decoding. More steps can improve quality but increase computation.
             noise_clamp: Maximum value for noise sampling. If None, no clamping
                 is applied. Helps prevent extreme values in generation.
             eos_threshold: Threshold for end-of-sequence detection. Higher values
                 make the model more likely to continue generating.
+            checkpoint: Optional training checkpoint (.pt) to load instead of the
+                config's safetensors weights, so any step of a run can be played
+                without exporting first. EMA weights are used when the checkpoint
+                carries them.
             quantize: If True, apply dynamic int8 quantization to the transformer's
                 attention and FFN layers. Reduces runtime memory by ~48% and improves
                 inference speed by ~27% on x86 (FBGEMM).
@@ -300,18 +329,32 @@ class TTSModel(nn.Module):
                     "For technical reasons, only a larger 24-layer model is available for French. Please use the 'french_24l' language instead."
                 )
             config = CONFIGS_DIR / f"{language}.yaml"
-        config = Path(config)
-        if config.suffix not in (".yaml", ".yml"):
+        if lsd_decode_steps is not None:
+            logger.warning("lsd_decode_steps is deprecated, use sampler_decode_steps")
+            sampler_decode_steps = lsd_decode_steps
+
+        config_path = str(config)
+        # hf:// paths may carry a "@revision" suffix, strip it before checking the extension.
+        suffix_source = (
+            config_path.split("@")[0] if config_path.startswith("hf://") else config_path
+        )
+        if Path(suffix_source).suffix not in (".yaml", ".yml"):
             raise ValueError("Config should be a path to a YAML file ending with .yaml")
-        config_path = Path(config)
         config = load_config(config_path)
         if temp is None:
             temp = config.default_temperature
         logger.info(f"Loading model from config at {config_path}...")
 
-        tts_model = TTSModel._from_pydantic_config_with_weights(
-            config, temp, lsd_decode_steps, noise_clamp, eos_threshold, origin=config_path
-        )
+        origin = Path(config_path)
+        if checkpoint is not None:
+            tts_model = TTSModel._from_pydantic_config(
+                config, temp, sampler_decode_steps, noise_clamp, eos_threshold, origin=origin
+            )
+            tts_model.load_training_checkpoint(checkpoint)
+        else:
+            tts_model = TTSModel._from_pydantic_config_with_weights(
+                config, temp, sampler_decode_steps, noise_clamp, eos_threshold, origin=origin
+            )
 
         if quantize:
             apply_dynamic_int8(tts_model.flow_lm, RECOMMENDED_CONFIG)
@@ -363,7 +406,7 @@ class TTSModel(nn.Module):
             backbone_input_latents,
             text_embeddings,
             model_state=model_state,
-            lsd_decode_steps=self.lsd_decode_steps,
+            sampler_decode_steps=self.sampler_decode_steps,
             temp=self.temp,
             noise_clamp=self.noise_clamp,
             eos_threshold=self.eos_threshold,
@@ -854,6 +897,13 @@ class TTSModel(nn.Module):
             and audio_conditioning in _ORIGINS_OF_PREDEFINED_VOICES
         ):
             # We get the audio conditioning directly from the safetensors file.
+            if self.has_custom_weights:
+                raise ValueError(
+                    f"Predefined voice {audio_conditioning!r} is a state precomputed with the "
+                    "released weights; feeding it to other weights leaves the model out of "
+                    "distribution (it typically never emits EOS). Pass the voice as an audio "
+                    "file instead."
+                )
             if self.origin is None or not self.origin.is_relative_to(CONFIGS_DIR):
                 raise ValueError(
                     f"Cannot use predefined voices when the model "

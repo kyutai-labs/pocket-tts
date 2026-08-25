@@ -1,7 +1,14 @@
-from beartype import BeartypeConf
-from beartype.claw import beartype_this_package
+import os
 
-beartype_this_package(conf=BeartypeConf(is_color=False))
+# POCKET_TTS_NO_BEARTYPE=1 disables runtime type-checking: the beartype claw
+# wraps every function in the package, which both adds per-call overhead in
+# hot training loops and blocks torch.compile (dynamo cannot trace the
+# generated wrappers). Inference default is unchanged.
+if os.environ.get("POCKET_TTS_NO_BEARTYPE") != "1":
+    from beartype import BeartypeConf
+    from beartype.claw import beartype_this_package
+
+    beartype_this_package(conf=BeartypeConf(is_color=False))
 
 from pocket_tts.models.tts_model import (  # noqa: E402
     TTSModel,

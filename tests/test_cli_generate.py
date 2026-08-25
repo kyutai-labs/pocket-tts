@@ -79,7 +79,7 @@ def test_generate_with_custom_parameters(tmp_path):
             "english",
             "--temperature",
             "0.8",
-            "--lsd-decode-steps",
+            "--sampler-decode-steps",
             "2",
             "--eos-threshold",
             "-3.0",

@@ -18,8 +18,8 @@ from pocket_tts.data.audio import stream_audio_chunks
 from pocket_tts.default_parameters import (
     DEFAULT_EOS_THRESHOLD,
     DEFAULT_FRAMES_AFTER_EOS,
-    DEFAULT_LSD_DECODE_STEPS,
     DEFAULT_NOISE_CLAMP,
+    DEFAULT_SAMPLER_DECODE_STEPS,
     MAX_TOKEN_PER_CHUNK,
     get_default_text_for_language,
     get_default_voice_for_language,
@@ -197,7 +197,7 @@ def serve(
     config: Annotated[
         str | None,
         typer.Option(
-            help="Path to locally-saved model config .yaml file. "
+            help="Path to a model config .yaml file: a local path, an https:// URL, or an hf:// path. "
             "Incompatible with the language argument. If not provided, will use the default English model."
         ),
     ] = None,
@@ -252,13 +252,20 @@ def generate(
     config: Annotated[
         str | None,
         typer.Option(
-            help="Path to locally-saved model config .yaml file. "
+            help="Path to a model config .yaml file: a local path, an https:// URL, or an hf:// path. "
             "Incompatible with the language argument. If not provided, will use the default English model."
         ),
     ] = None,
-    lsd_decode_steps: Annotated[
+    checkpoint: Annotated[
+        str | None,
+        typer.Option(help="Training checkpoint (.pt) to load instead of the config's weights"),
+    ] = None,
+    sampler_decode_steps: Annotated[
         int, typer.Option(help="Number of generation steps")
-    ] = DEFAULT_LSD_DECODE_STEPS,
+    ] = DEFAULT_SAMPLER_DECODE_STEPS,
+    lsd_decode_steps: Annotated[
+        int | None, typer.Option(hidden=True, help="Deprecated: use --sampler-decode-steps")
+    ] = None,
     temperature: Annotated[
         float | None,
         typer.Option(
@@ -283,6 +290,9 @@ def generate(
     ] = False,
 ):
     """Generate speech using Kyutai Pocket TTS."""
+    if lsd_decode_steps is not None:
+        logger.warning("--lsd-decode-steps is deprecated, use --sampler-decode-steps")
+        sampler_decode_steps = lsd_decode_steps
     log_level = logging.ERROR if quiet else logging.INFO
     with enable_logging("pocket_tts", log_level):
         if text is None:
@@ -298,10 +308,11 @@ def generate(
             language=language,
             config=config,
             temp=temperature,
-            lsd_decode_steps=lsd_decode_steps,
+            sampler_decode_steps=sampler_decode_steps,
             noise_clamp=noise_clamp,
             eos_threshold=eos_threshold,
             quantize=quantize,
+            checkpoint=checkpoint,
         )
         tts_model.to(device)
 
@@ -359,7 +370,7 @@ def export_voice(
     config: Annotated[
         str | None,
         typer.Option(
-            help="Path to locally-saved model config .yaml file. "
+            help="Path to a model config .yaml file: a local path, an https:// URL, or an hf:// path. "
             "Incompatible with the language argument. If not provided, will use the default English model."
         ),
     ] = None,

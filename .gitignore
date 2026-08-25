@@ -89,3 +89,8 @@ QWEN.md
 voices
 
 italk.yaml
+
+# training
+.venv-train/
+data*/
+runs/

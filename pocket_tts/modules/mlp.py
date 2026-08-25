@@ -7,7 +7,7 @@ https://github.com/LTH14/mar/blob/fe470ac24afbee924668d8c5c83e9fec60af3a73/model
 import math
 
 import torch
-import torch.nn as nn
+from torch import nn
 from typing_extensions import Self
 
 from pocket_tts.utils.config import FlowLMConfig
@@ -159,7 +159,6 @@ class SimpleMLPAdaLN(nn.Module):
         self.num_res_blocks = num_res_blocks
         self.num_time_conds = num_time_conds
 
-        assert num_time_conds != 1
         self.time_embed = nn.ModuleList(
             [TimestepEmbedder(model_channels) for _ in range(num_time_conds)]
         )
@@ -180,34 +179,28 @@ class SimpleMLPAdaLN(nn.Module):
 
         flow_dim = config.dim
         flow_depth = config.depth
-        num_time_conds = 2
+        num_time_conds = 1 if config.type == "flow_matching" else 2
         return SimpleMLPAdaLN(
             latent_dim, flow_dim, latent_dim, cond_dim, flow_depth, num_time_conds=num_time_conds
         )
 
-    def forward(
-        self, c: torch.Tensor, s: torch.Tensor, t: torch.Tensor, x: torch.Tensor
-    ) -> torch.Tensor:
+    def forward(self, c: torch.Tensor, *args: torch.Tensor) -> torch.Tensor:
         """
         Apply the model to an input batch.
         :param c: conditioning from AR transformer.
-        :param s: start time tensor.
-        :param t: target time tensor.
-        :param x: an [N x C] Tensor of inputs.
+        :param args: `num_time_conds` time tensors, then an [N x C] Tensor of
+            inputs. The released models use two (start and target time); other
+            training objectives use one or none.
         :return: an [N x C] Tensor of outputs.
         """
-        # Combine time conditions
-        ts = [s, t]
-        x = self.input_proj(x)
+        ts, x = args[:-1], args[-1]
         assert len(ts) == self.num_time_conds, (
             f"Expected {self.num_time_conds} time conditions, got {len(ts)}"
         )
-        assert self.num_time_conds != 1
-        t_combined = (
-            sum(self.time_embed[i](ts[i]) for i in range(self.num_time_conds)) / self.num_time_conds
-        )
-        c = self.cond_embed(c)
-        y = t_combined + c
+        x = self.input_proj(x)
+        y = self.cond_embed(c)
+        if self.num_time_conds:
+            y = y + sum(emb(t) for emb, t in zip(self.time_embed, ts)) / self.num_time_conds
 
         for block in self.res_blocks:
             x = block(x, y)

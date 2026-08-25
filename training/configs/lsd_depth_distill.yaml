@@ -1,0 +1,43 @@
+# Depth distillation: a 6-layer student learns the backbone activations of a
+# trained 24-layer teacher. Same d_model, so the flow head and all non-backbone
+# weights are copied from the teacher and the head stays frozen.
+#
+# distill_cfg_coef 2.0 bakes guidance in (the README's parity recipe);
+# 1.0 = pure depth distillation.
+model_config: pocket_tts/config/english.yaml   # 6-layer student
+start_from_pretrained: false
+distill_cfg_coef: 2.0
+distill_teacher_config: pocket_tts/config/english.yaml
+distill_teacher_overrides:
+  flow_lm.transformer.num_layers: 24
+distill_teacher_weights: runs/lsd_scratch/checkpoint_00400000.pt
+
+data:
+  train_jsonl: data/train_aligned.jsonl
+  valid_jsonl: data/valid_aligned.jsonl
+
+flow:
+  type: lsd
+  kwargs: {}
+
+flow_batch_multiplier: 4
+# No CFG dropout: the teacher's targets are always computed fully-conditioned
+# (both z_cond and z_null come from dropout=False passes), and the student is
+# never run with a null branch at inference. Dropping conditioning here would
+# ask the student to predict the conditioned target from a null input.
+text_dropout: 0.0
+voice_dropout: 0.0
+
+optim:
+  lr: 4e-4  # screened {1,2,4}e-4 on full mini-cosines: 4e-4 clearly best
+  schedule: cosine
+  warmup_steps: 1000
+
+run_dir: runs/lsd_depth_distill
+batch_size: 16
+max_steps: 200000  # WER/sim reach parity by ~40k, but prosody settles late
+ema_decay: 0.9999
+log_freq: 50
+valid_freq: 2500
+ckpt_freq: 2500
+num_ckpt_keep: 999

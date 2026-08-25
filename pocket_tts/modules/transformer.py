@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 from typing_extensions import Self
 
-from pocket_tts.modules.attention import StreamingMultiheadAttention
+from pocket_tts.modules.attention import StreamingMultiheadAttention, _cached_causal_mask
 from pocket_tts.modules.layer_scale import LayerScale
 from pocket_tts.modules.rope import RotaryEmbedding
 from pocket_tts.utils.config import FlowLMTransformerConfig
@@ -42,14 +42,18 @@ class StreamingTransformerLayer(nn.Module):
         update = self.linear2(F.gelu(self.linear1(x)))
         return x_orig.to(update) + self.layer_scale_2(update)
 
-    def _sa_block(self, x: torch.Tensor, model_state: dict | None) -> torch.Tensor:
+    def _sa_block(
+        self, x: torch.Tensor, model_state: dict | None, attn_mask: torch.Tensor | None = None
+    ) -> torch.Tensor:
         x_orig = x
         x = self.norm1(x)
-        update = self.self_attn(x, model_state)
+        update = self.self_attn(x, model_state, attn_mask=attn_mask)
         return x_orig.to(update) + self.layer_scale_1(update)
 
-    def forward(self, x: torch.Tensor, model_state: dict | None) -> torch.Tensor:
-        x = self._sa_block(x, model_state)
+    def forward(
+        self, x: torch.Tensor, model_state: dict | None, attn_mask: torch.Tensor | None = None
+    ) -> torch.Tensor:
+        x = self._sa_block(x, model_state, attn_mask)
         x = self._ff_block(x)
         return x
 
@@ -96,8 +100,13 @@ class StreamingTransformer(nn.Module):
         )
 
     def forward(self, x: torch.Tensor, model_state: dict | None):
+        attn_mask = None
+        if model_state is None:
+            # Stateless (training) path: one shared mask for all layers, built
+            # outside any compiled region.
+            attn_mask = _cached_causal_mask(x.shape[1], self.layers[0].self_attn.context, x.device)
         for layer in self.layers:
-            x = layer(x, model_state)
+            x = layer(x, model_state, attn_mask=attn_mask)
         return x
 
 

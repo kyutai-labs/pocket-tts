@@ -1,5 +1,5 @@
 import torch
-import torch.nn as nn
+from torch import nn
 from torch.nn import functional as F
 
 from pocket_tts.modules.rope import RotaryEmbedding
@@ -29,6 +29,25 @@ def _build_attention_mask(
     return mask[:, None]
 
 
+# Stateless (training) path: positions are just arange(t) for every row, so the
+# mask depends only on (t, context). Build it once at the largest t seen and
+# slice — rebuilding a [B, 1, T, T] bool tensor per layer per step dominates
+# the CPU cost of the forward otherwise.
+_CAUSAL_MASK_CACHE: dict[tuple[int | None, torch.device], torch.Tensor] = {}
+
+
+@torch.compiler.disable
+def _cached_causal_mask(t: int, context: int | None, device: torch.device) -> torch.Tensor:
+    key = (context, device)
+    cached = _CAUSAL_MASK_CACHE.get(key)
+    if cached is None or cached.shape[-1] < t:
+        size = max(t, cached.shape[-1] if cached is not None else 0)
+        pos = torch.arange(size, device=device, dtype=torch.long)
+        cached = _build_attention_mask(pos.view(1, -1), pos.view(1, -1), context)
+        _CAUSAL_MASK_CACHE[key] = cached
+    return cached[..., :t, :t]
+
+
 # Per-layer streaming state schemas (returned by init_state and stored in model_state):
 # - Linear cache (FlowLM / full causal):
 #   - offset: torch.long[B]  # absolute time index for the next write / RoPE offset
@@ -48,6 +67,11 @@ class _LinearKVCacheBackend:
     ) -> dict[str, torch.Tensor]:
         return dict(
             offset=torch.zeros(batch_size, dtype=torch.long, device=device),
+            # Leading positions per row that hold padding rather than content.
+            # Batched generation right-aligns rows of unequal prefix length and
+            # sets this, which pushes those key positions negative so the
+            # attention mask drops them (see _build_attention_mask).
+            pad=torch.zeros(batch_size, dtype=torch.long, device=device),
             cache=torch.full(
                 (2, batch_size, sequence_length, self.num_heads, self.dim_per_head),
                 float("NaN"),
@@ -81,7 +105,18 @@ class _LinearKVCacheBackend:
         v_attn = cache_v.permute(0, 2, 1, 3)
         pos_k = torch.arange(k_attn.shape[2], device=k_attn.device, dtype=torch.long)
         pos_k = pos_k.view(1, -1).expand(k_attn.shape[0], -1)
-        return k_attn, v_attn, pos_k, state["offset"]
+        pad = state.get("pad")
+        offset = state["offset"]
+        if pad is not None and bool((pad > 0).any()):
+            # Padded slots get negative positions and are masked out. The query
+            # offset is shifted by the same amount so query-key deltas are
+            # unchanged -- otherwise a row's padding would inflate delta and
+            # push real keys out of a finite `context` window. RoPE keeps using
+            # the unshifted offset: it is relative, and shifting query and key
+            # together leaves within-row distances identical.
+            pos_k = pos_k - pad[:, None]
+            offset = offset - pad
+        return k_attn, v_attn, pos_k, offset
 
 
 class StreamingMultiheadAttention(StatefulModule):
@@ -132,7 +167,9 @@ class StreamingMultiheadAttention(StatefulModule):
     def increment_step(self, state: dict, increment: int = 1):
         self._cache_backend.increment_step(state, increment)
 
-    def forward(self, query: torch.Tensor, model_state: dict | None):
+    def forward(
+        self, query: torch.Tensor, model_state: dict | None, attn_mask: torch.Tensor | None = None
+    ):
         state = None if model_state is None else self.get_state(model_state)
 
         projected = self.in_proj(query)
@@ -146,8 +183,15 @@ class StreamingMultiheadAttention(StatefulModule):
         q = q.transpose(1, 2)
 
         k_attn, v_attn, pos_k, offset = self._cache_backend.append_and_get(k, v, state)
-        pos_q = offset.view(-1, 1) + torch.arange(t, device=q.device, dtype=torch.long).view(1, -1)
-        attn_mask = _build_attention_mask(pos_q, pos_k, self.context)
+        if attn_mask is not None:
+            pass  # precomputed by the caller (stateless path)
+        elif state is None:
+            attn_mask = _cached_causal_mask(t, self.context, q.device)
+        else:
+            pos_q = offset.view(-1, 1) + torch.arange(t, device=q.device, dtype=torch.long).view(
+                1, -1
+            )
+            attn_mask = _build_attention_mask(pos_q, pos_k, self.context)
         x = F.scaled_dot_product_attention(q, k_attn, v_attn, attn_mask, dropout_p=0.0)
         x = x.transpose(1, 2)
         # Reshape from (b, t, h, d) to (b, t, h*d)

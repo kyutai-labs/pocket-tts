@@ -13,10 +13,10 @@ from pocket_tts.utils.config import FlowLMConfig
 
 logger = logging.getLogger(__name__)
 
-FlowNet2 = Callable[[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]
+FlowNet = Callable[..., torch.Tensor]
 
 
-def lsd_decode(v_t: FlowNet2, x_0: torch.Tensor, num_steps: int = 1) -> torch.Tensor:
+def lsd_decode(v_t: FlowNet, x_0: torch.Tensor, num_steps: int = 1) -> torch.Tensor:
     """Rebuilds the data sample from starting point x_0.
 
     Lagrangian Self Distillation (https://arxiv.org/pdf/2505.18825)
@@ -36,7 +36,20 @@ def lsd_decode(v_t: FlowNet2, x_0: torch.Tensor, num_steps: int = 1) -> torch.Te
         flow_dir = v_t(
             s * torch.ones_like(x_0[..., :1]), t * torch.ones_like(x_0[..., :1]), current
         )
-        current += flow_dir / num_steps
+        current = current + flow_dir / num_steps
+    return current
+
+
+def ot_decode(v_t: FlowNet, x_0: torch.Tensor, num_steps: int = 16) -> torch.Tensor:
+    """Euler integration of an optimal-transport conditional flow.
+
+    Optimal Transport conditional Flow Matching (https://arxiv.org/abs/2210.02747).
+    The head takes one time condition here, against LSD's two.
+    """
+    current = x_0
+    for i in range(num_steps):
+        t = i / num_steps
+        current = current + v_t(t * torch.ones_like(x_0[..., :1]), current) / num_steps
     return current
 
 
@@ -66,8 +79,10 @@ class FlowLMModel(nn.Module):
         text_padding_weight: float = 1.0,
         dtype=None,
         insert_bos_before_voice: bool = False,
+        flow_type: str = "lsd",
     ):
         super().__init__()
+        self.flow_type = flow_type
         self.conditioner = conditioner
         self.ldim = ldim
         self.stats_ema_decay = stats_ema_decay
@@ -98,7 +113,7 @@ class FlowLMModel(nn.Module):
         sequence: torch.Tensor,
         text_embeddings: torch.Tensor,
         model_state: dict,
-        lsd_decode_steps: int,
+        sampler_decode_steps: int,
         temp: float,
         noise_clamp: float | None,
         eos_threshold: float,
@@ -111,10 +126,10 @@ class FlowLMModel(nn.Module):
             sequence (torch.Tensor): Latents to model.
             text_embeddings (torch.Tensor): Pre-computed conditioning
                 tensor.
-            lsd_decode_steps (int): Number of steps to decode when generating audio.
+            sampler_decode_steps (int): Number of steps to decode when generating audio.
                 If zero, the model computes the loss.
         Returns:
-            (output, eos_output, metrics). If `lsd_decode_steps` is zero, `output` is the loss tensor of shape [B, S],
+            (output, eos_output, metrics). If `sampler_decode_steps` is zero, `output` is the loss tensor of shape [B, S],
             otherwise it is the reconstructed latent.
         """
         # NaN values signal a BOS position.
@@ -123,7 +138,7 @@ class FlowLMModel(nn.Module):
 
         transformer_out = self.backbone(input_, text_embeddings, sequence, model_state=model_state)
         transformer_out = transformer_out.to(torch.float32)
-        assert lsd_decode_steps > 0
+        assert sampler_decode_steps > 0
 
         transformer_out = transformer_out[:, -1]
         out_eos = self.out_eos(transformer_out) > eos_threshold
@@ -136,7 +151,8 @@ class FlowLMModel(nn.Module):
         else:
             torch.nn.init.trunc_normal_(noise, mean=0.0, std=std, a=-noise_clamp, b=noise_clamp)
         conditioned_flow = partial(self.flow_net, transformer_out)
-        return lsd_decode(conditioned_flow, noise, lsd_decode_steps), out_eos
+        decode = ot_decode if self.flow_type == "flow_matching" else lsd_decode
+        return decode(conditioned_flow, noise, sampler_decode_steps), out_eos
 
     def backbone(
         self, input_, text_embeddings: torch.Tensor, sequence, model_state: dict
@@ -161,7 +177,7 @@ class FlowLMModel(nn.Module):
         sequence: torch.Tensor,
         text_embeddings: torch.Tensor,
         model_state: dict,
-        lsd_decode_steps: int,
+        sampler_decode_steps: int,
         temp: float,
         noise_clamp: float | None,
         eos_threshold: float,
@@ -180,7 +196,7 @@ class FlowLMModel(nn.Module):
         result = self(
             sequence=sequence,
             text_embeddings=text_embeddings,
-            lsd_decode_steps=lsd_decode_steps,
+            sampler_decode_steps=sampler_decode_steps,
             temp=temp,
             noise_clamp=noise_clamp,
             eos_threshold=eos_threshold,
@@ -213,4 +229,5 @@ class FlowLMModel(nn.Module):
             ldim=latent_dim,
             dtype=getattr(torch, config.dtype),
             insert_bos_before_voice=insert_bos_before_voice,
+            flow_type=config.flow.type,
         )

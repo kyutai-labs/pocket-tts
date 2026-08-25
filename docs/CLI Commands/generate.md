@@ -23,8 +23,8 @@ This will generate a WAV file `./tts_output.wav` with the default text and voice
 
 ### Generation Parameters
 
-- `--config CONFIG_PATH`: Path to custom config.yaml (for loading local model files). Incompatible with `--language`.
-- `--lsd-decode-steps LSD_DECODE_STEPS`: Number of generation steps (default: 1)
+- `--config CONFIG_PATH`: Path to a custom config.yaml — a local path, an `https://` URL, or an `hf://` path. Incompatible with `--language`.
+- `--sampler-decode-steps SAMPLER_DECODE_STEPS`: Number of generation steps (default: 1)
 - `--temperature TEMPERATURE`: Temperature for generation (default: the model's recommended value from its config — 0.3 for the English model, 0.7 otherwise)
 - `--noise-clamp NOISE_CLAMP`: Noise clamp value (default: None)
 - `--eos-threshold EOS_THRESHOLD`: EOS threshold (default: -4.0)
@@ -68,7 +68,7 @@ pocket-tts generate --voice "./my_voice.safetensors"
 
 ```bash
 # Higher quality (more steps)
-pocket-tts generate --lsd-decode-steps 5 --temperature 0.5
+pocket-tts generate --sampler-decode-steps 5 --temperature 0.5
 
 # More expressive (higher temperature)
 pocket-tts generate --temperature 1.0

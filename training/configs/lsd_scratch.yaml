@@ -16,7 +16,7 @@ data:
   train_jsonl: data/hifitts2_200h/train_aligned.jsonl
   valid_jsonl: data/hifitts2_200h/valid_aligned.jsonl
   max_duration_sec: 30.0
-  max_voice_prompt_sec: 3.0
+  max_voice_prompt_sec: 5.0
 
 flow:
   type: lsd
@@ -29,15 +29,16 @@ voice_dropout: 0.2
 
 optim:
   lr: 2e-4
-  schedule: constant  # a full-length cosine measures the same; a compressed one does not
+  schedule: cosine
   warmup_steps: 1000
 
 run_dir: runs/lsd_scratch
 # Effective batch (batch_size x GPUs x grad_accum_steps) must reach 64 rows;
 # below that the quality transition arrives late or not at all. These defaults
-# get there on ONE GPU in ~30 GB -- on 8 GPUs set grad_accum_steps: 1.
-batch_size: 8
-grad_accum_steps: 8
+# get there on ONE GPU in ~16 GiB -- on 8 GPUs set batch_size: 8 and
+# grad_accum_steps: 1.
+batch_size: 16
+grad_accum_steps: 4
 max_steps: 400000
 stats_ema_steps: 1000
 ema_decay: 0.999

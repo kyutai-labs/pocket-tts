@@ -259,7 +259,7 @@ uvx pocket-tts generate --config hf://user/repo/config_file.yaml@commit_hash
 
 ### List of community-trained models
 
-- [pocket-tts-czech](https://huggingface.co/vvolhejn/pocket-tts-czech) by @vvolhejn (trained interally at Kyutai):
+- [pocket-tts-czech](https://huggingface.co/vvolhejn/pocket-tts-czech) by @vvolhejn (trained internally at Kyutai):
 ```bash
 uvx pocket-tts generate --config hf://vvolhejn/pocket-tts-czech/czech.yaml@7b7760dd0fe994a0800f2fdbc837dc4b8f219d1c
 ```

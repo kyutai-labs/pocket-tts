@@ -171,10 +171,10 @@ Regarding timing, this is how long training takes (all with effective batch size
 |---|---|---|---|---|---|
 | 1 x L4-23GB | 16 x4 | 0.35 | 15.9 GiB | ~158 h | ~315 h |
 | 1 x L40S-46GB | 64 | 0.77 | 42.0 GiB | ~72 h | ~144 h |
-| 1 x H100-80GB | 64 | 1.36 | 55.6 GiB | ~41 h | ~82 h |
-| 2 x H100-80GB | 32 | 2.24 | 32.6 GiB | ~25 h | ~50 h |
-| 4 x H100-80GB | 16 | 3.94 | 20.0 GiB | ~14 h | ~28 h |
-| 8 x H100-80GB | 8 | 6.20 | 14.9 GiB | ~9 h | ~18 h |
+| 1 x H100-80GB | 64 | 1.91 | 55.6 GiB | ~29 h | ~58 h |
+| 2 x H100-80GB | 32 | 3.35 | 32.6 GiB | ~17 h | ~33 h |
+| 4 x H100-80GB | 16 | 5.25 | 20.1 GiB | ~11 h | ~21 h |
+| 8 x H100-80GB | 8 | 6.85 | 14.8 GiB | ~8 h | ~16 h |
 
 Scaling falls off because the per-GPU batch shrinks, not because of
 communication. Distillation adds ~3 h on 8 H100 GPUs.

@@ -2,7 +2,7 @@
 
 If you have a GPU and some speech data, you can train your own Pocket TTS! We try to make the training scripts work out of the box, meaning you don't need to know the ins-and-outs of the model to get a TTS. For best results, you might need to dig a bit deeper and tweak some hyperparameters. The training code follows the [CALM paper](https://arxiv.org/abs/2509.06926), so start there to get an understanding of how the model works.
 
-We're happy to feature community-trained models (giving credit to the author) if they are novel, e.g. cover languages or voices that our official Pocket TTS models cannot do, or are better in other ways. [Open an issue](https://github.com/kyutai-labs/pocket-tts/issues/new) to get started.
+We're happy to feature community-trained models in the [list of community-trained models](../README.md#models-trained-by-the-community) (giving credit to the author) if they are novel, e.g. cover languages or voices that our official Pocket TTS models cannot do, or are better in other ways. [Open an issue](https://github.com/kyutai-labs/pocket-tts/issues/new) or PR to get started.
 
 ## Quickstart
 

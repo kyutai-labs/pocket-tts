@@ -92,5 +92,5 @@ italk.yaml
 
 # training
 .venv-train/
-data*/
+/data*/
 runs/

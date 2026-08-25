@@ -2,7 +2,7 @@
 name = "pocket-tts"
 requires-python = ">= 3.10,<3.15"
 description = "Kyutai's pocket-sized text-to-speech!"
-version = "2.1.0"
+version = "3.0.0"
 readme = "README.md"
 dependencies = [
     "numpy>=2",

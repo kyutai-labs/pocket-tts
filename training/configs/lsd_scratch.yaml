@@ -34,11 +34,12 @@ optim:
 
 run_dir: runs/lsd_scratch
 # Effective batch (batch_size x GPUs x grad_accum_steps) must reach 64 rows;
-# below that the quality transition arrives late or not at all. These defaults
-# get there on ONE GPU in ~16 GiB -- on 8 GPUs set batch_size: 8 and
-# grad_accum_steps: 1.
-batch_size: 16
-grad_accum_steps: 4
+# below that the quality transition arrives late or not at all. One GPU in a
+# single pass needs ~56 GiB; if that does not fit, halve batch_size and double
+# grad_accum_steps until it does -- a consumer GPU runs 16 x 4 in ~16 GiB.
+# On 8 GPUs use batch_size: 8.
+batch_size: 64
+grad_accum_steps: 1
 max_steps: 400000
 stats_ema_steps: 1000
 ema_decay: 0.999

@@ -10,7 +10,7 @@ distill_cfg_coef: 2.0
 distill_teacher_config: pocket_tts/config/english.yaml
 distill_teacher_overrides:
   flow_lm.transformer.num_layers: 24
-distill_teacher_weights: runs/lsd_scratch/checkpoint_00400000.pt
+distill_teacher_weights: runs/scratch/checkpoint_00400000.pt
 
 data:
   train_jsonl: data/train_aligned.jsonl
@@ -32,7 +32,7 @@ optim:
   schedule: cosine
   warmup_steps: 1000
 
-run_dir: runs/lsd_depth_distill
+run_dir: runs/depth_distill
 batch_size: 64
 grad_accum_steps: 1
 max_steps: 200000  # WER is at parity by ~50k; sim and UTMOS climb until ~150k

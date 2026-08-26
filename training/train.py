@@ -1,7 +1,7 @@
 """Train a CALM-style TTS on top of the pocket-tts modules.
 
 Usage:
-    torchrun --nproc-per-node 8 -m training.train training/configs/lsd_scratch.yaml
+    torchrun --nproc-per-node 8 -m training.train training/configs/scratch.yaml
 """
 
 import os

@@ -166,6 +166,11 @@ def build_models(args: TrainArgs) -> tuple[TrainableTTS, MimiModel, tp.Any]:
         flow_state = {
             k.removeprefix("flow_lm."): v for k, v in state.items() if k.startswith("flow_lm.")
         }
+        dropped: list[str] = []
+        if args.reset_text_embedding:
+            dropped = [k for k in flow_state if k.startswith("conditioner.embed.")]
+            logger.info("starting the text embedding from scratch: %s", dropped)
+            flow_state = {k: v for k, v in flow_state.items() if k not in dropped}
         if flow.num_time_conds != 2:
             flow_state = {k: v for k, v in flow_state.items() if not k.startswith("flow_net.")}
             missing, unexpected = flow_lm.load_state_dict(flow_state, strict=False)
@@ -176,7 +181,9 @@ def build_models(args: TrainArgs) -> tuple[TrainableTTS, MimiModel, tp.Any]:
             )
             dit_init(flow_lm.flow_net)
         else:
-            flow_lm.load_state_dict(flow_state, strict=True)
+            missing, unexpected = flow_lm.load_state_dict(flow_state, strict=not dropped)
+            assert not unexpected, unexpected
+            assert set(missing) <= set(dropped), missing
     else:
         gaussian_init(flow_lm.transformer)
         gaussian_init(flow_lm.input_linear)

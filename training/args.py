@@ -62,6 +62,10 @@ class TrainArgs:
     # If false, only Mimi/tokenizer weights are used and the FlowLM is
     # re-initialized (training from scratch).
     start_from_pretrained: bool = True
+    # Load the pretrained weights but start the text embedding from scratch.
+    # Needed when the tokenizer differs from the one the weights were trained
+    # with, e.g. when training for a new language.
+    reset_text_embedding: bool = False
 
     run_dir: Path = Path("runs/debug")
     batch_size: int = 8  # per GPU

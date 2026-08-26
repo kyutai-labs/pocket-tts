@@ -32,7 +32,7 @@ optim:
   schedule: cosine
   warmup_steps: 1000
 
-run_dir: runs/lsd_scratch
+run_dir: runs/scratch
 # Effective batch (batch_size x GPUs x grad_accum_steps) must reach 64 rows;
 # below that the quality transition arrives late or not at all. One GPU in a
 # single pass needs ~56 GiB; if that does not fit, halve batch_size and double

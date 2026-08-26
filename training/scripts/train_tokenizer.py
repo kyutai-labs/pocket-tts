@@ -2,9 +2,9 @@
 
 The flow LM looks text up in a fixed-size table, and pocket-tts asserts that
 lookup_table.n_bins in the model config equals the tokenizer's vocab size
-exactly (4000 for the released English models). Set n_bins to whatever
---vocab-size you pass here; the padding id is the table's extra +1 row, not a
-reserved bin.
+exactly. The default here is the 4000 the released configs already use, so a
+new tokenizer drops in without touching n_bins; the padding id is the table's
+extra +1 row, not a reserved bin.
 
 Input is one or more manifest jsonl files (any records with a "transcript"
 field, e.g. the training manifests) or plain-text files (one utterance per
@@ -13,7 +13,7 @@ line). Point the model config's lookup_table.tokenizer_path at the produced
 
 Usage:
     python -m training.scripts.train_tokenizer out/tokenizer \
-        data/train.jsonl [more files ...] --vocab-size 3999
+        data/train.jsonl [more files ...]
 """
 
 import json
@@ -50,7 +50,7 @@ def main(
     vocab_size: Annotated[
         int,
         typer.Option(help="the model config's lookup_table.n_bins must be set to this exact value"),
-    ] = 3999,
+    ] = 4000,
     character_coverage: Annotated[
         float, typer.Option(help="lower to 0.9995 for large-alphabet languages (e.g. CJK)")
     ] = 1.0,

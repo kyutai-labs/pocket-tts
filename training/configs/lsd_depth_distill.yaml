@@ -20,7 +20,6 @@ flow:
   type: lsd
   kwargs: {}
 
-flow_batch_multiplier: 4
 # No CFG dropout: the teacher's targets are always computed fully-conditioned
 # (both z_cond and z_null come from dropout=False passes), and the student is
 # never run with a null branch at inference. Dropping conditioning here would
@@ -34,8 +33,9 @@ optim:
   warmup_steps: 1000
 
 run_dir: runs/lsd_depth_distill
-batch_size: 16
-max_steps: 200000  # WER/sim reach parity by ~40k, but prosody settles late
+batch_size: 64
+grad_accum_steps: 1
+max_steps: 200000  # WER is at parity by ~50k; sim and UTMOS climb until ~150k
 ema_decay: 0.9999
 log_freq: 50
 valid_freq: 2500

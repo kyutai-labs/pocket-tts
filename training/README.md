@@ -41,7 +41,9 @@ Now in detail:
 ## Installation
 
 Requirements:
-- Linux - we don't provide official support for Windows/Mac training, but will accept bugfix PRs
+- Linux - we don't provide official support for Windows training, but will accept bugfix PRs.
+  macOS on Apple Silicon works single-device via the MPS backend, see
+  [Training on Apple Silicon](#training-on-apple-silicon)
 - One NVIDIA GPU (the default batch size wants ~56 GB; a consumer GPU runs `batch_size: 16` with
   `grad_accum_steps: 4` in ~16 GB); you can use more GPUs to train faster
 - Python 3.10+ and [uv](https://docs.astral.sh/uv/)
@@ -80,6 +82,23 @@ explicit = true
 Then `uv sync` picks up the pin like any other dependency change — no separate
 reinstall step, and it survives future `uv sync`/`uv lock` runs.
 </details>
+
+### Training on Apple Silicon
+
+Single-device training runs on the MPS backend, no CUDA required:
+
+```bash
+uv run training/train.py training/configs/scratch_mps.yaml
+```
+
+`scratch_mps.yaml` mirrors `scratch.yaml` with the consumer-GPU batching (`batch_size: 16`,
+`grad_accum_steps: 4`, same effective batch of 64) and `compile: false`: the per-layer
+`torch.compile` targets inductor's CUDA path and is unproven on MPS. bf16 autocast and
+fused AdamW both work on the torch version the project already requires.
+
+Multi-process training stays CUDA-only, NCCL has no MPS backend. Throughput is well below
+a data-center GPU: run a few hundred steps to measure it/s on your machine before
+committing to a long run.
 
 ## Data
 

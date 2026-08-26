@@ -16,9 +16,13 @@ def get_world_size() -> int:
     return dist.get_world_size() if dist.is_initialized() else 1
 
 
-def _require_cuda() -> None:
+def _require_accelerator() -> None:
     """Training on CPU is accidental (a mismatched torch build), not a use case."""
-    if torch.cuda.is_available() or os.environ.get("POCKET_TTS_ALLOW_CPU") == "1":
+    if (
+        torch.cuda.is_available()
+        or torch.backends.mps.is_available()
+        or os.environ.get("POCKET_TTS_ALLOW_CPU") == "1"
+    ):
         return
     if torch.version.cuda is None:
         hint = (
@@ -33,19 +37,24 @@ def _require_cuda() -> None:
             "matching build, see training/README.md."
         )
     raise SystemExit(
-        f"no CUDA device visible to torch (torch {torch.__version__}).\n{hint}\n"
+        f"no CUDA or MPS device visible to torch (torch {torch.__version__}).\n{hint}\n"
         "Set POCKET_TTS_ALLOW_CPU=1 to run on CPU anyway."
     )
 
 
 def init_distributed() -> torch.device:
-    _require_cuda()
+    _require_accelerator()
     if is_torchrun():
+        # Multi-process training stays CUDA-only: NCCL has no MPS backend.
         local_rank = int(os.environ["LOCAL_RANK"])
         torch.cuda.set_device(local_rank)
         dist.init_process_group(backend="nccl")
         return torch.device("cuda", local_rank)
-    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
 
 
 def shutdown_distributed() -> None:

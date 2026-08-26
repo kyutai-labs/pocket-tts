@@ -1,0 +1,41 @@
+# scratch.yaml adapted for a single Apple Silicon GPU (MPS backend).
+# Same effective batch of 64 rows via the consumer-GPU recipe (16 x 4).
+# compile stays off: per-layer torch.compile targets inductor's CUDA path and
+# is unproven on the MPS backend; training runs fine eagerly, just slower.
+model_config: pocket_tts/config/english.yaml
+model_overrides:
+  flow_lm.transformer.num_layers: 24
+start_from_pretrained: false
+
+data:
+  train_jsonl: data/hifitts2_200h/train_aligned.jsonl
+  valid_jsonl: data/hifitts2_200h/valid_aligned.jsonl
+  max_duration_sec: 30.0
+  max_voice_prompt_sec: 5.0
+
+flow:
+  type: lsd
+  kwargs: {}
+
+flow_batch_multiplier: 4
+eos_loss_weight: 0.1
+text_dropout: 0.2
+voice_dropout: 0.2
+
+optim:
+  lr: 2e-4
+  schedule: cosine
+  warmup_steps: 1000
+
+run_dir: runs/scratch_mps
+batch_size: 16
+grad_accum_steps: 4
+compile: false
+max_steps: 400000
+stats_ema_steps: 1000
+ema_decay: 0.999
+log_freq: 50
+valid_freq: 2500
+ckpt_freq: 2500
+num_ckpt_keep: 3
+sample_cfg_coef: 2.0  # teachers sample guided; the baked-student default is 1.0

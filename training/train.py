@@ -221,6 +221,11 @@ def main(config_path: str) -> None:
         optimizer.step()
         if ema is not None:
             ema.update(model)
+        if device.type == "mps":
+            # Variable-length batches make the MPS caching allocator hoard a
+            # buffer set per shape, ballooning driver memory ~10x past the live
+            # tensors until macOS pages it; released each step, it stays bounded.
+            torch.mps.empty_cache()
 
         steps_since_log += 1
         if rank == 0 and step == start_step and args.compile:

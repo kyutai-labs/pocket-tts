@@ -36,6 +36,9 @@ stats_ema_steps: 1000
 ema_decay: 0.999
 log_freq: 50
 valid_freq: 2500
-ckpt_freq: 2500
+# At ~0.1 it/s a step is ~9s: checkpoint every ~2.5h so a sleep or crash
+# costs little, and write audio samples often enough to track progress by ear.
+ckpt_freq: 1000
+sample_freq: 2500
 num_ckpt_keep: 3
 sample_cfg_coef: 2.0  # teachers sample guided; the baked-student default is 1.0

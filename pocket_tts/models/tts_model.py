@@ -8,7 +8,6 @@ import threading
 import time
 from functools import lru_cache
 from pathlib import Path
-from urllib.parse import urlsplit
 
 import safetensors
 import safetensors.torch
@@ -30,6 +29,7 @@ from pocket_tts.default_parameters import (
 )
 from pocket_tts.models.flow_lm import FlowLMModel
 from pocket_tts.models.mimi import build_mimi
+from pocket_tts.models.model_state import _import_model_state, _is_safetensors_source
 from pocket_tts.models.text_chunking import prepare_text_prompt, split_into_best_sentences
 from pocket_tts.modules.stateful_module import StatefulModule, increment_steps, init_states
 from pocket_tts.quantization import RECOMMENDED_CONFIG, apply_dynamic_int8
@@ -257,9 +257,9 @@ class TTSModel(nn.Module):
         cls,
         language: str | None = None,
         config: str | Path | None = None,
-        temp: float | int | None = None,
+        temp: float | None = None,
         sampler_decode_steps: int = DEFAULT_SAMPLER_DECODE_STEPS,
-        noise_clamp: float | int | None = DEFAULT_NOISE_CLAMP,
+        noise_clamp: float | None = DEFAULT_NOISE_CLAMP,
         eos_threshold: float = DEFAULT_EOS_THRESHOLD,
         quantize: bool = False,
         checkpoint: str | Path | None = None,
@@ -958,40 +958,3 @@ class TTSModel(nn.Module):
         gen_len_sec = token_count / self._TOKENS_PER_SECOND_ESTIMATE + self._GEN_SECONDS_PADDING
         frame_rate = self.config.mimi.frame_rate
         return math.ceil(gen_len_sec * frame_rate)
-
-
-def export_model_state(model_state: dict[str, dict[str, torch.Tensor]], dest: str | Path):
-    dict_to_store = {}
-    for module_name, module_state in model_state.items():
-        for key, tensor_value in module_state.items():
-            dict_to_store[f"{module_name}/{key}"] = tensor_value
-    safetensors.torch.save_file(dict_to_store, dest)
-
-
-def _is_safetensors_source(source: str | Path) -> bool:
-    source_text = str(source)
-    if source_text.startswith(("http://", "https://")):
-        source_text = urlsplit(source_text).path
-    elif source_text.startswith("hf://"):
-        source_text = source_text.rsplit("@", 1)[0]
-    return source_text.endswith(".safetensors")
-
-
-def _import_model_state(
-    source: str | Path, device: torch.device
-) -> dict[str, dict[str, torch.Tensor]]:
-    result = {}
-    with safetensors.safe_open(source, framework="pt") as f:
-        for key in f.keys():
-            module_name, tensor_key = key.split("/")
-            result.setdefault(module_name, {})
-            if tensor_key == "current_end":
-                # we used the shape[0] as step index before for torch.compile() compatibility,
-                # but it's not needed anymore
-                tensor = f.get_tensor(key)
-                result[module_name]["offset"] = torch.full(
-                    (1,), fill_value=tensor.shape[0], dtype=torch.long, device=device
-                )
-            else:
-                result[module_name][tensor_key] = f.get_tensor(key).to(device)
-    return result

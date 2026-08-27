@@ -24,7 +24,8 @@ from pocket_tts.default_parameters import (
     get_default_text_for_language,
     get_default_voice_for_language,
 )
-from pocket_tts.models.tts_model import TTSModel, export_model_state
+from pocket_tts.models.model_state import export_model_state
+from pocket_tts.models.tts_model import TTSModel
 from pocket_tts.utils.logging_utils import enable_logging
 from pocket_tts.utils.utils import _ORIGINS_OF_PREDEFINED_VOICES
 

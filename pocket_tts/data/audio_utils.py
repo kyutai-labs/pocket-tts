@@ -6,7 +6,7 @@ from scipy.signal import resample_poly
 
 
 def convert_audio(
-    wav: torch.Tensor, from_rate: int | float, to_rate: int | float, to_channels: int
+    wav: torch.Tensor, from_rate: float, to_rate: float, to_channels: int
 ) -> torch.Tensor:
     """Convert audio to new sample rate and number of audio channels."""
     if from_rate != to_rate:

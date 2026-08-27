@@ -5,10 +5,7 @@ from torch import nn
 
 
 def apply_rope(
-    q: torch.Tensor,
-    k: torch.Tensor,
-    offset: int | torch.Tensor = 0,
-    max_period: int | float = 10_000,
+    q: torch.Tensor, k: torch.Tensor, offset: int | torch.Tensor = 0, max_period: float = 10_000
 ):
     """
     Args:
@@ -65,7 +62,7 @@ class RotaryEmbedding(nn.Module):
         max_period (float): Maximum period of the rotation frequencies.
     """
 
-    def __init__(self, max_period: float | int = 10000.0):
+    def __init__(self, max_period: float = 10000.0):
         super().__init__()
         self.max_period = max_period
 

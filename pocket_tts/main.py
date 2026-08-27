@@ -6,13 +6,13 @@ import tempfile
 import threading
 from pathlib import Path
 from queue import Queue
+from typing import Annotated
 
 import typer
 import uvicorn
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
-from typing_extensions import Annotated
 
 from pocket_tts.data.audio import stream_audio_chunks
 from pocket_tts.default_parameters import (

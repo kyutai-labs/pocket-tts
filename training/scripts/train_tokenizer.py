@@ -19,11 +19,10 @@ Usage:
 import json
 import tempfile
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 import sentencepiece as spm
 import typer
-from typing_extensions import Annotated
 
 app = typer.Typer(pretty_exceptions_show_locals=False)
 

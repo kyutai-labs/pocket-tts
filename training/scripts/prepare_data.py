@@ -30,13 +30,13 @@ import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Annotated
 
 import huggingface_hub
 import requests
 import typer
 from pydantic import BaseModel
 from tqdm import tqdm
-from typing_extensions import Annotated
 
 logger = logging.getLogger("prepare_data")
 

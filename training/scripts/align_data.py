@@ -27,13 +27,13 @@ import queue
 import re
 import threading
 from collections.abc import Callable
+from typing import Annotated
 
 import sphn
 import torch
 import typer
 from pydantic import BaseModel
 from tqdm import tqdm
-from typing_extensions import Annotated
 
 from pocket_tts.data.audio_utils import convert_audio
 

@@ -96,9 +96,14 @@ uv run training/train.py training/configs/scratch_mps.yaml
 `torch.compile` targets inductor's CUDA path and is unproven on MPS. bf16 autocast and
 fused AdamW both work on the torch version the project already requires.
 
-Multi-process training stays CUDA-only, NCCL has no MPS backend. Throughput is well below
-a data-center GPU: run a few hundred steps to measure it/s on your machine before
-committing to a long run.
+Multi-process training stays CUDA-only, NCCL has no MPS backend.
+
+Measured on an M5 Pro (20-core GPU, 64 GB): 0.11 it/s sustained at `batch_size: 16`,
+`grad_accum_steps: 4` — roughly a 23 GB L4 at a third speed, so 200k steps is a
+multi-week run. Useful for development, smoke tests and finetuning experiments; plan
+on an NVIDIA GPU for a full from-scratch run. The step log's `mps drv`/`cur` figures
+flag the paging failure mode: if driver-allocated runs far above current-allocated
+and it/s decays, memory is the problem, not compute.
 
 ## Data
 

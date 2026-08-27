@@ -73,7 +73,8 @@ class StreamingWAVWriter:
         """Initialize WAV writer with header."""
         # For stdout streaming, we need to handle the unseekable stream case
         # The wave module supports unseekable streams since Python 3.4
-        self.wave_writer = wave.open(self.output_stream, "wb")
+        # Closed with the underlying stream by the caller's `with f:` block.
+        self.wave_writer = wave.open(self.output_stream, "wb")  # noqa: SIM115
         self.wave_writer.setnchannels(1)  # Mono
         self.wave_writer.setsampwidth(2)  # 16-bit
         self.wave_writer.setframerate(sample_rate)
@@ -148,7 +149,7 @@ def stream_audio_chunks(
     elif is_file_like(path):
         f = path
     else:
-        f = open(path, "wb")
+        f = open(path, "wb")  # noqa: SIM115  -- closed by the `with f:` below
 
     with f:
         if path is not None:

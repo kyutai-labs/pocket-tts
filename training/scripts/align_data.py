@@ -106,7 +106,7 @@ def batched_word_spans(
                 j -= 1
                 frames[j] = t - 1
         spans: dict[int, tuple[int, int]] = {}
-        for f, w_idx in zip(frames, word_of_lists[b]):
+        for f, w_idx in zip(frames, word_of_lists[b], strict=True):
             if w_idx < 0:
                 continue
             s, e = spans.get(w_idx, (f, f))
@@ -329,14 +329,14 @@ def main(
                     emissions, T, [u[5] for u in chunk], [u[6] for u in chunk], blank
                 )
                 for (order, entry, wav, words, norm, _, _), spans, t_frames, n_samples in zip(
-                    chunk, spans_batch, T.tolist(), lens
+                    chunk, spans_batch, T.tolist(), lens, strict=True
                 ):
                     if spans is None:
                         skip(entry, ValueError("alignment failed"))
                         continue
                     sec_per_frame = (n_samples / sr) / t_frames
                     timed, k = [], 0
-                    for w, nw in zip(words, norm):
+                    for w, nw in zip(words, norm, strict=True):
                         if not nw or spans[k] is None:
                             timed.append({"word": w, "start": None, "end": None})
                             k += bool(nw)

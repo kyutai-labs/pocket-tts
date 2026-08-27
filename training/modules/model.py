@@ -145,7 +145,7 @@ class TrainableTTS(nn.Module):
         B = len(text_tokens)
 
         rows = []
-        for tokens, voice in zip(text_tokens, voice_latents):
+        for tokens, voice in zip(text_tokens, voice_latents, strict=True):
             t_emb = fl.conditioner(TokenizedText(tokens[None].to(device)))[0]
             v_emb = F.linear(
                 voice[None].to(device, fl.speaker_proj_weight.dtype), fl.speaker_proj_weight
@@ -165,7 +165,7 @@ class TrainableTTS(nn.Module):
             pads.append(torch.zeros(B, device=device, dtype=torch.long))
 
         states = []
-        for p, pd in zip(prefixes, pads):
+        for p, pd in zip(prefixes, pads, strict=True):
             st = init_states(fl, B, p.shape[1] + max_frames + 2)
             set_state_padding(st, pd)
             states.append({"state": st, "first": True})

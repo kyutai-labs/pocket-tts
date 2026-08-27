@@ -238,7 +238,7 @@ class DataLoader:
                     continue
                 batch, samples = samples[: self.batch_size], samples[self.batch_size :]
                 yielded += 1
-                wavs, tokens, prompts, prompt_lens = zip(*batch)
+                wavs, tokens, prompts, prompt_lens = zip(*batch, strict=True)
                 max_len = max(len(w) for w in wavs)
                 audio = torch.zeros(len(wavs), 1, max_len)
                 frames = torch.zeros(len(wavs), dtype=torch.long)

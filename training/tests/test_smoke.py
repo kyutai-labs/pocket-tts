@@ -179,7 +179,7 @@ def test_generate_ragged_matches_batch_of_one():
     voices = [torch.randn(n, LDIM) for n in (4, 6, 5)]
 
     singles = []
-    for t, v in zip(texts, voices):
+    for t, v in zip(texts, voices, strict=True):
         torch.manual_seed(7)
         singles.append(
             model.generate(
@@ -191,7 +191,7 @@ def test_generate_ragged_matches_batch_of_one():
         texts, voices, max_frames=5, temp=0.0, n_steps=1, cfg_coef=1.0, eos_threshold=1e9
     )
     assert len(batched) == 3
-    for single, batch_row in zip(singles, batched):
+    for single, batch_row in zip(singles, batched, strict=True):
         assert single.shape == batch_row.shape
         # temp=0 removes sampling noise, so rows must agree closely; the left
         # padding must not leak into any row.
@@ -342,5 +342,5 @@ def test_grad_accum_matches_big_batch():
     net.zero_grad()
     for half in (slice(0, 4), slice(4, 8)):
         (loss_of(xs[half], ys[half]) / 2).backward()
-    for g, p in zip(big, net.parameters()):
+    for g, p in zip(big, net.parameters(), strict=True):
         assert torch.allclose(g, p.grad, atol=1e-6)

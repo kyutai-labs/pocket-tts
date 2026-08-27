@@ -307,7 +307,7 @@ def score_items(items: list[dict], device, args) -> tuple[list[dict], int]:
                 eos_threshold=args.eos_threshold,
             )
         good, gens = [], []
-        for item, latents in zip(chunk, outs):
+        for item, latents in zip(chunk, outs, strict=True):
             capped = int(latents.shape[0] >= max_frames)
             if latents.shape[0] < min_frames:
                 records.append(
@@ -348,7 +348,7 @@ def score_items(items: list[dict], device, args) -> tuple[list[dict], int]:
                 e_gen = spk(gens)
                 e_ref = spk(refs_audio)
                 sims = torch.nn.functional.cosine_similarity(e_gen, e_ref, dim=-1).tolist()
-        for i, ((item, capped), hyp) in enumerate(zip(good, hyps)):
+        for i, ((item, capped), hyp) in enumerate(zip(good, hyps, strict=True)):
             rec = {
                 "ref": normalize(item["text"]),
                 "hyp": normalize(hyp),

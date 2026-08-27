@@ -238,8 +238,15 @@ def main(config_path: str) -> None:
             last_log, steps_since_log = now, 0
             values = {k: v.item() for k, v in metrics.items() if v.numel() == 1}
             shown = {k: f"{v:.4f}" for k, v in values.items()}
+            mem = ""
+            if device.type == "mps":
+                # Driver-allocated far above current-allocated is the paging
+                # failure mode the per-step empty_cache guards against.
+                drv = torch.mps.driver_allocated_memory() / 2**30
+                cur = torch.mps.current_allocated_memory() / 2**30
+                mem = f" | mps drv {drv:.1f}G cur {cur:.1f}G"
             logger.info(
-                f"step {step + 1} | lr {lr:.2e} | grad {grad_norm:.2f} | {speed:.2f} it/s | {shown}"
+                f"step {step + 1} | lr {lr:.2e} | grad {grad_norm:.2f} | {speed:.2f} it/s | {shown}{mem}"
             )
             progress.log("train", step + 1, values, lr=lr, grad_norm=grad_norm.item(), it_s=speed)
         if rank == 0 and step - start_step == VERBOSE_STEPS - 1:

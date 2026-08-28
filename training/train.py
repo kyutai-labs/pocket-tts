@@ -163,12 +163,12 @@ def main(config_path: str) -> None:
     optimizer, ema, device, rank = run.optimizer, run.ema, run.device, run.rank
     progress, start_step = run.progress, run.start_step
 
-    sp = model.flow_lm.conditioner.tokenizer.sp
-    tokenize = sp.encode
+    sentence_piece = model.flow_lm.conditioner.tokenizer.sp
+    tokenize = sentence_piece.encode
     train_loader = iter(
         SubprocessDataLoader(
             args.data.train_jsonl,
-            sp,
+            sentence_piece,
             args.batch_size,
             mimi.sample_rate,
             mimi.frame_rate,
@@ -176,7 +176,7 @@ def main(config_path: str) -> None:
             args.data.max_voice_prompt_sec,
             rank,
             run.world_size,
-            seed=args.seed + rank,
+            seed=args.seed,
             shuffle=args.data.shuffle,
             num_procs=args.data.loader_procs,
         )

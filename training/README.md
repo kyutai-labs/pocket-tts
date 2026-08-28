@@ -183,10 +183,8 @@ Regarding timing, this is how long training takes (all with effective batch size
 | 4 x H100-80GB | 16 | 6.25 | 20.0 GiB | ~9 h | ~18 h |
 | 8 x H100-80GB | 8 | 8.69 | 14.2 GiB | ~6.5 h | ~13 h |
 
-The H100 rows are measured with the subprocess dataloader on network storage;
-the L4 and L40S rows predate it and should be somewhat faster now. Scaling
-falls off because the per-GPU batch shrinks, not because of communication.
-Distillation adds ~3 h on 8 H100 GPUs.
+Scaling falls off because the per-GPU batch shrinks, not because of
+communication. Distillation adds ~3 h on 8 H100 GPUs.
 
 ### Training format
 

@@ -287,7 +287,7 @@ class SubprocessDataLoader:
         seed: int = 0,
         shuffle: bool = True,
         io_workers: int = 16,
-        num_procs: int = 2,
+        num_procs: int = 3,
         depth: int = 8,
     ):
         ctx = torch_mp.get_context("spawn")

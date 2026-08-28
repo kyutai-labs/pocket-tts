@@ -218,6 +218,10 @@ def main(config_path: str) -> None:
             else:
                 scaled.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), args.optim.max_norm)
+        if not torch.isfinite(grad_norm):
+            # Stop before the NaN reaches the weights: the run would otherwise
+            # keep training and checkpointing garbage, and auto-resume reloads it.
+            raise SystemExit(f"non-finite gradient at step {step}")
         optimizer.step()
         if ema is not None:
             ema.update(model)

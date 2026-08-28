@@ -165,11 +165,10 @@ def main(config_path: str) -> None:
 
     sp = model.flow_lm.conditioner.tokenizer.sp
     tokenize = sp.encode
-    loader_cls = SubprocessDataLoader if args.data.subprocess_loader else DataLoader
     train_loader = iter(
-        loader_cls(
+        SubprocessDataLoader(
             args.data.train_jsonl,
-            sp if args.data.subprocess_loader else tokenize,
+            sp,
             args.batch_size,
             mimi.sample_rate,
             mimi.frame_rate,
@@ -179,7 +178,7 @@ def main(config_path: str) -> None:
             run.world_size,
             seed=args.seed + rank,
             shuffle=args.data.shuffle,
-            **({"num_procs": args.data.loader_procs} if args.data.subprocess_loader else {}),
+            num_procs=args.data.loader_procs,
         )
     )
 

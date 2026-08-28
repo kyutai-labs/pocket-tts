@@ -19,7 +19,6 @@ class DataArgs:
     # <= 0 removes the window (any word boundary; full-prefix prompt).
     max_voice_prompt_sec: float = 5.0
     shuffle: bool = True
-    subprocess_loader: bool = True
     loader_procs: int = 3
 
 

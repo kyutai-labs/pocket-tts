@@ -19,6 +19,7 @@ from pathlib import Path
 import numpy as np
 import sphn
 import torch
+import torch.multiprocessing as torch_mp
 
 from pocket_tts.data.audio_utils import convert_audio
 
@@ -259,6 +260,91 @@ class DataLoader:
                     f"no readable samples in {self.jsonl}: every entry failed to load "
                     f"({self._failures} failures). Check the paths in the manifest."
                 )
+
+
+def _feed_queue(q, sp_proto: bytes, loader_kwargs: dict) -> None:
+    """Entry point of the loader subprocess: rebuild the tokenizer from its
+    serialized proto (SentencePieceProcessor doesn't pickle) and push batches
+    into the bounded queue forever."""
+    import sentencepiece
+
+    sp = sentencepiece.SentencePieceProcessor()
+    sp.load_from_serialized_proto(sp_proto)
+    loader = DataLoader(tokenize=sp.encode, **loader_kwargs)
+    for batch in loader:
+        q.put(batch)
+
+
+class SubprocessDataLoader:
+    """DataLoaders running in their own processes, feeding one bounded queue.
+
+    Loading in-process competes with the training loop for CPU and the GIL,
+    which triples the wall time of Mimi's encode (it launches hundreds of
+    small kernels per batch). And the load path is GIL-bound (~12 ms/sample
+    single-thread, io_workers don't parallelize it), capping one process at
+    ~5 batches/s -- below what one fast GPU consumes -- so several processes
+    each build whole batches from a disjoint entry shard (the existing
+    rank/world_size sharding). Batches cross the process boundary via shared
+    memory. Unlike DataLoader, the interleaving of the per-shard streams is
+    nondeterministic.
+    """
+
+    def __init__(
+        self,
+        jsonl: str,
+        sp,  # sentencepiece.SentencePieceProcessor
+        batch_size: int,
+        sample_rate: int,
+        frame_rate: float,
+        max_duration_sec: float,
+        max_voice_prompt_sec: float,
+        rank: int,
+        world_size: int,
+        seed: int = 0,
+        shuffle: bool = True,
+        io_workers: int = 16,
+        num_procs: int = 3,
+        depth: int = 8,
+    ):
+        # spawn: fork is unsafe once CUDA is initialized, and the children only
+        # do CPU work anyway.
+        ctx = torch_mp.get_context("spawn")
+        self._queue = ctx.Queue(maxsize=depth)
+        self._procs = []
+        for i in range(num_procs):
+            loader_kwargs = {
+                "jsonl": jsonl,
+                "batch_size": batch_size,
+                "sample_rate": sample_rate,
+                "frame_rate": frame_rate,
+                "max_duration_sec": max_duration_sec,
+                "max_voice_prompt_sec": max_voice_prompt_sec,
+                "rank": rank * num_procs + i,
+                "world_size": world_size * num_procs,
+                "seed": seed + i,
+                "shuffle": shuffle,
+                "io_workers": io_workers,
+            }
+            proc = ctx.Process(
+                target=_feed_queue,
+                args=(self._queue, sp.serialized_model_proto(), loader_kwargs),
+                daemon=True,
+                name=f"dataloader-{i}",
+            )
+            proc.start()
+            self._procs.append(proc)
+
+    def __iter__(self) -> Iterator[Batch]:
+        while True:
+            try:
+                yield self._queue.get(timeout=60)
+            except queue.Empty:
+                dead = [p for p in self._procs if not p.is_alive()]
+                if dead:
+                    raise RuntimeError(
+                        f"dataloader subprocess(es) died (exit codes "
+                        f"{[p.exitcode for p in dead]}), check their tracebacks above"
+                    ) from None
 
 
 def _prefetch(iterator: Iterator[Batch], depth: int = 4) -> Iterator[Batch]:

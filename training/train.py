@@ -77,6 +77,10 @@ def setup(config_path: str) -> Run:
     """Resolve the config, build the models, restore any checkpoint."""
     setup_logging()
     torch.backends.cuda.matmul.allow_tf32 = True  # fp32 islands (Mimi encode)
+    # cuDNN's bf16 SDPA backward emits NaN at larger batch shapes (verified with
+    # detect_anomaly: ScaledDotProductCudnnAttentionBackward0; batch 128 dies
+    # within ~65k steps, flash/mem-efficient run clean and just as fast).
+    torch.backends.cuda.enable_cudnn_sdp(False)
     args = load_args(config_path)
     device = init_distributed()
     rank, world_size = get_rank(), get_world_size()

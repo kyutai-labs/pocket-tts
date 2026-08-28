@@ -19,13 +19,7 @@ class DataArgs:
     # <= 0 removes the window (any word boundary; full-prefix prompt).
     max_voice_prompt_sec: float = 5.0
     shuffle: bool = True
-    # Run the training DataLoader in subprocesses feeding a bounded queue.
-    # In-process audio decode/resample steals CPU (and the GIL) from the
-    # kernel-launch thread and triples Mimi's encode wall time.
     subprocess_loader: bool = True
-    # Loader subprocesses per rank. One process is GIL-bound at ~5 batches/s;
-    # an H100 consumes ~6.5/s, so 3 leaves headroom. Scale down on many-rank
-    # runs where each rank consumes fewer batches.
     loader_procs: int = 3
 
 

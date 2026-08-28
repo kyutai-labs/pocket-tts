@@ -263,9 +263,6 @@ class DataLoader:
 
 
 def _feed_queue(q, sp_proto: bytes, loader_kwargs: dict) -> None:
-    """Entry point of the loader subprocess: rebuild the tokenizer from its
-    serialized proto (SentencePieceProcessor doesn't pickle) and push batches
-    into the bounded queue forever."""
     import sentencepiece
 
     sp = sentencepiece.SentencePieceProcessor()
@@ -276,23 +273,10 @@ def _feed_queue(q, sp_proto: bytes, loader_kwargs: dict) -> None:
 
 
 class SubprocessDataLoader:
-    """DataLoaders running in their own processes, feeding one bounded queue.
-
-    Loading in-process competes with the training loop for CPU and the GIL,
-    which triples the wall time of Mimi's encode (it launches hundreds of
-    small kernels per batch). And the load path is GIL-bound (~12 ms/sample
-    single-thread, io_workers don't parallelize it), capping one process at
-    ~5 batches/s -- below what one fast GPU consumes -- so several processes
-    each build whole batches from a disjoint entry shard (the existing
-    rank/world_size sharding). Batches cross the process boundary via shared
-    memory. Unlike DataLoader, the interleaving of the per-shard streams is
-    nondeterministic.
-    """
-
     def __init__(
         self,
         jsonl: str,
-        sp,  # sentencepiece.SentencePieceProcessor
+        sp,
         batch_size: int,
         sample_rate: int,
         frame_rate: float,
@@ -306,8 +290,6 @@ class SubprocessDataLoader:
         num_procs: int = 3,
         depth: int = 8,
     ):
-        # spawn: fork is unsafe once CUDA is initialized, and the children only
-        # do CPU work anyway.
         ctx = torch_mp.get_context("spawn")
         self._queue = ctx.Queue(maxsize=depth)
         self._procs = []

@@ -71,6 +71,7 @@ packages = ["pocket_tts"]
 
 [project.scripts]
 pocket-tts = "pocket_tts.main:cli_app"
+sd-pocket-tts = "pocket_tts.sd_pocket_tts:main"
 
 [tool.uv]
 # System python distribution can have header files missing, so we use only the python

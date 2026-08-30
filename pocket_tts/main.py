@@ -194,6 +194,7 @@ def serve(
     voice: Annotated[
         str | None,
         typer.Option(
+            "--voice",
             help=(
                 "Path to audio conditioning file (voice to clone) or exported .safetensors voice model. "
                 "Defaults to a built-in voice chosen from the language."

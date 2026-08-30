@@ -24,7 +24,7 @@ from pocket_tts.default_parameters import (
     get_default_text_for_language,
     get_default_voice_for_language,
 )
-from pocket_tts.models.model_state import export_model_state
+from pocket_tts.models.model_state import _is_safetensors_source, export_model_state
 from pocket_tts.models.tts_model import TTSModel
 from pocket_tts.utils.logging_utils import enable_logging
 from pocket_tts.utils.utils import _ORIGINS_OF_PREDEFINED_VOICES
@@ -150,12 +150,15 @@ def text_to_speech(
             or voice_url.startswith("https://")
             or voice_url.startswith("hf://")
             or voice_url in _ORIGINS_OF_PREDEFINED_VOICES
+            or _is_safetensors_source(voice_url)
+            or Path(voice_url).exists()
         ):
             raise HTTPException(
-                status_code=400, detail="voice_url must start with http://, https://, or hf://"
+                status_code=400,
+                detail="voice_url must start with http://, https://, or hf://, or be a valid predefined voice or local file path",
             )
         model_state = tts_model._cached_get_state_for_audio_prompt(voice_url)
-        logging.warning("Using voice from URL: %s", voice_url)
+        logging.warning("Using voice: %s", voice_url)
     elif voice_wav is not None:
         # Use uploaded voice file - preserve extension for format detection
         suffix = Path(voice_wav.filename).suffix if voice_wav.filename else ".wav"
@@ -188,6 +191,16 @@ def serve(
     host: Annotated[str, typer.Option(help="Host to bind to")] = "localhost",
     port: Annotated[int, typer.Option(help="Port to bind to")] = 8000,
     reload: Annotated[bool, typer.Option(help="Enable auto-reload")] = False,
+    voice: Annotated[
+        str | None,
+        typer.Option(
+            help=(
+                "Path to audio conditioning file (voice to clone) or exported .safetensors voice model. "
+                "Defaults to a built-in voice chosen from the language."
+            ),
+            show_default=False,
+        ),
+    ] = None,
     language: Annotated[
         str | None,
         typer.Option(
@@ -212,7 +225,10 @@ def serve(
 
     global tts_model, default_voice
     tts_model = TTSModel.load_model(language=language, config=config, quantize=quantize)
-    default_voice = get_default_voice_for_language(language, config)
+    if voice is not None:
+        default_voice = voice
+    else:
+        default_voice = get_default_voice_for_language(language, config)
 
     uvicorn.run("pocket_tts.main:web_app", host=host, port=port, reload=reload)
 

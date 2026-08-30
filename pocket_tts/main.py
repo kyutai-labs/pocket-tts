@@ -143,6 +143,15 @@ def text_to_speech(
     if voice_url is not None and voice_wav is not None:
         raise HTTPException(status_code=400, detail="Cannot provide both voice_url and voice_wav")
 
+    if voice_url is not None and _is_safetensors_source(voice_url):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "The demo server does not support .safetensors voice models; "
+                "provide an audio conditioning file or a predefined voice instead"
+            ),
+        )
+
     # Use the appropriate model state
     if voice_url is not None:
         if not (
@@ -150,7 +159,6 @@ def text_to_speech(
             or voice_url.startswith("https://")
             or voice_url.startswith("hf://")
             or voice_url in _ORIGINS_OF_PREDEFINED_VOICES
-            or _is_safetensors_source(voice_url)
             or Path(voice_url).exists()
         ):
             raise HTTPException(
@@ -196,7 +204,8 @@ def serve(
         typer.Option(
             "--voice",
             help=(
-                "Path to audio conditioning file (voice to clone) or exported .safetensors voice model. "
+                "Path to an audio conditioning file (voice to clone). "
+                "Exported .safetensors voice models are not supported by the demo server. "
                 "Defaults to a built-in voice chosen from the language."
             ),
             show_default=False,

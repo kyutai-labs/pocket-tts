@@ -17,7 +17,7 @@ This starts a server on `http://localhost:8000` with the default voice model.
 - `--host HOST`: Host to bind to (default: "localhost")
 - `--port PORT`: Port to bind to (default: 8000)
 - `--reload`: Enable auto-reload for development
-- `--voice`: Path to audio conditioning file (voice to clone) or exported `.safetensors` voice model. Defaults to a built-in voice chosen from the language.
+- `--voice`: Path to an audio conditioning file (voice to clone). Exported `.safetensors` voice models are not supported by the demo server. Defaults to a built-in voice chosen from the language.
 - `--language`: Language for the TTS model, one of `'english_2026-01'`, `'english_2026-04'`, `'english'`, `'french_24l'`, `'german_24l'`, `'portuguese_24l'`, `'italian_24l'`, `'spanish_24l'` (default: `english`, which is the same model as `'english_2026-04'`). Incompatible with `--config`. The "24l" variants are bigger models, not distilled yet and here only as preview.
 - `--config`: Path to a custom config .yaml — a local path, an `https://` URL, or an `hf://` path. Incompatible with `--language`.
 - `--quantize`: Use int8 quantization for the model (default: False). This can reduce memory usage and increase speed, with minimal impact on audio quality.

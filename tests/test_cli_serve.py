@@ -22,9 +22,7 @@ def test_serve_sets_custom_default_voice(monkeypatch):
     monkeypatch.setattr(main_module.TTSModel, "load_model", mock_load_model)
     monkeypatch.setattr(main_module.uvicorn, "run", mock_run)
 
-    result = runner.invoke(
-        cli_app, ["serve", "--voice", "custom_voice.wav", "--port", "8000"]
-    )
+    result = runner.invoke(cli_app, ["serve", "--voice", "custom_voice.wav", "--port", "8000"])
 
     assert result.exit_code == 0
     assert main_module.default_voice == "custom_voice.wav"
@@ -42,9 +40,7 @@ def test_serve_passes_selected_language_to_model(monkeypatch):
     result = runner.invoke(cli_app, ["serve", "--language", "english_2026-01"])
 
     assert result.exit_code == 0
-    mock_load_model.assert_called_once_with(
-        language="english_2026-01", config=None, quantize=False
-    )
+    mock_load_model.assert_called_once_with(language="english_2026-01", config=None, quantize=False)
     mock_run.assert_called_once()
 
 

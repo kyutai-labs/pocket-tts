@@ -154,6 +154,19 @@ The official Pocket TTS training happens in two steps, corresponding to the two 
 - `scratch.yaml`: trains a 24-layer teacher from scratch
 - `depth_distill.yaml`: distils that teacher into a 6-layer student. This also bakes in classifier-free guidance (CFG), see [paper](https://arxiv.org/abs/2207.12598) or [explanation](https://youtu.be/iv-5mZ_9CPY?t=1797).
 
+After the teacher finishes, run the same command on
+`training/configs/depth_distill.yaml`. The student copies the teacher's flow
+head and all non-backbone weights (kept frozen) and learns to match its
+backbone activations. With `distill_cfg_coef: 2.0` the target is the
+teacher's *guided* computation — a conditioned and an unconditioned pass
+combined — so guidance is baked in: the student reproduces it in a single
+pass, evaluated at cfg 1. `distill_teacher_weights` defaults to the scratch
+run's final checkpoint; point it at your teacher if it lives elsewhere. WER
+reaches teacher parity by ~50k steps; speaker similarity and UTMOS keep
+improving until ~150k.
+
+DISTILL_SPEED_TABLE_PLACEHOLDER
+
 Two more configs cover finetuning: `finetune.yaml` continues a released model
 on more data in the same language (new voices, a new domain), and
 `finetune_language.yaml` starts the teacher from

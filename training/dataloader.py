@@ -20,6 +20,7 @@ import numpy as np
 import sphn
 import torch
 import torch.multiprocessing as torch_mp
+from safetensors import safe_open
 
 from pocket_tts.data.audio_utils import convert_audio
 
@@ -33,6 +34,8 @@ class Entry:
     transcript: str
     words: list | None = None  # [{"word", "start", "end"}] from training.scripts.align_data
     start: float = 0.0  # offset of the utterance inside the audio file (long recordings)
+    latents_shard: str | None = None
+    latents_key: str | None = None
 
 
 @dataclass
@@ -42,6 +45,8 @@ class Batch:
     text_tokens: list[torch.Tensor]  # ragged, one [L_b] long tensor per sample
     voice_audio: torch.Tensor  # [B, 1, prompt_samples]
     num_voice_prompt_frames: torch.Tensor  # [B] valid codec frames of each voice prompt
+    tail_latents: torch.Tensor | None = None
+    prompt_latents: torch.Tensor | None = None
 
 
 def load_entries(path: str, rank: int, world_size: int) -> list[str]:
@@ -94,6 +99,14 @@ class DataLoader:
         self.io_workers = io_workers
         self._failures = 0
         self.rng = random.Random(seed)
+        self.frame_size = int(sample_rate / frame_rate)
+        meta_path = Path(jsonl).with_suffix(".meta.json")
+        self.stitch_frames = 0
+        if meta_path.exists():
+            meta = json.loads(meta_path.read_text())
+            self.stitch_frames = int(meta["stitch_frames"])
+            self.latents_root = Path(jsonl).parent
+            logger.info(f"latent mode: stitch_frames={self.stitch_frames} from {meta_path.name}")
 
     MIN_CUT_SEC = 1.0  # keep at least this much audio on both sides of a cut
     TRAIL_SEC = 0.2  # silence kept after the last word, so EOS has a consistent target
@@ -117,60 +130,66 @@ class DataLoader:
         ends = [w["end"] for w in entry.words if w.get("end") is not None]
         return max(ends) if ends else None
 
-    def _sample(self, entry: Entry) -> tuple[np.ndarray, torch.Tensor, np.ndarray, int]:
-        if entry.words:
-            # Cut the utterance at a random point between two aligned words:
-            # audio before the cut = voice conditioning, audio after = target,
-            # paired with the remaining words as text (see training/scripts/align_data.py).
-            cuts = []
-            for i in range(1, len(entry.words)):
-                prev, cur = entry.words[i - 1], entry.words[i]
-                if prev["end"] is None or cur["start"] is None:
-                    continue
-                cut = 0.5 * (prev["end"] + cur["start"])
-                if cut >= self.MIN_CUT_SEC and entry.duration - cut >= self.MIN_CUT_SEC:
-                    cuts.append((cut, i))
-            if cuts:
-                # The prompt is the (contiguous) start of the utterance.
-                # Eligible cuts are word boundaries whose preceding word ends
-                # inside the prompt window; the draw is uniform over 1..k
-                # eligible words, so prompt length varies and the target
-                # keeps most of the utterance.
-                window = (
-                    self.max_voice_prompt_sec if self.max_voice_prompt_sec > 0 else float("inf")
-                )
-                eligible = [
-                    (c, i)
-                    for c, i in cuts
-                    if entry.words[i - 1].get("end") is not None
-                    and entry.words[i - 1]["end"] < window
-                ]
-                cuts = eligible or cuts[:1]  # degenerate windows: earliest valid cut
-            if cuts:
-                cut, i = self.rng.choice(cuts)
-                text = " ".join(w["word"] for w in entry.words[i:])
-                tokens = torch.tensor(self.tokenize(text), dtype=torch.long)
-                # Trim to the last word (plus a short tail) rather than the end
-                # of the file: 12% of utterances carry >1s of trailing silence,
-                # and training on it teaches the model to emit silence instead of
-                # EOS, so generations never terminate. dora does the same thing
-                # via align_wav_on_words.
-                end = entry.duration
-                last = self._last_word_end(entry)
-                if last is not None and last > cut:
-                    end = min(entry.duration, last + self.TRAIL_SEC)
-                wav = _load_window(
-                    entry.path,
-                    entry.start + cut,
-                    min(end - cut, self.max_duration_sec),
-                    self.sample_rate,
-                )
-                # The prompt is everything from the utterance start to the
-                # cut (bounded by the window via cut selection).
-                prompt, length = self._cap_prompt(
-                    _load_window(entry.path, entry.start, cut, self.sample_rate)
-                )
-                return wav, tokens, prompt, length
+    def _choose_cut(self, entry: Entry) -> tuple[float, int] | None:
+        # Cut the utterance at a random point between two aligned words:
+        # audio before the cut = voice conditioning, audio after = target,
+        # paired with the remaining words as text (see training/scripts/align_data.py).
+        if not entry.words:
+            return None
+        cuts = []
+        for i in range(1, len(entry.words)):
+            prev, cur = entry.words[i - 1], entry.words[i]
+            if prev["end"] is None or cur["start"] is None:
+                continue
+            cut = 0.5 * (prev["end"] + cur["start"])
+            if cut >= self.MIN_CUT_SEC and entry.duration - cut >= self.MIN_CUT_SEC:
+                cuts.append((cut, i))
+        if cuts:
+            # The prompt is the (contiguous) start of the utterance.
+            # Eligible cuts are word boundaries whose preceding word ends
+            # inside the prompt window; the draw is uniform over 1..k
+            # eligible words, so prompt length varies and the target
+            # keeps most of the utterance.
+            window = self.max_voice_prompt_sec if self.max_voice_prompt_sec > 0 else float("inf")
+            eligible = [
+                (c, i)
+                for c, i in cuts
+                if entry.words[i - 1].get("end") is not None and entry.words[i - 1]["end"] < window
+            ]
+            cuts = eligible or cuts[:1]  # degenerate windows: earliest valid cut
+        if not cuts:
+            return None
+        return self.rng.choice(cuts)
+
+    def _sample(self, entry: Entry) -> tuple:
+        if entry.latents_shard is not None:
+            return self._sample_latent(entry)
+        chosen = self._choose_cut(entry)
+        if chosen is not None:
+            cut, i = chosen
+            text = " ".join(w["word"] for w in entry.words[i:])
+            tokens = torch.tensor(self.tokenize(text), dtype=torch.long)
+            # Trim to the last word (plus a short tail) rather than the end
+            # of the file: 12% of utterances carry >1s of trailing silence,
+            # and training on it teaches the model to emit silence instead of
+            # EOS, so generations never terminate. dora does the same thing
+            # via align_wav_on_words.
+            end = entry.duration
+            last = self._last_word_end(entry)
+            if last is not None and last > cut:
+                end = min(entry.duration, last + self.TRAIL_SEC)
+            wav = _load_window(
+                entry.path,
+                entry.start + cut,
+                min(end - cut, self.max_duration_sec),
+                self.sample_rate,
+            )
+            # The prompt is everything from the utterance start to the
+            # cut (bounded by the window via cut selection).
+            prompt, length = self._cap_prompt(
+                _load_window(entry.path, entry.start, cut, self.sample_rate)
+            )
+            return wav, tokens, prompt, length
         last = self._last_word_end(entry)
         end = min(entry.duration, last + self.TRAIL_SEC) if last is not None else entry.duration
         duration = min(end, self.max_duration_sec)
@@ -184,6 +203,74 @@ class DataLoader:
         )
         return wav, tokens, prompt, length
 
+    def _load_latents(self, entry: Entry) -> torch.Tensor:
+        path = self.latents_root / entry.latents_shard
+        with safe_open(str(path), framework="pt") as f:
+            return f.get_tensor(entry.latents_key)
+
+    def _sample_latent(self, entry: Entry) -> tuple:
+        assert self.stitch_frames > 0, f"{entry.path}: latents entry but no meta file loaded"
+        lat = self._load_latents(entry)
+        stored = lat.shape[0]
+        fr = self.frame_rate
+        prompt_cap = (
+            max(1, int(self.max_voice_prompt_sec * fr)) if self.max_voice_prompt_sec > 0 else stored
+        )
+        cut_frames = 0
+        text = entry.transcript
+        chosen = self._choose_cut(entry)
+        if chosen is not None and stored > 1:
+            cut, i = chosen
+            cut_frames = min(max(round(cut * fr), 1), stored - 1)
+            text = " ".join(w["word"] for w in entry.words[i:])
+        tokens = torch.tensor(self.tokenize(text), dtype=torch.long)
+        cut_sec = cut_frames / fr
+        end = entry.duration
+        last = self._last_word_end(entry)
+        if last is not None and last > cut_sec:
+            end = min(entry.duration, last + self.TRAIL_SEC)
+        target_frames = int(min(end - cut_sec, self.max_duration_sec) * fr)
+        target_frames = max(1, min(target_frames, stored - cut_frames))
+        stitch_frames = min(self.stitch_frames, target_frames)
+        stitch = _load_window(
+            entry.path, entry.start + cut_sec, stitch_frames / fr, self.sample_rate
+        )
+        tail = lat[cut_frames + stitch_frames : cut_frames + target_frames]
+        if cut_frames > 0:
+            prompt = lat[: min(cut_frames, prompt_cap)]
+        else:
+            start = self.rng.randint(0, max(0, stored - prompt_cap))
+            prompt = lat[start : start + prompt_cap]
+        return stitch, tokens, prompt, tail, target_frames
+
+    def _collate_latent(self, batch: list[tuple]) -> Batch:
+        stitches, tokens, prompts, tails, target_frames = zip(*batch)
+        B = len(stitches)
+        stitch_samples = self.stitch_frames * self.frame_size
+        audio = torch.zeros(B, 1, stitch_samples)
+        for b, w in enumerate(stitches):
+            n = min(len(w), stitch_samples)
+            audio[b, 0, :n] = torch.from_numpy(w[:n])
+        C = prompts[0].shape[-1]
+        tail_len = max(t.shape[0] for t in tails)
+        tail = torch.zeros(B, tail_len, C)
+        prompt_len = max(1, max(p.shape[0] for p in prompts))
+        prompt = torch.zeros(B, prompt_len, C)
+        num_prompt_frames = torch.zeros(B, dtype=torch.long)
+        for b in range(B):
+            tail[b, : tails[b].shape[0]] = tails[b]
+            prompt[b, : prompts[b].shape[0]] = prompts[b]
+            num_prompt_frames[b] = max(1, prompts[b].shape[0])
+        return Batch(
+            audio,
+            torch.tensor(target_frames, dtype=torch.long),
+            list(tokens),
+            torch.zeros(B, 1, 0),
+            num_prompt_frames,
+            tail_latents=tail,
+            prompt_latents=prompt,
+        )
+
     def get_entry(self, index: int) -> Entry:
         d = json.loads(self.entries[index])
         return Entry(
@@ -192,6 +279,8 @@ class DataLoader:
             d["transcript"],
             d.get("words"),
             float(d.get("start", 0.0)),
+            d.get("latents_shard"),
+            d.get("latents_key"),
         )
 
     def _sample_or_none(self, entry: Entry) -> tuple | None:
@@ -239,6 +328,9 @@ class DataLoader:
                     continue
                 batch, samples = samples[: self.batch_size], samples[self.batch_size :]
                 yielded += 1
+                if self.stitch_frames:
+                    yield self._collate_latent(batch)
+                    continue
                 wavs, tokens, prompts, prompt_lens = zip(*batch, strict=True)
                 max_len = max(len(w) for w in wavs)
                 audio = torch.zeros(len(wavs), 1, max_len)
@@ -358,6 +450,17 @@ def _prefetch(iterator: Iterator[Batch], depth: int = 4) -> Iterator[Batch]:
 
 @torch.no_grad()
 def encode_batch(mimi, batch, device):
+    if batch.tail_latents is not None:
+        stitch = mimi.encode_to_latent(batch.audio.to(device))
+        latents = torch.cat([stitch, batch.tail_latents.to(device)], dim=1)
+        T = latents.shape[1]
+        num_audio_frames = batch.num_audio_frames.to(device).clamp(max=T)
+        mask = torch.arange(T, device=device)[None, :] < num_audio_frames[:, None]
+        voice_prompt_latents = batch.prompt_latents.to(device)
+        num_voice_prompt_frames = batch.num_voice_prompt_frames.to(device).clamp(
+            max=voice_prompt_latents.shape[1]
+        )
+        return latents.float(), mask, voice_prompt_latents.float(), num_voice_prompt_frames
     audio = batch.audio.to(device)
     latents = mimi.encode_to_latent(audio)  # [B, T, C]
     T = latents.shape[1]

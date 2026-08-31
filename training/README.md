@@ -198,8 +198,8 @@ Precompute stores ~6 GB of latents per 1000 h of audio next to the manifest.
 `data.precompute: false` skips the precomputing, which will start training
 immediately but at slower speeds.
 
-And for the distillation step (`depth_distill.yaml`, same data, reusing the
-teacher run's latents; `data.precompute: false` gets 2.62 / 13.01 steps/s):
+And for the distillation step (`depth_distill.yaml`), here is the speed you
+can expect:
 
 | GPUs | per-GPU batch | steps/s | peak VRAM/GPU | 200k steps |
 |---|---|---|---|---|

@@ -37,6 +37,20 @@ def _decode_chunk(jobs: list[tuple]) -> tuple[np.ndarray, list[int]]:
     return batch, [len(w) for w in wavs]
 
 
+def _parse_entry(line: str) -> Entry:
+    d = json.loads(line)
+    return Entry(
+        d["path"], float(d["duration"]), d["transcript"], d.get("words"), float(d.get("start", 0.0))
+    )
+
+
+def _chunk_jobs(
+    shard_lines: list[str], chunk_start: int, batch_size: int, sample_rate: int
+) -> list[tuple]:
+    chunk = shard_lines[chunk_start : chunk_start + batch_size]
+    return [(e.path, e.start, e.duration, sample_rate) for e in map(_parse_entry, chunk)]
+
+
 def load_frozen_mimi(config) -> torch.nn.Module:
     mimi = build_mimi(config.mimi)
     weights_file = download_if_necessary(str(config.weights_path))
@@ -78,8 +92,109 @@ def measure_stitch_frames(mimi, audio: torch.Tensor) -> tuple[int, float]:
     return frames + CALIBRATION_MARGIN_FRAMES, floor
 
 
+def _calibrate(pool, lines: list[str], mimi, batch_size: int, device) -> tuple[int, float]:
+    longest = sorted(map(_parse_entry, lines[:SHARD_SIZE]), key=lambda e: -e.duration)
+    jobs = [(e.path, e.start, e.duration, mimi.sample_rate) for e in longest[:batch_size]]
+    calib = list(pool.map(_decode_one, jobs))
+    max_len = max(len(w) for w in calib)
+    max_len -= max_len % mimi.frame_size
+    audio = torch.zeros(len(calib), 1, max_len)
+    for b, w in enumerate(calib):
+        audio[b, 0, : min(len(w), max_len)] = torch.from_numpy(w[:max_len])
+    return measure_stitch_frames(mimi, audio.to(device))
+
+
 def _entry_frames(n_samples: int, sample_rate: int, frame_rate: float) -> int:
     return max(1, int(n_samples * frame_rate / sample_rate))
+
+
+def _annotated_lines(
+    shard_lines: list[str], shard_path: Path, manifest: Path, base_idx: int
+) -> list[str]:
+    out = []
+    for j, line in enumerate(shard_lines):
+        d = json.loads(line)
+        d["latents_shard"] = str(shard_path.relative_to(manifest.parent))
+        d["latents_key"] = str(base_idx + j)
+        out.append(json.dumps(d))
+    return out
+
+
+def _store_latents(
+    tensors: dict, latents: torch.Tensor, lens: list[int], base_idx: int, mimi
+) -> None:
+    for b, n_samples in enumerate(lens):
+        frames = min(_entry_frames(n_samples, mimi.sample_rate, mimi.frame_rate), latents.shape[1])
+        tensors[str(base_idx + b)] = latents[b, :frames].contiguous()
+
+
+def _encode_shard(
+    pool, mimi, device, shard_lines: list[str], base_idx: int, batch_size: int
+) -> dict[str, torch.Tensor]:
+    starts = list(range(0, len(shard_lines), batch_size))
+    futures = {
+        cs: pool.submit(_decode_chunk, _chunk_jobs(shard_lines, cs, batch_size, mimi.sample_rate))
+        for cs in starts[:DECODE_LOOKAHEAD_CHUNKS]
+    }
+    submitted = len(futures)
+    tensors: dict[str, torch.Tensor] = {}
+    for chunk_start in starts:
+        arr, lens = futures.pop(chunk_start).result()
+        if submitted < len(starts):
+            nxt = starts[submitted]
+            jobs = _chunk_jobs(shard_lines, nxt, batch_size, mimi.sample_rate)
+            futures[nxt] = pool.submit(_decode_chunk, jobs)
+            submitted += 1
+        with torch.no_grad():
+            latents = mimi.encode_to_latent(torch.from_numpy(arr).to(device)).cpu()
+        _store_latents(tensors, latents, lens, base_idx + chunk_start, mimi)
+    return tensors
+
+
+def _write_shard(tensors: dict[str, torch.Tensor], shard_path: Path) -> None:
+    tmp = shard_path.with_suffix(".tmp")
+    safetensors.torch.save_file(tensors, str(tmp))
+    tmp.rename(shard_path)
+
+
+def _write_manifest_and_meta(
+    manifest: Path, new_lines: list[str], stitch_frames: int, floor: float, mimi, weights_path: str
+) -> None:
+    out_manifest = manifest.with_name(manifest.stem + "_latents.jsonl")
+    out_manifest.write_text("\n".join(new_lines) + "\n")
+    meta = {
+        "stitch_frames": stitch_frames,
+        "noise_floor": floor,
+        "frame_rate": mimi.frame_rate,
+        "weights_path": weights_path,
+    }
+    meta_path = manifest.with_name(manifest.stem + "_latents.meta.json")
+    meta_path.write_text(json.dumps(meta, indent=2) + "\n")
+    logger.info(f"wrote {out_manifest} and {meta_path}")
+
+
+def precompute_manifest(
+    manifest: Path, mimi, device, batch_size: int, decode_workers: int, weights_path: str
+) -> None:
+    lines = manifest.read_text().splitlines()
+    shard_dir = manifest.parent / "latents"
+    shard_dir.mkdir(exist_ok=True)
+    pool = ProcessPoolExecutor(
+        max_workers=decode_workers, mp_context=multiprocessing.get_context("spawn")
+    )
+    stitch_frames, floor = _calibrate(pool, lines, mimi, batch_size, device)
+    logger.info(f"{manifest.name}: stitch_frames={stitch_frames} (noise floor {floor:.1e})")
+    new_lines: list[str] = []
+    n_shards = (len(lines) + SHARD_SIZE - 1) // SHARD_SIZE
+    for shard_idx in tqdm(range(n_shards), desc=f"encode {manifest.name}"):
+        shard_lines = lines[shard_idx * SHARD_SIZE : (shard_idx + 1) * SHARD_SIZE]
+        shard_path = shard_dir / f"{manifest.stem}_{shard_idx:05d}.safetensors"
+        new_lines += _annotated_lines(shard_lines, shard_path, manifest, shard_idx * SHARD_SIZE)
+        if shard_path.exists():
+            continue
+        tensors = _encode_shard(pool, mimi, device, shard_lines, shard_idx * SHARD_SIZE, batch_size)
+        _write_shard(tensors, shard_path)
+    _write_manifest_and_meta(manifest, new_lines, stitch_frames, floor, mimi, weights_path)
 
 
 @app.command()
@@ -100,101 +215,6 @@ def main(config: str, batch_size: int = 16, decode_workers: int = 16) -> None:
         decode_workers,
         str(model_config.weights_path),
     )
-
-
-def precompute_manifest(
-    manifest: Path, mimi, device, batch_size: int, decode_workers: int, weights_path: str
-) -> None:
-    lines = manifest.read_text().splitlines()
-    out_manifest = manifest.with_name(manifest.stem + "_latents.jsonl")
-    meta_path = manifest.with_name(manifest.stem + "_latents.meta.json")
-    shard_dir = manifest.parent / "latents"
-    shard_dir.mkdir(exist_ok=True)
-
-    def parse(line: str) -> Entry:
-        d = json.loads(line)
-        return Entry(
-            d["path"],
-            float(d["duration"]),
-            d["transcript"],
-            d.get("words"),
-            float(d.get("start", 0.0)),
-        )
-
-    pool = ProcessPoolExecutor(
-        max_workers=decode_workers, mp_context=multiprocessing.get_context("spawn")
-    )
-    sample_rate, frame_rate = mimi.sample_rate, mimi.frame_rate
-
-    def chunk_jobs(shard_lines: list[str], chunk_start: int) -> list[tuple]:
-        chunk = shard_lines[chunk_start : chunk_start + batch_size]
-        return [(e.path, e.start, e.duration, sample_rate) for e in (parse(li) for li in chunk)]
-
-    longest = sorted((parse(li) for li in lines[:SHARD_SIZE]), key=lambda e: -e.duration)
-    calib = list(
-        pool.map(
-            _decode_one, [(e.path, e.start, e.duration, sample_rate) for e in longest[:batch_size]]
-        )
-    )
-    max_len = max(len(w) for w in calib)
-    max_len -= max_len % mimi.frame_size
-    audio = torch.zeros(len(calib), 1, max_len)
-    for b, w in enumerate(calib):
-        audio[b, 0, : min(len(w), max_len)] = torch.from_numpy(w[:max_len])
-    with torch.no_grad():
-        stitch_frames, floor = measure_stitch_frames(mimi, audio.to(device))
-    logger.info(f"{manifest.name}: stitch_frames={stitch_frames} (noise floor {floor:.1e})")
-
-    new_lines = []
-    n_shards = (len(lines) + SHARD_SIZE - 1) // SHARD_SIZE
-    for shard_idx in tqdm(range(n_shards), desc=f"encode {manifest.name}"):
-        shard_lines = lines[shard_idx * SHARD_SIZE : (shard_idx + 1) * SHARD_SIZE]
-        shard_name = f"{manifest.stem}_{shard_idx:05d}.safetensors"
-        shard_path = shard_dir / shard_name
-        for j, line in enumerate(shard_lines):
-            d = json.loads(line)
-            d["latents_shard"] = str(shard_path.relative_to(manifest.parent))
-            d["latents_key"] = str(shard_idx * SHARD_SIZE + j)
-            new_lines.append(json.dumps(d))
-        if shard_path.exists():
-            continue
-        tensors: dict[str, torch.Tensor] = {}
-        starts = list(range(0, len(shard_lines), batch_size))
-        futures = {
-            chunk_start: pool.submit(_decode_chunk, chunk_jobs(shard_lines, chunk_start))
-            for chunk_start in starts[:DECODE_LOOKAHEAD_CHUNKS]
-        }
-        submitted = len(futures)
-        for chunk_start in starts:
-            arr, lens = futures.pop(chunk_start).result()
-            if submitted < len(starts):
-                nxt = starts[submitted]
-                futures[nxt] = pool.submit(_decode_chunk, chunk_jobs(shard_lines, nxt))
-                submitted += 1
-            with torch.no_grad():
-                latents = mimi.encode_to_latent(torch.from_numpy(arr).to(device)).cpu()
-            for b, n_samples in enumerate(lens):
-                frames = min(_entry_frames(n_samples, sample_rate, frame_rate), latents.shape[1])
-                key = str(shard_idx * SHARD_SIZE + chunk_start + b)
-                tensors[key] = latents[b, :frames].contiguous()
-        tmp = shard_path.with_suffix(".tmp")
-        safetensors.torch.save_file(tensors, str(tmp))
-        tmp.rename(shard_path)
-
-    out_manifest.write_text("\n".join(new_lines) + "\n")
-    meta_path.write_text(
-        json.dumps(
-            {
-                "stitch_frames": stitch_frames,
-                "noise_floor": floor,
-                "frame_rate": frame_rate,
-                "weights_path": weights_path,
-            },
-            indent=2,
-        )
-        + "\n"
-    )
-    logger.info(f"wrote {out_manifest} and {meta_path}")
 
 
 if __name__ == "__main__":

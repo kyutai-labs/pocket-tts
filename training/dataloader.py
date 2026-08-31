@@ -208,67 +208,78 @@ class DataLoader:
         with safe_open(str(path), framework="pt") as f:
             return f.get_tensor(entry.latents_key)
 
-    def _sample_latent(self, entry: Entry) -> tuple:
-        assert self.stitch_frames > 0, f"{entry.path}: latents entry but no meta file loaded"
-        lat = self._load_latents(entry)
-        stored = lat.shape[0]
-        fr = self.frame_rate
-        prompt_cap = (
-            max(1, int(self.max_voice_prompt_sec * fr)) if self.max_voice_prompt_sec > 0 else stored
-        )
-        cut_frames = 0
-        text = entry.transcript
+    def _latent_cut(self, entry: Entry, stored: int) -> tuple[int, str]:
         chosen = self._choose_cut(entry)
-        if chosen is not None and stored > 1:
-            cut, i = chosen
-            cut_frames = min(max(round(cut * fr), 1), stored - 1)
-            text = " ".join(w["word"] for w in entry.words[i:])
-        tokens = torch.tensor(self.tokenize(text), dtype=torch.long)
-        cut_sec = cut_frames / fr
+        if chosen is None or stored <= 1:
+            return 0, entry.transcript
+        cut, i = chosen
+        cut_frames = min(max(round(cut * self.frame_rate), 1), stored - 1)
+        return cut_frames, " ".join(w["word"] for w in entry.words[i:])
+
+    def _latent_target_frames(self, entry: Entry, cut_frames: int, stored: int) -> int:
+        cut_sec = cut_frames / self.frame_rate
         end = entry.duration
         last = self._last_word_end(entry)
         if last is not None and last > cut_sec:
             end = min(entry.duration, last + self.TRAIL_SEC)
-        target_frames = int(min(end - cut_sec, self.max_duration_sec) * fr)
-        target_frames = max(1, min(target_frames, stored - cut_frames))
+        target_frames = int(min(end - cut_sec, self.max_duration_sec) * self.frame_rate)
+        return max(1, min(target_frames, stored - cut_frames))
+
+    def _latent_prompt(self, lat: torch.Tensor, cut_frames: int) -> torch.Tensor:
+        stored = lat.shape[0]
+        cap = (
+            max(1, int(self.max_voice_prompt_sec * self.frame_rate))
+            if self.max_voice_prompt_sec > 0
+            else stored
+        )
+        if cut_frames > 0:
+            return lat[: min(cut_frames, cap)]
+        start = self.rng.randint(0, max(0, stored - cap))
+        return lat[start : start + cap]
+
+    def _sample_latent(self, entry: Entry) -> tuple:
+        assert self.stitch_frames > 0, f"{entry.path}: latents entry but no meta file loaded"
+        lat = self._load_latents(entry)
+        cut_frames, text = self._latent_cut(entry, lat.shape[0])
+        tokens = torch.tensor(self.tokenize(text), dtype=torch.long)
+        target_frames = self._latent_target_frames(entry, cut_frames, lat.shape[0])
         stitch_frames = min(self.stitch_frames, target_frames)
         stitch = _load_window(
-            entry.path, entry.start + cut_sec, stitch_frames / fr, self.sample_rate
+            entry.path,
+            entry.start + cut_frames / self.frame_rate,
+            stitch_frames / self.frame_rate,
+            self.sample_rate,
         )
         tail = lat[cut_frames + stitch_frames : cut_frames + target_frames]
-        if cut_frames > 0:
-            prompt = lat[: min(cut_frames, prompt_cap)]
-        else:
-            start = self.rng.randint(0, max(0, stored - prompt_cap))
-            prompt = lat[start : start + prompt_cap]
-        return stitch, tokens, prompt, tail, target_frames
+        return stitch, tokens, self._latent_prompt(lat, cut_frames), tail, target_frames
 
-    def _collate_latent(self, batch: list[tuple]) -> Batch:
-        stitches, tokens, prompts, tails, target_frames = zip(*batch)
-        B = len(stitches)
+    @staticmethod
+    def _pad_latents(seqs: tuple, min_len: int) -> torch.Tensor:
+        length = max(min_len, max(s.shape[0] for s in seqs))
+        out = torch.zeros(len(seqs), length, seqs[0].shape[-1])
+        for b, s in enumerate(seqs):
+            out[b, : s.shape[0]] = s
+        return out
+
+    def _collate_stitch_audio(self, stitches: tuple) -> torch.Tensor:
         stitch_samples = self.stitch_frames * self.frame_size
-        audio = torch.zeros(B, 1, stitch_samples)
+        audio = torch.zeros(len(stitches), 1, stitch_samples)
         for b, w in enumerate(stitches):
             n = min(len(w), stitch_samples)
             audio[b, 0, :n] = torch.from_numpy(w[:n])
-        C = prompts[0].shape[-1]
-        tail_len = max(t.shape[0] for t in tails)
-        tail = torch.zeros(B, tail_len, C)
-        prompt_len = max(1, max(p.shape[0] for p in prompts))
-        prompt = torch.zeros(B, prompt_len, C)
-        num_prompt_frames = torch.zeros(B, dtype=torch.long)
-        for b in range(B):
-            tail[b, : tails[b].shape[0]] = tails[b]
-            prompt[b, : prompts[b].shape[0]] = prompts[b]
-            num_prompt_frames[b] = max(1, prompts[b].shape[0])
+        return audio
+
+    def _collate_latent(self, batch: list[tuple]) -> Batch:
+        stitches, tokens, prompts, tails, target_frames = zip(*batch, strict=True)
+        num_prompt_frames = torch.tensor([max(1, p.shape[0]) for p in prompts], dtype=torch.long)
         return Batch(
-            audio,
+            self._collate_stitch_audio(stitches),
             torch.tensor(target_frames, dtype=torch.long),
             list(tokens),
-            torch.zeros(B, 1, 0),
+            torch.zeros(len(stitches), 1, 0),
             num_prompt_frames,
-            tail_latents=tail,
-            prompt_latents=prompt,
+            tail_latents=self._pad_latents(tails, 0),
+            prompt_latents=self._pad_latents(prompts, 1),
         )
 
     def get_entry(self, index: int) -> Entry:

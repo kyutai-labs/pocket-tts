@@ -1,8 +1,10 @@
 import json
 import logging
-from concurrent.futures import ThreadPoolExecutor
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
+import numpy as np
 import safetensors.torch
 import torch
 import typer
@@ -18,6 +20,21 @@ app = typer.Typer(pretty_exceptions_show_locals=False)
 
 SHARD_SIZE = 4096
 CALIBRATION_MARGIN_FRAMES = 4
+DECODE_LOOKAHEAD_CHUNKS = 6
+
+
+def _decode_one(job: tuple) -> np.ndarray:
+    path, start, duration, sample_rate = job
+    return _load_window(path, start, duration, sample_rate)
+
+
+def _decode_chunk(jobs: list[tuple]) -> tuple[np.ndarray, list[int]]:
+    wavs = [_load_window(p, s, d, sr) for (p, s, d, sr) in jobs]
+    max_len = max(len(w) for w in wavs)
+    batch = np.zeros((len(wavs), 1, max_len), dtype=np.float32)
+    for b, w in enumerate(wavs):
+        batch[b, 0, : len(w)] = w
+    return batch, [len(w) for w in wavs]
 
 
 def load_frozen_mimi(config) -> torch.nn.Module:
@@ -104,13 +121,19 @@ def precompute_manifest(
             float(d.get("start", 0.0)),
         )
 
-    pool = ThreadPoolExecutor(max_workers=decode_workers)
+    pool = ProcessPoolExecutor(
+        max_workers=decode_workers, mp_context=multiprocessing.get_context("spawn")
+    )
     sample_rate, frame_rate = mimi.sample_rate, mimi.frame_rate
+
+    def chunk_jobs(shard_lines: list[str], chunk_start: int) -> list[tuple]:
+        chunk = shard_lines[chunk_start : chunk_start + batch_size]
+        return [(e.path, e.start, e.duration, sample_rate) for e in (parse(li) for li in chunk)]
 
     longest = sorted((parse(li) for li in lines[:SHARD_SIZE]), key=lambda e: -e.duration)
     calib = list(
         pool.map(
-            lambda e: _load_window(e.path, e.start, e.duration, sample_rate), longest[:batch_size]
+            _decode_one, [(e.path, e.start, e.duration, sample_rate) for e in longest[:batch_size]]
         )
     )
     max_len = max(len(w) for w in calib)
@@ -136,20 +159,22 @@ def precompute_manifest(
         if shard_path.exists():
             continue
         tensors: dict[str, torch.Tensor] = {}
-        for chunk_start in range(0, len(shard_lines), batch_size):
-            chunk = shard_lines[chunk_start : chunk_start + batch_size]
-            parsed = [parse(li) for li in chunk]
-            wavs = list(
-                pool.map(lambda e: _load_window(e.path, e.start, e.duration, sample_rate), parsed)
-            )
-            max_len = max(len(w) for w in wavs)
-            batch = torch.zeros(len(wavs), 1, max_len)
-            for b, w in enumerate(wavs):
-                batch[b, 0, : len(w)] = torch.from_numpy(w)
+        starts = list(range(0, len(shard_lines), batch_size))
+        futures = {
+            chunk_start: pool.submit(_decode_chunk, chunk_jobs(shard_lines, chunk_start))
+            for chunk_start in starts[:DECODE_LOOKAHEAD_CHUNKS]
+        }
+        submitted = len(futures)
+        for chunk_start in starts:
+            arr, lens = futures.pop(chunk_start).result()
+            if submitted < len(starts):
+                nxt = starts[submitted]
+                futures[nxt] = pool.submit(_decode_chunk, chunk_jobs(shard_lines, nxt))
+                submitted += 1
             with torch.no_grad():
-                latents = mimi.encode_to_latent(batch.to(device)).cpu()
-            for b, w in enumerate(wavs):
-                frames = min(_entry_frames(len(w), sample_rate, frame_rate), latents.shape[1])
+                latents = mimi.encode_to_latent(torch.from_numpy(arr).to(device)).cpu()
+            for b, n_samples in enumerate(lens):
+                frames = min(_entry_frames(n_samples, sample_rate, frame_rate), latents.shape[1])
                 key = str(shard_idx * SHARD_SIZE + chunk_start + b)
                 tensors[key] = latents[b, :frames].contiguous()
         tmp = shard_path.with_suffix(".tmp")

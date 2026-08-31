@@ -142,47 +142,60 @@ def write_samples(model, mimi, tokenize, args, run_dir, step, voice_latents, dev
 def ensure_train_latents(args: TrainArgs, mimi, device, rank: int, world_size: int) -> None:
     """Train from precomputed latents, encoding them first if needed.
 
-    Every rank encodes a strided share of the chunks; completion is signaled
-    through the shared filesystem (an NCCL barrier would time out). Latents
-    already on disk are checked against the config's Mimi weights.
+    The latents store is keyed by a hash of Mimi's encode-path weights, so
+    changed weights trigger a fresh precompute instead of silently serving
+    stale latents. Every rank encodes a strided share of the chunks;
+    completion is signaled through the shared filesystem (an NCCL barrier
+    would time out).
     """
-    train_path = Path(args.data.train_jsonl)
-    is_latents = train_path.with_suffix(".meta.json").exists()
-    if args.data.precompute and not is_latents:
-        latents_manifest = train_path.with_name(train_path.stem + "_latents.jsonl")
-        meta = latents_manifest.with_suffix(".meta.json")
-        if not meta.exists():
-            from training.scripts.precompute_latents import precompute_manifest
+    from training.scripts.precompute_latents import mimi_encode_hash, precompute_manifest
 
-            config = load_model_config(args.model_config, args.model_overrides)
-            if rank == 0:
-                logger.info(f"precomputing latents for {train_path.name} (one-time)")
-            precompute_manifest(
-                train_path,
-                mimi,
-                device,
-                32,
-                0,
-                str(config.weights_path),
-                worker=rank,
-                num_workers=world_size,
-            )
-            waited = 0
-            while not meta.exists():
-                time.sleep(10)
-                waited += 10
-                if waited > 24 * 3600:
-                    raise SystemExit("gave up waiting for the latents precompute to finish")
-        args.data.train_jsonl = str(latents_manifest)
-    train_meta = Path(args.data.train_jsonl).with_suffix(".meta.json")
-    if train_meta.exists():
-        recorded = json.loads(train_meta.read_text()).get("weights_path")
-        expected = str(load_model_config(args.model_config, args.model_overrides).weights_path)
-        if recorded != expected:
+    train_path = Path(args.data.train_jsonl)
+    if train_path.stem.endswith("_latents"):
+        audio_manifest = train_path.with_name(
+            train_path.stem.removesuffix("_latents") + train_path.suffix
+        )
+    elif args.data.precompute:
+        audio_manifest = train_path
+    else:
+        return
+    latents_manifest = audio_manifest.with_name(audio_manifest.stem + "_latents.jsonl")
+    meta_path = latents_manifest.with_suffix(".meta.json")
+    current = mimi_encode_hash(mimi)
+
+    def is_fresh() -> bool:
+        if not meta_path.exists():
+            return False
+        return json.loads(meta_path.read_text()).get("mimi_hash") == current
+
+    if not is_fresh():
+        if not args.data.precompute:
             raise SystemExit(
-                f"latents in {args.data.train_jsonl} were precomputed with\n"
-                f"    {recorded}\n"
-                f"but the config trains against\n"
-                f"    {expected}\n"
-                "Re-run training.scripts.precompute_latents with this config."
+                f"{latents_manifest} was precomputed with different Mimi weights "
+                "and data.precompute is off; re-run training.scripts.precompute_latents."
             )
+        if not audio_manifest.exists():
+            raise SystemExit(
+                f"latents are stale (Mimi weights changed) and the audio manifest "
+                f"{audio_manifest} is missing; cannot re-encode."
+            )
+        if rank == 0:
+            logger.info(f"precomputing latents for {audio_manifest.name} (one-time)")
+        config = load_model_config(args.model_config, args.model_overrides)
+        precompute_manifest(
+            audio_manifest,
+            mimi,
+            device,
+            32,
+            0,
+            str(config.weights_path),
+            worker=rank,
+            num_workers=world_size,
+        )
+        waited = 0
+        while not is_fresh():
+            time.sleep(10)
+            waited += 10
+            if waited > 24 * 3600:
+                raise SystemExit("gave up waiting for the latents precompute to finish")
+    args.data.train_jsonl = str(latents_manifest)

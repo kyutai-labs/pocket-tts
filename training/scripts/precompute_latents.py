@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import multiprocessing
@@ -55,6 +56,20 @@ def _parse_entry(line: str) -> Entry:
 def _chunk_jobs(lines: list[str], idxs: list[int], sample_rate: int) -> list[tuple]:
     chunk = [lines[i] for i in idxs]
     return [(e.path, e.start, e.duration, sample_rate) for e in map(_parse_entry, chunk)]
+
+
+def mimi_encode_hash(mimi) -> str:
+    """Hash of the weights on the encode path (encoder, encoder transformer,
+    downsample): identifies which Mimi produced a latents store."""
+    h = hashlib.sha256()
+    for name in ("encoder", "encoder_transformer", "downsample"):
+        module = getattr(mimi, name, None)
+        if module is None:
+            continue
+        for k, v in sorted(module.state_dict().items()):
+            h.update(f"{name}.{k}:{tuple(v.shape)}".encode())
+            h.update(v.detach().cpu().contiguous().numpy().tobytes())
+    return h.hexdigest()
 
 
 def load_frozen_mimi(config) -> torch.nn.Module:
@@ -118,21 +133,26 @@ def _entry_frames(n_samples: int, sample_rate: int, frame_rate: float) -> int:
     return max(1, int(n_samples * frame_rate / sample_rate))
 
 
-def _latents_name(manifest: Path, idx: int) -> str:
-    return f"latents/{manifest.stem}_{idx:08d}.safetensors"
+def _latents_name(manifest: Path, idx: int, tag: str) -> str:
+    return f"latents/{tag}/{manifest.stem}_{idx:08d}.safetensors"
 
 
-def _annotated_lines(lines: list[str], manifest: Path) -> list[str]:
+def _annotated_lines(lines: list[str], manifest: Path, tag: str) -> list[str]:
     out = []
     for idx, line in enumerate(lines):
         d = json.loads(line)
-        d["latents_file"] = _latents_name(manifest, idx)
+        d["latents_file"] = _latents_name(manifest, idx, tag)
         out.append(json.dumps(d))
     return out
 
 
 def _pending_chunks(
-    lines: list[str], manifest: Path, batch_size: int, worker: int = 0, num_workers: int = 1
+    lines: list[str],
+    manifest: Path,
+    batch_size: int,
+    tag: str,
+    worker: int = 0,
+    num_workers: int = 1,
 ) -> list[list[int]]:
     # Chunk in duration order: a chunk pads to its longest row, so grouping
     # similar lengths avoids spending encode FLOPs on padding. Latents files
@@ -144,17 +164,17 @@ def _pending_chunks(
         if n % num_workers != worker:
             continue
         idxs = order[chunk_start : chunk_start + batch_size]
-        if any(not (manifest.parent / _latents_name(manifest, idx)).exists() for idx in idxs):
+        if any(not (manifest.parent / _latents_name(manifest, idx, tag)).exists() for idx in idxs):
             pending.append(idxs)
     return pending
 
 
 def _write_chunk(
-    latents: torch.Tensor, lens: list[int], idxs: list[int], manifest: Path, mimi
+    latents: torch.Tensor, lens: list[int], idxs: list[int], manifest: Path, mimi, tag: str
 ) -> None:
     for b, n_samples in enumerate(lens):
         frames = min(_entry_frames(n_samples, mimi.sample_rate, mimi.frame_rate), latents.shape[1])
-        path = manifest.parent / _latents_name(manifest, idxs[b])
+        path = manifest.parent / _latents_name(manifest, idxs[b], tag)
         tmp = path.with_suffix(".tmp")
         safetensors.torch.save_file({"latents": latents[b, :frames].contiguous()}, str(tmp))
         tmp.rename(path)
@@ -168,10 +188,11 @@ def _encode_pending(
     manifest: Path,
     batch_size: int,
     decode_workers: int,
+    tag: str,
     worker: int = 0,
     num_workers: int = 1,
 ) -> None:
-    pending = _pending_chunks(lines, manifest, batch_size, worker, num_workers)
+    pending = _pending_chunks(lines, manifest, batch_size, tag, worker, num_workers)
     lookahead = decode_workers + 2  # keep every decode worker busy
     futures = {
         i: pool.submit(_decode_chunk, _chunk_jobs(lines, idxs, mimi.sample_rate))
@@ -186,11 +207,17 @@ def _encode_pending(
             submitted += 1
         with torch.no_grad():
             latents = mimi.encode_to_latent(torch.from_numpy(arr).to(device)).cpu()
-        _write_chunk(latents, lens, idxs, manifest, mimi)
+        _write_chunk(latents, lens, idxs, manifest, mimi, tag)
 
 
 def _write_manifest_and_meta(
-    manifest: Path, new_lines: list[str], stitch_frames: int, floor: float, mimi, weights_path: str
+    manifest: Path,
+    new_lines: list[str],
+    stitch_frames: int,
+    floor: float,
+    mimi,
+    weights_path: str,
+    mimi_hash: str,
 ) -> None:
     out_manifest = manifest.with_name(manifest.stem + "_latents.jsonl")
     out_manifest.write_text("\n".join(new_lines) + "\n")
@@ -199,6 +226,7 @@ def _write_manifest_and_meta(
         "noise_floor": floor,
         "frame_rate": mimi.frame_rate,
         "weights_path": weights_path,
+        "mimi_hash": mimi_hash,
     }
     meta_path = manifest.with_name(manifest.stem + "_latents.meta.json")
     meta_path.write_text(json.dumps(meta, indent=2) + "\n")
@@ -221,7 +249,9 @@ def precompute_manifest(
     worker 0 waits for the others' files and writes the manifest and meta.
     """
     lines = manifest.read_text().splitlines()
-    (manifest.parent / "latents").mkdir(exist_ok=True)
+    mimi_hash = mimi_encode_hash(mimi)
+    tag = mimi_hash[:8]
+    (manifest.parent / "latents" / tag).mkdir(parents=True, exist_ok=True)
     decode_workers = decode_workers or default_decode_workers()
     pool = ProcessPoolExecutor(
         max_workers=decode_workers, mp_context=multiprocessing.get_context("spawn")
@@ -230,14 +260,16 @@ def precompute_manifest(
         stitch_frames, floor = _calibrate(pool, lines, mimi, batch_size, device)
         logger.info(f"{manifest.name}: stitch_frames={stitch_frames} (noise floor {floor:.1e})")
     _encode_pending(
-        pool, mimi, device, lines, manifest, batch_size, decode_workers, worker, num_workers
+        pool, mimi, device, lines, manifest, batch_size, decode_workers, tag, worker, num_workers
     )
     if worker != 0:
         return
-    while _pending_chunks(lines, manifest, batch_size):
+    while _pending_chunks(lines, manifest, batch_size, tag):
         time.sleep(5)
-    new_lines = _annotated_lines(lines, manifest)
-    _write_manifest_and_meta(manifest, new_lines, stitch_frames, floor, mimi, weights_path)
+    new_lines = _annotated_lines(lines, manifest, tag)
+    _write_manifest_and_meta(
+        manifest, new_lines, stitch_frames, floor, mimi, weights_path, mimi_hash
+    )
 
 
 @app.command()

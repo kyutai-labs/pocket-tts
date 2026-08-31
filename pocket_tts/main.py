@@ -42,8 +42,9 @@ cli_app = typer.Typer(
 
 # Global model instance
 tts_model: TTSModel | None = None
-# Voice served when a request doesn't specify one, resolved from the `serve` options.
-default_voice: str | None = None
+# State of the voice served when a request doesn't specify one. It is resolved once from the
+# `serve` options, so that requests never pay for the encoding of the default voice.
+default_voice_state: dict | None = None
 
 web_app = FastAPI(
     title="Kyutai Pocket TTS API", description="Text-to-Speech generation API", version="1.0.0"
@@ -137,9 +138,6 @@ def text_to_speech(
     if not text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
-    if voice_url is None and voice_wav is None:
-        voice_url = default_voice
-
     if voice_url is not None and voice_wav is not None:
         raise HTTPException(status_code=400, detail="Cannot provide both voice_url and voice_wav")
 
@@ -170,8 +168,10 @@ def text_to_speech(
             model_state = tts_model.get_state_for_audio_prompt(Path(temp_file_path), truncate=True)
         finally:
             os.unlink(temp_file_path)
+    elif default_voice_state is not None:
+        model_state = default_voice_state
     else:
-        raise HTTPException(status_code=500, detail="This should never happen.")
+        raise HTTPException(status_code=500, detail="The server has no default voice loaded.")
 
     return StreamingResponse(
         generate_data_with_state(text, model_state),
@@ -204,15 +204,28 @@ def serve(
             "Incompatible with the language argument. If not provided, will use the default English model."
         ),
     ] = None,
+    default_voice: Annotated[
+        str | None,
+        typer.Option(
+            help="Voice used by requests that don't ask for one: a built-in voice name, "
+            "a local path to an audio file or to a .safetensors voice, an https:// URL, "
+            "or an hf:// path. Defaults to the built-in voice of the language.",
+            show_default=False,
+        ),
+    ] = None,
     quantize: Annotated[
         bool, typer.Option(help="Apply int8 quantization to reduce memory usage")
     ] = False,
 ):
     """Start the FastAPI server."""
 
-    global tts_model, default_voice
+    global tts_model, default_voice_state
     tts_model = TTSModel.load_model(language=language, config=config, quantize=quantize)
-    default_voice = get_default_voice_for_language(language, config)
+    if default_voice is None:
+        default_voice = get_default_voice_for_language(language, config)
+    # Resolved before serving: a voice that cannot be loaded fails at startup instead of on
+    # the first request, which would otherwise pay for the encoding of the audio file.
+    default_voice_state = tts_model.get_state_for_audio_prompt(default_voice)
 
     uvicorn.run("pocket_tts.main:web_app", host=host, port=port, reload=reload)
 

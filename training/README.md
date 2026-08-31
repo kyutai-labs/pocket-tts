@@ -136,10 +136,6 @@ Here are some common issues and solutions:
 - If your model is generating speech that cuts off part of the first or last word: the issue is probably with your alignment.
 - If your model sounds like somebody is reading from a book: this can be due to the training dataset (audiobooks like LibriVox), the voice prompt, or both.
 
-For a corpus in another language, see
-[Non-English training](#non-english-training): the aligner and the tokenizer
-both have to be swapped for that language.
-
 ## Train
 
 ```bash

@@ -161,8 +161,15 @@ def _write_chunk(
 
 
 def _encode_pending(
-    pool, mimi, device, lines: list[str], manifest: Path, batch_size: int,
-    decode_workers: int, worker: int = 0, num_workers: int = 1,
+    pool,
+    mimi,
+    device,
+    lines: list[str],
+    manifest: Path,
+    batch_size: int,
+    decode_workers: int,
+    worker: int = 0,
+    num_workers: int = 1,
 ) -> None:
     pending = _pending_chunks(lines, manifest, batch_size, worker, num_workers)
     lookahead = decode_workers + 2  # keep every decode worker busy
@@ -199,8 +206,14 @@ def _write_manifest_and_meta(
 
 
 def precompute_manifest(
-    manifest: Path, mimi, device, batch_size: int, decode_workers: int, weights_path: str,
-    worker: int = 0, num_workers: int = 1,
+    manifest: Path,
+    mimi,
+    device,
+    batch_size: int,
+    decode_workers: int,
+    weights_path: str,
+    worker: int = 0,
+    num_workers: int = 1,
 ) -> None:
     """Encode a manifest's utterances to per-utterance latents files.
 

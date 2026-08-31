@@ -45,6 +45,7 @@ from training.train_utils import (
     ProgressLog,
     _compile_models,
     add_file_logging,
+    ensure_train_latents,
     git_commit,
     lr_at,
     setup_logging,
@@ -71,53 +72,6 @@ class Run:
     rank: int
     world_size: int
     progress: ProgressLog
-
-
-def _ensure_train_latents(args: TrainArgs, mimi, device, rank: int, world_size: int) -> None:
-    """Train from precomputed latents, encoding them first if needed.
-
-    Rank 0 runs the precompute; other ranks poll the shared filesystem for
-    the finished meta file (an NCCL barrier would time out). Latents already
-    on disk are checked against the config's Mimi weights.
-    """
-    import json
-
-    from training.modules.builders import load_model_config
-
-    train_path = Path(args.data.train_jsonl)
-    is_latents = train_path.with_suffix(".meta.json").exists()
-    if args.data.precompute and not is_latents:
-        latents_manifest = train_path.with_name(train_path.stem + "_latents.jsonl")
-        meta = latents_manifest.with_suffix(".meta.json")
-        if not meta.exists():
-            from training.scripts.precompute_latents import precompute_manifest
-
-            config = load_model_config(args.model_config, args.model_overrides)
-            if rank == 0:
-                logger.info(f"precomputing latents for {train_path.name} (one-time)")
-            precompute_manifest(
-                train_path, mimi, device, 32, 0, str(config.weights_path),
-                worker=rank, num_workers=world_size,
-            )
-            waited = 0
-            while not meta.exists():
-                time.sleep(10)
-                waited += 10
-                if waited > 24 * 3600:
-                    raise SystemExit("gave up waiting for the latents precompute to finish")
-        args.data.train_jsonl = str(latents_manifest)
-    train_meta = Path(args.data.train_jsonl).with_suffix(".meta.json")
-    if train_meta.exists():
-        recorded = json.loads(train_meta.read_text()).get("weights_path")
-        expected = str(load_model_config(args.model_config, args.model_overrides).weights_path)
-        if recorded != expected:
-            raise SystemExit(
-                f"latents in {args.data.train_jsonl} were precomputed with\n"
-                f"    {recorded}\n"
-                f"but the config trains against\n"
-                f"    {expected}\n"
-                "Re-run training.scripts.precompute_latents with this config."
-            )
 
 
 def setup(config_path: str) -> Run:
@@ -162,7 +116,7 @@ def setup(config_path: str) -> Run:
     model, mimi, _config = build_models(args)
     model.to(device)
     mimi.to(device)
-    _ensure_train_latents(args, mimi, device, rank, world_size)
+    ensure_train_latents(args, mimi, device, rank, world_size)
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     if rank == 0:
         logger.info(f"flow_lm + objective: {n_params / 1e6:.1f}M trainable params")

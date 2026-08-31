@@ -183,13 +183,9 @@ then trains from them. On 2000 h of HiFiTTS-2, effective batch size 64:
 | 4 x H100-80GB | 16 | ~15 min | 9.79 | 17.2 GiB | ~5.7 h | ~11.4 h |
 | 8 x H100-80GB | 8 | ~10 min | 10.60 | 15.5 GiB | ~5.2 h | ~10.5 h |
 
-Precompute is audio-decode bound (assuming ~24 CPU cores per GPU) and stores
-~6 GB of latents per 1000 h next to the manifest. Random prompt/target cuts
-work on stored latents because the encoder is causal; only its receptive
-field after the cut (~3 s, measured at precompute time) is re-encoded during
-training. `data.precompute: false` restores the on-the-fly audio pipeline
-(2.17 / 3.92 / 6.25 / 8.69 steps/s). Training refuses latents precomputed
-with different Mimi weights. Distillation adds ~3 h on 8 H100 GPUs.
+Precompute stores ~6 GB of latents per 1000 h of audio next to the manifest.
+`data.precompute: false` skips the precomputing, which will start training
+immediately but at slower speeds.
 
 ### Training format
 

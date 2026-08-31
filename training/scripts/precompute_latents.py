@@ -2,6 +2,7 @@ import json
 import logging
 import multiprocessing
 import os
+import time
 
 os.environ.setdefault("POCKET_TTS_NO_BEARTYPE", "1")
 from concurrent.futures import ProcessPoolExecutor
@@ -23,7 +24,11 @@ app = typer.Typer(pretty_exceptions_show_locals=False)
 
 CALIBRATION_POOL_LINES = 4096
 CALIBRATION_MARGIN_FRAMES = 4
-DECODE_LOOKAHEAD_CHUNKS = 6
+
+
+def default_decode_workers() -> int:
+    """Size the decode pool from the cores this process may actually use."""
+    return max(4, len(os.sched_getaffinity(0)) - 2)
 
 
 def _decode_one(job: tuple) -> np.ndarray:
@@ -126,13 +131,18 @@ def _annotated_lines(lines: list[str], manifest: Path) -> list[str]:
     return out
 
 
-def _pending_chunks(lines: list[str], manifest: Path, batch_size: int) -> list[list[int]]:
+def _pending_chunks(
+    lines: list[str], manifest: Path, batch_size: int, worker: int = 0, num_workers: int = 1
+) -> list[list[int]]:
     # Chunk in duration order: a chunk pads to its longest row, so grouping
     # similar lengths avoids spending encode FLOPs on padding. Latents files
-    # are named by manifest index, so encode order is free.
+    # are named by manifest index, so encode order is free. Workers take
+    # strided chunks, so several GPUs can encode one manifest concurrently.
     order = sorted(range(len(lines)), key=lambda i: json.loads(lines[i])["duration"])
     pending = []
-    for chunk_start in range(0, len(order), batch_size):
+    for n, chunk_start in enumerate(range(0, len(order), batch_size)):
+        if n % num_workers != worker:
+            continue
         idxs = order[chunk_start : chunk_start + batch_size]
         if any(not (manifest.parent / _latents_name(manifest, idx)).exists() for idx in idxs):
             pending.append(idxs)
@@ -150,11 +160,15 @@ def _write_chunk(
         tmp.rename(path)
 
 
-def _encode_pending(pool, mimi, device, lines: list[str], manifest: Path, batch_size: int) -> None:
-    pending = _pending_chunks(lines, manifest, batch_size)
+def _encode_pending(
+    pool, mimi, device, lines: list[str], manifest: Path, batch_size: int,
+    decode_workers: int, worker: int = 0, num_workers: int = 1,
+) -> None:
+    pending = _pending_chunks(lines, manifest, batch_size, worker, num_workers)
+    lookahead = decode_workers + 2  # keep every decode worker busy
     futures = {
         i: pool.submit(_decode_chunk, _chunk_jobs(lines, idxs, mimi.sample_rate))
-        for i, idxs in enumerate(pending[:DECODE_LOOKAHEAD_CHUNKS])
+        for i, idxs in enumerate(pending[:lookahead])
     }
     submitted = len(futures)
     for i, idxs in enumerate(tqdm(pending, desc=f"encode {manifest.name}")):
@@ -185,22 +199,36 @@ def _write_manifest_and_meta(
 
 
 def precompute_manifest(
-    manifest: Path, mimi, device, batch_size: int, decode_workers: int, weights_path: str
+    manifest: Path, mimi, device, batch_size: int, decode_workers: int, weights_path: str,
+    worker: int = 0, num_workers: int = 1,
 ) -> None:
+    """Encode a manifest's utterances to per-utterance latents files.
+
+    With num_workers > 1 each worker encodes a strided subset of chunks;
+    worker 0 waits for the others' files and writes the manifest and meta.
+    """
     lines = manifest.read_text().splitlines()
     (manifest.parent / "latents").mkdir(exist_ok=True)
+    decode_workers = decode_workers or default_decode_workers()
     pool = ProcessPoolExecutor(
         max_workers=decode_workers, mp_context=multiprocessing.get_context("spawn")
     )
-    stitch_frames, floor = _calibrate(pool, lines, mimi, batch_size, device)
-    logger.info(f"{manifest.name}: stitch_frames={stitch_frames} (noise floor {floor:.1e})")
-    _encode_pending(pool, mimi, device, lines, manifest, batch_size)
+    if worker == 0:
+        stitch_frames, floor = _calibrate(pool, lines, mimi, batch_size, device)
+        logger.info(f"{manifest.name}: stitch_frames={stitch_frames} (noise floor {floor:.1e})")
+    _encode_pending(
+        pool, mimi, device, lines, manifest, batch_size, decode_workers, worker, num_workers
+    )
+    if worker != 0:
+        return
+    while _pending_chunks(lines, manifest, batch_size):
+        time.sleep(5)
     new_lines = _annotated_lines(lines, manifest)
     _write_manifest_and_meta(manifest, new_lines, stitch_frames, floor, mimi, weights_path)
 
 
 @app.command()
-def main(config: str, batch_size: int = 16, decode_workers: int = 16) -> None:
+def main(config: str, batch_size: int = 16, decode_workers: int = 0) -> None:
     logging.basicConfig(level=logging.INFO)
     args = load_args(config)
     model_config = load_model_config(args.model_config, args.model_overrides)

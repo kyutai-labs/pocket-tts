@@ -172,63 +172,24 @@ If you train on 2k hours of HiFiTTS-2 and batch size 64, this is the metrics pro
 
 See [Evaluate](#Evaluate) for more info about the metrics.
 
-Regarding timing, this is how long training takes (all with effective batch size 64):
+Regarding timing: the first run precomputes Mimi latents for the train
+manifest (once, using all GPUs; validation always encodes audio directly),
+then trains from them. On 2000 h of HiFiTTS-2, effective batch size 64:
 
-| GPUs | per-GPU batch | steps/s | peak VRAM/GPU | to 200k | to 400k |
-|---|---|---|---|---|---|
-| 1 x L4-23GB | 16 x4 | 0.35 | 15.9 GiB | ~158 h | ~315 h |
-| 1 x L40S-46GB | 64 | 0.77 | 42.0 GiB | ~72 h | ~144 h |
-| 1 x H100-80GB | 64 | 2.17 | 55.9 GiB | ~26 h | ~51 h |
-| 2 x H100-80GB | 32 | 3.92 | 32.4 GiB | ~14 h | ~28 h |
-| 4 x H100-80GB | 16 | 6.25 | 20.0 GiB | ~9 h | ~18 h |
-| 8 x H100-80GB | 8 | 8.69 | 14.2 GiB | ~6.5 h | ~13 h |
+| GPUs | per-GPU batch | precompute (once) | steps/s | peak VRAM/GPU | to 200k | to 400k |
+|---|---|---|---|---|---|---|
+| 1 x H100-80GB | 64 | ~50 min | 5.05 | 41.5 GiB | ~11 h | ~22 h |
+| 2 x H100-80GB | 32 | ~25 min | 7.97 | 24.9 GiB | ~7 h | ~14 h |
+| 4 x H100-80GB | 16 | ~15 min | 9.79 | 17.2 GiB | ~5.7 h | ~11.4 h |
+| 8 x H100-80GB | 8 | ~10 min | 10.60 | 15.5 GiB | ~5.2 h | ~10.5 h |
 
-Scaling falls off because the per-GPU batch shrinks, not because of
-communication. Distillation adds ~3 h on 8 H100 GPUs.
-
-### Precomputing latents
-
-Most of the training step's non-model cost is decoding audio and running the
-frozen Mimi encoder. Both can be paid once instead of every epoch:
-
-```bash
-python -m training.scripts.precompute_latents <your_config.yaml>
-```
-
-This encodes every utterance of `data.train_jsonl` through the frozen Mimi
-encoder and writes one small `.safetensors` file per utterance next to the
-manifest, plus a `<manifest>_latents.jsonl` manifest and a
-`<manifest>_latents.meta.json`. Point `data.train_jsonl` at the `_latents`
-manifest to train from them; everything else is unchanged, and a manifest
-without latents keeps using the on-the-fly audio pipeline. Storage cost is
-about 6 GB per 1000 h of audio; precomputing 2000 h takes roughly an hour on
-one H100 with 24 cores.
-
-Random prompt/target cuts still work because the encoder is causal: the
-prompt is an exact slice of the stored latents, and only a short window after
-the cut — the encoder's receptive field, measured at precompute time and
-recorded as `stitch_frames` — is re-encoded from audio during training.
-Beyond that window, sliced and freshly-encoded latents agree to ~1e-4.
-
-Speed with precomputed latents on the setup of the table above (2000 h
-HiFiTTS-2 on network storage):
-
-| GPUs | steps/s | vs audio pipeline | peak VRAM/GPU |
-|---|---|---|---|
-| 1 x H100 | 5.05 | 2.3x | 41.5 GiB |
-| 2 x H100 | 7.97 | 2.0x | - |
-| 4 x H100 | 9.79 | 1.6x | - |
-| 8 x H100 | 10.60 | 1.2x | 15.5 GiB |
-
-The gain shrinks with GPU count because the per-GPU batch carries less encode
-work. Memory also drops at large per-GPU batches (41.5 vs 55.9 GiB at batch
-64), since the full-utterance encoder activations are gone — batch 64 fits on
-a 46 GB card in this mode.
-
-Two guardrails: `valid_jsonl` must stay an audio manifest (validation always
-encodes audio directly so its metrics remain exact), and training refuses
-latents that were precomputed with different Mimi weights than the config
-trains against.
+Precompute is audio-decode bound (assuming ~24 CPU cores per GPU) and stores
+~6 GB of latents per 1000 h next to the manifest. Random prompt/target cuts
+work on stored latents because the encoder is causal; only its receptive
+field after the cut (~3 s, measured at precompute time) is re-encoded during
+training. `data.precompute: false` restores the on-the-fly audio pipeline
+(2.17 / 3.92 / 6.25 / 8.69 steps/s). Training refuses latents precomputed
+with different Mimi weights. Distillation adds ~3 h on 8 H100 GPUs.
 
 ### Training format
 

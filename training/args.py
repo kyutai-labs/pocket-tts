@@ -20,6 +20,10 @@ class DataArgs:
     max_voice_prompt_sec: float = 5.0
     shuffle: bool = True
     loader_procs: int = 3
+    # Precompute Mimi latents for train_jsonl on first run and train from
+    # them (rank 0 encodes once; other ranks wait). False keeps the
+    # on-the-fly audio pipeline.
+    precompute: bool = True
 
 
 @dataclass

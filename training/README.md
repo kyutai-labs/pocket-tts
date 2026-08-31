@@ -165,8 +165,6 @@ run's final checkpoint; point it at your teacher if it lives elsewhere. WER
 reaches teacher parity by ~50k steps; speaker similarity and UTMOS keep
 improving until ~150k.
 
-DISTILL_SPEED_TABLE_PLACEHOLDER
-
 Two more configs cover finetuning: `finetune.yaml` continues a released model
 on more data in the same language (new voices, a new domain), and
 `finetune_language.yaml` starts the teacher from
@@ -199,6 +197,13 @@ then trains from them. On 2000 h of HiFiTTS-2, effective batch size 64:
 Precompute stores ~6 GB of latents per 1000 h of audio next to the manifest.
 `data.precompute: false` skips the precomputing, which will start training
 immediately but at slower speeds.
+
+And for the distillation step (`depth_distill.yaml`, same data):
+
+| GPUs | steps/s | 200k steps |
+|---|---|---|
+| 1 x H100 | TBD | TBD |
+| 8 x H100 | TBD | TBD |
 
 ### Training format
 

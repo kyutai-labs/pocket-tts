@@ -152,26 +152,13 @@ uv run torchrun --nproc-per-node 8 training/train.py training/configs/scratch.ya
 The training is configured using a single YAML file.
 The official Pocket TTS training happens in two steps, corresponding to the two YAMLs we provide:
 - `scratch.yaml`: trains a 24-layer teacher from scratch
-- `depth_distill.yaml`: distils that teacher into a 6-layer student. This also bakes in classifier-free guidance (CFG), see [paper](https://arxiv.org/abs/2207.12598) or [explanation](https://youtu.be/iv-5mZ_9CPY?t=1797).
+- `depth_distill.yaml`: distills that teacher into a 6-layer student. This also bakes in classifier-free guidance (CFG), see [paper](https://arxiv.org/abs/2207.12598) or [explanation](https://youtu.be/iv-5mZ_9CPY?t=1797).
 
-After the teacher finishes, run the same command on
-`training/configs/depth_distill.yaml`. The student copies the teacher's flow
-head and all non-backbone weights (kept frozen) and learns to match its
-backbone activations. With `distill_cfg_coef: 2.0` the target is the
-teacher's *guided* computation — a conditioned and an unconditioned pass
-combined — so guidance is baked in: the student reproduces it in a single
-pass, evaluated at cfg 1. `distill_teacher_weights` defaults to the scratch
-run's final checkpoint; point it at your teacher if it lives elsewhere. WER
-reaches teacher parity by ~50k steps; speaker similarity and UTMOS keep
-improving until ~150k.
+If you want to finetune from the English teacher model, we provide two more configs:
+- `finetune.yaml`: continues from the pretrained English teacher, useful if you want to finetune on more data in the same language (new voices, a new domain).
+- `finetune_language.yaml`: continues from the pretrained English teacher, but initialises the text embedding fresh (the text tokenizer differs). On Czech, it reached the same WER as a scratch run about 2.5x sooner.
 
-Two more configs cover finetuning: `finetune.yaml` continues a released model
-on more data in the same language (new voices, a new domain), and
-`finetune_language.yaml` starts the teacher from
-released weights for a new language, initialising the text embedding fresh (the
-tokenizer differs) while the backbone transfers. On Czech the latter reached the
-same WER as a scratch run about 2.5x sooner.
-
+The two configs above will give you a teacher that you can then distil down to 6 layers.
 Training the model in two steps like this works better than training a 6-layer model from scratch.
 
 ### Reproducing our results

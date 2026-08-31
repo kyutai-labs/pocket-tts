@@ -133,6 +133,12 @@ def _entry_frames(n_samples: int, sample_rate: int, frame_rate: float) -> int:
     return max(1, int(n_samples * frame_rate / sample_rate))
 
 
+def _atomic_write_text(path: Path, text: str) -> None:
+    tmp = path.with_suffix(f".tmp.{os.getpid()}")
+    tmp.write_text(text)
+    tmp.rename(path)
+
+
 def _latents_name(manifest: Path, idx: int, tag: str) -> str:
     return f"latents/{tag}/{manifest.stem}_{idx:08d}.safetensors"
 
@@ -175,7 +181,9 @@ def _write_chunk(
     for b, n_samples in enumerate(lens):
         frames = min(_entry_frames(n_samples, mimi.sample_rate, mimi.frame_rate), latents.shape[1])
         path = manifest.parent / _latents_name(manifest, idxs[b], tag)
-        tmp = path.with_suffix(".tmp")
+        # Writer-unique tmp name: concurrent jobs racing on the same manifest
+        # then only ever rename complete files (rename is atomic).
+        tmp = path.with_suffix(f".tmp.{os.getpid()}")
         safetensors.torch.save_file({"latents": latents[b, :frames].contiguous()}, str(tmp))
         tmp.rename(path)
 
@@ -220,7 +228,7 @@ def _write_manifest_and_meta(
     mimi_hash: str,
 ) -> None:
     out_manifest = manifest.with_name(manifest.stem + "_latents.jsonl")
-    out_manifest.write_text("\n".join(new_lines) + "\n")
+    _atomic_write_text(out_manifest, "\n".join(new_lines) + "\n")
     meta = {
         "stitch_frames": stitch_frames,
         "noise_floor": floor,
@@ -229,7 +237,7 @@ def _write_manifest_and_meta(
         "mimi_hash": mimi_hash,
     }
     meta_path = manifest.with_name(manifest.stem + "_latents.meta.json")
-    meta_path.write_text(json.dumps(meta, indent=2) + "\n")
+    _atomic_write_text(meta_path, json.dumps(meta, indent=2) + "\n")
     logger.info(f"wrote {out_manifest} and {meta_path}")
 
 

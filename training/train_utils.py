@@ -166,7 +166,12 @@ def ensure_train_latents(args: TrainArgs, mimi, device, rank: int, world_size: i
     def is_fresh() -> bool:
         if not meta_path.exists():
             return False
-        return json.loads(meta_path.read_text()).get("mimi_hash") == current
+        if json.loads(meta_path.read_text()).get("mimi_hash") != current:
+            return False
+        # A manifest from an older layout (no latents_file field) would send
+        # rows down the audio path and crash the latent collate.
+        first = latents_manifest.read_text().split("\n", 1)[0]
+        return "latents_file" in json.loads(first)
 
     if not is_fresh():
         if not args.data.precompute:

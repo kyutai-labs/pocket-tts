@@ -34,8 +34,7 @@ class Entry:
     transcript: str
     words: list | None = None  # [{"word", "start", "end"}] from training.scripts.align_data
     start: float = 0.0  # offset of the utterance inside the audio file (long recordings)
-    latents_shard: str | None = None
-    latents_key: str | None = None
+    latents_file: str | None = None
 
 
 @dataclass
@@ -162,7 +161,7 @@ class DataLoader:
         return self.rng.choice(cuts)
 
     def _sample(self, entry: Entry) -> tuple:
-        if entry.latents_shard is not None:
+        if entry.latents_file is not None:
             return self._sample_latent(entry)
         chosen = self._choose_cut(entry)
         if chosen is not None:
@@ -204,9 +203,9 @@ class DataLoader:
         return wav, tokens, prompt, length
 
     def _load_latents(self, entry: Entry) -> torch.Tensor:
-        path = self.latents_root / entry.latents_shard
+        path = self.latents_root / entry.latents_file
         with safe_open(str(path), framework="pt") as f:
-            return f.get_tensor(entry.latents_key)
+            return f.get_tensor("latents")
 
     def _latent_cut(self, entry: Entry, stored: int) -> tuple[int, str]:
         chosen = self._choose_cut(entry)
@@ -290,8 +289,7 @@ class DataLoader:
             d["transcript"],
             d.get("words"),
             float(d.get("start", 0.0)),
-            d.get("latents_shard"),
-            d.get("latents_key"),
+            d.get("latents_file"),
         )
 
     def _sample_or_none(self, entry: Entry) -> tuple | None:

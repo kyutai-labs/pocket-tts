@@ -18,7 +18,7 @@ from training.modules.builders import build_mimi, load_model_config
 logger = logging.getLogger("precompute_latents")
 app = typer.Typer(pretty_exceptions_show_locals=False)
 
-SHARD_SIZE = 4096
+CALIBRATION_POOL_LINES = 4096
 CALIBRATION_MARGIN_FRAMES = 4
 DECODE_LOOKAHEAD_CHUNKS = 6
 
@@ -45,9 +45,9 @@ def _parse_entry(line: str) -> Entry:
 
 
 def _chunk_jobs(
-    shard_lines: list[str], chunk_start: int, batch_size: int, sample_rate: int
+    lines: list[str], chunk_start: int, batch_size: int, sample_rate: int
 ) -> list[tuple]:
-    chunk = shard_lines[chunk_start : chunk_start + batch_size]
+    chunk = lines[chunk_start : chunk_start + batch_size]
     return [(e.path, e.start, e.duration, sample_rate) for e in map(_parse_entry, chunk)]
 
 
@@ -93,7 +93,7 @@ def measure_stitch_frames(mimi, audio: torch.Tensor) -> tuple[int, float]:
 
 
 def _calibrate(pool, lines: list[str], mimi, batch_size: int, device) -> tuple[int, float]:
-    longest = sorted(map(_parse_entry, lines[:SHARD_SIZE]), key=lambda e: -e.duration)
+    longest = sorted(map(_parse_entry, lines[:CALIBRATION_POOL_LINES]), key=lambda e: -e.duration)
     jobs = [(e.path, e.start, e.duration, mimi.sample_rate) for e in longest[:batch_size]]
     calib = list(pool.map(_decode_one, jobs))
     max_len = max(len(w) for w in calib)
@@ -108,53 +108,56 @@ def _entry_frames(n_samples: int, sample_rate: int, frame_rate: float) -> int:
     return max(1, int(n_samples * frame_rate / sample_rate))
 
 
-def _annotated_lines(
-    shard_lines: list[str], shard_path: Path, manifest: Path, base_idx: int
-) -> list[str]:
+def _latents_name(manifest: Path, idx: int) -> str:
+    return f"latents/{manifest.stem}_{idx:08d}.safetensors"
+
+
+def _annotated_lines(lines: list[str], manifest: Path) -> list[str]:
     out = []
-    for j, line in enumerate(shard_lines):
+    for idx, line in enumerate(lines):
         d = json.loads(line)
-        d["latents_shard"] = str(shard_path.relative_to(manifest.parent))
-        d["latents_key"] = str(base_idx + j)
+        d["latents_file"] = _latents_name(manifest, idx)
         out.append(json.dumps(d))
     return out
 
 
-def _store_latents(
-    tensors: dict, latents: torch.Tensor, lens: list[int], base_idx: int, mimi
+def _pending_chunks(lines: list[str], manifest: Path, batch_size: int) -> list[int]:
+    pending = []
+    for chunk_start in range(0, len(lines), batch_size):
+        chunk = range(chunk_start, min(chunk_start + batch_size, len(lines)))
+        if any(not (manifest.parent / _latents_name(manifest, idx)).exists() for idx in chunk):
+            pending.append(chunk_start)
+    return pending
+
+
+def _write_chunk(
+    latents: torch.Tensor, lens: list[int], chunk_start: int, manifest: Path, mimi
 ) -> None:
     for b, n_samples in enumerate(lens):
         frames = min(_entry_frames(n_samples, mimi.sample_rate, mimi.frame_rate), latents.shape[1])
-        tensors[str(base_idx + b)] = latents[b, :frames].contiguous()
+        path = manifest.parent / _latents_name(manifest, chunk_start + b)
+        tmp = path.with_suffix(".tmp")
+        safetensors.torch.save_file({"latents": latents[b, :frames].contiguous()}, str(tmp))
+        tmp.rename(path)
 
 
-def _encode_shard(
-    pool, mimi, device, shard_lines: list[str], base_idx: int, batch_size: int
-) -> dict[str, torch.Tensor]:
-    starts = list(range(0, len(shard_lines), batch_size))
+def _encode_pending(pool, mimi, device, lines: list[str], manifest: Path, batch_size: int) -> None:
+    pending = _pending_chunks(lines, manifest, batch_size)
     futures = {
-        cs: pool.submit(_decode_chunk, _chunk_jobs(shard_lines, cs, batch_size, mimi.sample_rate))
-        for cs in starts[:DECODE_LOOKAHEAD_CHUNKS]
+        cs: pool.submit(_decode_chunk, _chunk_jobs(lines, cs, batch_size, mimi.sample_rate))
+        for cs in pending[:DECODE_LOOKAHEAD_CHUNKS]
     }
     submitted = len(futures)
-    tensors: dict[str, torch.Tensor] = {}
-    for chunk_start in starts:
+    for chunk_start in tqdm(pending, desc=f"encode {manifest.name}"):
         arr, lens = futures.pop(chunk_start).result()
-        if submitted < len(starts):
-            nxt = starts[submitted]
-            jobs = _chunk_jobs(shard_lines, nxt, batch_size, mimi.sample_rate)
+        if submitted < len(pending):
+            nxt = pending[submitted]
+            jobs = _chunk_jobs(lines, nxt, batch_size, mimi.sample_rate)
             futures[nxt] = pool.submit(_decode_chunk, jobs)
             submitted += 1
         with torch.no_grad():
             latents = mimi.encode_to_latent(torch.from_numpy(arr).to(device)).cpu()
-        _store_latents(tensors, latents, lens, base_idx + chunk_start, mimi)
-    return tensors
-
-
-def _write_shard(tensors: dict[str, torch.Tensor], shard_path: Path) -> None:
-    tmp = shard_path.with_suffix(".tmp")
-    safetensors.torch.save_file(tensors, str(tmp))
-    tmp.rename(shard_path)
+        _write_chunk(latents, lens, chunk_start, manifest, mimi)
 
 
 def _write_manifest_and_meta(
@@ -177,23 +180,14 @@ def precompute_manifest(
     manifest: Path, mimi, device, batch_size: int, decode_workers: int, weights_path: str
 ) -> None:
     lines = manifest.read_text().splitlines()
-    shard_dir = manifest.parent / "latents"
-    shard_dir.mkdir(exist_ok=True)
+    (manifest.parent / "latents").mkdir(exist_ok=True)
     pool = ProcessPoolExecutor(
         max_workers=decode_workers, mp_context=multiprocessing.get_context("spawn")
     )
     stitch_frames, floor = _calibrate(pool, lines, mimi, batch_size, device)
     logger.info(f"{manifest.name}: stitch_frames={stitch_frames} (noise floor {floor:.1e})")
-    new_lines: list[str] = []
-    n_shards = (len(lines) + SHARD_SIZE - 1) // SHARD_SIZE
-    for shard_idx in tqdm(range(n_shards), desc=f"encode {manifest.name}"):
-        shard_lines = lines[shard_idx * SHARD_SIZE : (shard_idx + 1) * SHARD_SIZE]
-        shard_path = shard_dir / f"{manifest.stem}_{shard_idx:05d}.safetensors"
-        new_lines += _annotated_lines(shard_lines, shard_path, manifest, shard_idx * SHARD_SIZE)
-        if shard_path.exists():
-            continue
-        tensors = _encode_shard(pool, mimi, device, shard_lines, shard_idx * SHARD_SIZE, batch_size)
-        _write_shard(tensors, shard_path)
+    _encode_pending(pool, mimi, device, lines, manifest, batch_size)
+    new_lines = _annotated_lines(lines, manifest)
     _write_manifest_and_meta(manifest, new_lines, stitch_frames, floor, mimi, weights_path)
 
 

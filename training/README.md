@@ -186,6 +186,50 @@ Regarding timing, this is how long training takes (all with effective batch size
 Scaling falls off because the per-GPU batch shrinks, not because of
 communication. Distillation adds ~3 h on 8 H100 GPUs.
 
+### Precomputing latents
+
+Most of the training step's non-model cost is decoding audio and running the
+frozen Mimi encoder. Both can be paid once instead of every epoch:
+
+```bash
+python -m training.scripts.precompute_latents <your_config.yaml>
+```
+
+This encodes every utterance of `data.train_jsonl` through the frozen Mimi
+encoder and writes one small `.safetensors` file per utterance next to the
+manifest, plus a `<manifest>_latents.jsonl` manifest and a
+`<manifest>_latents.meta.json`. Point `data.train_jsonl` at the `_latents`
+manifest to train from them; everything else is unchanged, and a manifest
+without latents keeps using the on-the-fly audio pipeline. Storage cost is
+about 6 GB per 1000 h of audio; precomputing 2000 h takes roughly an hour on
+one H100 with 24 cores.
+
+Random prompt/target cuts still work because the encoder is causal: the
+prompt is an exact slice of the stored latents, and only a short window after
+the cut — the encoder's receptive field, measured at precompute time and
+recorded as `stitch_frames` — is re-encoded from audio during training.
+Beyond that window, sliced and freshly-encoded latents agree to ~1e-4.
+
+Speed with precomputed latents on the setup of the table above (2000 h
+HiFiTTS-2 on network storage):
+
+| GPUs | steps/s | vs audio pipeline | peak VRAM/GPU |
+|---|---|---|---|
+| 1 x H100 | 5.05 | 2.3x | 41.5 GiB |
+| 2 x H100 | 7.97 | 2.0x | - |
+| 4 x H100 | 9.79 | 1.6x | - |
+| 8 x H100 | 10.60 | 1.2x | 15.5 GiB |
+
+The gain shrinks with GPU count because the per-GPU batch carries less encode
+work. Memory also drops at large per-GPU batches (41.5 vs 55.9 GiB at batch
+64), since the full-utterance encoder activations are gone — batch 64 fits on
+a 46 GB card in this mode.
+
+Two guardrails: `valid_jsonl` must stay an audio manifest (validation always
+encodes audio directly so its metrics remain exact), and training refuses
+latents that were precomputed with different Mimi weights than the config
+trains against.
+
 ### Training format
 
 By default, the training saves:

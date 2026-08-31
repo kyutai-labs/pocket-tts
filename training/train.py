@@ -109,6 +109,22 @@ def setup(config_path: str) -> Run:
             "Validation must encode audio directly so its metrics stay exact and "
             "comparable; point valid_jsonl at the original manifest."
         )
+    train_meta = Path(args.data.train_jsonl).with_suffix(".meta.json")
+    if train_meta.exists():
+        import json
+
+        from training.modules.builders import load_model_config
+
+        recorded = json.loads(train_meta.read_text()).get("weights_path")
+        expected = str(load_model_config(args.model_config, args.model_overrides).weights_path)
+        if recorded != expected:
+            raise SystemExit(
+                f"latents in {args.data.train_jsonl} were precomputed with\n"
+                f"    {recorded}\n"
+                f"but the config trains against\n"
+                f"    {expected}\n"
+                "Re-run training.scripts.precompute_latents with this config."
+            )
 
     if rank == 0:
         save_args(args, run_dir / "args.yaml")

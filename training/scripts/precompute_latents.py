@@ -1,6 +1,9 @@
 import json
 import logging
 import multiprocessing
+import os
+
+os.environ.setdefault("POCKET_TTS_NO_BEARTYPE", "1")
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
@@ -44,10 +47,8 @@ def _parse_entry(line: str) -> Entry:
     )
 
 
-def _chunk_jobs(
-    lines: list[str], chunk_start: int, batch_size: int, sample_rate: int
-) -> list[tuple]:
-    chunk = lines[chunk_start : chunk_start + batch_size]
+def _chunk_jobs(lines: list[str], idxs: list[int], sample_rate: int) -> list[tuple]:
+    chunk = [lines[i] for i in idxs]
     return [(e.path, e.start, e.duration, sample_rate) for e in map(_parse_entry, chunk)]
 
 
@@ -68,6 +69,10 @@ def load_frozen_mimi(config) -> torch.nn.Module:
     mimi.eval()
     for p in mimi.parameters():
         p.requires_grad_(False)
+    # Same per-module compile as training; dynamic shapes because chunks pad
+    # to their own longest row.
+    mimi.encoder.compile(dynamic=True)
+    mimi.encoder_transformer.compile(dynamic=True)
     return mimi
 
 
@@ -121,21 +126,25 @@ def _annotated_lines(lines: list[str], manifest: Path) -> list[str]:
     return out
 
 
-def _pending_chunks(lines: list[str], manifest: Path, batch_size: int) -> list[int]:
+def _pending_chunks(lines: list[str], manifest: Path, batch_size: int) -> list[list[int]]:
+    # Chunk in duration order: a chunk pads to its longest row, so grouping
+    # similar lengths avoids spending encode FLOPs on padding. Latents files
+    # are named by manifest index, so encode order is free.
+    order = sorted(range(len(lines)), key=lambda i: json.loads(lines[i])["duration"])
     pending = []
-    for chunk_start in range(0, len(lines), batch_size):
-        chunk = range(chunk_start, min(chunk_start + batch_size, len(lines)))
-        if any(not (manifest.parent / _latents_name(manifest, idx)).exists() for idx in chunk):
-            pending.append(chunk_start)
+    for chunk_start in range(0, len(order), batch_size):
+        idxs = order[chunk_start : chunk_start + batch_size]
+        if any(not (manifest.parent / _latents_name(manifest, idx)).exists() for idx in idxs):
+            pending.append(idxs)
     return pending
 
 
 def _write_chunk(
-    latents: torch.Tensor, lens: list[int], chunk_start: int, manifest: Path, mimi
+    latents: torch.Tensor, lens: list[int], idxs: list[int], manifest: Path, mimi
 ) -> None:
     for b, n_samples in enumerate(lens):
         frames = min(_entry_frames(n_samples, mimi.sample_rate, mimi.frame_rate), latents.shape[1])
-        path = manifest.parent / _latents_name(manifest, chunk_start + b)
+        path = manifest.parent / _latents_name(manifest, idxs[b])
         tmp = path.with_suffix(".tmp")
         safetensors.torch.save_file({"latents": latents[b, :frames].contiguous()}, str(tmp))
         tmp.rename(path)
@@ -144,20 +153,19 @@ def _write_chunk(
 def _encode_pending(pool, mimi, device, lines: list[str], manifest: Path, batch_size: int) -> None:
     pending = _pending_chunks(lines, manifest, batch_size)
     futures = {
-        cs: pool.submit(_decode_chunk, _chunk_jobs(lines, cs, batch_size, mimi.sample_rate))
-        for cs in pending[:DECODE_LOOKAHEAD_CHUNKS]
+        i: pool.submit(_decode_chunk, _chunk_jobs(lines, idxs, mimi.sample_rate))
+        for i, idxs in enumerate(pending[:DECODE_LOOKAHEAD_CHUNKS])
     }
     submitted = len(futures)
-    for chunk_start in tqdm(pending, desc=f"encode {manifest.name}"):
-        arr, lens = futures.pop(chunk_start).result()
+    for i, idxs in enumerate(tqdm(pending, desc=f"encode {manifest.name}")):
+        arr, lens = futures.pop(i).result()
         if submitted < len(pending):
-            nxt = pending[submitted]
-            jobs = _chunk_jobs(lines, nxt, batch_size, mimi.sample_rate)
-            futures[nxt] = pool.submit(_decode_chunk, jobs)
+            jobs = _chunk_jobs(lines, pending[submitted], mimi.sample_rate)
+            futures[submitted] = pool.submit(_decode_chunk, jobs)
             submitted += 1
         with torch.no_grad():
             latents = mimi.encode_to_latent(torch.from_numpy(arr).to(device)).cpu()
-        _write_chunk(latents, lens, chunk_start, manifest, mimi)
+        _write_chunk(latents, lens, idxs, manifest, mimi)
 
 
 def _write_manifest_and_meta(

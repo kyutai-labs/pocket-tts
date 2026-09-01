@@ -89,6 +89,9 @@ def load_frozen_mimi(config) -> torch.nn.Module:
     mimi.eval()
     for p in mimi.parameters():
         p.requires_grad_(False)
+    # Beartype's wrappers (active unless POCKET_TTS_NO_BEARTYPE=1) are opaque
+    # to dynamo and crash the compile; fall back to eager instead of dying.
+    torch._dynamo.config.suppress_errors = True
     # Same per-module compile as training; dynamic shapes because chunks pad
     # to their own longest row.
     mimi.encoder.compile(dynamic=True)

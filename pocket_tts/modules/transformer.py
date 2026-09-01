@@ -39,7 +39,7 @@ class StreamingTransformerLayer(nn.Module):
     def _ff_block(self, x: torch.Tensor) -> torch.Tensor:
         x_orig = x
         x = self.norm2(x)
-        update = self.linear2(F.gelu(self.linear1(x)))
+        update = self.linear2(F.gelu(self.linear1(x), approximate="tanh"))
         return x_orig.to(update) + self.layer_scale_2(update)
 
     def _sa_block(

@@ -1,13 +1,17 @@
 import logging
+from typing import NamedTuple
 
 import sentencepiece
 import torch
 from torch import nn
 
-from pocket_tts.conditioners.base import TokenizedText
 from pocket_tts.utils.utils import download_if_necessary
 
 logger = logging.getLogger(__name__)
+
+
+class TokenizedText(NamedTuple):
+    tokens: torch.Tensor  # should be long tensor.
 
 
 class SentencePieceTokenizer:

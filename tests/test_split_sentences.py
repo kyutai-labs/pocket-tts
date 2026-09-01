@@ -2,8 +2,8 @@
 
 import pytest
 
-from pocket_tts.conditioners.text import get_default_tokenizer
 from pocket_tts.models.tts_model import split_into_best_sentences
+from pocket_tts.modules.text_conditioner import get_default_tokenizer
 
 
 @pytest.fixture(scope="session")

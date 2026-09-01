@@ -5,8 +5,8 @@ import pytest
 import torch
 
 import pocket_tts.models.tts_model as tts_model_module
-from pocket_tts.conditioners.base import TokenizedText
 from pocket_tts.models.tts_model import TTSModel, _is_safetensors_source
+from pocket_tts.modules.text_conditioner import TokenizedText
 
 
 def test_generate_audio_stream_uses_prepared_chunk_text(monkeypatch):

@@ -6,8 +6,8 @@ from beartype.typing import Callable
 from torch import nn
 from typing_extensions import Self
 
-from pocket_tts.conditioners.text import LUTConditioner
 from pocket_tts.modules.mlp import SimpleMLPAdaLN
+from pocket_tts.modules.text_conditioner import LUTConditioner
 from pocket_tts.modules.transformer import StreamingTransformer
 from pocket_tts.utils.config import FlowLMConfig
 

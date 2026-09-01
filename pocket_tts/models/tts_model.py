@@ -17,7 +17,6 @@ from torch import nn
 from torch.nn import functional as F
 from typing_extensions import Self
 
-from pocket_tts.conditioners.base import TokenizedText
 from pocket_tts.data.audio import audio_read
 from pocket_tts.data.audio_utils import convert_audio
 from pocket_tts.default_parameters import (
@@ -32,6 +31,7 @@ from pocket_tts.models.mimi import build_mimi
 from pocket_tts.models.model_state import _import_model_state, _is_safetensors_source
 from pocket_tts.models.text_chunking import prepare_text_prompt, split_into_best_sentences
 from pocket_tts.modules.stateful_module import StatefulModule, increment_steps, init_states
+from pocket_tts.modules.text_conditioner import TokenizedText
 from pocket_tts.quantization import RECOMMENDED_CONFIG, apply_dynamic_int8
 from pocket_tts.utils.config import CONFIGS_DIR, Config, load_config
 from pocket_tts.utils.utils import (

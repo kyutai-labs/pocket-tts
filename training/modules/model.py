@@ -16,8 +16,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from pocket_tts.conditioners.base import TokenizedText
 from pocket_tts.modules.stateful_module import increment_steps, init_states
+from pocket_tts.modules.text_conditioner import TokenizedText
 
 from ..args import TrainArgs
 from .conditioner import build_sequences_with_conditions

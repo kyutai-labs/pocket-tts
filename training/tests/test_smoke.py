@@ -16,11 +16,10 @@ from torch import nn
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import training.dataloader as td
-from pocket_tts.conditioners.base import TokenizedText
-from pocket_tts.conditioners.text import LUTConditioner
 from pocket_tts.models.flow_lm import FlowLMModel
 from pocket_tts.modules.mlp import SimpleMLPAdaLN
 from pocket_tts.modules.stateful_module import init_states
+from pocket_tts.modules.text_conditioner import LUTConditioner, TokenizedText
 from pocket_tts.modules.transformer import StreamingTransformer
 from training.args import TrainArgs
 from training.checkpointing import EMA

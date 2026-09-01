@@ -6,7 +6,6 @@ import torch
 
 import pocket_tts.models.tts_model as tts_model_module
 from pocket_tts.models.tts_model import TTSModel, _is_safetensors_source
-from pocket_tts.modules.text_conditioner import TokenizedText
 
 
 def test_generate_audio_stream_uses_prepared_chunk_text(monkeypatch):
@@ -60,7 +59,7 @@ def test_generate_reports_autoregressive_errors_before_decoder_done():
     TTSModel._generate(
         model,
         model_state={},
-        prepared=TokenizedText(torch.zeros((1, 1), dtype=torch.long)),
+        prepared=torch.zeros((1, 1), dtype=torch.long),
         max_gen_len=1,
         frames_after_eos=1,
         latents_queue=latents_queue,

@@ -9,8 +9,6 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from pocket_tts.modules.text_conditioner import TokenizedText
-
 from ..args import TrainArgs
 
 
@@ -70,7 +68,7 @@ def build_sequences_with_conditions(
     text_pad_cpu = torch.full((B, Lmax), pad_id, dtype=torch.long)
     for b, t in enumerate(text_tokens):
         text_pad_cpu[b, : t.shape[0]] = t
-    text_emb = fl.conditioner(TokenizedText(text_pad_cpu.to(device))).to(dtype)
+    text_emb = fl.conditioner(text_pad_cpu.to(device)).to(dtype)
     t_len_cpu = text_lens_cpu * keep_text_cpu
 
     prefix_lengths_cpu = 1 + v_len_cpu + t_len_cpu

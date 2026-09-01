@@ -31,7 +31,6 @@ from pocket_tts.models.mimi import build_mimi
 from pocket_tts.models.model_state import _import_model_state, _is_safetensors_source
 from pocket_tts.models.text_chunking import prepare_text_prompt, split_into_best_sentences
 from pocket_tts.modules.stateful_module import StatefulModule, increment_steps, init_states
-from pocket_tts.modules.text_conditioner import TokenizedText
 from pocket_tts.quantization import RECOMMENDED_CONFIG, apply_dynamic_int8
 from pocket_tts.utils.config import CONFIGS_DIR, Config, load_config
 from pocket_tts.utils.utils import (
@@ -400,7 +399,7 @@ class TTSModel(nn.Module):
         backbone_input_latents: torch.Tensor,
         audio_conditioning: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        text_embeddings = self.flow_lm.conditioner(TokenizedText(text_tokens))
+        text_embeddings = self.flow_lm.conditioner(text_tokens)
         text_embeddings = torch.cat([text_embeddings, audio_conditioning], dim=1)
 
         output_embeddings, is_eos = self.flow_lm._sample_next_latent(
@@ -680,7 +679,7 @@ class TTSModel(nn.Module):
             model_state = copy.deepcopy(model_state)
 
         prepared = self.flow_lm.conditioner.prepare(text_to_generate)
-        token_count = prepared.tokens.shape[1]
+        token_count = prepared.shape[1]
         max_gen_len = self._estimate_max_gen_len(token_count)
         mimi_steps_per_latent = int(self.mimi.encoder_frame_rate / self.mimi.frame_rate)
         mimi_sequence_length = max_gen_len * mimi_steps_per_latent
@@ -750,21 +749,19 @@ class TTSModel(nn.Module):
     def _generate(
         self,
         model_state: dict,
-        prepared: TokenizedText,
+        prepared: torch.Tensor,
         max_gen_len: int,
         frames_after_eos: int,
         latents_queue: queue.Queue,
         result_queue: queue.Queue,
     ):
-        token_count = prepared.tokens.shape[1]
+        token_count = prepared.shape[1]
         current_end = self._flow_lm_current_end(model_state)
         required_len = current_end + token_count + max_gen_len
         self._expand_kv_cache(model_state, sequence_length=required_len)
 
         with display_execution_time("Prompting text"):
-            self._run_flow_lm_and_increment_step(
-                model_state=model_state, text_tokens=prepared.tokens
-            )
+            self._run_flow_lm_and_increment_step(model_state=model_state, text_tokens=prepared)
 
         def run_generation():
             try:

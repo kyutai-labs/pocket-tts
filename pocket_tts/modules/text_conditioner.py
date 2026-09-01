@@ -1,5 +1,4 @@
 import logging
-from typing import NamedTuple
 
 import sentencepiece
 import torch
@@ -8,10 +7,6 @@ from torch import nn
 from pocket_tts.utils.utils import download_if_necessary
 
 logger = logging.getLogger(__name__)
-
-
-class TokenizedText(NamedTuple):
-    tokens: torch.Tensor  # should be long tensor.
 
 
 class SentencePieceTokenizer:
@@ -35,8 +30,8 @@ class SentencePieceTokenizer:
             f"sentencepiece tokenizer has vocab size={self.sp.vocab_size()} but nbins={nbins} was specified"
         )
 
-    def __call__(self, text: str) -> TokenizedText:
-        return TokenizedText(torch.tensor(self.sp.encode(text, out_type=int))[None, :])
+    def __call__(self, text: str) -> torch.Tensor:
+        return torch.tensor(self.sp.encode(text, out_type=int))[None, :]
 
 
 DEFAULT_TOKENIZER_N_BINS = 4000
@@ -72,10 +67,8 @@ class LUTConditioner(nn.Module):
         self.tokenizer = SentencePieceTokenizer(n_bins, tokenizer_path)
         self.embed = nn.Embedding(n_bins + 1, self.dim)  # n_bins + 1 for padding.
 
-    def prepare(self, x: str) -> TokenizedText:
-        tokens = self.tokenizer(x)
-        tokens = tokens[0].to(self.embed.weight.device)
-        return TokenizedText(tokens)
+    def prepare(self, x: str) -> torch.Tensor:
+        return self.tokenizer(x).to(self.embed.weight.device)
 
-    def forward(self, inputs: TokenizedText) -> torch.Tensor:
-        return self.embed(inputs[0])
+    def forward(self, tokens: torch.Tensor) -> torch.Tensor:
+        return self.embed(tokens)

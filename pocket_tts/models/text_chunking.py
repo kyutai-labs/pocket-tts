@@ -114,9 +114,9 @@ def split_into_best_sentences(
     )
     text_to_generate = text_to_generate.strip()
     tokens = tokenizer(text_to_generate)
-    list_of_tokens = tokens.tokens[0].tolist()
+    list_of_tokens = tokens[0].tolist()
 
-    _, *end_of_sentence_tokens = tokenizer(".!...?").tokens[0].tolist()
+    _, *end_of_sentence_tokens = tokenizer(".!...?")[0].tolist()
     sentence_boundaries = _find_boundary_indices(
         list_of_tokens, end_of_sentence_tokens, tokenizer, skip_decimal_periods=True
     )
@@ -125,13 +125,13 @@ def split_into_best_sentences(
     )
 
     # Sub-split oversized sentences on commas, semicolons, and colons to prevent skipped words
-    _, *fallback_tokens = tokenizer(",;:").tokens[0].tolist()
+    _, *fallback_tokens = tokenizer(",;:")[0].tolist()
     refined_segments = []
     for nb_tokens, text in nb_tokens_and_sentences:
         if nb_tokens <= max_tokens:
             refined_segments.append((nb_tokens, text))
         else:
-            sub_tokens = tokenizer(text.strip()).tokens[0].tolist()
+            sub_tokens = tokenizer(text.strip())[0].tolist()
             sub_boundaries = _find_boundary_indices(sub_tokens, fallback_tokens)
             sub_segments = _segments_from_boundaries(sub_tokens, sub_boundaries, tokenizer)
             if len(sub_segments) > 1:
@@ -161,7 +161,7 @@ def split_into_best_sentences(
         chunks.append(current_chunk.strip())
 
     for chunk in chunks:
-        chunk_tokens = tokenizer(chunk.strip()).tokens[0].tolist()
+        chunk_tokens = tokenizer(chunk.strip())[0].tolist()
         if len(chunk_tokens) > max_tokens:
             logger.warning(
                 "Chunk has %d tokens (max %d), generation may skip words: '%.50s...'",

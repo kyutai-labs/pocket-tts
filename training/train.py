@@ -20,6 +20,7 @@ if __name__ == "__main__":
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 import logging
+import signal
 import sys
 import time
 from dataclasses import dataclass
@@ -195,6 +196,16 @@ def main(config_path: str) -> None:
         device_type=device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"
     )
     model.train()
+    # scancel sends SIGTERM 30s (KillWait) before SIGKILL; finish the step and
+    # checkpoint inside that window so a cancelled job resumes losslessly.
+    stop_requested = False
+
+    def _request_stop(signum, frame):
+        nonlocal stop_requested
+        stop_requested = True
+
+    signal.signal(signal.SIGTERM, _request_stop)
+    signal.signal(signal.SIGUSR1, _request_stop)
     if rank == 0:
         logger.info("starting training loop, first step can take a few minutes (compilation etc.)")
     last_log = time.time()
@@ -236,6 +247,21 @@ def main(config_path: str) -> None:
         optimizer.step()
         if ema is not None:
             ema.update(model)
+
+        stop = torch.tensor(float(stop_requested), device=device)
+        if run.world_size > 1:
+            torch.distributed.all_reduce(stop, op=torch.distributed.ReduceOp.MAX)
+        if stop.item():
+            if rank == 0:
+                logger.info(
+                    f"termination signal received: checkpointing step {step + 1} before exit"
+                )
+                save_checkpoint(
+                    args.run_dir, step + 1, model, optimizer, ema, args.num_ckpt_keep, mimi
+                )
+                progress.log("checkpoint", step + 1)
+            shutdown_distributed()
+            return
 
         steps_since_log += 1
         if rank == 0 and step == start_step and args.compile:

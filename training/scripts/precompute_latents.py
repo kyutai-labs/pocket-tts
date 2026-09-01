@@ -72,6 +72,16 @@ def mimi_encode_hash(mimi) -> str:
     return h.hexdigest()
 
 
+def _unwrap_beartype(module: torch.nn.Module) -> None:
+    """Replace beartype-wrapped methods on `module`'s classes with the
+    original functions (beartype exposes them as __wrapped__)."""
+    for cls in {type(m) for m in module.modules()}:
+        for name, attr in list(vars(cls).items()):
+            fn = attr.__func__ if hasattr(attr, "__func__") else attr
+            if callable(fn) and hasattr(fn, "__wrapped__"):
+                setattr(cls, name, fn.__wrapped__)
+
+
 def load_frozen_mimi(config) -> torch.nn.Module:
     mimi = build_mimi(config.mimi)
     weights_file = download_if_necessary(str(config.weights_path))
@@ -89,8 +99,11 @@ def load_frozen_mimi(config) -> torch.nn.Module:
     mimi.eval()
     for p in mimi.parameters():
         p.requires_grad_(False)
-    # Beartype's wrappers (active unless POCKET_TTS_NO_BEARTYPE=1) are opaque
-    # to dynamo and crash the compile; fall back to eager instead of dying.
+    # Beartype's wrappers (active unless POCKET_TTS_NO_BEARTYPE=1 was set
+    # before pocket_tts got imported) are opaque to dynamo and crash the
+    # compile. Strip them from the mimi classes so the encoder compiles; keep
+    # the eager fallback as a net for anything else dynamo cannot trace.
+    _unwrap_beartype(mimi)
     torch._dynamo.config.suppress_errors = True
     # Same per-module compile as training; dynamic shapes because chunks pad
     # to their own longest row.

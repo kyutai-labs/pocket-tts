@@ -2,10 +2,11 @@ import torch
 from torch import nn
 
 
-class DummyQuantizer(nn.Module):
-    """Simplified quantizer that only provides output projection for TTS.
+class Bottleneck(nn.Module):
+    """Output projection between the encoder space and the latent space.
 
-    This removes all unnecessary quantization logic since we don't use actual quantization.
+    Stands where Mimi's quantizer sits, but performs no quantization: the TTS
+    works on the continuous latents.
     """
 
     def __init__(self, dimension: int, output_dimension: int):

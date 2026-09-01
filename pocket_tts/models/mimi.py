@@ -3,8 +3,8 @@ import logging
 import torch
 from torch import nn
 
+from pocket_tts.modules.bottleneck import Bottleneck
 from pocket_tts.modules.conv import pad_for_conv1d
-from pocket_tts.modules.dummy_quantizer import DummyQuantizer
 from pocket_tts.modules.resample import ConvDownsample1d, ConvTrUpsample1d
 from pocket_tts.modules.seanet import SEANetDecoder, SEANetEncoder
 from pocket_tts.modules.transformer import ProjectedTransformer
@@ -17,7 +17,7 @@ class MimiModel(nn.Module):
         self,
         encoder: SEANetEncoder,
         decoder: SEANetDecoder,
-        quantizer: DummyQuantizer,
+        quantizer: Bottleneck,
         frame_rate: float,
         encoder_frame_rate: float,
         sample_rate: int,
@@ -125,7 +125,7 @@ class MimiModel(nn.Module):
 def build_mimi(config) -> MimiModel:
     """MimiModel from a pocket-tts config's `mimi` section."""
     from pocket_tts.modules import transformer
-    from pocket_tts.modules.dummy_quantizer import DummyQuantizer
+    from pocket_tts.modules.bottleneck import Bottleneck
     from pocket_tts.modules.seanet import SEANetDecoder, SEANetEncoder
 
     mimi_config = config.model_dump()
@@ -134,7 +134,7 @@ def build_mimi(config) -> MimiModel:
     return MimiModel(
         encoder,
         decoder,
-        DummyQuantizer(**mimi_config["quantizer"]),
+        Bottleneck(**mimi_config["quantizer"]),
         channels=mimi_config["channels"],
         sample_rate=mimi_config["sample_rate"],
         frame_rate=mimi_config["frame_rate"],

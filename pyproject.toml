@@ -57,7 +57,7 @@ dev = [
 line-length = 100
 
 [tool.ruff.lint]
-select = ["ANN"]
+extend-select = ["ANN"]
 
 [tool.ruff.format]
 line-ending = "lf"

@@ -87,10 +87,10 @@ class FlowLMModel(nn.Module):
         ldim: int = 64,
         stats_ema_decay: float = 0.999,
         text_padding_weight: float = 1.0,
-        dtype=None,
+        dtype: torch.dtype | None = None,
         insert_bos_before_voice: bool = False,
         flow_type: str = "lsd",
-    ):
+    ) -> None:
         super().__init__()
         self.flow_type = flow_type
         self.conditioner = conditioner
@@ -165,7 +165,11 @@ class FlowLMModel(nn.Module):
         return decode(conditioned_flow, noise, sampler_decode_steps), out_eos
 
     def backbone(
-        self, input_, text_embeddings: torch.Tensor, sequence, model_state: ModelState
+        self,
+        input_: torch.Tensor,
+        text_embeddings: torch.Tensor,
+        sequence: torch.Tensor,
+        model_state: ModelState,
     ) -> torch.Tensor:
         # Most of the time, one of those two tensors is empty, it allows us
         # to input text or audio embeddings into the model without adding an

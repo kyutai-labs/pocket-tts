@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import numpy.typing as npt
 import pytest
 import sentencepiece as spm
 import torch
@@ -35,7 +36,7 @@ LDIM, DIM = 8, 32
 class DummyConditioner(LUTConditioner):
     """LUTConditioner without the sentencepiece download (tests only)."""
 
-    def __init__(self, n_bins: int, dim: int):
+    def __init__(self, n_bins: int, dim: int) -> None:
         nn.Module.__init__(self)
         self.dim = dim
         self.output_dim = dim
@@ -68,7 +69,9 @@ def tiny_model(flow_type: str, context: int | None = None) -> TrainableTTS:
     return TrainableTTS(flow_lm, flow, args)
 
 
-def make_batch(B=3, T=11):
+def make_batch(
+    B: int = 3, T: int = 11
+) -> tuple[torch.Tensor, torch.Tensor, list[torch.Tensor], torch.Tensor]:
     latents = torch.randn(B, T, LDIM)
     mask = torch.arange(T)[None, :] < torch.tensor([T, T - 3, T - 5])[:, None]
     text = [torch.randint(0, 10, (n,)) for n in (4, 2, 6)]
@@ -77,7 +80,7 @@ def make_batch(B=3, T=11):
 
 
 @pytest.mark.parametrize("flow_type", ["lsd", "flow_matching"])
-def test_train_step(flow_type):
+def test_train_step(flow_type: str) -> None:
     model = tiny_model(flow_type)
     model.train()
     loss, metrics = model(*make_batch())
@@ -90,7 +93,7 @@ def test_train_step(flow_type):
 
 
 @pytest.mark.parametrize("flow_type,cfg", [("lsd", 1.0), ("flow_matching", 1.0)])
-def test_generate(flow_type, cfg):
+def test_generate(flow_type: str, cfg: float) -> None:
     model = tiny_model(flow_type)
     tokens = torch.randint(0, 10, (5,))
     voice = torch.randn(4, LDIM)
@@ -102,7 +105,7 @@ def test_generate(flow_type, cfg):
     assert torch.isfinite(latents).all()
 
 
-def test_cfg_distill():
+def test_cfg_distill() -> None:
     """Distillation moves the backbone, freezes the heads, and starts near zero
     loss at coef 1 (student == teacher, target == teacher's conditioned z)."""
     model = tiny_model("lsd")
@@ -133,7 +136,7 @@ def test_cfg_distill():
 
 
 @pytest.mark.parametrize("num_time_conds", [0, 1, 2])
-def test_head_supports_every_time_cond_count(num_time_conds):
+def test_head_supports_every_time_cond_count(num_time_conds: int) -> None:
     """The head runs with 0, 1 or 2 time conditions."""
     head = SimpleMLPAdaLN(LDIM, 16, LDIM, DIM, 2, num_time_conds)
     assert len(head.time_embed) == num_time_conds
@@ -145,7 +148,7 @@ def test_head_supports_every_time_cond_count(num_time_conds):
         head(c, *ts, torch.rand(4, 1), x)
 
 
-def test_head_keeps_released_state_dict_layout():
+def test_head_keeps_released_state_dict_layout() -> None:
     """num_time_conds=2 is the released models' layout: both time embeddings present."""
     head = SimpleMLPAdaLN(LDIM, 16, LDIM, DIM, 2, num_time_conds=2)
     keys = set(head.state_dict())
@@ -153,7 +156,7 @@ def test_head_keeps_released_state_dict_layout():
     assert not any(k.startswith("time_embed.2") for k in keys)
 
 
-def test_shrink_checkpoint():
+def test_shrink_checkpoint() -> None:
     """Layer selection keeps the ends, renumbers contiguously, and preserves the rest."""
     assert select_layers(24, 6) == [0, 1, 2, 21, 22, 23]
     assert select_layers(6, 6) == list(range(6))
@@ -171,7 +174,7 @@ def test_shrink_checkpoint():
         assert out[f"flow_lm.transformer.layers.{new}.norm1.weight"][0].item() == float(old)
 
 
-def test_generate_ragged_matches_batch_of_one():
+def test_generate_ragged_matches_batch_of_one() -> None:
     """Ragged prefixes: batched rows must equal the batch-of-1 path exactly."""
     model = tiny_model("lsd")
     texts = [torch.randint(0, 10, (n,)) for n in (3, 7, 5)]
@@ -197,7 +200,7 @@ def test_generate_ragged_matches_batch_of_one():
         torch.testing.assert_close(single, batch_row, atol=2e-3, rtol=2e-3)
 
 
-def test_generate_per_row_eos():
+def test_generate_per_row_eos() -> None:
     """A row whose EOS fires early must come back shorter than the others."""
     model = tiny_model("lsd")
     tokens = list(torch.randint(0, 10, (2, 4)))
@@ -210,7 +213,7 @@ def test_generate_per_row_eos():
     assert all(x.shape[0] >= 0 for x in out)
 
 
-def test_padded_batch_matches_unpadded_under_context_window():
+def test_padded_batch_matches_unpadded_under_context_window() -> None:
     """Right-aligned padding must not change a row's attention output.
 
     Regression for a real bug: shifting only the key positions inflated
@@ -242,7 +245,7 @@ def test_padded_batch_matches_unpadded_under_context_window():
     torch.testing.assert_close(solo, out, atol=1e-5, rtol=1e-5)
 
 
-def test_ema_load_drops_untracked_keys():
+def test_ema_load_drops_untracked_keys() -> None:
     """A shadow must hold exactly what the checkpoint stored.
 
     Regression: depth distillation freezes the head, so its EMA tracks fewer
@@ -265,7 +268,7 @@ def test_ema_load_drops_untracked_keys():
         torch.testing.assert_close(model.state_dict()[k], v)
 
 
-def test_prefix_prompt(monkeypatch):
+def test_prefix_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
     """The cut lands inside the window, the prompt is the utterance start,
     and the target keeps the rest of the utterance."""
     dl = DataLoader.__new__(DataLoader)
@@ -281,9 +284,9 @@ def test_prefix_prompt(monkeypatch):
     words = [{"word": f"w{i}", "start": float(i), "end": i + 0.8} for i in range(20)]
     entry = Entry(path="x", duration=20.0, transcript="t", words=words)
 
-    calls = []
+    calls: list[tuple[float, float]] = []
 
-    def fake_load_window(path, start, dur, sr):
+    def fake_load_window(path: str, start: float, dur: float, sr: int) -> npt.NDArray[np.float32]:
         calls.append((start, dur))
         return np.zeros(max(1, int(dur * sr)), dtype=np.float32)
 
@@ -298,7 +301,7 @@ def test_prefix_prompt(monkeypatch):
         assert t_dur >= 20.0 - 5.5 - 0.5, "target keeps most of the utterance"
 
 
-def test_train_tokenizer(tmp_path):
+def test_train_tokenizer(tmp_path: Path) -> None:
     manifest = tmp_path / "m.jsonl"
     lines = [
         json.dumps({"transcript": f"hello world number {i} testing tokenizers"}) for i in range(64)
@@ -322,14 +325,14 @@ def test_train_tokenizer(tmp_path):
     assert sp.encode("hello world") != []
 
 
-def test_grad_accum_matches_big_batch():
+def test_grad_accum_matches_big_batch() -> None:
     """Two accumulated micro-batches produce the same grads as one batch of both."""
     torch.manual_seed(0)
     net = torch.nn.Linear(4, 1)
     xs = torch.randn(8, 4)
     ys = torch.randn(8, 1)
 
-    def loss_of(x, y):
+    def loss_of(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         return torch.nn.functional.mse_loss(net(x), y, reduction="mean")
 
     def grad_of(p: torch.nn.Parameter) -> torch.Tensor:

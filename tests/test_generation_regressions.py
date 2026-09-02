@@ -1,25 +1,31 @@
 import queue
+from collections.abc import Iterator
 from types import SimpleNamespace
-from typing import cast
+from typing import NoReturn, cast
 
 import pytest
 import torch
 
 import pocket_tts.models.tts_model as tts_model_module
 from pocket_tts.models.tts_model import TTSModel, _is_safetensors_source
+from pocket_tts.modules.text_conditioner import SentencePieceTokenizer
 
 
-def test_generate_audio_stream_uses_prepared_chunk_text(monkeypatch):
-    calls = []
+def test_generate_audio_stream_uses_prepared_chunk_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict[str, object]] = []
 
     def fake_split_into_best_sentences(
-        tokenizer, text_to_generate, max_tokens, pad_with_spaces_for_short_inputs, remove_semicolons
-    ):
+        tokenizer: SentencePieceTokenizer,
+        text_to_generate: str,
+        max_tokens: int,
+        pad_with_spaces_for_short_inputs: bool,
+        remove_semicolons: bool,
+    ) -> list[str]:
         assert text_to_generate == "hi"
         assert pad_with_spaces_for_short_inputs is True
         return ["hi"]
 
-    def fake_generate_audio_stream_short_text(**kwargs):
+    def fake_generate_audio_stream_short_text(**kwargs: object) -> Iterator[torch.Tensor]:
         calls.append(kwargs)
         yield torch.tensor([0.0])
 
@@ -45,10 +51,10 @@ def test_generate_audio_stream_uses_prepared_chunk_text(monkeypatch):
     assert calls[0]["frames_after_eos"] == 5
 
 
-def test_generate_reports_autoregressive_errors_before_decoder_done():
+def test_generate_reports_autoregressive_errors_before_decoder_done() -> None:
     error = RuntimeError("generation failed")
 
-    def raise_generation(*args, **kwargs):
+    def raise_generation(*args: object, **kwargs: object) -> NoReturn:
         raise error
 
     model = cast(
@@ -88,5 +94,7 @@ def test_generate_reports_autoregressive_errors_before_decoder_done():
         ("https://example.com/voice.wav?format=safetensors", False),
     ],
 )
-def test_is_safetensors_source_handles_revisions_and_query_strings(source, expected):
+def test_is_safetensors_source_handles_revisions_and_query_strings(
+    source: str, expected: bool
+) -> None:
     assert _is_safetensors_source(source) is expected

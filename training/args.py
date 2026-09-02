@@ -2,9 +2,14 @@ import dataclasses
 import typing as tp
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
+
+if TYPE_CHECKING:
+    from _typeshed import DataclassInstance
+
+T = tp.TypeVar("T", bound="DataclassInstance")
 
 
 @dataclass
@@ -157,7 +162,7 @@ class TrainArgs:
             raise ValueError("distill_teacher_config is set but distill_teacher_weights is not")
 
 
-def _from_dict(cls, data: dict[str, Any]):
+def _from_dict(cls: type[T], data: dict[str, Any]) -> T:
     sub = {"data": DataArgs, "flow": FlowArgs, "optim": OptimArgs}
     kwargs = {}
     fields = {f.name: f for f in dataclasses.fields(cls)}
@@ -187,7 +192,7 @@ def load_args(path: str | Path) -> TrainArgs:
 def dump_args(args: TrainArgs) -> str:
     """The resolved config (defaults included) as yaml."""
 
-    def plain(value):
+    def plain(value: object) -> object:
         if isinstance(value, Path):
             return str(value)
         if isinstance(value, dict):

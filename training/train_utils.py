@@ -5,15 +5,19 @@ import logging
 import math
 import subprocess
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import soundfile
 import torch
 
+from pocket_tts.models.flow_lm import FlowLMModel
+from pocket_tts.models.mimi import MimiModel
 from pocket_tts.modules.stateful_module import init_states
 from training.args import TrainArgs
 from training.modules.builders import load_model_config
+from training.modules.model import TrainableTTS
 
 logger = logging.getLogger("train")
 
@@ -41,11 +45,17 @@ def add_file_logging(run_dir: Path, rank: int = 0) -> Path:
 class ProgressLog:
     """Append-only jsonl of training events in the run dir, continued across restarts."""
 
-    def __init__(self, path: Path, enabled: bool = True):
+    def __init__(self, path: Path, enabled: bool = True) -> None:
         self.path = Path(path)
         self.enabled = enabled
 
-    def log(self, event: str, step: int, metrics: dict[str, Any] | None = None, **fields) -> None:
+    def log(
+        self,
+        event: str,
+        step: int,
+        metrics: dict[str, Any] | None = None,
+        **fields: str | float | None,
+    ) -> None:
         if not self.enabled:
             return
         record = {
@@ -63,7 +73,7 @@ class ProgressLog:
 def git_commit() -> str | None:
     """HEAD's short sha, suffixed "-dirty" when the tree has uncommitted changes."""
 
-    def run(*cmd):
+    def run(*cmd: str) -> str | None:
         try:
             out = subprocess.run(cmd, capture_output=True, text=True, timeout=10, check=False)
         except (OSError, subprocess.SubprocessError):
@@ -77,7 +87,7 @@ def git_commit() -> str | None:
     return sha.strip() + ("-dirty" if dirty else "")
 
 
-def _compile_models(model, mimi) -> None:
+def _compile_models(model: TrainableTTS, mimi: MimiModel) -> None:
     """Per-layer compilation: whole-module compile trips dynamo on the
     streaming-state plumbing, individual layers and the flow head are clean.
     In-place .compile() (not torch.compile(module)) so state_dict keys stay
@@ -85,7 +95,7 @@ def _compile_models(model, mimi) -> None:
     The frozen Mimi encoder runs under no_grad outside the DDP module, so
     compiling it is safe on any GPU count (~6ms/step)."""
 
-    def _compile_backbone(fl):
+    def _compile_backbone(fl: FlowLMModel) -> None:
         for layer in fl.transformer.layers:
             layer.compile(dynamic=True)
 
@@ -111,7 +121,16 @@ def lr_at(step: int, args: TrainArgs) -> float:
 
 
 @torch.no_grad()
-def write_samples(model, mimi, tokenize, args, run_dir, step, voice_latents, device):
+def write_samples(
+    model: TrainableTTS,
+    mimi: MimiModel,
+    tokenize: Callable[[str], list[int]],
+    args: TrainArgs,
+    run_dir: Path,
+    step: int,
+    voice_latents: torch.Tensor,
+    device: torch.device,
+) -> None:
     """Synthesize the configured sentences from the live (raw) weights."""
     out_dir = run_dir / "samples"
     out_dir.mkdir(exist_ok=True)
@@ -140,7 +159,9 @@ def write_samples(model, mimi, tokenize, args, run_dir, step, voice_latents, dev
     logger.info(f"wrote {len(tokens)} samples at step {step}")
 
 
-def ensure_train_latents(args: TrainArgs, mimi, device, rank: int, world_size: int) -> None:
+def ensure_train_latents(
+    args: TrainArgs, mimi: MimiModel, device: torch.device, rank: int, world_size: int
+) -> None:
     """Train from precomputed latents, encoding them first if needed.
 
     The latents store is keyed by a hash of Mimi's encode-path weights, so

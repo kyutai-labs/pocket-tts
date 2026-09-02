@@ -12,7 +12,7 @@ dependencies = [
     "sentencepiece>=0.2.1",
     "safetensors>=0.4.0",
     "typer>=0.10.0",
-    "typing_extensions>=4.0.0",
+    "typing_extensions>=4.10.0",
     "fastapi>=0.100",
     "uvicorn>=0.13.0",
     "python-multipart>=0.0.21",
@@ -55,6 +55,9 @@ dev = [
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
+select = ["ANN"]
 
 [tool.ruff.format]
 line-ending = "lf"

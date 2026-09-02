@@ -60,7 +60,7 @@ class LUTConditioner(nn.Module):
         possible_values (list[str] or None): list of possible values for the tokenizer.
     """
 
-    def __init__(self, n_bins: int, tokenizer_path: str, dim: int, output_dim: int):
+    def __init__(self, n_bins: int, tokenizer_path: str, dim: int, output_dim: int) -> None:
         super().__init__()
         self.dim = dim
         self.output_dim = output_dim

@@ -19,6 +19,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from types import FrameType
 
 import torch
 from torch import nn
@@ -196,7 +197,7 @@ def main(config_path: str) -> None:
     # checkpoint inside that window so a cancelled job resumes losslessly.
     stop_requested = False
 
-    def _request_stop(signum, frame):
+    def _request_stop(signum: int, frame: FrameType | None) -> None:
         nonlocal stop_requested
         stop_requested = True
 
@@ -308,7 +309,13 @@ def main(config_path: str) -> None:
 
 @torch.no_grad()
 def validate(
-    model, mimi, args: TrainArgs, device, rank: int, world_size: int, step: int
+    model: TrainableTTS,
+    mimi: MimiModel,
+    args: TrainArgs,
+    device: torch.device,
+    rank: int,
+    world_size: int,
+    step: int,
 ) -> dict[str, float]:
     model.eval()
     tokenize = model.flow_lm.conditioner.tokenizer.sp.encode

@@ -8,6 +8,7 @@ ranks by line index.
 
 import json
 import logging
+import multiprocessing.queues
 import queue
 import random
 import threading
@@ -19,12 +20,14 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
+import sentencepiece
 import sphn
 import torch
 import torch.multiprocessing as torch_mp
 from safetensors import safe_open
 
 from pocket_tts.data.audio_utils import convert_audio
+from pocket_tts.models.mimi import MimiModel
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +92,7 @@ class DataLoader:
         seed: int = 0,
         shuffle: bool = True,
         io_workers: int = 16,
-    ):
+    ) -> None:
         self.jsonl = jsonl
         self.entries = load_entries(jsonl, rank, world_size)
         self.tokenize = tokenize
@@ -371,9 +374,11 @@ class DataLoader:
                 )
 
 
-def _feed_queue(q, sentence_piece_proto: bytes, loader_kwargs: dict[str, Any]) -> None:
-    import sentencepiece
-
+def _feed_queue(
+    q: "multiprocessing.queues.Queue[Batch]",  # not subscriptable at runtime on 3.10
+    sentence_piece_proto: bytes,
+    loader_kwargs: dict[str, Any],
+) -> None:
     torch_mp.set_sharing_strategy("file_system")
     sentence_piece = sentencepiece.SentencePieceProcessor()
     sentence_piece.load_from_serialized_proto(sentence_piece_proto)
@@ -386,7 +391,7 @@ class SubprocessDataLoader:
     def __init__(
         self,
         jsonl: str,
-        sentence_piece,
+        sentence_piece: sentencepiece.SentencePieceProcessor,
         batch_size: int,
         sample_rate: int,
         frame_rate: float,
@@ -399,7 +404,7 @@ class SubprocessDataLoader:
         io_workers: int = 16,
         num_procs: int = 3,
         depth: int = 8,
-    ):
+    ) -> None:
         ctx = torch_mp.get_context("spawn")
         self._queue = ctx.Queue(maxsize=depth)
         self._procs = []
@@ -452,7 +457,7 @@ def _prefetch(iterator: Iterator[Batch], depth: int = 4) -> Iterator[Batch]:
     """Run the (synchronous, IO-bound) loader in a background thread."""
     q: queue.Queue[Batch | None] = queue.Queue(maxsize=depth)
 
-    def worker():
+    def worker() -> None:
         for item in iterator:
             q.put(item)
         q.put(None)
@@ -466,13 +471,16 @@ def _prefetch(iterator: Iterator[Batch], depth: int = 4) -> Iterator[Batch]:
 
 
 @torch.no_grad()
-def encode_batch(mimi, batch, device):
+def encode_batch(
+    mimi: MimiModel, batch: Batch, device: torch.device
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     if batch.tail_latents is not None:
         stitch = mimi.encode_to_latent(batch.audio.to(device))
         latents = torch.cat([stitch, batch.tail_latents.to(device)], dim=1)
         T = latents.shape[1]
         num_audio_frames = batch.num_audio_frames.to(device).clamp(max=T)
         mask = torch.arange(T, device=device)[None, :] < num_audio_frames[:, None]
+        assert batch.prompt_latents is not None  # set together with tail_latents
         voice_prompt_latents = batch.prompt_latents.to(device)
         num_voice_prompt_frames = batch.num_voice_prompt_frames.to(device).clamp(
             max=voice_prompt_latents.shape[1]

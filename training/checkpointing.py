@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class EMA:
-    def __init__(self, model: nn.Module, decay: float):
+    def __init__(self, model: nn.Module, decay: float) -> None:
         self.decay = decay
         self.shadow = {
             k: p.detach().clone().float() for k, p in model.named_parameters() if p.requires_grad
@@ -37,10 +37,10 @@ class EMA:
             torch._foreach_mul_(shadows, self.decay)
             torch._foreach_add_(shadows, params, alpha=1 - self.decay)
 
-    def state_dict(self):
+    def state_dict(self) -> dict[str, torch.Tensor]:
         return self.shadow
 
-    def load_state_dict(self, state):
+    def load_state_dict(self, state: dict[str, torch.Tensor]) -> None:
         self._tracked = None
         # The shadow ends up holding exactly what the checkpoint stored. Keys the
         # checkpoint does not carry are dropped rather than left at their freshly
@@ -64,7 +64,7 @@ def save_checkpoint(
     run_dir: Path,
     step: int,
     model: TrainableTTS,
-    optimizer,
+    optimizer: torch.optim.Optimizer,
     ema: EMA | None,
     num_keep: int,
     mimi: nn.Module | None = None,
@@ -105,7 +105,12 @@ def latest_checkpoint(run_dir: Path) -> Path | None:
     return checkpoints[-1] if checkpoints else None
 
 
-def load_checkpoint(path: Path, model: nn.Module, optimizer=None, ema: EMA | None = None) -> int:
+def load_checkpoint(
+    path: Path,
+    model: nn.Module,
+    optimizer: torch.optim.Optimizer | None = None,
+    ema: EMA | None = None,
+) -> int:
     payload = torch.load(path, map_location="cpu", weights_only=True)
     model.load_state_dict(payload["model"])
     if optimizer is not None:

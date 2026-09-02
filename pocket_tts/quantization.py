@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 RECOMMENDED_CONFIG = {"attention", "ffn"}
 
 
-def _get_backend():
+def _get_backend() -> str:
     """Detect the best available quantization backend.
 
     Returns "torchao" if torchao is installed with working C++ extensions,
@@ -45,7 +45,7 @@ def _get_backend():
     return "torch.ao"
 
 
-def _quantize_module_torchao(module: nn.Module):
+def _quantize_module_torchao(module: nn.Module) -> None:
     """Apply int8 dynamic quantization using torchao."""
     from torchao.quantization import (  # ty: ignore[unresolved-import]  -- optional extra
         Int8DynamicActivationInt8WeightConfig,
@@ -55,7 +55,7 @@ def _quantize_module_torchao(module: nn.Module):
     quantize_(module, Int8DynamicActivationInt8WeightConfig())
 
 
-def _ensure_quantization_engine():
+def _ensure_quantization_engine() -> None:
     """Set the quantization engine for torch.ao (QNNPACK for ARM, FBGEMM for x86)."""
     if platform.machine() in ("arm64", "aarch64"):
         torch.backends.quantized.engine = "qnnpack"

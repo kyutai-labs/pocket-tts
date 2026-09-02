@@ -18,7 +18,9 @@ def get_extra_padding_for_conv1d(
     return ideal_length - length
 
 
-def pad_for_conv1d(x: torch.Tensor, kernel_size: int, stride: int, padding_total: int = 0):
+def pad_for_conv1d(
+    x: torch.Tensor, kernel_size: int, stride: int, padding_total: int = 0
+) -> torch.Tensor:
     """Pad for a convolution to make sure that the last window is full.
     Extra padding is added at the end. This is required to ensure that we can rebuild
     an output of the same length, as otherwise, even with padding, some time steps
@@ -48,7 +50,7 @@ class StreamingConv1d(StatefulModule):
         groups: int = 1,
         bias: bool = True,
         pad_mode: str = "constant",
-    ):
+    ) -> None:
         super().__init__()
         assert pad_mode in ["constant", "replicate"], pad_mode
         self.pad_mode = pad_mode
@@ -90,7 +92,7 @@ class StreamingConv1d(StatefulModule):
         first = torch.ones(batch_size, dtype=torch.bool, device=device)
         return dict(previous=previous, first=first)
 
-    def forward(self, x, model_state: ModelState | None):
+    def forward(self, x: torch.Tensor, model_state: ModelState | None) -> torch.Tensor:
         B, C, T = x.shape
         S = self._stride
         assert T > 0 and T % S == 0, "Steps must be multiple of stride"
@@ -128,7 +130,7 @@ class StreamingConvTranspose1d(StatefulModule):
         stride: int = 1,
         groups: int = 1,
         bias: bool = True,
-    ):
+    ) -> None:
         super().__init__()
         self.convtr = nn.ConvTranspose1d(
             in_channels, out_channels, kernel_size, stride, groups=groups, bias=bias
@@ -148,7 +150,7 @@ class StreamingConvTranspose1d(StatefulModule):
         device = self.convtr.weight.device
         return dict(partial=torch.zeros(batch_size, self.convtr.out_channels, K - S, device=device))
 
-    def forward(self, x, mimi_state: ModelState):
+    def forward(self, x: torch.Tensor, mimi_state: ModelState) -> torch.Tensor:
         layer_state = self.get_state(mimi_state)["partial"]
         y = self.convtr(x)
         PT = layer_state.shape[-1]

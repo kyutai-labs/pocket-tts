@@ -3,6 +3,7 @@ import logging
 import os
 import time
 from pathlib import Path
+from types import TracebackType
 from typing import Any
 from urllib.parse import urlparse
 
@@ -10,6 +11,7 @@ import requests
 import torch
 from huggingface_hub import hf_hub_download
 from torch import nn
+from typing_extensions import Self
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 DEBUG_MIMI = os.environ.get("DEBUG_MIMI", "0") == "1"
@@ -54,7 +56,7 @@ def make_cache_directory() -> Path:
     return cache_dir
 
 
-def print_nb_parameters(model: nn.Module, model_name: str):
+def print_nb_parameters(model: nn.Module, model_name: str) -> None:
     logger = logging.getLogger(__name__)
     state_dict = model.state_dict()
     total = 0
@@ -75,18 +77,23 @@ def size_of_dict(state_dict: dict[str, Any]) -> int:
 
 
 class display_execution_time:
-    def __init__(self, task_name: str, print_output: bool = True):
+    def __init__(self, task_name: str, print_output: bool = True) -> None:
         self.task_name = task_name
         self.print_output = print_output
         self.start_time: float | None = None
         self.elapsed_time_ms: int | None = None
         self.logger = logging.getLogger(__name__)
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
         self.start_time = time.monotonic()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> bool:
         end_time = time.monotonic()
         assert self.start_time is not None, "__exit__ without __enter__"
         self.elapsed_time_ms = int((end_time - self.start_time) * 1000)

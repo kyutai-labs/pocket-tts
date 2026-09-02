@@ -30,7 +30,7 @@ class TrainableTTS(nn.Module):
     # (see build_models); None otherwise.
     distill_teacher: FlowLMModel | None
 
-    def __init__(self, flow_lm: FlowLMModel, flow: FlowType, args: TrainArgs):
+    def __init__(self, flow_lm: FlowLMModel, flow: FlowType, args: TrainArgs) -> None:
         super().__init__()
         self.flow_lm = flow_lm
         self.flow = flow

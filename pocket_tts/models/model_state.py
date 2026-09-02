@@ -12,7 +12,7 @@ import safetensors.torch
 import torch
 
 
-def export_model_state(model_state: dict[str, dict[str, torch.Tensor]], dest: str | Path):
+def export_model_state(model_state: dict[str, dict[str, torch.Tensor]], dest: str | Path) -> None:
     dict_to_store = {}
     for module_name, module_state in model_state.items():
         for key, tensor_value in module_state.items():

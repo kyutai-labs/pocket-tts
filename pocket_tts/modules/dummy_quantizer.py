@@ -8,7 +8,7 @@ class DummyQuantizer(nn.Module):
     This removes all unnecessary quantization logic since we don't use actual quantization.
     """
 
-    def __init__(self, dimension: int, output_dimension: int):
+    def __init__(self, dimension: int, output_dimension: int) -> None:
         super().__init__()
         self.dimension = dimension
         self.output_dimension = output_dimension

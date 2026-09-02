@@ -23,7 +23,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Protocol
 
 import numpy as np
 import numpy.typing as npt
@@ -44,6 +44,12 @@ CONFIGS = {
     "flow_net_attention": {"flow_net", "attention"},
     "ffn_flow_net": {"ffn", "flow_net"},
 }
+
+
+class Transcriber(Protocol):
+    """The part of a Whisper model that compute_wer uses."""
+
+    def transcribe(self, audio: str, language: str) -> dict[str, Any]: ...
 
 
 def get_model_size_mb(model: torch.nn.Module) -> float:
@@ -131,7 +137,7 @@ class ConfigSummary:
     quality_results: list[QualityResult] = field(default_factory=list)
 
 
-def load_and_quantize_model(config_id: str):
+def load_and_quantize_model(config_id: str) -> tuple[TTSModel, float, float]:
     """Load and quantize model. Returns (model, load_time, model_size_mb)."""
     quantize_groups = CONFIGS[config_id]
 
@@ -149,14 +155,16 @@ def load_and_quantize_model(config_id: str):
     return tts_model, load_time, model_size
 
 
-def save_audio(audio_tensor, sample_rate, output_path):
+def save_audio(audio_tensor: torch.Tensor, sample_rate: int, output_path: Path) -> None:
     """Save audio tensor to WAV file."""
     audio_np = audio_tensor.numpy() if hasattr(audio_tensor, "numpy") else np.array(audio_tensor)
     audio_int16 = (audio_np * 32767).clip(-32768, 32767).astype(np.int16)
     scipy.io.wavfile.write(str(output_path), sample_rate, audio_int16)
 
 
-def generate_for_voice(tts_model, voice, config_id, output_dir):
+def generate_for_voice(
+    tts_model: TTSModel, voice: str, config_id: str, output_dir: Path
+) -> GenerationResult:
     """Generate audio for a single voice and return metrics."""
     logger.info("[%s] Generating for voice: %s", config_id, voice)
 
@@ -267,7 +275,9 @@ def compute_pesq(
         return None
 
 
-def compute_wer(audio_path: str, reference_text: str, whisper_model) -> tuple[Optional[float], str]:
+def compute_wer(
+    audio_path: str | Path, reference_text: str, whisper_model: Transcriber
+) -> tuple[Optional[float], str]:
     """Compute Word Error Rate using Whisper. Returns (wer, transcript)."""
     try:
         from jiwer import wer
@@ -281,8 +291,13 @@ def compute_wer(audio_path: str, reference_text: str, whisper_model) -> tuple[Op
 
 
 def run_quality_eval(
-    baseline_model, quantized_model, config_id, voice, output_dir, whisper_model=None
-):
+    baseline_model: TTSModel,
+    quantized_model: TTSModel,
+    config_id: str,
+    voice: str,
+    output_dir: Path,
+    whisper_model: Transcriber | None = None,
+) -> list[QualityResult]:
     """Run quality evaluation for a single voice across all quality sentences."""
     results = []
     voice_state_b = baseline_model.get_state_for_audio_prompt(voice)
@@ -355,7 +370,7 @@ def run_quality_eval(
 # ---------------------------------------------------------------------------
 
 
-def run_config(config_id, output_dir, voices):
+def run_config(config_id: str, output_dir: Path, voices: list[str]) -> ConfigSummary:
     """Run full evaluation for a single quantization config."""
     logger.info("=" * 60)
     logger.info("Evaluating config: %s (groups: %s)", config_id, CONFIGS[config_id] or "none")
@@ -392,7 +407,7 @@ def run_config(config_id, output_dir, voices):
 # ---------------------------------------------------------------------------
 
 
-def write_csv(summaries, output_dir):
+def write_csv(summaries: list[ConfigSummary], output_dir: Path) -> None:
     csv_path = output_dir / "results.csv"
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(
@@ -430,7 +445,7 @@ def write_csv(summaries, output_dir):
     logger.info("CSV written: %s", csv_path)
 
 
-def write_quality_csv(summaries, output_dir):
+def write_quality_csv(summaries: list[ConfigSummary], output_dir: Path) -> None:
     csv_path = output_dir / "quality_results.csv"
     rows = []
     for s in summaries:
@@ -445,7 +460,7 @@ def write_quality_csv(summaries, output_dir):
     logger.info("Quality CSV written: %s", csv_path)
 
 
-def write_markdown_report(summaries, output_dir):
+def write_markdown_report(summaries: list[ConfigSummary], output_dir: Path) -> None:
     report_path = output_dir / "report.md"
     lines = [
         "# pocket-tts int8 Quantization Evaluation Report",
@@ -503,7 +518,7 @@ def write_markdown_report(summaries, output_dir):
     logger.info("Report written: %s", report_path)
 
 
-def write_json_summary(summaries, output_dir):
+def write_json_summary(summaries: list[ConfigSummary], output_dir: Path) -> None:
     json_path = output_dir / "summary.json"
     json_path.write_text(json.dumps([asdict(s) for s in summaries], indent=2))
     logger.info("JSON summary written: %s", json_path)
@@ -514,7 +529,7 @@ def write_json_summary(summaries, output_dir):
 # ---------------------------------------------------------------------------
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate pocket-tts quantization configs")
     parser.add_argument("--config", nargs="+", choices=list(CONFIGS.keys()))
     parser.add_argument("--all-configs", action="store_true")

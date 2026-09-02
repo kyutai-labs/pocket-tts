@@ -24,7 +24,7 @@ class StreamingTransformerLayer(nn.Module):
         context: int | None,
         rope: RotaryEmbedding,
         layer_scale: float | None = None,
-    ):
+    ) -> None:
         super().__init__()
         self.self_attn = StreamingMultiheadAttention(
             rope=rope, embed_dim=d_model, num_heads=num_heads, context=context
@@ -74,7 +74,7 @@ class StreamingTransformer(nn.Module):
         dim_feedforward: int = 2048,
         context: int | None = None,
         max_period: float = 10_000.0,
-    ):
+    ) -> None:
         super().__init__()
         assert d_model % num_heads == 0
         self.max_period = max_period
@@ -106,7 +106,7 @@ class StreamingTransformer(nn.Module):
             max_period=float(config.max_period),
         )
 
-    def forward(self, x: torch.Tensor, model_state: ModelState | None):
+    def forward(self, x: torch.Tensor, model_state: ModelState | None) -> torch.Tensor:
         attn_mask = None
         if model_state is None:
             # Stateless (training) path: one shared mask for all layers, built
@@ -129,7 +129,7 @@ class ProjectedTransformer(nn.Module):
         context: int,
         max_period: float,
         dim_feedforward: int,
-    ):
+    ) -> None:
         super().__init__()
         self.transformer = StreamingTransformer(
             d_model=d_model,
@@ -153,7 +153,7 @@ class ProjectedTransformer(nn.Module):
             else:
                 self.output_projs.append(nn.Linear(d_model, output_dimension, bias=False))
 
-    def forward(self, x, model_state: ModelState | None):
+    def forward(self, x: torch.Tensor, model_state: ModelState | None) -> list[torch.Tensor]:
         x = x.transpose(1, 2)
         if self.input_proj is not None:
             x = self.input_proj(x)

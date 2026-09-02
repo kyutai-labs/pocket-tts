@@ -4,7 +4,7 @@
 import pytest
 
 
-def test_readme_example():
+def test_readme_example() -> None:
     import scipy.io.wavfile
 
     from pocket_tts import TTSModel
@@ -16,7 +16,7 @@ def test_readme_example():
     scipy.io.wavfile.write("output.wav", tts_model.sample_rate, audio.numpy())
 
 
-def test_quick_start():
+def test_quick_start() -> None:
     import scipy.io.wavfile
 
     from pocket_tts import TTSModel
@@ -34,7 +34,7 @@ def test_quick_start():
     scipy.io.wavfile.write("output.wav", tts_model.sample_rate, audio.numpy())
 
 
-def test_load_model():
+def test_load_model() -> None:
     from pocket_tts import TTSModel
 
     # Load with default settings
@@ -46,14 +46,14 @@ def test_load_model():
     )
 
 
-def test_device():
+def test_device() -> None:
     from pocket_tts import TTSModel
 
     model = TTSModel.load_model()
     print(f"Model running on: {model.device}")
 
 
-def test_sample_rate():
+def test_sample_rate() -> None:
     from pocket_tts import TTSModel
 
     model = TTSModel.load_model()
@@ -61,7 +61,7 @@ def test_sample_rate():
 
 
 @pytest.fixture
-def make_my_voice_file():
+def make_my_voice_file() -> None:
     import requests
 
     url = "https://huggingface.co/kyutai/tts-voices/resolve/main/expresso/ex01-ex02_default_001_channel1_168s.wav"
@@ -71,7 +71,7 @@ def make_my_voice_file():
 
 
 @pytest.mark.usefixtures("make_my_voice_file")
-def test_get_state_for_audio_prompt():
+def test_get_state_for_audio_prompt() -> None:
     from pocket_tts import TTSModel
 
     model = TTSModel.load_model()
@@ -93,7 +93,7 @@ def test_get_state_for_audio_prompt():
     )
 
 
-def test_generate_audio():
+def test_generate_audio() -> None:
     from pocket_tts import TTSModel
 
     model = TTSModel.load_model()
@@ -107,7 +107,7 @@ def test_generate_audio():
     print(f"Audio duration: {audio.shape[-1] / model.sample_rate:.2f} seconds")
 
 
-def test_generate_audio_stream():
+def test_generate_audio_stream() -> None:
     from pocket_tts import TTSModel
 
     model = TTSModel.load_model()
@@ -120,7 +120,7 @@ def test_generate_audio_stream():
         # Could save chunks to file or play in real-time
 
 
-def test_voice_management():
+def test_voice_management() -> None:
     from pocket_tts import TTSModel
 
     model = TTSModel.load_model()
@@ -135,7 +135,7 @@ def test_voice_management():
     funny_audio = model.generate_audio(voices["serious"], "Good morning.")
 
 
-def test_batch_processing():
+def test_batch_processing() -> None:
     import scipy.io.wavfile
     import torch
 

@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 
 import numpy as np
+import torch
 import torch.nn as nn
 
 from pocket_tts.modules.stateful_module import ModelState
@@ -16,7 +17,7 @@ class SEANetResnetBlock(nn.Module):
         dilations: Sequence[int] = (1, 1),
         pad_mode: str = "reflect",
         compress: int = 2,
-    ):
+    ) -> None:
         super().__init__()
         assert len(kernel_sizes) == len(dilations), (
             "Number of kernel sizes should match number of dilations"
@@ -34,7 +35,7 @@ class SEANetResnetBlock(nn.Module):
             ]
         self.block = block
 
-    def forward(self, x, model_state: ModelState | None):
+    def forward(self, x: torch.Tensor, model_state: ModelState | None) -> torch.Tensor:
         v = x
         for layer in self.block:
             if isinstance(layer, StreamingConv1d):
@@ -59,7 +60,7 @@ class SEANetEncoder(nn.Module):
         dilation_base: int = 2,
         pad_mode: str = "reflect",
         compress: int = 2,
-    ):
+    ) -> None:
         super().__init__()
         self.channels = channels
         self.dimension = dimension
@@ -108,7 +109,7 @@ class SEANetEncoder(nn.Module):
 
         self.model = model
 
-    def forward(self, x, model_state: ModelState | None):
+    def forward(self, x: torch.Tensor, model_state: ModelState | None) -> torch.Tensor:
         for layer in self.model:
             if isinstance(layer, (StreamingConv1d, SEANetResnetBlock)):
                 x = layer(x, model_state)
@@ -131,7 +132,7 @@ class SEANetDecoder(nn.Module):
         dilation_base: int = 2,
         pad_mode: str = "reflect",
         compress: int = 2,
-    ):
+    ) -> None:
         super().__init__()
         self.dimension = dimension
         self.channels = channels
@@ -175,7 +176,7 @@ class SEANetDecoder(nn.Module):
         ]
         self.model = model
 
-    def forward(self, z, model_state: ModelState | None):
+    def forward(self, z: torch.Tensor, model_state: ModelState | None) -> torch.Tensor:
         for layer in self.model:
             if isinstance(layer, (StreamingConvTranspose1d, SEANetResnetBlock, StreamingConv1d)):
                 z = layer(z, model_state)

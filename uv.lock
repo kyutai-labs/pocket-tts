@@ -1531,7 +1531,7 @@ requires-dist = [
     { name = "torch", specifier = ">=2.5.0" },
     { name = "torchao", marker = "extra == 'quantize'", specifier = ">=0.16.0" },
     { name = "typer", specifier = ">=0.10.0" },
-    { name = "typing-extensions", specifier = ">=4.0.0" },
+    { name = "typing-extensions", specifier = ">=4.10.0" },
     { name = "uvicorn", specifier = ">=0.13.0" },
 ]
 provides-extras = ["audio", "quantize"]

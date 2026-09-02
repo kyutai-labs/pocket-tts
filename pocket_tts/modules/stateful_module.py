@@ -18,7 +18,7 @@ def init_states(model: nn.Module, batch_size: int, sequence_length: int) -> Mode
     return result
 
 
-def increment_steps(module: nn.Module, model_state: ModelState, increment: int = 1):
+def increment_steps(module: nn.Module, model_state: ModelState, increment: int = 1) -> None:
     # print("incrementing steps by", increment)
     for module_name, module in module.named_modules():
         if not isinstance(module, StatefulModule):
@@ -27,7 +27,7 @@ def increment_steps(module: nn.Module, model_state: ModelState, increment: int =
 
 
 class StatefulModule(ABC, nn.Module):
-    def __init__(self, *args, **kwds):
+    def __init__(self, *args: object, **kwds: object) -> None:
         self._module_absolute_name: str | None = None
         return super().__init__(*args, **kwds)
 
@@ -36,7 +36,7 @@ class StatefulModule(ABC, nn.Module):
         """Initialize the state."""
         raise NotImplementedError
 
-    def increment_step(self, state: dict[str, torch.Tensor], increment: int = 1):
+    def increment_step(self, state: dict[str, torch.Tensor], increment: int = 1) -> None:
         pass
 
     def get_state(self, model_state: ModelState) -> dict[str, torch.Tensor]:

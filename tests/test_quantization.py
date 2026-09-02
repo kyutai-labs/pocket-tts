@@ -8,6 +8,8 @@ Verifies:
 4. Backend detection works
 """
 
+from pathlib import Path
+
 import torch
 from typer.testing import CliRunner
 
@@ -22,7 +24,7 @@ TEST_VOICE = "alba"
 runner = CliRunner()
 
 
-def test_quantized_model_produces_audio():
+def test_quantized_model_produces_audio() -> None:
     model = TTSModel.load_model(quantize=True)
     voice_state = model.get_state_for_audio_prompt(TEST_VOICE)
     audio = model.generate_audio(voice_state, SHORT_TEXT)
@@ -33,7 +35,7 @@ def test_quantized_model_produces_audio():
     assert audio.abs().max() > 0, "Audio is silent"
 
 
-def test_quantize_flag_applies_quantization():
+def test_quantize_flag_applies_quantization() -> None:
     model_q = TTSModel.load_model(quantize=True)
     model_b = TTSModel.load_model(quantize=False)
     # Quantized model's Linear layers should have different weight types than baseline
@@ -48,7 +50,7 @@ def test_quantize_flag_applies_quantization():
     )
 
 
-def test_cli_quantize_flag(tmp_path):
+def test_cli_quantize_flag(tmp_path: Path) -> None:
     output_file = tmp_path / "quantized_output.wav"
     result = runner.invoke(
         cli_app,
@@ -57,6 +59,6 @@ def test_cli_quantize_flag(tmp_path):
     assert result.exit_code == 0, f"CLI failed: {result.output}"
 
 
-def test_backend_detection():
+def test_backend_detection() -> None:
     backend = _get_backend()
     assert backend in ("torchao", "torch.ao")

@@ -22,7 +22,7 @@ import logging
 import multiprocessing
 import os
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -34,10 +34,12 @@ import sphn
 import torch
 from pydantic import BaseModel
 
+from pocket_tts.models.mimi import MimiModel
 from pocket_tts.modules.stateful_module import init_states
 from training.args import load_args
 from training.checkpointing import EMA, latest_checkpoint, load_checkpoint
 from training.modules.builders import build_models
+from training.modules.model import TrainableTTS
 
 logger = logging.getLogger("eval_librispeech")
 DEFAULT_ASR = "ibm-granite/granite-speech-4.1-2b"
@@ -67,7 +69,7 @@ class EvalResults(BaseModel):
     n_steps: int
 
 
-def eval_dir_name(args, step: int) -> str:
+def eval_dir_name(args: argparse.Namespace, step: int) -> str:
     """Output directory for one eval.
 
     Anything that changes the numbers belongs in the name, so two evals of the
@@ -103,7 +105,7 @@ def read_lst(
                 continue
             id0, _, _, id1, _, txt1 = line.split("\t")
 
-            def p(utt, r=root, exts=(".flac",)):
+            def p(utt: str, r: str = root, exts: tuple[str, ...] = (".flac",)) -> str:
                 base = os.path.join(r, "/".join(utt.split("-")[:-1]), utt)
                 for ext in exts:
                     if os.path.exists(base + ext):
@@ -121,7 +123,7 @@ def read_lst(
     return items
 
 
-def load_16k(path: str, device) -> torch.Tensor:
+def load_16k(path: str, device: torch.device) -> torch.Tensor:
     wav, sr = sphn.read(path)
     wav = wav.mean(axis=0)
     if sr != 16000:
@@ -129,7 +131,9 @@ def load_16k(path: str, device) -> torch.Tensor:
     return torch.from_numpy(wav).float().to(device)
 
 
-def build_transcriber(asr_name: str, device):
+def build_transcriber(
+    asr_name: str, device: torch.device
+) -> Callable[[list[npt.NDArray[Any]]], list[str]]:
     """Granite is a chat-prompted speech-seq2seq model; whisper is a pipeline."""
     if "granite" in asr_name:
         from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor
@@ -188,7 +192,12 @@ def build_transcriber(asr_name: str, device):
 MIN_FRAMES = 8
 
 
-def load_run(run_dir, device, use_ema: bool = False, checkpoint=None):
+def load_run(
+    run_dir: str | Path,
+    device: torch.device,
+    use_ema: bool = False,
+    checkpoint: str | Path | None = None,
+) -> tuple[TrainableTTS, MimiModel, int]:
     """(model, mimi, step) from a run dir, weights on `device`, in eval mode."""
     run_dir = Path(run_dir)
     args = load_args(run_dir / "args.yaml")
@@ -218,7 +227,9 @@ def load_mono(path: str, sample_rate: int) -> torch.Tensor:
     return torch.from_numpy(wav.copy()).float()
 
 
-def latents_to_wav(mimi, latents: torch.Tensor, device) -> torch.Tensor | None:
+def latents_to_wav(
+    mimi: MimiModel, latents: torch.Tensor, device: torch.device
+) -> torch.Tensor | None:
     """[T, C] latents to a mono waveform; None when the generation was empty."""
     if latents.shape[0] < MIN_FRAMES:
         return None
@@ -228,7 +239,9 @@ def latents_to_wav(mimi, latents: torch.Tensor, device) -> torch.Tensor | None:
         return mimi.decode_from_latent(latents[None].to(device), state)[0, 0]
 
 
-def score_items(items: list[dict[str, Any]], device, args) -> tuple[list[dict[str, Any]], int]:
+def score_items(
+    items: list[dict[str, Any]], device: torch.device, args: argparse.Namespace
+) -> tuple[list[dict[str, Any]], int]:
     """Generate and score `items` on one device. Returns per-item records."""
     from whisper_normalizer.english import EnglishTextNormalizer
 
@@ -248,7 +261,8 @@ def score_items(items: list[dict[str, Any]], device, args) -> tuple[list[dict[st
 
         spk_fe = AutoFeatureExtractor.from_pretrained("microsoft/wavlm-base-plus-sv")
         spk_model = (
-            WavLMForXVector.from_pretrained("microsoft/wavlm-base-plus-sv").to(device).eval()
+            # transformers wraps .to() in a way that loses the bound self.
+            WavLMForXVector.from_pretrained("microsoft/wavlm-base-plus-sv").to(device).eval()  # ty: ignore[invalid-argument-type]
         )
 
         def embed(wavs: Sequence[npt.NDArray[Any] | torch.Tensor]) -> torch.Tensor:
@@ -275,7 +289,7 @@ def score_items(items: list[dict[str, Any]], device, args) -> tuple[list[dict[st
     sp_encode = model.flow_lm.conditioner.tokenizer.sp.encode
     if args.match_train_text:
 
-        def tokenize(text: str):
+        def tokenize(text: str) -> list[int]:
             return sp_encode(re.sub(r"[^a-z' ]", "", text.lower()).strip())
     else:
         tokenize = sp_encode
@@ -375,7 +389,9 @@ def score_items(items: list[dict[str, Any]], device, args) -> tuple[list[dict[st
     return records, step
 
 
-def _shard_worker(payload):
+def _shard_worker(
+    payload: tuple[int, list[dict[str, Any]], argparse.Namespace],
+) -> tuple[list[dict[str, Any]], int]:
     device_idx, items, args = payload
     torch.cuda.set_device(device_idx)
     return score_items(items, torch.device("cuda", device_idx), args)

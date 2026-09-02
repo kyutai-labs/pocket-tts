@@ -26,9 +26,11 @@ import logging
 import queue
 import re
 import threading
-from collections.abc import Callable
-from typing import Annotated, Any
+from collections.abc import Callable, Iterator
+from typing import TYPE_CHECKING, Annotated, Any, TextIO
 
+import numpy as np
+import numpy.typing as npt
 import sphn
 import torch
 import typer
@@ -37,7 +39,13 @@ from tqdm import tqdm
 
 from pocket_tts.data.audio_utils import convert_audio
 
+if TYPE_CHECKING:
+    from transformers import Wav2Vec2ForCTC
+
 logger = logging.getLogger("align")
+
+# (entry, wav) or (entry, exception) as handed from the reader thread to the aligner.
+LoadedEntry = tuple[dict[str, Any], npt.NDArray[np.float32] | Exception]
 
 app = typer.Typer(pretty_exceptions_show_locals=False)
 
@@ -146,7 +154,9 @@ def _tokens_for(words: list[str], vocab: dict[str, int], delim: int) -> tuple[li
     return tokens, word_of
 
 
-def _load_ctc_model(model_name: str, device: torch.device):
+def _load_ctc_model(
+    model_name: str, device: torch.device
+) -> "tuple[Wav2Vec2ForCTC, dict[str, int], int, int, Callable[[str], str], int, bool]":
     """(model, vocab, blank id, word-delimiter id, case fold, sample rate, use_bf16) for `model_name`."""
     import transformers
 
@@ -239,7 +249,7 @@ def main(
         bar_format="{l_bar}{bar}| {n:.1f}/{total:.1f}h [{elapsed}<{remaining}, {rate_fmt}{postfix}]",
     )
 
-    def read_entries(fin, q):
+    def read_entries(fin: TextIO, q: queue.Queue[LoadedEntry | None]) -> None:
         for line in fin:
             entry = json.loads(line)
             if (entry["path"], float(entry.get("start", 0.0))) in done:
@@ -262,7 +272,7 @@ def main(
 
     n_ok = n_skipped = 0
 
-    def skip(entry, exc):
+    def skip(entry: dict[str, Any], exc: Exception) -> None:
         nonlocal n_skipped
         n_skipped += 1
         if n_skipped % 100 == 1:
@@ -278,10 +288,10 @@ def main(
 
     with open(input_jsonl) as fin, open(output_jsonl, "a" if resume else "w", buffering=1) as fout:
         # (entry, wav) or (entry, exception); None once the manifest is exhausted.
-        q: queue.Queue[tuple[Any, Any] | None] = queue.Queue(maxsize=sort_window * 2)
+        q: queue.Queue[LoadedEntry | None] = queue.Queue(maxsize=sort_window * 2)
         threading.Thread(target=read_entries, args=(fin, q), daemon=True).start()
 
-        def windows():
+        def windows() -> Iterator[list[LoadedEntry]]:
             buf, eof = [], False
             while not eof:
                 while len(buf) < sort_window:

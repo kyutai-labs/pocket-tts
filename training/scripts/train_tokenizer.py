@@ -18,6 +18,7 @@ Usage:
 
 import json
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -27,7 +28,7 @@ import typer
 app = typer.Typer(pretty_exceptions_show_locals=False)
 
 
-def iter_texts(paths: list[Path]):
+def iter_texts(paths: list[Path]) -> Iterator[str]:
     for p in paths:
         with open(p) as f:
             for line in f:

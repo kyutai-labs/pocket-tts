@@ -5,15 +5,15 @@ from pocket_tts import TTSModel
 from pocket_tts.models.tts_model import TTSModel as TTSModelImpl
 
 
-def test_public_api_exports_only_tts_model():
+def test_public_api_exports_only_tts_model() -> None:
     assert pocket_tts.__all__ == ["TTSModel", "export_model_state"]
 
 
-def test_public_api_tts_model_points_to_implementation():
+def test_public_api_tts_model_points_to_implementation() -> None:
     assert TTSModel is TTSModelImpl
 
 
-def test_public_api_expected_methods_and_properties():
+def test_public_api_expected_methods_and_properties() -> None:
     for method_name in (
         "load_model",
         "generate_audio",

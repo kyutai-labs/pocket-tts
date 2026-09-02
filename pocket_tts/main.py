@@ -4,9 +4,10 @@ import os
 import sys
 import tempfile
 import threading
+from collections.abc import Iterator
 from pathlib import Path
 from queue import Queue
-from typing import Annotated
+from typing import Annotated, BinaryIO, cast
 
 import typer
 import uvicorn
@@ -70,7 +71,7 @@ def _loaded_model() -> TTSModel:
 
 
 @web_app.get("/", response_class=HTMLResponse)
-async def root():
+async def root() -> str:
     """Serve the frontend."""
     static_path = Path(__file__).parent / "static" / "index.html"
     content = static_path.read_text()
@@ -82,35 +83,40 @@ async def root():
 
 
 @web_app.get("/health")
-async def health():
+async def health() -> dict[str, str]:
     return {"status": "healthy"}
 
 
-def write_to_queue(queue, text_to_generate, model_state):
+def write_to_queue(
+    queue: Queue[bytes | None], text_to_generate: str, model_state: ModelState
+) -> None:
     """Allows writing to the StreamingResponse as if it were a file."""
 
     class FileLikeToQueue(io.IOBase):
-        def __init__(self, queue):
+        def __init__(self, queue: Queue[bytes | None]) -> None:
             self.queue = queue
 
-        def write(self, data):
+        def write(self, data: bytes) -> None:
             self.queue.put(data)
 
-        def flush(self):
+        def flush(self) -> None:
             pass
 
-        def close(self):
+        def close(self) -> None:
             self.queue.put(None)
 
     model = _loaded_model()
     audio_chunks = model.generate_audio_stream(
         model_state=model_state, text_to_generate=text_to_generate
     )
-    stream_audio_chunks(FileLikeToQueue(queue), audio_chunks, model.config.mimi.sample_rate)
+    # FileLikeToQueue only implements the write/close subset that StreamingWAVWriter uses.
+    stream_audio_chunks(
+        cast(BinaryIO, FileLikeToQueue(queue)), audio_chunks, model.config.mimi.sample_rate
+    )
 
 
-def generate_data_with_state(text_to_generate: str, model_state: ModelState):
-    queue = Queue()
+def generate_data_with_state(text_to_generate: str, model_state: ModelState) -> Iterator[bytes]:
+    queue: Queue[bytes | None] = Queue()
 
     # Run your function in a thread
     thread = threading.Thread(target=write_to_queue, args=(queue, text_to_generate, model_state))
@@ -133,7 +139,7 @@ def text_to_speech(
     text: str = Form(...),
     voice_url: str | None = Form(None),
     voice_wav: UploadFile | None = File(None),
-):
+) -> StreamingResponse:
     """
     Generate speech from text using the pre-loaded voice prompt or a custom voice.
 
@@ -225,7 +231,7 @@ def serve(
     quantize: Annotated[
         bool, typer.Option(help="Apply int8 quantization to reduce memory usage")
     ] = False,
-):
+) -> None:
     """Start the FastAPI server."""
 
     global tts_model, default_voice_state
@@ -318,7 +324,7 @@ def generate(
     quantize: Annotated[
         bool, typer.Option(help="Apply int8 quantization to reduce memory usage")
     ] = False,
-):
+) -> None:
     """Generate speech using Kyutai Pocket TTS."""
     if lsd_decode_steps is not None:
         logger.warning("--lsd-decode-steps is deprecated, use --sampler-decode-steps")
@@ -404,7 +410,7 @@ def export_voice(
             "Incompatible with the language argument. If not provided, will use the default English model."
         ),
     ] = None,
-):
+) -> None:
     """Convert and save audio to .safetensors file"""
 
     log_level = logging.ERROR if quiet else logging.INFO

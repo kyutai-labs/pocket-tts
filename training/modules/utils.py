@@ -2,9 +2,11 @@
 init, streaming-state helpers, and small blocks used by samplers.py."""
 
 import math
+from collections.abc import Callable
 
 import torch
 from torch import nn
+from torch.autograd.function import BackwardCFunction, FunctionCtx
 
 from pocket_tts.modules.mlp import ResBlock, SimpleMLPAdaLN, TimestepEmbedder
 from pocket_tts.modules.stateful_module import ModelState, StatefulModule
@@ -24,7 +26,7 @@ def _zero_linear(module: nn.Module) -> None:
 def dit_init(head: SimpleMLPAdaLN) -> None:
     """The MAR/DiT init: xavier everywhere, zero adaLN modulations and output."""
 
-    def _basic_init(module):
+    def _basic_init(module: nn.Module) -> None:
         if isinstance(module, nn.Linear):
             torch.nn.init.xavier_uniform_(module.weight)
             if module.bias is not None:
@@ -75,7 +77,7 @@ def stamp_state_names(module: nn.Module) -> None:
 
 
 class MLP(nn.Sequential):
-    def __init__(self, in_channels: int, hidden_channels: list[int]):
+    def __init__(self, in_channels: int, hidden_channels: list[int]) -> None:
         layers: list[nn.Module] = []
         dim = in_channels
         for h in hidden_channels[:-1]:
@@ -99,21 +101,24 @@ class RunOnlyInputGrad(torch.autograd.Function):
     """y = f(x) whose backward only propagates to x, never to f's parameters."""
 
     @staticmethod
-    def forward(ctx, x, f):
+    def forward(
+        ctx: FunctionCtx, x: torch.Tensor, f: Callable[[torch.Tensor], torch.Tensor]
+    ) -> torch.Tensor:
         with torch.enable_grad():
             y = f(x)
         ctx.save_for_backward(x, y)
         return y.detach()
 
     @staticmethod
-    def backward(ctx, *grad_outputs):
+    def backward(ctx: BackwardCFunction, *grad_outputs: torch.Tensor) -> tuple[torch.Tensor, None]:
         (grad_output,) = grad_outputs
-        x, y = ctx.saved_tensors
+        # torch's stub declares saved_tensors as a 1-tuple; it is variadic at runtime.
+        x, y = ctx.saved_tensors  # ty: ignore[invalid-assignment]
         gx = torch.autograd.grad(outputs=y, inputs=x, grad_outputs=grad_output, retain_graph=False)[
             0
         ]
         return gx, None
 
 
-def f_grad_x_only(f, x):
+def f_grad_x_only(f: Callable[[torch.Tensor], torch.Tensor], x: torch.Tensor) -> torch.Tensor:
     return RunOnlyInputGrad.apply(x, f)

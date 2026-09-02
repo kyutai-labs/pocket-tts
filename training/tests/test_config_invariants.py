@@ -24,11 +24,11 @@ MIN_SCRATCH_STEPS = 400_000
 
 
 @pytest.mark.parametrize("path", sorted(CONFIGS.glob("*.yaml")), ids=lambda p: p.name)
-def test_config_parses(path: Path):
+def test_config_parses(path: Path) -> None:
     load_args(path)
 
 
-def test_scratch_reaches_the_effective_batch_floor():
+def test_scratch_reaches_the_effective_batch_floor() -> None:
     args = load_args(SCRATCH)
     assert args.batch_size * args.grad_accum_steps >= MIN_EFFECTIVE_BATCH, (
         "scratch must reach 64 rows per step on a single GPU: "
@@ -36,17 +36,17 @@ def test_scratch_reaches_the_effective_batch_floor():
     )
 
 
-def test_scratch_runs_past_the_quality_transition():
+def test_scratch_runs_past_the_quality_transition() -> None:
     assert load_args(SCRATCH).max_steps >= MIN_SCRATCH_STEPS
 
 
-def test_scratch_builds_the_reference_teacher_depth():
+def test_scratch_builds_the_reference_teacher_depth() -> None:
     args = load_args(SCRATCH)
     config = load_model_config(args.model_config, args.model_overrides)
     assert config.flow_lm.transformer.num_layers == 24
 
 
-def test_distill_teacher_is_deeper_than_its_student():
+def test_distill_teacher_is_deeper_than_its_student() -> None:
     args = load_args(DISTILL)
     student = load_model_config(args.model_config, args.model_overrides)
     teacher = load_model_config(args.distill_teacher_config, args.distill_teacher_overrides)
@@ -55,7 +55,7 @@ def test_distill_teacher_is_deeper_than_its_student():
     assert teacher.flow_lm.transformer.d_model == student.flow_lm.transformer.d_model
 
 
-def test_distill_teacher_weights_point_at_the_scratch_run():
+def test_distill_teacher_weights_point_at_the_scratch_run() -> None:
     args = load_args(DISTILL)
     assert args.distill_teacher_weights, "the distill config must name a teacher checkpoint"
     assert str(load_args(SCRATCH).run_dir) in args.distill_teacher_weights, (
@@ -67,25 +67,25 @@ def test_distill_teacher_weights_point_at_the_scratch_run():
 class TestArgValidation:
     """Misconfigurations that used to run and quietly do the wrong thing."""
 
-    def test_num_ckpt_keep_zero_is_rejected(self):
+    def test_num_ckpt_keep_zero_is_rejected(self) -> None:
         with pytest.raises(ValueError, match="num_ckpt_keep"):
             TrainArgs(num_ckpt_keep=0)
 
-    def test_zero_frequencies_are_rejected(self):
+    def test_zero_frequencies_are_rejected(self) -> None:
         for field in ("valid_freq", "ckpt_freq", "log_freq"):
             kwargs: dict[str, Any] = {field: 0}
             with pytest.raises(ValueError, match=field):
                 TrainArgs(**kwargs)
 
-    def test_distillation_without_a_teacher_is_rejected(self):
+    def test_distillation_without_a_teacher_is_rejected(self) -> None:
         with pytest.raises(ValueError, match="teacher"):
             TrainArgs(distill_cfg_coef=1.5, start_from_pretrained=False)
 
-    def test_teacher_config_without_weights_is_rejected(self):
+    def test_teacher_config_without_weights_is_rejected(self) -> None:
         with pytest.raises(ValueError, match="distill_teacher_weights"):
             TrainArgs(distill_teacher_config="x.yaml")
 
-    def test_unknown_keys_are_rejected(self):
+    def test_unknown_keys_are_rejected(self) -> None:
         """A key the parser doesn't recognize is a setting the user thinks is applied."""
         with pytest.raises(ValueError, match="distill_seed_layers"):
             _from_dict(TrainArgs, {"distill_seed_layers": "first"})

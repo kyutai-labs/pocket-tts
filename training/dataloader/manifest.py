@@ -73,3 +73,10 @@ class LazyEntries:
         self.__dict__.update(state)
         self._offsets = None
         self._file = None
+
+
+def load_entries(path: str, rank: int, world_size: int) -> LazyEntries:
+    entries = LazyEntries(path, rank, world_size)
+    logger.info(f"indexed {len(entries)} entries from {path} (rank {rank}/{world_size})")
+    assert len(entries), f"no entries for rank {rank} in {path}"
+    return entries

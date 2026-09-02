@@ -8,68 +8,41 @@ ranks by line index.
 
 import json
 import logging
-import multiprocessing.queues
 import queue
 import random
 import threading
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import numpy.typing as npt
-import sentencepiece
-import sphn
 import torch
-import torch.multiprocessing as torch_mp
 from safetensors import safe_open
 
-from pocket_tts.data.audio_utils import convert_audio
-from pocket_tts.models.mimi import MimiModel
-from training.manifest import LazyEntries
+from . import audio
+from .manifest import load_entries
+from .types import Batch, Entry
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class Entry:
-    path: str
-    duration: float
-    transcript: str
-    words: list[dict[str, Any]] | None = None  # [{"word", "start", "end"}] from align_data
-    start: float = 0.0  # offset of the utterance inside the audio file (long recordings)
-    latents_file: str | None = None
+def _prefetch(iterator: Iterator[Batch], depth: int = 4) -> Iterator[Batch]:
+    """Run the (synchronous, IO-bound) loader in a background thread."""
+    q: queue.Queue[Batch | None] = queue.Queue(maxsize=depth)
 
+    def worker():
+        for item in iterator:
+            q.put(item)
+        q.put(None)
 
-@dataclass
-class Batch:
-    audio: torch.Tensor  # [B, 1, samples], zero-padded
-    num_audio_frames: torch.Tensor  # [B] valid codec frames per sample
-    text_tokens: list[torch.Tensor]  # ragged, one [L_b] long tensor per sample
-    voice_audio: torch.Tensor  # [B, 1, prompt_samples]
-    num_voice_prompt_frames: torch.Tensor  # [B] valid codec frames of each voice prompt
-    tail_latents: torch.Tensor | None = None
-    prompt_latents: torch.Tensor | None = None
-
-
-def load_entries(path: str, rank: int, world_size: int) -> LazyEntries:
-    entries = LazyEntries(path, rank, world_size)
-    logger.info(f"indexed {len(entries)} entries from {path} (rank {rank}/{world_size})")
-    assert len(entries), f"no entries for rank {rank} in {path}"
-    return entries
-
-
-def _load_window(
-    path: str, start_sec: float, duration_sec: float, sample_rate: int
-) -> npt.NDArray[np.float32]:
-    wav, sr = sphn.read(path, start_sec=start_sec, duration_sec=duration_sec)
-    wav = wav.mean(axis=0)  # mono
-    if sr != sample_rate:
-        resampled = convert_audio(torch.from_numpy(wav)[None], int(sr), int(sample_rate), 1)
-        wav = resampled[0].numpy()
-    return wav
+    threading.Thread(target=worker, daemon=True).start()
+    while True:
+        item = q.get()
+        if item is None:
+            return
+        yield item
 
 
 class DataLoader:
@@ -181,7 +154,7 @@ class DataLoader:
             last = self._last_word_end(entry)
             if last is not None and last > cut:
                 end = min(entry.duration, last + self.TRAIL_SEC)
-            wav = _load_window(
+            wav = audio._load_window(
                 entry.path,
                 entry.start + cut,
                 min(end - cut, self.max_duration_sec),
@@ -190,19 +163,21 @@ class DataLoader:
             # The prompt is everything from the utterance start to the
             # cut (bounded by the window via cut selection).
             prompt, length = self._cap_prompt(
-                _load_window(entry.path, entry.start, cut, self.sample_rate)
+                audio._load_window(entry.path, entry.start, cut, self.sample_rate)
             )
             return wav, tokens, prompt, length
         last = self._last_word_end(entry)
         end = min(entry.duration, last + self.TRAIL_SEC) if last is not None else entry.duration
         duration = min(end, self.max_duration_sec)
-        wav = _load_window(entry.path, entry.start, duration, self.sample_rate)
+        wav = audio._load_window(entry.path, entry.start, duration, self.sample_rate)
         tokens = torch.tensor(self.tokenize(entry.transcript), dtype=torch.long)
         # No alignment: voice prompt from a random window of the same file.
         fallback_sec = self.max_voice_prompt_sec if self.max_voice_prompt_sec > 0 else 3.0
         prompt_start = self.rng.uniform(0, max(0.0, entry.duration - fallback_sec))
         prompt, length = self._cap_prompt(
-            _load_window(entry.path, entry.start + prompt_start, fallback_sec, self.sample_rate)
+            audio._load_window(
+                entry.path, entry.start + prompt_start, fallback_sec, self.sample_rate
+            )
         )
         return wav, tokens, prompt, length
 
@@ -249,7 +224,7 @@ class DataLoader:
         tokens = torch.tensor(self.tokenize(text), dtype=torch.long)
         target_frames = self._latent_target_frames(entry, cut_frames, lat.shape[0])
         stitch_frames = min(self.stitch_frames, target_frames)
-        stitch = _load_window(
+        stitch = audio._load_window(
             entry.path,
             entry.start + cut_frames / self.frame_rate,
             stitch_frames / self.frame_rate,
@@ -367,127 +342,3 @@ class DataLoader:
                     f"no readable samples in {self.jsonl}: every entry failed to load "
                     f"({self._failures} failures). Check the paths in the manifest."
                 )
-
-
-def _feed_queue(
-    q: "multiprocessing.queues.Queue[Batch]",  # not subscriptable at runtime on 3.10
-    sentence_piece_proto: bytes,
-    loader_kwargs: dict[str, Any],
-):
-    torch_mp.set_sharing_strategy("file_system")
-    sentence_piece = sentencepiece.SentencePieceProcessor()
-    sentence_piece.load_from_serialized_proto(sentence_piece_proto)
-    loader = DataLoader(tokenize=sentence_piece.encode, **loader_kwargs)
-    for batch in loader:
-        q.put(batch)
-
-
-class SubprocessDataLoader:
-    def __init__(
-        self,
-        jsonl: str,
-        sentence_piece: sentencepiece.SentencePieceProcessor,
-        batch_size: int,
-        sample_rate: int,
-        frame_rate: float,
-        max_duration_sec: float,
-        max_voice_prompt_sec: float,
-        rank: int,
-        world_size: int,
-        seed: int = 0,
-        shuffle: bool = True,
-        io_workers: int = 16,
-        num_procs: int = 3,
-        depth: int = 8,
-    ):
-        ctx = torch_mp.get_context("spawn")
-        self._queue = ctx.Queue(maxsize=depth)
-        self._procs = []
-        for i in range(num_procs):
-            loader_kwargs = {
-                "jsonl": jsonl,
-                "batch_size": batch_size,
-                "sample_rate": sample_rate,
-                "frame_rate": frame_rate,
-                "max_duration_sec": max_duration_sec,
-                "max_voice_prompt_sec": max_voice_prompt_sec,
-                "rank": rank * num_procs + i,
-                "world_size": world_size * num_procs,
-                "seed": seed + rank * num_procs + i,
-                "shuffle": shuffle,
-                "io_workers": io_workers,
-            }
-            proc = ctx.Process(
-                target=_feed_queue,
-                args=(self._queue, sentence_piece.serialized_model_proto(), loader_kwargs),
-                daemon=True,
-                name=f"dataloader-{i}",
-            )
-            proc.start()
-            self._procs.append(proc)
-
-    def _check_procs(self):
-        dead = [p for p in self._procs if not p.is_alive()]
-        if dead:
-            raise RuntimeError(
-                f"dataloader subprocess(es) died (exit codes "
-                f"{[p.exitcode for p in dead]}), check their tracebacks above"
-            )
-
-    def __iter__(self) -> Iterator[Batch]:
-        batches = 0
-        while True:
-            try:
-                batch = self._queue.get(timeout=60)
-            except queue.Empty:
-                self._check_procs()
-                continue
-            batches += 1
-            if batches % 100 == 0:
-                self._check_procs()
-            yield batch
-
-
-def _prefetch(iterator: Iterator[Batch], depth: int = 4) -> Iterator[Batch]:
-    """Run the (synchronous, IO-bound) loader in a background thread."""
-    q: queue.Queue[Batch | None] = queue.Queue(maxsize=depth)
-
-    def worker():
-        for item in iterator:
-            q.put(item)
-        q.put(None)
-
-    threading.Thread(target=worker, daemon=True).start()
-    while True:
-        item = q.get()
-        if item is None:
-            return
-        yield item
-
-
-@torch.no_grad()
-def encode_batch(
-    mimi: MimiModel, batch: Batch, device: torch.device
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    if batch.tail_latents is not None:
-        stitch = mimi.encode_to_latent(batch.audio.to(device))
-        latents = torch.cat([stitch, batch.tail_latents.to(device)], dim=1)
-        T = latents.shape[1]
-        num_audio_frames = batch.num_audio_frames.to(device).clamp(max=T)
-        mask = torch.arange(T, device=device)[None, :] < num_audio_frames[:, None]
-        assert batch.prompt_latents is not None  # set together with tail_latents
-        voice_prompt_latents = batch.prompt_latents.to(device)
-        num_voice_prompt_frames = batch.num_voice_prompt_frames.to(device).clamp(
-            max=voice_prompt_latents.shape[1]
-        )
-        return latents.float(), mask, voice_prompt_latents.float(), num_voice_prompt_frames
-    audio = batch.audio.to(device)
-    latents = mimi.encode_to_latent(audio)  # [B, T, C]
-    T = latents.shape[1]
-    num_audio_frames = batch.num_audio_frames.to(device).clamp(max=T)
-    mask = torch.arange(T, device=device)[None, :] < num_audio_frames[:, None]
-    voice_prompt_latents = mimi.encode_to_latent(batch.voice_audio.to(device))
-    num_voice_prompt_frames = batch.num_voice_prompt_frames.to(device).clamp(
-        max=voice_prompt_latents.shape[1]
-    )
-    return latents.float(), mask, voice_prompt_latents.float(), num_voice_prompt_frames

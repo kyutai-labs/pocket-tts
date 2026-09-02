@@ -16,7 +16,7 @@ from torch import nn
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-import training.dataloader as td
+import training.dataloader.audio as td_audio
 from pocket_tts.models.flow_lm import FlowLMModel
 from pocket_tts.modules.mlp import SimpleMLPAdaLN
 from pocket_tts.modules.stateful_module import init_states
@@ -290,7 +290,7 @@ def test_prefix_prompt(monkeypatch: pytest.MonkeyPatch):
         calls.append((start, dur))
         return np.zeros(max(1, int(dur * sr)), dtype=np.float32)
 
-    monkeypatch.setattr(td, "_load_window", fake_load_window)
+    monkeypatch.setattr(td_audio, "_load_window", fake_load_window)
     for _ in range(50):
         calls.clear()
         wav, tokens, prompt, plen = dl._sample(entry)

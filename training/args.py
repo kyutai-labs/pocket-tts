@@ -24,7 +24,10 @@ class DataArgs:
     # <= 0 removes the window (any word boundary; full-prefix prompt).
     max_voice_prompt_sec: float = 5.0
     shuffle: bool = True
-    loader_procs: int = 3
+    # Loader subprocesses per rank. Each one is GIL-bound at ~90 samples/s from
+    # network storage (extra IO threads do not help), and a rank consumes
+    # batch_size x steps/s: 6 keeps a small model at 35 it/s x 16 fed.
+    loader_procs: int = 6
     # Precompute Mimi latents for train_jsonl on first run and train from
     # them (rank 0 encodes once; other ranks wait). False keeps the
     # on-the-fly audio pipeline.

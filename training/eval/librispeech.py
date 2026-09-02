@@ -22,11 +22,14 @@ import logging
 import multiprocessing
 import os
 import re
+from collections.abc import Sequence
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
+from typing import Any
 
 import huggingface_hub
 import jiwer
+import numpy.typing as npt
 import sphn
 import torch
 from pydantic import BaseModel
@@ -89,7 +92,9 @@ def eval_dir_name(args, step: int) -> str:
     return name
 
 
-def read_lst(path: str, root: str, limit: int | None, prompt_root: str | None = None) -> list[dict]:
+def read_lst(
+    path: str, root: str, limit: int | None, prompt_root: str | None = None
+) -> list[dict[str, Any]]:
     items = []
     with open(path) as f:
         for line in f:
@@ -145,7 +150,7 @@ def build_transcriber(asr_name: str, device):
             add_generation_prompt=True,
         )
 
-        def transcribe(wavs: list) -> list[str]:
+        def transcribe(wavs: list[npt.NDArray[Any]]) -> list[str]:
             n = len(wavs)
             longest = max(len(w) for w in wavs)
             audio = torch.stack(
@@ -169,9 +174,9 @@ def build_transcriber(asr_name: str, device):
         "automatic-speech-recognition", model=asr_name, device=device, torch_dtype=torch.float16
     )
 
-    def transcribe(wavs: list) -> list[str]:
+    def transcribe(wavs: list[npt.NDArray[Any]]) -> list[str]:
         outs = asr(
-            [{"array": w, "sampling_rate": 16000} for w in wavs],
+            [{"array": w, "sampling_rate": 16000} for w in wavs],  # ty: ignore[invalid-argument-type]  -- batched call
             return_timestamps=True,
             batch_size=len(wavs),
         )
@@ -223,7 +228,7 @@ def latents_to_wav(mimi, latents: torch.Tensor, device) -> torch.Tensor | None:
         return mimi.decode_from_latent(latents[None].to(device), state)[0, 0]
 
 
-def score_items(items: list[dict], device, args) -> tuple[list[dict], int]:
+def score_items(items: list[dict[str, Any]], device, args) -> tuple[list[dict[str, Any]], int]:
     """Generate and score `items` on one device. Returns per-item records."""
     from whisper_normalizer.english import EnglishTextNormalizer
 
@@ -246,7 +251,7 @@ def score_items(items: list[dict], device, args) -> tuple[list[dict], int]:
             WavLMForXVector.from_pretrained("microsoft/wavlm-base-plus-sv").to(device).eval()
         )
 
-        def embed(wavs: list) -> torch.Tensor:
+        def embed(wavs: Sequence[npt.NDArray[Any] | torch.Tensor]) -> torch.Tensor:
             """Batched x-vectors; the feature extractor emits an attention mask,
             so padding does not affect the embeddings."""
             inputs = spk_fe(
@@ -285,7 +290,9 @@ def score_items(items: list[dict], device, args) -> tuple[list[dict], int]:
         return wav
 
     def decode(latents: torch.Tensor) -> torch.Tensor:
-        return latents_to_wav(mimi, latents, device)
+        wav = latents_to_wav(mimi, latents, device)
+        assert wav is not None, "generations shorter than MIN_FRAMES are skipped above"
+        return wav
 
     records = []
     bs = max(1, args.batch_size)

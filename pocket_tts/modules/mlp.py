@@ -180,7 +180,7 @@ class SimpleMLPAdaLN(nn.Module):
         flow_dim = config.dim
         flow_depth = config.depth
         num_time_conds = 1 if config.type == "flow_matching" else 2
-        return SimpleMLPAdaLN(
+        return cls(
             latent_dim, flow_dim, latent_dim, cond_dim, flow_depth, num_time_conds=num_time_conds
         )
 

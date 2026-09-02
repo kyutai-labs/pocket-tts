@@ -27,7 +27,7 @@ import queue
 import re
 import threading
 from collections.abc import Callable
-from typing import Annotated
+from typing import Annotated, Any
 
 import sphn
 import torch
@@ -56,7 +56,7 @@ def batched_word_spans(
     token_lists: list[list[int]],
     word_of_lists: list[list[int]],
     blank: int,
-) -> list[list[tuple[int, int]] | None]:
+) -> list[list[tuple[int, int] | None] | None]:
     """Viterbi CTC alignment for a whole batch: one time-loop over Tmax.
 
     Returns, per item, per-token (start_frame, end_frame) spans grouped into
@@ -85,7 +85,7 @@ def batched_word_spans(
         # Items shorter than t keep their final row frozen.
         trellis[t + 1] = torch.where((t < T).view(B, 1), new, prev)
 
-    results: list[list[tuple[int, int]] | None] = []
+    results: list[list[tuple[int, int] | None] | None] = []
     trellis_cpu = trellis.permute(1, 0, 2).cpu()  # [B, Tmax+1, Nmax+1]
     blank_cpu = blank_em.cpu()
     tok_em_cpu = tok_em.cpu()
@@ -116,7 +116,7 @@ def batched_word_spans(
     return results
 
 
-def case_fold_for(vocab: dict) -> Callable[[str], str]:
+def case_fold_for(vocab: dict[str, int]) -> Callable[[str], str]:
     """Match the transcript's case to the model's vocabulary.
 
     English CTC checkpoints spell their vocabulary in upper case, almost every
@@ -134,7 +134,7 @@ def case_fold_for(vocab: dict) -> Callable[[str], str]:
     return lambda s: s
 
 
-def _tokens_for(words: list[str], vocab: dict, delim: int) -> tuple[list[int], list[int]]:
+def _tokens_for(words: list[str], vocab: dict[str, int], delim: int) -> tuple[list[int], list[int]]:
     tokens, word_of = [], []
     for w_idx, w in enumerate(words):
         if w_idx > 0:
@@ -157,7 +157,8 @@ def _load_ctc_model(model_name: str, device: torch.device):
     from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
 
     processor = Wav2Vec2Processor.from_pretrained(model_name)
-    model = Wav2Vec2ForCTC.from_pretrained(model_name).to(device).eval()
+    # transformers wraps .to() in a way that loses the bound self.
+    model = Wav2Vec2ForCTC.from_pretrained(model_name).to(device).eval()  # ty: ignore[invalid-argument-type]
     use_bf16 = device.type == "cuda"
     if use_bf16:
         model = model.to(torch.bfloat16)
@@ -276,7 +277,8 @@ def main(
             )
 
     with open(input_jsonl) as fin, open(output_jsonl, "a" if resume else "w", buffering=1) as fout:
-        q: queue.Queue = queue.Queue(maxsize=sort_window * 2)
+        # (entry, wav) or (entry, exception); None once the manifest is exhausted.
+        q: queue.Queue[tuple[Any, Any] | None] = queue.Queue(maxsize=sort_window * 2)
         threading.Thread(target=read_entries, args=(fin, q), daemon=True).start()
 
         def windows():
@@ -337,11 +339,12 @@ def main(
                     sec_per_frame = (n_samples / sr) / t_frames
                     timed, k = [], 0
                     for w, nw in zip(words, norm, strict=True):
-                        if not nw or spans[k] is None:
+                        span = spans[k] if nw else None
+                        if span is None:
                             timed.append({"word": w, "start": None, "end": None})
                             k += bool(nw)
                             continue
-                        s, e = spans[k]
+                        s, e = span
                         k += 1
                         timed.append(
                             {

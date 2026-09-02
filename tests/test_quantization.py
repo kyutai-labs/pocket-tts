@@ -13,6 +13,7 @@ from typer.testing import CliRunner
 
 from pocket_tts import TTSModel
 from pocket_tts.main import cli_app
+from pocket_tts.modules.transformer import StreamingTransformerLayer
 from pocket_tts.quantization import _get_backend
 
 SHORT_TEXT = "Hello, this is a test."
@@ -38,6 +39,8 @@ def test_quantize_flag_applies_quantization():
     # Quantized model's Linear layers should have different weight types than baseline
     layer_q = model_q.flow_lm.transformer.layers[0]
     layer_b = model_b.flow_lm.transformer.layers[0]
+    assert isinstance(layer_q, StreamingTransformerLayer)
+    assert isinstance(layer_b, StreamingTransformerLayer)
     weight_type_q = type(layer_q.self_attn.in_proj.weight).__name__
     weight_type_b = type(layer_b.self_attn.in_proj.weight).__name__
     assert weight_type_q != weight_type_b, (

@@ -137,7 +137,8 @@ class LSD(FlowType):
             return self.p_equal * flow_diag, metrics, t
         s, t = self.sample_s_t(x)
         x_s = s * x + (1 - s) * e
-        vt, dvdt = torch.func.jvp(
+        # The stub's has_aux=True 3-tuple leaks into the return type.
+        vt, dvdt = torch.func.jvp(  # ty: ignore[invalid-assignment]
             v_t, (s, t, x_s), (torch.zeros_like(s), torch.ones_like(t), torch.zeros_like(x_s))
         )
         x_t = x_s + (t - s) * vt

@@ -7,13 +7,13 @@ import logging
 import os
 import sys
 import wave
+from collections.abc import Iterator
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO, TypeGuard
 
 import numpy as np
 import torch
-from beartype.typing import Iterator
 
 logger = logging.getLogger(__name__)
 
@@ -65,9 +65,15 @@ class StreamingWAVWriter:
     def __init__(self, output_stream, sample_rate: int):
         self.output_stream = output_stream
         self.sample_rate = sample_rate
-        self.wave_writer = None
-        self.first_chunk_buffer = []
+        self.wave_writer: wave.Wave_write | None = None
+        self.first_chunk_buffer: list[bytes] | None = []
         self.is_seekable = _is_seekable(output_stream)
+
+    @property
+    def _writer(self) -> wave.Wave_write:
+        if self.wave_writer is None:
+            raise RuntimeError("write_header() must be called before writing audio")
+        return self.wave_writer
 
     def write_header(self, sample_rate: int):
         """Initialize WAV writer with header."""
@@ -99,11 +105,11 @@ class StreamingWAVWriter:
             return
 
         # Use writeframesraw to avoid frame count validation for streaming
-        self.wave_writer.writeframesraw(chunk_bytes)
+        self._writer.writeframesraw(chunk_bytes)
 
     def _flush(self):
         if self.first_chunk_buffer is not None:
-            self.wave_writer.writeframesraw(b"".join(self.first_chunk_buffer))
+            self._writer.writeframesraw(b"".join(self.first_chunk_buffer))
             self.first_chunk_buffer = None
 
     def finalize(self):
@@ -114,16 +120,16 @@ class StreamingWAVWriter:
         silence_duration_sec = 0.2
         num_silence_samples = int(self.sample_rate * silence_duration_sec)
 
-        self.wave_writer.writeframesraw(bytes(num_silence_samples * 2))
+        writer = self._writer
+        writer.writeframesraw(bytes(num_silence_samples * 2))
 
-        if self.wave_writer:
+        if not self.is_seekable:
             # do not update the header for unseekable streams
-            if not self.is_seekable:
-                self.wave_writer._patchheader = lambda: None
-            self.wave_writer.close()
+            writer._patchheader = lambda: None  # ty: ignore[unresolved-attribute]
+        writer.close()
 
 
-def is_file_like(obj):
+def is_file_like(obj: object) -> TypeGuard[BinaryIO]:
     """Check if object has basic file-like methods."""
     return all(hasattr(obj, attr) for attr in ["write", "close"])
 
@@ -142,6 +148,7 @@ def stream_audio_chunks(
     path: str | Path | None | Any, audio_chunks: Iterator[torch.Tensor], sample_rate: int
 ):
     """Stream audio chunks to a WAV file or stdout, optionally playing them."""
+    f: BinaryIO | nullcontext[None]
     if path == "-":
         f = sys.stdout.buffer
     elif path is None:

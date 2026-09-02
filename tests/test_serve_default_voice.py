@@ -1,6 +1,7 @@
 """Tests for the default voice of the `serve` command and of the /tts endpoint."""
 
 from types import SimpleNamespace
+from typing import Any
 
 import torch
 from fastapi.testclient import TestClient
@@ -19,16 +20,18 @@ class FakeTTSModel:
         self.voices_requested = []
         self.states_used = []
 
-    def get_state_for_audio_prompt(self, audio_conditioning, truncate: bool = False) -> dict:
+    def get_state_for_audio_prompt(
+        self, audio_conditioning, truncate: bool = False
+    ) -> dict[str, Any]:
         self.voices_requested.append(audio_conditioning)
         return {"voice": audio_conditioning}
 
     def _cached_get_state_for_audio_prompt(
         self, audio_conditioning, truncate: bool = False
-    ) -> dict:
+    ) -> dict[str, Any]:
         return self.get_state_for_audio_prompt(audio_conditioning, truncate)
 
-    def generate_audio_stream(self, model_state: dict, text_to_generate: str):
+    def generate_audio_stream(self, model_state: dict[str, Any], text_to_generate: str):
         self.states_used.append(model_state)
         yield torch.zeros(2400)
 

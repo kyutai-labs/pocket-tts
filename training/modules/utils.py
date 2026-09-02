@@ -6,10 +6,22 @@ import math
 import torch
 from torch import nn
 
-from pocket_tts.modules.stateful_module import StatefulModule
+from pocket_tts.modules.mlp import ResBlock, SimpleMLPAdaLN, TimestepEmbedder
+from pocket_tts.modules.stateful_module import ModelState, StatefulModule
 
 
-def dit_init(head: nn.Module) -> None:
+def _as_linear(module: nn.Module) -> nn.Linear:
+    assert isinstance(module, nn.Linear), type(module)
+    return module
+
+
+def _zero_linear(module: nn.Module) -> None:
+    linear = _as_linear(module)
+    nn.init.constant_(linear.weight, 0)
+    nn.init.constant_(linear.bias, 0)
+
+
+def dit_init(head: SimpleMLPAdaLN) -> None:
     """The MAR/DiT init: xavier everywhere, zero adaLN modulations and output."""
 
     def _basic_init(module):
@@ -20,15 +32,14 @@ def dit_init(head: nn.Module) -> None:
 
     head.apply(_basic_init)
     for emb in head.time_embed:
-        nn.init.normal_(emb.mlp[0].weight, std=0.02)
-        nn.init.normal_(emb.mlp[2].weight, std=0.02)
+        assert isinstance(emb, TimestepEmbedder)
+        nn.init.normal_(_as_linear(emb.mlp[0]).weight, std=0.02)
+        nn.init.normal_(_as_linear(emb.mlp[2]).weight, std=0.02)
     for block in head.res_blocks:
-        nn.init.constant_(block.adaLN_modulation[-1].weight, 0)
-        nn.init.constant_(block.adaLN_modulation[-1].bias, 0)
-    nn.init.constant_(head.final_layer.adaLN_modulation[-1].weight, 0)
-    nn.init.constant_(head.final_layer.adaLN_modulation[-1].bias, 0)
-    nn.init.constant_(head.final_layer.linear.weight, 0)
-    nn.init.constant_(head.final_layer.linear.bias, 0)
+        assert isinstance(block, ResBlock)
+        _zero_linear(block.adaLN_modulation[-1])
+    _zero_linear(head.final_layer.adaLN_modulation[-1])
+    _zero_linear(head.final_layer.linear)
 
 
 def gaussian_init(module: nn.Module) -> None:
@@ -49,7 +60,7 @@ def disable_grad(module: nn.Module) -> None:
         p.requires_grad = False
 
 
-def set_state_padding(model_state: dict, pad: torch.Tensor) -> None:
+def set_state_padding(model_state: ModelState, pad: torch.Tensor) -> None:
     """Tell every attention layer how many leading slots per row are padding."""
     for st in model_state.values():
         if isinstance(st, dict) and "pad" in st:
@@ -73,8 +84,8 @@ class MLP(nn.Sequential):
         layers.append(nn.Linear(dim, hidden_channels[-1]))
         super().__init__(*layers)
 
-    def forward(self, *args) -> torch.Tensor:
-        return super().forward(torch.cat(args, dim=-1))
+    def forward(self, input: torch.Tensor, *rest: torch.Tensor) -> torch.Tensor:
+        return super().forward(torch.cat((input, *rest), dim=-1))
 
 
 def zero_init(m: nn.Module) -> None:
@@ -95,7 +106,8 @@ class RunOnlyInputGrad(torch.autograd.Function):
         return y.detach()
 
     @staticmethod
-    def backward(ctx, grad_output):
+    def backward(ctx, *grad_outputs):
+        (grad_output,) = grad_outputs
         x, y = ctx.saved_tensors
         gx = torch.autograd.grad(outputs=y, inputs=x, grad_outputs=grad_output, retain_graph=False)[
             0

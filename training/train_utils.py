@@ -6,6 +6,7 @@ import math
 import subprocess
 import time
 from pathlib import Path
+from typing import Any
 
 import soundfile
 import torch
@@ -44,7 +45,7 @@ class ProgressLog:
         self.path = Path(path)
         self.enabled = enabled
 
-    def log(self, event: str, step: int, metrics: dict | None = None, **fields) -> None:
+    def log(self, event: str, step: int, metrics: dict[str, Any] | None = None, **fields) -> None:
         if not self.enabled:
             return
         record = {

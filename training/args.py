@@ -94,10 +94,7 @@ class TrainArgs:
     valid_freq: int = 2000
     # torch.compile the backbone layers + flow head (and the distill teacher's
     # backbone) in place. +24% throughput on one GPU, +7% steady-state under
-    # DDP (~9 min one-time warmup -- a wash on runs under ~2h). Dynamo cannot
-    # trace the beartype wrappers, so train.py disables the claw at import
-    # time; POCKET_TTS_NO_BEARTYPE=0 forces it back on and requires
-    # compile: false.
+    # DDP (~9 min one-time warmup -- a wash on runs under ~2h).
     compile: bool = True
     num_valid_batches: int = 50
     # Rank 0 synthesizes these sentences every sample_freq steps into

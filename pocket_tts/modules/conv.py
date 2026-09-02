@@ -5,7 +5,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from pocket_tts.modules.stateful_module import StatefulModule
+from pocket_tts.modules.stateful_module import ModelState, StatefulModule
 
 
 def get_extra_padding_for_conv1d(
@@ -90,7 +90,7 @@ class StreamingConv1d(StatefulModule):
         first = torch.ones(batch_size, dtype=torch.bool, device=device)
         return dict(previous=previous, first=first)
 
-    def forward(self, x, model_state: dict | None):
+    def forward(self, x, model_state: ModelState | None):
         B, C, T = x.shape
         S = self._stride
         assert T > 0 and T % S == 0, "Steps must be multiple of stride"
@@ -148,7 +148,7 @@ class StreamingConvTranspose1d(StatefulModule):
         device = self.convtr.weight.device
         return dict(partial=torch.zeros(batch_size, self.convtr.out_channels, K - S, device=device))
 
-    def forward(self, x, mimi_state: dict):
+    def forward(self, x, mimi_state: ModelState):
         layer_state = self.get_state(mimi_state)["partial"]
         y = self.convtr(x)
         PT = layer_state.shape[-1]

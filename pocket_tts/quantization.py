@@ -15,6 +15,9 @@ import platform
 import torch
 import torch.nn as nn
 
+from pocket_tts.models.flow_lm import FlowLMModel
+from pocket_tts.modules.transformer import StreamingTransformerLayer
+
 logger = logging.getLogger(__name__)
 
 # Used by load_model(quantize=True) to specify which layer groups to quantize.
@@ -33,7 +36,7 @@ def _get_backend():
         if importlib.util.find_spec("torchao") is None:
             return "torch.ao"
 
-        import torchao
+        import torchao  # ty: ignore[unresolved-import]  -- optional extra
 
         if hasattr(torchao, "_C") or not getattr(torchao, "_SKIPPED_CPP_EXTENSIONS", False):
             return "torchao"
@@ -44,7 +47,10 @@ def _get_backend():
 
 def _quantize_module_torchao(module: nn.Module):
     """Apply int8 dynamic quantization using torchao."""
-    from torchao.quantization import Int8DynamicActivationInt8WeightConfig, quantize_
+    from torchao.quantization import (  # ty: ignore[unresolved-import]  -- optional extra
+        Int8DynamicActivationInt8WeightConfig,
+        quantize_,
+    )
 
     quantize_(module, Int8DynamicActivationInt8WeightConfig())
 
@@ -57,7 +63,7 @@ def _ensure_quantization_engine():
         torch.backends.quantized.engine = "fbgemm"
 
 
-def apply_dynamic_int8(flow_lm: nn.Module, quantize_groups: set[str]) -> nn.Module:
+def apply_dynamic_int8(flow_lm: FlowLMModel, quantize_groups: set[str]) -> FlowLMModel:
     """
     Apply dynamic int8 quantization to the specified layer groups of a FlowLM model.
 
@@ -88,12 +94,13 @@ def apply_dynamic_int8(flow_lm: nn.Module, quantize_groups: set[str]) -> nn.Modu
     return flow_lm
 
 
-def _apply_torchao(flow_lm: nn.Module, quantize_groups: set[str]) -> None:
+def _apply_torchao(flow_lm: FlowLMModel, quantize_groups: set[str]) -> None:
     """Apply quantization using torchao backend."""
     if "flow_net" in quantize_groups:
         _quantize_module_torchao(flow_lm.flow_net)
 
     for layer in flow_lm.transformer.layers:
+        assert isinstance(layer, StreamingTransformerLayer)
         if "attention" in quantize_groups:
             _quantize_module_torchao(layer.self_attn)
 
@@ -106,7 +113,7 @@ def _apply_torchao(flow_lm: nn.Module, quantize_groups: set[str]) -> None:
             layer.linear2 = wrapper2[0]
 
 
-def _apply_torch_ao(flow_lm: nn.Module, quantize_groups: set[str]) -> None:
+def _apply_torch_ao(flow_lm: FlowLMModel, quantize_groups: set[str]) -> None:
     """Apply quantization using deprecated torch.ao backend (fallback)."""
     from torch.ao.quantization import quantize_dynamic
 
@@ -116,6 +123,7 @@ def _apply_torch_ao(flow_lm: nn.Module, quantize_groups: set[str]) -> None:
         quantize_dynamic(flow_lm.flow_net, {nn.Linear}, dtype=torch.qint8, inplace=True)
 
     for layer in flow_lm.transformer.layers:
+        assert isinstance(layer, StreamingTransformerLayer)
         if "attention" in quantize_groups:
             quantize_dynamic(layer.self_attn, {nn.Linear}, dtype=torch.qint8, inplace=True)
 

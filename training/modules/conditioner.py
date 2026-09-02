@@ -7,7 +7,8 @@ placement) with no learnable logic of its own.
 
 import torch
 import torch.nn.functional as F
-from torch import nn
+
+from pocket_tts.models.flow_lm import FlowLMModel
 
 from ..args import TrainArgs
 
@@ -18,8 +19,8 @@ def build_sequences_with_conditions(
     text_tokens: list[torch.Tensor],
     voice_latents: torch.Tensor,
     cfg_dropout: bool,
+    fl: FlowLMModel,
     num_voice_prompt_frames: torch.Tensor | None = None,
-    fl: nn.Module = None,
     force_null: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Assemble per-sample [beginning_of_prefix, voice_conditioning,

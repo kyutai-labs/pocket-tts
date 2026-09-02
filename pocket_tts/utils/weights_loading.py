@@ -4,8 +4,8 @@ import safetensors
 import torch
 
 
-def get_flow_lm_state_dict(path: Path) -> dict:
-    state_dict = {}
+def get_flow_lm_state_dict(path: Path) -> dict[str, torch.Tensor]:
+    state_dict: dict[str, torch.Tensor] = {}
     with safetensors.safe_open(path, framework="pt", device="cpu") as f:
         for key in f.keys():
             if (
@@ -30,8 +30,8 @@ def get_flow_lm_state_dict(path: Path) -> dict:
     return state_dict
 
 
-def get_mimi_state_dict(path: Path) -> dict:
-    state_dict = {}
+def get_mimi_state_dict(path: Path) -> dict[str, torch.Tensor]:
+    state_dict: dict[str, torch.Tensor] = {}
     with safetensors.safe_open(path, framework="pt", device="cpu") as f:
         for key in f.keys():
             if (
@@ -81,7 +81,7 @@ def get_mimi_state_dict(path: Path) -> dict:
 
 def get_training_checkpoint_state_dicts(
     path: str | Path, use_ema: bool = True
-) -> tuple[dict, dict]:
+) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]]:
     """(flow_lm, mimi) state dicts from a training checkpoint (.pt).
 
     Training checkpoints hold the trainable model under "model" and, when the

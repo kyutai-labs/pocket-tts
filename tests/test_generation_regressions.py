@@ -1,5 +1,6 @@
 import queue
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 import torch
@@ -25,12 +26,15 @@ def test_generate_audio_stream_uses_prepared_chunk_text(monkeypatch):
     monkeypatch.setattr(
         tts_model_module, "split_into_best_sentences", fake_split_into_best_sentences
     )
-    model = SimpleNamespace(
-        flow_lm=SimpleNamespace(conditioner=SimpleNamespace(tokenizer=object())),
-        model_recommended_frames_after_eos=None,
-        pad_with_spaces_for_short_inputs=True,
-        remove_semicolons=False,
-        _generate_audio_stream_short_text=fake_generate_audio_stream_short_text,
+    model = cast(
+        TTSModel,
+        SimpleNamespace(
+            flow_lm=SimpleNamespace(conditioner=SimpleNamespace(tokenizer=object())),
+            model_recommended_frames_after_eos=None,
+            pad_with_spaces_for_short_inputs=True,
+            remove_semicolons=False,
+            _generate_audio_stream_short_text=fake_generate_audio_stream_short_text,
+        ),
     )
 
     chunks = list(TTSModel.generate_audio_stream(model, {}, "hi"))
@@ -47,11 +51,14 @@ def test_generate_reports_autoregressive_errors_before_decoder_done():
     def raise_generation(*args, **kwargs):
         raise error
 
-    model = SimpleNamespace(
-        _flow_lm_current_end=lambda model_state: 0,
-        _expand_kv_cache=lambda model_state, sequence_length: None,
-        _run_flow_lm_and_increment_step=lambda model_state, text_tokens: None,
-        _autoregressive_generation=raise_generation,
+    model = cast(
+        TTSModel,
+        SimpleNamespace(
+            _flow_lm_current_end=lambda model_state: 0,
+            _expand_kv_cache=lambda model_state, sequence_length: None,
+            _run_flow_lm_and_increment_step=lambda model_state, text_tokens: None,
+            _autoregressive_generation=raise_generation,
+        ),
     )
     latents_queue = queue.Queue()
     result_queue = queue.Queue()

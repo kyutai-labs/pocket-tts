@@ -3,6 +3,8 @@ from collections.abc import Sequence
 import numpy as np
 import torch.nn as nn
 
+from pocket_tts.modules.stateful_module import ModelState
+
 from .conv import StreamingConv1d, StreamingConvTranspose1d
 
 
@@ -32,7 +34,7 @@ class SEANetResnetBlock(nn.Module):
             ]
         self.block = block
 
-    def forward(self, x, model_state: dict | None):
+    def forward(self, x, model_state: ModelState | None):
         v = x
         for layer in self.block:
             if isinstance(layer, StreamingConv1d):
@@ -106,7 +108,7 @@ class SEANetEncoder(nn.Module):
 
         self.model = model
 
-    def forward(self, x, model_state: dict | None):
+    def forward(self, x, model_state: ModelState | None):
         for layer in self.model:
             if isinstance(layer, (StreamingConv1d, SEANetResnetBlock)):
                 x = layer(x, model_state)
@@ -173,7 +175,7 @@ class SEANetDecoder(nn.Module):
         ]
         self.model = model
 
-    def forward(self, z, model_state: dict | None):
+    def forward(self, z, model_state: ModelState | None):
         for layer in self.model:
             if isinstance(layer, (StreamingConvTranspose1d, SEANetResnetBlock, StreamingConv1d)):
                 z = layer(z, model_state)

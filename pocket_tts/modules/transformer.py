@@ -6,10 +6,16 @@ from typing_extensions import Self
 from pocket_tts.modules.attention import StreamingMultiheadAttention, _cached_causal_mask
 from pocket_tts.modules.layer_scale import LayerScale
 from pocket_tts.modules.rope import RotaryEmbedding
+from pocket_tts.modules.stateful_module import ModelState
 from pocket_tts.utils.config import FlowLMTransformerConfig
 
 
 class StreamingTransformerLayer(nn.Module):
+    # nn.Linear when built; quantization (pocket_tts.quantization) swaps in the
+    # backend's int8 dynamic Linear, which is not an nn.Linear subclass.
+    linear1: nn.Module
+    linear2: nn.Module
+
     def __init__(
         self,
         d_model: int,
@@ -43,7 +49,7 @@ class StreamingTransformerLayer(nn.Module):
         return x_orig.to(update) + self.layer_scale_2(update)
 
     def _sa_block(
-        self, x: torch.Tensor, model_state: dict | None, attn_mask: torch.Tensor | None = None
+        self, x: torch.Tensor, model_state: ModelState | None, attn_mask: torch.Tensor | None = None
     ) -> torch.Tensor:
         x_orig = x
         x = self.norm1(x)
@@ -51,7 +57,7 @@ class StreamingTransformerLayer(nn.Module):
         return x_orig.to(update) + self.layer_scale_1(update)
 
     def forward(
-        self, x: torch.Tensor, model_state: dict | None, attn_mask: torch.Tensor | None = None
+        self, x: torch.Tensor, model_state: ModelState | None, attn_mask: torch.Tensor | None = None
     ) -> torch.Tensor:
         x = self._sa_block(x, model_state, attn_mask)
         x = self._ff_block(x)
@@ -65,13 +71,14 @@ class StreamingTransformer(nn.Module):
         num_heads: int,
         num_layers: int,
         layer_scale: float | None = None,
-        dim_feedforward: int | list[int] = 2048,
+        dim_feedforward: int = 2048,
         context: int | None = None,
         max_period: float = 10_000.0,
     ):
         super().__init__()
         assert d_model % num_heads == 0
         self.max_period = max_period
+        self.context = context
 
         self.rope = RotaryEmbedding(max_period=max_period)
 
@@ -99,12 +106,12 @@ class StreamingTransformer(nn.Module):
             max_period=float(config.max_period),
         )
 
-    def forward(self, x: torch.Tensor, model_state: dict | None):
+    def forward(self, x: torch.Tensor, model_state: ModelState | None):
         attn_mask = None
         if model_state is None:
             # Stateless (training) path: one shared mask for all layers, built
             # outside any compiled region.
-            attn_mask = _cached_causal_mask(x.shape[1], self.layers[0].self_attn.context, x.device)
+            attn_mask = _cached_causal_mask(x.shape[1], self.context, x.device)
         for layer in self.layers:
             x = layer(x, model_state, attn_mask=attn_mask)
         return x
@@ -146,7 +153,7 @@ class ProjectedTransformer(nn.Module):
             else:
                 self.output_projs.append(nn.Linear(d_model, output_dimension, bias=False))
 
-    def forward(self, x, model_state: dict | None):
+    def forward(self, x, model_state: ModelState | None):
         x = x.transpose(1, 2)
         if self.input_proj is not None:
             x = self.input_proj(x)

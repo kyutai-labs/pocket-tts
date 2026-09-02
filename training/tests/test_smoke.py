@@ -200,8 +200,8 @@ def test_generate_ragged_matches_batch_of_one():
 def test_generate_per_row_eos():
     """A row whose EOS fires early must come back shorter than the others."""
     model = tiny_model("lsd")
-    tokens = torch.randint(0, 10, (2, 4))
-    voice = torch.randn(2, 4, LDIM)
+    tokens = list(torch.randint(0, 10, (2, 4)))
+    voice = list(torch.randn(2, 4, LDIM))
     # eos_threshold very low => EOS fires immediately for every row.
     out = model.generate(
         tokens, voice, max_frames=8, temp=0.7, n_steps=1, cfg_coef=1.0, eos_threshold=-1e9
@@ -265,7 +265,7 @@ def test_ema_load_drops_untracked_keys():
         torch.testing.assert_close(model.state_dict()[k], v)
 
 
-def test_prefix_prompt():
+def test_prefix_prompt(monkeypatch):
     """The cut lands inside the window, the prompt is the utterance start,
     and the target keeps the rest of the utterance."""
     dl = DataLoader.__new__(DataLoader)
@@ -281,23 +281,21 @@ def test_prefix_prompt():
     words = [{"word": f"w{i}", "start": float(i), "end": i + 0.8} for i in range(20)]
     entry = Entry(path="x", duration=20.0, transcript="t", words=words)
 
-    orig = td._load_window
     calls = []
-    td._load_window = lambda path, start, dur, sr: (
-        calls.append((start, dur)),
-        np.zeros(max(1, int(dur * sr)), dtype=np.float32),
-    )[1]
-    try:
-        for _ in range(50):
-            calls.clear()
-            wav, tokens, prompt, plen = dl._sample(entry)
-            (t_start, t_dur), (p_start, p_dur) = calls[0], calls[1]
-            assert p_start == 0.0, "prefix prompt must start at the utterance start"
-            assert t_start <= 5.5, f"cut must sit inside the window, got {t_start}"
-            assert p_dur == t_start, "prompt must run exactly up to the cut"
-            assert t_dur >= 20.0 - 5.5 - 0.5, "target keeps most of the utterance"
-    finally:
-        td._load_window = orig
+
+    def fake_load_window(path, start, dur, sr):
+        calls.append((start, dur))
+        return np.zeros(max(1, int(dur * sr)), dtype=np.float32)
+
+    monkeypatch.setattr(td, "_load_window", fake_load_window)
+    for _ in range(50):
+        calls.clear()
+        wav, tokens, prompt, plen = dl._sample(entry)
+        (t_start, t_dur), (p_start, p_dur) = calls[0], calls[1]
+        assert p_start == 0.0, "prefix prompt must start at the utterance start"
+        assert t_start <= 5.5, f"cut must sit inside the window, got {t_start}"
+        assert p_dur == t_start, "prompt must run exactly up to the cut"
+        assert t_dur >= 20.0 - 5.5 - 0.5, "target keeps most of the utterance"
 
 
 def test_train_tokenizer(tmp_path):
@@ -334,12 +332,16 @@ def test_grad_accum_matches_big_batch():
     def loss_of(x, y):
         return torch.nn.functional.mse_loss(net(x), y, reduction="mean")
 
+    def grad_of(p: torch.nn.Parameter) -> torch.Tensor:
+        assert p.grad is not None
+        return p.grad
+
     net.zero_grad()
     loss_of(xs, ys).backward()
-    big = [p.grad.clone() for p in net.parameters()]
+    big = [grad_of(p).clone() for p in net.parameters()]
 
     net.zero_grad()
     for half in (slice(0, 4), slice(4, 8)):
         (loss_of(xs[half], ys[half]) / 2).backward()
     for g, p in zip(big, net.parameters(), strict=True):
-        assert torch.allclose(g, p.grad, atol=1e-6)
+        assert torch.allclose(g, grad_of(p), atol=1e-6)

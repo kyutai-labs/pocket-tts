@@ -27,10 +27,10 @@ import logging
 import subprocess
 import sys
 import time
-from collections import Counter
+from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import huggingface_hub
 import requests
@@ -140,7 +140,7 @@ def attach_hf_alignments(manifest: Path, out: Path, repo: str, audio_root: Path)
     `audio_filepath` (bring-your-own-data manifests with one utterance per
     file) fall back to the path relative to the audio root."""
     snap = Path(huggingface_hub.snapshot_download(repo.removeprefix("hf://"), repo_type="dataset"))
-    wanted: dict[str, dict] = {}
+    wanted: dict[str, dict[str, Any]] = {}
     with open(manifest) as f:
         for line in f:
             d = json.loads(line)
@@ -148,7 +148,7 @@ def attach_hf_alignments(manifest: Path, out: Path, repo: str, audio_root: Path)
                 Path(d["path"]).resolve().relative_to(audio_root.resolve())
             )
             wanted[key] = d
-    found: dict[str, list] = {}
+    found: dict[str, list[dict[str, Any]]] = {}
     files = sorted(glob.glob(str(snap / "train" / "*.jsonl.gz"))) + [
         str(snap / "eval_aligned.jsonl.gz")
     ]
@@ -201,7 +201,7 @@ def prepare_hifitts2(
         for line in f:
             chapters.append(json.loads(line))
 
-    def held_out(u: dict) -> bool:
+    def held_out(u: dict[str, Any]) -> bool:
         """Whether utterance `u` is in meta and outside the train split."""
         r = meta.get(u["audio_filepath"])
         return r is not None and r.set != "train"
@@ -254,10 +254,10 @@ def prepare_hifitts2(
 
     audio_root = audio_out / "hifitts2_audio"
 
-    def chapter_path(ch: dict) -> Path:
+    def chapter_path(ch: dict[str, Any]) -> Path:
         return audio_root / (Path(ch["chapter_filepath"]).stem + ".mp3")
 
-    def fetch_chapter(ch: dict) -> None:
+    def fetch_chapter(ch: dict[str, Any]) -> None:
         """Download chapter `ch`'s whole audio file, if not already present.
 
         One download per chapter, shared by every utterance in it: the
@@ -271,7 +271,7 @@ def prepare_hifitts2(
         download(ch["url"], Path(str(path) + ".part"))
         Path(str(path) + ".part").rename(path)
 
-    def guarded(ch: dict) -> tuple[dict, Exception | None]:
+    def guarded(ch: dict[str, Any]) -> tuple[dict[str, Any], Exception | None]:
         try:
             fetch_chapter(ch)
             return ch, None
@@ -289,7 +289,7 @@ def prepare_hifitts2(
             bar_format="{l_bar}{bar}| {n:.0f}/{total:.0f}h [{elapsed}<{remaining}{postfix}]",
         )
         for ch, exc in pool.map(guarded, chapters):
-            bar.update(min(float(ch["duration"]) / 3600, bar.total - bar.n))
+            bar.update(min(float(ch["duration"]) / 3600, kept_h - bar.n))
             if exc is None:
                 ok_chapters.append(ch)
             else:
@@ -308,7 +308,8 @@ def prepare_hifitts2(
         logger.info(f"  {n} x {label}")
     chapters = ok_chapters
 
-    written, written_h = Counter(), Counter()
+    written: Counter[bool] = Counter()
+    written_h: defaultdict[bool, float] = defaultdict(float)
     train_manifest = out_dir / "train.jsonl"
     valid_manifest = out_dir / "valid.jsonl"
     with open(train_manifest, "w") as ftr, open(valid_manifest, "w") as fev:

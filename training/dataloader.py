@@ -15,8 +15,10 @@ from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 import sphn
 import torch
 import torch.multiprocessing as torch_mp
@@ -32,7 +34,7 @@ class Entry:
     path: str
     duration: float
     transcript: str
-    words: list | None = None  # [{"word", "start", "end"}] from training.scripts.align_data
+    words: list[dict[str, Any]] | None = None  # [{"word", "start", "end"}] from align_data
     start: float = 0.0  # offset of the utterance inside the audio file (long recordings)
     latents_file: str | None = None
 
@@ -61,7 +63,9 @@ def load_entries(path: str, rank: int, world_size: int) -> list[str]:
     return entries
 
 
-def _load_window(path: str, start_sec: float, duration_sec: float, sample_rate: int) -> np.ndarray:
+def _load_window(
+    path: str, start_sec: float, duration_sec: float, sample_rate: int
+) -> npt.NDArray[np.float32]:
     wav, sr = sphn.read(path, start_sec=start_sec, duration_sec=duration_sec)
     wav = wav.mean(axis=0)  # mono
     if sr != sample_rate:
@@ -110,7 +114,7 @@ class DataLoader:
     MIN_CUT_SEC = 1.0  # keep at least this much audio on both sides of a cut
     TRAIL_SEC = 0.2  # silence kept after the last word, so EOS has a consistent target
 
-    def _cap_prompt(self, prompt: np.ndarray) -> tuple[np.ndarray, int]:
+    def _cap_prompt(self, prompt: npt.NDArray[np.float32]) -> tuple[npt.NDArray[np.float32], int]:
         """Truncate the prompt to the configured cap; collation pads to batch max."""
         if self.max_voice_prompt_sec > 0:
             prompt_samples = int(self.max_voice_prompt_sec * self.sample_rate)
@@ -129,7 +133,8 @@ class DataLoader:
         ends = [w["end"] for w in entry.words if w.get("end") is not None]
         return max(ends) if ends else None
 
-    def _choose_cut(self, entry: Entry) -> tuple[float, int] | None:
+    def _choose_cut(self, entry: Entry) -> tuple[float, str] | None:
+        """(cut in seconds, transcript of the words after it), None without alignment."""
         # Cut the utterance at a random point between two aligned words:
         # audio before the cut = voice conditioning, audio after = target,
         # paired with the remaining words as text (see training/scripts/align_data.py).
@@ -158,15 +163,16 @@ class DataLoader:
             cuts = eligible or cuts[:1]  # degenerate windows: earliest valid cut
         if not cuts:
             return None
-        return self.rng.choice(cuts)
+        cut, i = self.rng.choice(cuts)
+        return cut, " ".join(w["word"] for w in entry.words[i:])
 
-    def _sample(self, entry: Entry) -> tuple:
+    def _sample(self, entry: Entry) -> tuple[Any, ...]:
+        """(wav, tokens, prompt wav, prompt samples), or _sample_latent's tuple."""
         if entry.latents_file is not None:
             return self._sample_latent(entry)
         chosen = self._choose_cut(entry)
         if chosen is not None:
-            cut, i = chosen
-            text = " ".join(w["word"] for w in entry.words[i:])
+            cut, text = chosen
             tokens = torch.tensor(self.tokenize(text), dtype=torch.long)
             # Trim to the last word (plus a short tail) rather than the end
             # of the file: 12% of utterances carry >1s of trailing silence,
@@ -202,8 +208,8 @@ class DataLoader:
         )
         return wav, tokens, prompt, length
 
-    def _load_latents(self, entry: Entry) -> torch.Tensor:
-        path = self.latents_root / entry.latents_file
+    def _load_latents(self, latents_file: str) -> torch.Tensor:
+        path = self.latents_root / latents_file
         with safe_open(str(path), framework="pt") as f:
             return f.get_tensor("latents")
 
@@ -211,9 +217,9 @@ class DataLoader:
         chosen = self._choose_cut(entry)
         if chosen is None or stored <= 1:
             return 0, entry.transcript
-        cut, i = chosen
+        cut, text = chosen
         cut_frames = min(max(round(cut * self.frame_rate), 1), stored - 1)
-        return cut_frames, " ".join(w["word"] for w in entry.words[i:])
+        return cut_frames, text
 
     def _latent_target_frames(self, entry: Entry, cut_frames: int, stored: int) -> int:
         cut_sec = cut_frames / self.frame_rate
@@ -236,9 +242,11 @@ class DataLoader:
         start = self.rng.randint(0, max(0, stored - cap))
         return lat[start : start + cap]
 
-    def _sample_latent(self, entry: Entry) -> tuple:
+    def _sample_latent(self, entry: Entry) -> tuple[Any, ...]:
+        """(stitch wav, tokens, prompt latents, tail latents, target frames)."""
         assert self.stitch_frames > 0, f"{entry.path}: latents entry but no meta file loaded"
-        lat = self._load_latents(entry)
+        assert entry.latents_file is not None, f"{entry.path}: not a latents entry"
+        lat = self._load_latents(entry.latents_file)
         cut_frames, text = self._latent_cut(entry, lat.shape[0])
         tokens = torch.tensor(self.tokenize(text), dtype=torch.long)
         target_frames = self._latent_target_frames(entry, cut_frames, lat.shape[0])
@@ -253,14 +261,14 @@ class DataLoader:
         return stitch, tokens, self._latent_prompt(lat, cut_frames), tail, target_frames
 
     @staticmethod
-    def _pad_latents(seqs: tuple, min_len: int) -> torch.Tensor:
+    def _pad_latents(seqs: tuple[torch.Tensor, ...], min_len: int) -> torch.Tensor:
         length = max(min_len, max(s.shape[0] for s in seqs))
         out = torch.zeros(len(seqs), length, seqs[0].shape[-1])
         for b, s in enumerate(seqs):
             out[b, : s.shape[0]] = s
         return out
 
-    def _collate_stitch_audio(self, stitches: tuple) -> torch.Tensor:
+    def _collate_stitch_audio(self, stitches: tuple[npt.NDArray[np.float32], ...]) -> torch.Tensor:
         stitch_samples = self.stitch_frames * self.frame_size
         audio = torch.zeros(len(stitches), 1, stitch_samples)
         for b, w in enumerate(stitches):
@@ -268,7 +276,7 @@ class DataLoader:
             audio[b, 0, :n] = torch.from_numpy(w[:n])
         return audio
 
-    def _collate_latent(self, batch: list[tuple]) -> Batch:
+    def _collate_latent(self, batch: list[tuple[Any, ...]]) -> Batch:
         stitches, tokens, prompts, tails, target_frames = zip(*batch, strict=True)
         num_prompt_frames = torch.tensor([max(1, p.shape[0]) for p in prompts], dtype=torch.long)
         return Batch(
@@ -292,7 +300,7 @@ class DataLoader:
             d.get("latents_file"),
         )
 
-    def _sample_or_none(self, entry: Entry) -> tuple | None:
+    def _sample_or_none(self, entry: Entry) -> tuple[Any, ...] | None:
         try:
             return self._sample(entry)
         except Exception as exc:  # noqa: BLE001 — skip unreadable samples, whatever the cause
@@ -363,7 +371,7 @@ class DataLoader:
                 )
 
 
-def _feed_queue(q, sentence_piece_proto: bytes, loader_kwargs: dict) -> None:
+def _feed_queue(q, sentence_piece_proto: bytes, loader_kwargs: dict[str, Any]) -> None:
     import sentencepiece
 
     torch_mp.set_sharing_strategy("file_system")
@@ -442,7 +450,7 @@ class SubprocessDataLoader:
 
 def _prefetch(iterator: Iterator[Batch], depth: int = 4) -> Iterator[Batch]:
     """Run the (synchronous, IO-bound) loader in a background thread."""
-    q: queue.Queue = queue.Queue(maxsize=depth)
+    q: queue.Queue[Batch | None] = queue.Queue(maxsize=depth)
 
     def worker():
         for item in iterator:

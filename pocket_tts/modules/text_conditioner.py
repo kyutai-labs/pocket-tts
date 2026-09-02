@@ -24,8 +24,8 @@ class SentencePieceTokenizer:
 
     def __init__(self, nbins: int, tokenizer_path: str) -> None:
         logger.info("Loading sentencepiece tokenizer from %s", tokenizer_path)
-        tokenizer_path = download_if_necessary(tokenizer_path)
-        self.sp = sentencepiece.SentencePieceProcessor(str(tokenizer_path))
+        local_path = download_if_necessary(tokenizer_path)
+        self.sp = sentencepiece.SentencePieceProcessor(str(local_path))
         assert nbins == self.sp.vocab_size(), (
             f"sentencepiece tokenizer has vocab size={self.sp.vocab_size()} but nbins={nbins} was specified"
         )

@@ -4,12 +4,11 @@ import logging
 import multiprocessing
 import os
 import time
-
-os.environ.setdefault("POCKET_TTS_NO_BEARTYPE", "1")
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import numpy as np
+import numpy.typing as npt
 import safetensors.torch
 import torch
 import typer
@@ -32,12 +31,16 @@ def default_decode_workers() -> int:
     return max(4, len(os.sched_getaffinity(0)) - 2)
 
 
-def _decode_one(job: tuple) -> np.ndarray:
+# (path, start_sec, duration_sec, sample_rate): the arguments of _load_window.
+DecodeJob = tuple[str, float, float, int]
+
+
+def _decode_one(job: DecodeJob) -> npt.NDArray[np.float32]:
     path, start, duration, sample_rate = job
     return _load_window(path, start, duration, sample_rate)
 
 
-def _decode_chunk(jobs: list[tuple]) -> tuple[np.ndarray, list[int]]:
+def _decode_chunk(jobs: list[DecodeJob]) -> tuple[npt.NDArray[np.float32], list[int]]:
     wavs = [_load_window(p, s, d, sr) for (p, s, d, sr) in jobs]
     max_len = max(len(w) for w in wavs)
     batch = np.zeros((len(wavs), 1, max_len), dtype=np.float32)
@@ -53,7 +56,7 @@ def _parse_entry(line: str) -> Entry:
     )
 
 
-def _chunk_jobs(lines: list[str], idxs: list[int], sample_rate: int) -> list[tuple]:
+def _chunk_jobs(lines: list[str], idxs: list[int], sample_rate: int) -> list[DecodeJob]:
     chunk = [lines[i] for i in idxs]
     return [(e.path, e.start, e.duration, sample_rate) for e in map(_parse_entry, chunk)]
 

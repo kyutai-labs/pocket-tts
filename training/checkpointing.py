@@ -13,6 +13,8 @@ import safetensors.torch
 import torch
 from torch import nn
 
+from training.modules.model import TrainableTTS
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,7 +24,7 @@ class EMA:
         self.shadow = {
             k: p.detach().clone().float() for k, p in model.named_parameters() if p.requires_grad
         }
-        self._tracked: tuple[list, list] | None = None
+        self._tracked: tuple[list[torch.Tensor], list[torch.Tensor]] | None = None
 
     def update(self, model: nn.Module) -> None:
         with torch.no_grad():
@@ -61,7 +63,7 @@ class EMA:
 def save_checkpoint(
     run_dir: Path,
     step: int,
-    model: nn.Module,
+    model: TrainableTTS,
     optimizer,
     ema: EMA | None,
     num_keep: int,

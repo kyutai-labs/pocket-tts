@@ -26,6 +26,7 @@ from pocket_tts.default_parameters import (
 )
 from pocket_tts.models.model_state import export_model_state
 from pocket_tts.models.tts_model import TTSModel
+from pocket_tts.modules.stateful_module import ModelState
 from pocket_tts.utils.logging_utils import enable_logging
 from pocket_tts.utils.utils import _ORIGINS_OF_PREDEFINED_VOICES
 
@@ -44,7 +45,7 @@ cli_app = typer.Typer(
 tts_model: TTSModel | None = None
 # State of the voice served when a request doesn't specify one. It is resolved once from the
 # `serve` options, so that requests never pay for the encoding of the default voice.
-default_voice_state: dict | None = None
+default_voice_state: ModelState | None = None
 
 web_app = FastAPI(
     title="Kyutai Pocket TTS API", description="Text-to-Speech generation API", version="1.0.0"
@@ -62,16 +63,21 @@ web_app.add_middleware(
 )
 
 
+def _loaded_model() -> TTSModel:
+    if tts_model is None:
+        raise RuntimeError("no model loaded: `pocket-tts serve` loads it before serving requests")
+    return tts_model
+
+
 @web_app.get("/", response_class=HTMLResponse)
 async def root():
     """Serve the frontend."""
     static_path = Path(__file__).parent / "static" / "index.html"
     content = static_path.read_text()
     # Replace the placeholder with the actual default text prompt
-    print(str(tts_model.origin))
-    content = content.replace(
-        "DEFAULT_TEXT_PROMPT", get_default_text_for_language(str(tts_model.origin))
-    )
+    origin = str(_loaded_model().origin)
+    print(origin)
+    content = content.replace("DEFAULT_TEXT_PROMPT", get_default_text_for_language(origin))
     return content
 
 
@@ -96,13 +102,14 @@ def write_to_queue(queue, text_to_generate, model_state):
         def close(self):
             self.queue.put(None)
 
-    audio_chunks = tts_model.generate_audio_stream(
+    model = _loaded_model()
+    audio_chunks = model.generate_audio_stream(
         model_state=model_state, text_to_generate=text_to_generate
     )
-    stream_audio_chunks(FileLikeToQueue(queue), audio_chunks, tts_model.config.mimi.sample_rate)
+    stream_audio_chunks(FileLikeToQueue(queue), audio_chunks, model.config.mimi.sample_rate)
 
 
-def generate_data_with_state(text_to_generate: str, model_state: dict):
+def generate_data_with_state(text_to_generate: str, model_state: ModelState):
     queue = Queue()
 
     # Run your function in a thread
@@ -152,7 +159,7 @@ def text_to_speech(
             raise HTTPException(
                 status_code=400, detail="voice_url must start with http://, https://, or hf://"
             )
-        model_state = tts_model._cached_get_state_for_audio_prompt(voice_url)
+        model_state = _loaded_model()._cached_get_state_for_audio_prompt(voice_url)
         logging.warning("Using voice from URL: %s", voice_url)
     elif voice_wav is not None:
         # Use uploaded voice file - preserve extension for format detection
@@ -165,7 +172,9 @@ def text_to_speech(
 
         # Close the file before reading it back (required on Windows)
         try:
-            model_state = tts_model.get_state_for_audio_prompt(Path(temp_file_path), truncate=True)
+            model_state = _loaded_model().get_state_for_audio_prompt(
+                Path(temp_file_path), truncate=True
+            )
         finally:
             os.unlink(temp_file_path)
     elif default_voice_state is not None:
@@ -237,7 +246,7 @@ def serve(
 
 @cli_app.command()
 def generate(
-    text: Annotated[str, typer.Option(help="Text to generate")] = None,
+    text: Annotated[str | None, typer.Option(help="Text to generate")] = None,
     voice: Annotated[
         str | None,
         typer.Option(
@@ -292,10 +301,12 @@ def generate(
             "value from its config (0.3 for the English model, 0.7 otherwise)."
         ),
     ] = None,
-    noise_clamp: Annotated[float, typer.Option(help="Noise clamp value")] = DEFAULT_NOISE_CLAMP,
+    noise_clamp: Annotated[
+        float | None, typer.Option(help="Noise clamp value")
+    ] = DEFAULT_NOISE_CLAMP,
     eos_threshold: Annotated[float, typer.Option(help="EOS threshold")] = DEFAULT_EOS_THRESHOLD,
     frames_after_eos: Annotated[
-        int, typer.Option(help="Number of frames to generate after EOS")
+        int | None, typer.Option(help="Number of frames to generate after EOS")
     ] = DEFAULT_FRAMES_AFTER_EOS,
     output_path: Annotated[
         str, typer.Option(help="Output path for generated audio")

@@ -23,9 +23,10 @@ import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
+import numpy.typing as npt
 import scipy.io.wavfile
 import torch
 
@@ -115,7 +116,7 @@ class QualityResult:
 @dataclass
 class ConfigSummary:
     config_id: str
-    quantize_groups: list
+    quantize_groups: list[str]
     model_size_mb: float
     load_time_sec: float
     mean_rts: float
@@ -126,8 +127,8 @@ class ConfigSummary:
     mean_pesq: Optional[float] = None
     mean_wer_baseline: Optional[float] = None
     mean_wer_quantized: Optional[float] = None
-    results: list = field(default_factory=list)
-    quality_results: list = field(default_factory=list)
+    results: list[GenerationResult] = field(default_factory=list)
+    quality_results: list[QualityResult] = field(default_factory=list)
 
 
 def load_and_quantize_model(config_id: str):
@@ -229,11 +230,11 @@ def compute_snr(baseline_audio: torch.Tensor, quantized_audio: torch.Tensor) -> 
 
 
 def compute_pesq(
-    baseline_audio: np.ndarray, quantized_audio: np.ndarray, sample_rate: int
+    baseline_audio: npt.NDArray[Any], quantized_audio: npt.NDArray[Any], sample_rate: int
 ) -> Optional[float]:
     """Compute PESQ score. Returns None if pesq is not installed."""
     try:
-        from pesq import pesq
+        from pesq import pesq  # ty: ignore[unresolved-import]  -- optional
     except ImportError:
         return None
 
@@ -266,7 +267,7 @@ def compute_pesq(
         return None
 
 
-def compute_wer(audio_path: str, reference_text: str, whisper_model) -> tuple[float, str]:
+def compute_wer(audio_path: str, reference_text: str, whisper_model) -> tuple[Optional[float], str]:
     """Compute Word Error Rate using Whisper. Returns (wer, transcript)."""
     try:
         from jiwer import wer
@@ -561,7 +562,7 @@ def main():
         # Load Whisper model once
         whisper_model = None
         try:
-            import whisper
+            import whisper  # ty: ignore[unresolved-import]  -- optional
 
             logger.info("Loading Whisper model for WER evaluation...")
             whisper_model = whisper.load_model("base")

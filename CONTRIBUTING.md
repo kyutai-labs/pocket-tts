@@ -17,6 +17,19 @@ If you want to manually run the pre-commit hooks on all files, use:
 uvx pre-commit run --all-files
 ```
 
+## Type checking
+
+The code base is type-checked with [ty](https://docs.astral.sh/ty/), which CI runs
+alongside the tests:
+
+```bash
+uv run ty check
+```
+
+There is no runtime type checking: annotations are only verified statically, so keep
+them precise (generics need their type arguments, e.g. `dict[str, torch.Tensor]` rather
+than `dict`).
+
 ## Running tests
 
 ```bash

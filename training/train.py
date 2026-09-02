@@ -183,7 +183,10 @@ def main(config_path: str):
             args.data.max_voice_prompt_sec,
             rank,
             run.world_size,
-            seed=args.seed,
+            # Fold the resume step into the seed: the loader keeps no state
+            # across restarts, so a fixed seed would replay the same
+            # permutation from the top and bias coverage toward its head.
+            seed=args.seed + start_step,
             shuffle=args.data.shuffle,
             num_procs=args.data.loader_procs,
         )

@@ -297,7 +297,9 @@ uvx pocket-tts generate --config hf://vvolhejn/pocket-tts-czech/czech.yaml@7b776
 
 - [Pocket TTS Hindi](https://huggingface.co/saryps-labs/pocket-tts-hindi) by [Saryps Labs](https://huggingface.co/saryps-labs) (community research release):
 ```bash
-uvx pocket-tts generate --config hf://saryps-labs/pocket-tts-hindi/config.yaml@dbaa326069d20bfbdaeb625613736773741a24ea
+uvx pocket-tts generate \
+  --config hf://saryps-labs/pocket-tts-hindi/config.yaml@dbaa326069d20bfbdaeb625613736773741a24ea \
+  --text "आज का दिन बहुत अच्छा है"
 ```
 
 Want your model here? Head to the [training Readme](https://github.com/kyutai-labs/pocket-tts/blob/main/training/README.md) to get started!

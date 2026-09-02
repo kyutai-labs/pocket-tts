@@ -56,7 +56,7 @@ def make_cache_directory() -> Path:
     return cache_dir
 
 
-def print_nb_parameters(model: nn.Module, model_name: str) -> None:
+def print_nb_parameters(model: nn.Module, model_name: str):
     logger = logging.getLogger(__name__)
     state_dict = model.state_dict()
     total = 0
@@ -77,7 +77,7 @@ def size_of_dict(state_dict: dict[str, Any]) -> int:
 
 
 class display_execution_time:
-    def __init__(self, task_name: str, print_output: bool = True) -> None:
+    def __init__(self, task_name: str, print_output: bool = True):
         self.task_name = task_name
         self.print_output = print_output
         self.start_time: float | None = None

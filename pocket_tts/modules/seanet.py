@@ -17,7 +17,7 @@ class SEANetResnetBlock(nn.Module):
         dilations: Sequence[int] = (1, 1),
         pad_mode: str = "reflect",
         compress: int = 2,
-    ) -> None:
+    ):
         super().__init__()
         assert len(kernel_sizes) == len(dilations), (
             "Number of kernel sizes should match number of dilations"
@@ -60,7 +60,7 @@ class SEANetEncoder(nn.Module):
         dilation_base: int = 2,
         pad_mode: str = "reflect",
         compress: int = 2,
-    ) -> None:
+    ):
         super().__init__()
         self.channels = channels
         self.dimension = dimension
@@ -132,7 +132,7 @@ class SEANetDecoder(nn.Module):
         dilation_base: int = 2,
         pad_mode: str = "reflect",
         compress: int = 2,
-    ) -> None:
+    ):
         super().__init__()
         self.dimension = dimension
         self.channels = channels

@@ -25,7 +25,7 @@ LOG_FORMAT = "[%(asctime)s %(levelname)s %(name)s] %(message)s"
 LOG_DATEFMT = "%d-%m %H:%M:%S"
 
 
-def setup_logging(level: int = logging.INFO) -> None:
+def setup_logging(level: int = logging.INFO):
     logging.basicConfig(level=level, format=LOG_FORMAT, datefmt=LOG_DATEFMT)
 
 
@@ -45,7 +45,7 @@ def add_file_logging(run_dir: Path, rank: int = 0) -> Path:
 class ProgressLog:
     """Append-only jsonl of training events in the run dir, continued across restarts."""
 
-    def __init__(self, path: Path, enabled: bool = True) -> None:
+    def __init__(self, path: Path, enabled: bool = True):
         self.path = Path(path)
         self.enabled = enabled
 
@@ -55,7 +55,7 @@ class ProgressLog:
         step: int,
         metrics: dict[str, Any] | None = None,
         **fields: str | float | None,
-    ) -> None:
+    ):
         if not self.enabled:
             return
         record = {
@@ -87,7 +87,7 @@ def git_commit() -> str | None:
     return sha.strip() + ("-dirty" if dirty else "")
 
 
-def _compile_models(model: TrainableTTS, mimi: MimiModel) -> None:
+def _compile_models(model: TrainableTTS, mimi: MimiModel):
     """Per-layer compilation: whole-module compile trips dynamo on the
     streaming-state plumbing, individual layers and the flow head are clean.
     In-place .compile() (not torch.compile(module)) so state_dict keys stay
@@ -95,7 +95,7 @@ def _compile_models(model: TrainableTTS, mimi: MimiModel) -> None:
     The frozen Mimi encoder runs under no_grad outside the DDP module, so
     compiling it is safe on any GPU count (~6ms/step)."""
 
-    def _compile_backbone(fl: FlowLMModel) -> None:
+    def _compile_backbone(fl: FlowLMModel):
         for layer in fl.transformer.layers:
             layer.compile(dynamic=True)
 
@@ -130,7 +130,7 @@ def write_samples(
     step: int,
     voice_latents: torch.Tensor,
     device: torch.device,
-) -> None:
+):
     """Synthesize the configured sentences from the live (raw) weights."""
     out_dir = run_dir / "samples"
     out_dir.mkdir(exist_ok=True)
@@ -161,7 +161,7 @@ def write_samples(
 
 def ensure_train_latents(
     args: TrainArgs, mimi: MimiModel, device: torch.device, rank: int, world_size: int
-) -> None:
+):
     """Train from precomputed latents, encoding them first if needed.
 
     The latents store is keyed by a hash of Mimi's encode-path weights, so

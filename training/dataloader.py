@@ -92,7 +92,7 @@ class DataLoader:
         seed: int = 0,
         shuffle: bool = True,
         io_workers: int = 16,
-    ) -> None:
+    ):
         self.jsonl = jsonl
         self.entries = load_entries(jsonl, rank, world_size)
         self.tokenize = tokenize
@@ -378,7 +378,7 @@ def _feed_queue(
     q: "multiprocessing.queues.Queue[Batch]",  # not subscriptable at runtime on 3.10
     sentence_piece_proto: bytes,
     loader_kwargs: dict[str, Any],
-) -> None:
+):
     torch_mp.set_sharing_strategy("file_system")
     sentence_piece = sentencepiece.SentencePieceProcessor()
     sentence_piece.load_from_serialized_proto(sentence_piece_proto)
@@ -404,7 +404,7 @@ class SubprocessDataLoader:
         io_workers: int = 16,
         num_procs: int = 3,
         depth: int = 8,
-    ) -> None:
+    ):
         ctx = torch_mp.get_context("spawn")
         self._queue = ctx.Queue(maxsize=depth)
         self._procs = []
@@ -431,7 +431,7 @@ class SubprocessDataLoader:
             proc.start()
             self._procs.append(proc)
 
-    def _check_procs(self) -> None:
+    def _check_procs(self):
         dead = [p for p in self._procs if not p.is_alive()]
         if dead:
             raise RuntimeError(
@@ -457,7 +457,7 @@ def _prefetch(iterator: Iterator[Batch], depth: int = 4) -> Iterator[Batch]:
     """Run the (synchronous, IO-bound) loader in a background thread."""
     q: queue.Queue[Batch | None] = queue.Queue(maxsize=depth)
 
-    def worker() -> None:
+    def worker():
         for item in iterator:
             q.put(item)
         q.put(None)

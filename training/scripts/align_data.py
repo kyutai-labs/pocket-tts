@@ -225,7 +225,7 @@ def main(
             "output order is restored per window"
         ),
     ] = 256,
-) -> None:
+):
     logging.basicConfig(
         level=logging.INFO,
         format="[%(asctime)s %(levelname)s %(name)s] %(message)s",
@@ -249,7 +249,7 @@ def main(
         bar_format="{l_bar}{bar}| {n:.1f}/{total:.1f}h [{elapsed}<{remaining}, {rate_fmt}{postfix}]",
     )
 
-    def read_entries(fin: TextIO, q: queue.Queue[LoadedEntry | None]) -> None:
+    def read_entries(fin: TextIO, q: queue.Queue[LoadedEntry | None]):
         for line in fin:
             entry = json.loads(line)
             if (entry["path"], float(entry.get("start", 0.0))) in done:
@@ -272,7 +272,7 @@ def main(
 
     n_ok = n_skipped = 0
 
-    def skip(entry: dict[str, Any], exc: Exception) -> None:
+    def skip(entry: dict[str, Any], exc: Exception):
         nonlocal n_skipped
         n_skipped += 1
         if n_skipped % 100 == 1:

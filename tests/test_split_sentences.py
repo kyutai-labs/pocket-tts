@@ -11,7 +11,7 @@ def tokenizer() -> SentencePieceTokenizer:
     return get_default_tokenizer()
 
 
-def test_short_text_single_chunk(tokenizer: SentencePieceTokenizer) -> None:
+def test_short_text_single_chunk(tokenizer: SentencePieceTokenizer):
     """Short text should produce a single chunk."""
     chunks = split_into_best_sentences(
         tokenizer,
@@ -23,7 +23,7 @@ def test_short_text_single_chunk(tokenizer: SentencePieceTokenizer) -> None:
     assert len(chunks) == 1
 
 
-def test_multiple_sentences_split(tokenizer: SentencePieceTokenizer) -> None:
+def test_multiple_sentences_split(tokenizer: SentencePieceTokenizer):
     """Multiple sentences should be split when they exceed max_tokens."""
     text = "First sentence here. Second sentence here. Third sentence here. Fourth sentence here."
     chunks = split_into_best_sentences(
@@ -32,7 +32,7 @@ def test_multiple_sentences_split(tokenizer: SentencePieceTokenizer) -> None:
     assert len(chunks) > 1
 
 
-def test_long_sentence_with_commas_is_split(tokenizer: SentencePieceTokenizer) -> None:
+def test_long_sentence_with_commas_is_split(tokenizer: SentencePieceTokenizer):
     """A long sentence with only commas (no periods) should be split on commas."""
     # This is the core bug from issue #38 - the Tale of Two Cities example
     text = (
@@ -53,7 +53,7 @@ def test_long_sentence_with_commas_is_split(tokenizer: SentencePieceTokenizer) -
         assert phrase in rejoined, f"'{phrase}' should be preserved after splitting"
 
 
-def test_long_sentence_with_commas_respects_max_tokens(tokenizer: SentencePieceTokenizer) -> None:
+def test_long_sentence_with_commas_respects_max_tokens(tokenizer: SentencePieceTokenizer):
     """Each chunk from comma splitting should respect max_tokens (when possible)."""
     text = (
         "It was the best of times, it was the worst of times, "
@@ -72,7 +72,7 @@ def test_long_sentence_with_commas_respects_max_tokens(tokenizer: SentencePieceT
         )
 
 
-def test_mixed_sentences_and_commas(tokenizer: SentencePieceTokenizer) -> None:
+def test_mixed_sentences_and_commas(tokenizer: SentencePieceTokenizer):
     """Text with both sentence boundaries and long comma-separated clauses."""
     text = (
         "Short sentence. "
@@ -87,7 +87,7 @@ def test_mixed_sentences_and_commas(tokenizer: SentencePieceTokenizer) -> None:
     assert len(chunks) >= 3
 
 
-def test_no_commas_no_periods_stays_single_chunk(tokenizer: SentencePieceTokenizer) -> None:
+def test_no_commas_no_periods_stays_single_chunk(tokenizer: SentencePieceTokenizer):
     """Text with no splitting characters stays as a single chunk."""
     text = "one two three four five six seven eight nine ten eleven twelve"
     chunks = split_into_best_sentences(
@@ -97,7 +97,7 @@ def test_no_commas_no_periods_stays_single_chunk(tokenizer: SentencePieceTokeniz
     assert len(chunks) == 1
 
 
-def test_semicolons_and_colons_also_split(tokenizer: SentencePieceTokenizer) -> None:
+def test_semicolons_and_colons_also_split(tokenizer: SentencePieceTokenizer):
     """Semicolons and colons should also serve as fallback split points."""
     text = (
         "First clause here; second clause here; third clause here; "
@@ -109,7 +109,7 @@ def test_semicolons_and_colons_also_split(tokenizer: SentencePieceTokenizer) -> 
     assert len(chunks) > 1
 
 
-def test_short_sentence_not_affected_by_comma_splitting(tokenizer: SentencePieceTokenizer) -> None:
+def test_short_sentence_not_affected_by_comma_splitting(tokenizer: SentencePieceTokenizer):
     """Sentences under max_tokens should not be affected by comma logic."""
     text = "Hello, world."
     chunks = split_into_best_sentences(
@@ -120,7 +120,7 @@ def test_short_sentence_not_affected_by_comma_splitting(tokenizer: SentencePiece
     assert "world" in chunks[0].lower()
 
 
-def test_empty_string_raises(tokenizer: SentencePieceTokenizer) -> None:
+def test_empty_string_raises(tokenizer: SentencePieceTokenizer):
     """Empty input should raise ValueError from prepare_text_prompt."""
     with pytest.raises(ValueError, match="empty"):
         split_into_best_sentences(
@@ -128,7 +128,7 @@ def test_empty_string_raises(tokenizer: SentencePieceTokenizer) -> None:
         )
 
 
-def test_decimals_are_not_split_on_period(tokenizer: SentencePieceTokenizer) -> None:
+def test_decimals_are_not_split_on_period(tokenizer: SentencePieceTokenizer):
     """Decimal periods must not be treated as sentence boundaries (issue #162)."""
     text = (
         "The average human body temperature is 98.6°F, which is a common decimal used in medicine."
@@ -141,7 +141,7 @@ def test_decimals_are_not_split_on_period(tokenizer: SentencePieceTokenizer) -> 
     assert "98. 6" not in chunks[0]
 
 
-def test_multiple_decimals_in_one_sentence(tokenizer: SentencePieceTokenizer) -> None:
+def test_multiple_decimals_in_one_sentence(tokenizer: SentencePieceTokenizer):
     """Several decimals in one sentence should stay intact."""
     text = "Pi is 3.14 and e is 2.718."
     chunks = split_into_best_sentences(
@@ -154,7 +154,7 @@ def test_multiple_decimals_in_one_sentence(tokenizer: SentencePieceTokenizer) ->
     assert "2. 718" not in chunks[0]
 
 
-def test_decimal_followed_by_sentence_boundary(tokenizer: SentencePieceTokenizer) -> None:
+def test_decimal_followed_by_sentence_boundary(tokenizer: SentencePieceTokenizer):
     """Decimals should be preserved while real sentence boundaries still split."""
     text = (
         "The average human body temperature is 98.6°F, "
@@ -173,7 +173,7 @@ def test_decimal_followed_by_sentence_boundary(tokenizer: SentencePieceTokenizer
     assert "3. 14" not in rejoined
 
 
-def test_sentence_period_after_decimal_still_splits(tokenizer: SentencePieceTokenizer) -> None:
+def test_sentence_period_after_decimal_still_splits(tokenizer: SentencePieceTokenizer):
     """A period ending a sentence after a decimal is still a boundary."""
     text = "Version 2.0 is out. Pi is 3.14."
     chunks = split_into_best_sentences(
@@ -185,7 +185,7 @@ def test_sentence_period_after_decimal_still_splits(tokenizer: SentencePieceToke
     assert "2. 0" not in chunks[0]
 
 
-def test_oversized_clause_without_commas_still_returns(tokenizer: SentencePieceTokenizer) -> None:
+def test_oversized_clause_without_commas_still_returns(tokenizer: SentencePieceTokenizer):
     """A long clause with no split points should still be returned (not dropped)."""
     # 20 words with no punctuation at all - no way to split
     text = " ".join(f"word{i}" for i in range(20))

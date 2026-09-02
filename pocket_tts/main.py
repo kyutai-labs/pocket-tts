@@ -87,22 +87,20 @@ async def health() -> dict[str, str]:
     return {"status": "healthy"}
 
 
-def write_to_queue(
-    queue: Queue[bytes | None], text_to_generate: str, model_state: ModelState
-) -> None:
+def write_to_queue(queue: Queue[bytes | None], text_to_generate: str, model_state: ModelState):
     """Allows writing to the StreamingResponse as if it were a file."""
 
     class FileLikeToQueue(io.IOBase):
-        def __init__(self, queue: Queue[bytes | None]) -> None:
+        def __init__(self, queue: Queue[bytes | None]):
             self.queue = queue
 
-        def write(self, data: bytes) -> None:
+        def write(self, data: bytes):
             self.queue.put(data)
 
-        def flush(self) -> None:
+        def flush(self):
             pass
 
-        def close(self) -> None:
+        def close(self):
             self.queue.put(None)
 
     model = _loaded_model()
@@ -231,7 +229,7 @@ def serve(
     quantize: Annotated[
         bool, typer.Option(help="Apply int8 quantization to reduce memory usage")
     ] = False,
-) -> None:
+):
     """Start the FastAPI server."""
 
     global tts_model, default_voice_state
@@ -324,7 +322,7 @@ def generate(
     quantize: Annotated[
         bool, typer.Option(help="Apply int8 quantization to reduce memory usage")
     ] = False,
-) -> None:
+):
     """Generate speech using Kyutai Pocket TTS."""
     if lsd_decode_steps is not None:
         logger.warning("--lsd-decode-steps is deprecated, use --sampler-decode-steps")
@@ -410,7 +408,7 @@ def export_voice(
             "Incompatible with the language argument. If not provided, will use the default English model."
         ),
     ] = None,
-) -> None:
+):
     """Convert and save audio to .safetensors file"""
 
     log_level = logging.ERROR if quiet else logging.INFO

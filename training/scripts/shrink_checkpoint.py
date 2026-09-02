@@ -51,7 +51,7 @@ def shrink(
     return out, keep
 
 
-def main() -> None:
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("checkpoint")
     parser.add_argument("--layers", type=int, required=True, help="student depth")

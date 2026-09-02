@@ -58,7 +58,7 @@ def _cached_causal_mask(t: int, context: int | None, device: torch.device) -> to
 class _LinearKVCacheBackend:
     requires_state = True
 
-    def __init__(self, num_heads: int, dim_per_head: int) -> None:
+    def __init__(self, num_heads: int, dim_per_head: int):
         self.num_heads = num_heads
         self.dim_per_head = dim_per_head
 
@@ -80,7 +80,7 @@ class _LinearKVCacheBackend:
             ),
         )
 
-    def increment_step(self, state: dict[str, torch.Tensor], increment: int) -> None:
+    def increment_step(self, state: dict[str, torch.Tensor], increment: int):
         state["offset"] += increment
 
     def rope_offset(
@@ -134,7 +134,7 @@ class StreamingMultiheadAttention(StatefulModule):
 
     def __init__(
         self, embed_dim: int, num_heads: int, rope: RotaryEmbedding, context: int | None = None
-    ) -> None:
+    ):
         super().__init__()
 
         self.embed_dim = embed_dim
@@ -164,7 +164,7 @@ class StreamingMultiheadAttention(StatefulModule):
             dtype = torch.float32
         return self._cache_backend.init_state(batch_size, sequence_length, device, dtype)
 
-    def increment_step(self, state: dict[str, torch.Tensor], increment: int = 1) -> None:
+    def increment_step(self, state: dict[str, torch.Tensor], increment: int = 1):
         self._cache_backend.increment_step(state, increment)
 
     def forward(

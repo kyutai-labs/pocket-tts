@@ -17,16 +17,16 @@ def _as_linear(module: nn.Module) -> nn.Linear:
     return module
 
 
-def _zero_linear(module: nn.Module) -> None:
+def _zero_linear(module: nn.Module):
     linear = _as_linear(module)
     nn.init.constant_(linear.weight, 0)
     nn.init.constant_(linear.bias, 0)
 
 
-def dit_init(head: SimpleMLPAdaLN) -> None:
+def dit_init(head: SimpleMLPAdaLN):
     """The MAR/DiT init: xavier everywhere, zero adaLN modulations and output."""
 
-    def _basic_init(module: nn.Module) -> None:
+    def _basic_init(module: nn.Module):
         if isinstance(module, nn.Linear):
             torch.nn.init.xavier_uniform_(module.weight)
             if module.bias is not None:
@@ -44,7 +44,7 @@ def dit_init(head: SimpleMLPAdaLN) -> None:
     _zero_linear(head.final_layer.linear)
 
 
-def gaussian_init(module: nn.Module) -> None:
+def gaussian_init(module: nn.Module):
     """Backbone init: truncated normal with std 1/sqrt(fan_in) (xlformers-style)."""
     for m in module.modules():
         if isinstance(m, nn.Linear):
@@ -57,19 +57,19 @@ def gaussian_init(module: nn.Module) -> None:
             nn.init.trunc_normal_(m.weight, mean=0.0, std=std, a=-3 * std, b=3 * std)
 
 
-def disable_grad(module: nn.Module) -> None:
+def disable_grad(module: nn.Module):
     for p in module.parameters():
         p.requires_grad = False
 
 
-def set_state_padding(model_state: ModelState, pad: torch.Tensor) -> None:
+def set_state_padding(model_state: ModelState, pad: torch.Tensor):
     """Tell every attention layer how many leading slots per row are padding."""
     for st in model_state.values():
         if isinstance(st, dict) and "pad" in st:
             st["pad"].copy_(pad.to(st["pad"].device))
 
 
-def stamp_state_names(module: nn.Module) -> None:
+def stamp_state_names(module: nn.Module):
     """Streaming state lookup needs each StatefulModule to know its own name."""
     for module_name, sub in module.named_modules():
         if isinstance(sub, StatefulModule):
@@ -77,7 +77,7 @@ def stamp_state_names(module: nn.Module) -> None:
 
 
 class MLP(nn.Sequential):
-    def __init__(self, in_channels: int, hidden_channels: list[int]) -> None:
+    def __init__(self, in_channels: int, hidden_channels: list[int]):
         layers: list[nn.Module] = []
         dim = in_channels
         for h in hidden_channels[:-1]:
@@ -90,7 +90,7 @@ class MLP(nn.Sequential):
         return super().forward(torch.cat((input, *rest), dim=-1))
 
 
-def zero_init(m: nn.Module) -> None:
+def zero_init(m: nn.Module):
     if isinstance(m, nn.Linear):
         nn.init.zeros_(m.weight)
         if m.bias is not None:

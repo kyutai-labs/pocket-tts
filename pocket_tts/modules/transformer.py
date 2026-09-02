@@ -24,7 +24,7 @@ class StreamingTransformerLayer(nn.Module):
         context: int | None,
         rope: RotaryEmbedding,
         layer_scale: float | None = None,
-    ) -> None:
+    ):
         super().__init__()
         self.self_attn = StreamingMultiheadAttention(
             rope=rope, embed_dim=d_model, num_heads=num_heads, context=context
@@ -74,7 +74,7 @@ class StreamingTransformer(nn.Module):
         dim_feedforward: int = 2048,
         context: int | None = None,
         max_period: float = 10_000.0,
-    ) -> None:
+    ):
         super().__init__()
         assert d_model % num_heads == 0
         self.max_period = max_period
@@ -129,7 +129,7 @@ class ProjectedTransformer(nn.Module):
         context: int,
         max_period: float,
         dim_feedforward: int,
-    ) -> None:
+    ):
         super().__init__()
         self.transformer = StreamingTransformer(
             d_model=d_model,

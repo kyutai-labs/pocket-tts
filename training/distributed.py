@@ -16,7 +16,7 @@ def get_world_size() -> int:
     return dist.get_world_size() if dist.is_initialized() else 1
 
 
-def _require_cuda() -> None:
+def _require_cuda():
     """Training on CPU is accidental (a mismatched torch build), not a use case."""
     if torch.cuda.is_available() or os.environ.get("POCKET_TTS_ALLOW_CPU") == "1":
         return
@@ -48,7 +48,7 @@ def init_distributed() -> torch.device:
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def shutdown_distributed() -> None:
+def shutdown_distributed():
     """Hold every rank until all are done, then tear NCCL down.
 
     Without the barrier, multi-GPU training can crash at the end.

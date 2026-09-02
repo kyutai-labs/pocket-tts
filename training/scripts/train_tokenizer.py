@@ -55,7 +55,7 @@ def main(
         float, typer.Option(help="lower to 0.9995 for large-alphabet languages (e.g. CJK)")
     ] = 1.0,
     model_type: Annotated[Literal["bpe", "unigram", "char"], typer.Option()] = "bpe",
-) -> None:
+):
     Path(output_prefix).parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as tmp:
         n = 0

@@ -62,7 +62,7 @@ class RotaryEmbedding(nn.Module):
         max_period (float): Maximum period of the rotation frequencies.
     """
 
-    def __init__(self, max_period: float = 10000.0) -> None:
+    def __init__(self, max_period: float = 10000.0):
         super().__init__()
         self.max_period = max_period
 

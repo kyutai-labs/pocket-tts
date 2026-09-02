@@ -50,7 +50,7 @@ class StreamingConv1d(StatefulModule):
         groups: int = 1,
         bias: bool = True,
         pad_mode: str = "constant",
-    ) -> None:
+    ):
         super().__init__()
         assert pad_mode in ["constant", "replicate"], pad_mode
         self.pad_mode = pad_mode
@@ -130,7 +130,7 @@ class StreamingConvTranspose1d(StatefulModule):
         stride: int = 1,
         groups: int = 1,
         bias: bool = True,
-    ) -> None:
+    ):
         super().__init__()
         self.convtr = nn.ConvTranspose1d(
             in_channels, out_channels, kernel_size, stride, groups=groups, bias=bias

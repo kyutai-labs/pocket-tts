@@ -19,42 +19,42 @@ def _args(**kw: Any) -> TrainArgs:  # noqa: ANN401 -- TrainArgs/OptimArgs passth
 
 
 class TestLrSchedule:
-    def test_warmup_ends_at_the_configured_lr(self) -> None:
+    def test_warmup_ends_at_the_configured_lr(self):
         args = _args(optim={"lr": 2e-4, "warmup_steps": 100, "schedule": "constant"})
         assert lr_at(0, args) == pytest.approx(2e-6)
         assert lr_at(99, args) == pytest.approx(2e-4)
         assert lr_at(100, args) == pytest.approx(2e-4)
 
-    def test_cosine_decays_to_the_floor_at_max_steps(self) -> None:
+    def test_cosine_decays_to_the_floor_at_max_steps(self):
         args = _args(max_steps=1000, optim={"lr": 1e-3, "warmup_steps": 0, "schedule": "cosine"})
         assert lr_at(0, args) == pytest.approx(1e-3, rel=1e-3)
         assert lr_at(1000, args) == pytest.approx(0.0, abs=1e-9)
         assert lr_at(500, args) == pytest.approx(5e-4, rel=1e-2)
 
-    def test_cosine_respects_lr_min_ratio(self) -> None:
+    def test_cosine_respects_lr_min_ratio(self):
         args = _args(
             max_steps=1000,
             optim={"lr": 1e-3, "warmup_steps": 0, "schedule": "cosine", "lr_min_ratio": 0.1},
         )
         assert lr_at(1000, args) == pytest.approx(1e-4, rel=1e-6)
 
-    def test_constant_stays_flat(self) -> None:
+    def test_constant_stays_flat(self):
         args = _args(max_steps=1000, optim={"lr": 2e-4, "warmup_steps": 0, "schedule": "constant"})
         assert lr_at(10, args) == lr_at(999, args) == pytest.approx(2e-4)
 
 
 class TestSelectLayers:
-    def test_keeps_the_ends_of_the_stack(self) -> None:
+    def test_keeps_the_ends_of_the_stack(self):
         assert select_layers(24, 6) == [0, 1, 2, 21, 22, 23]
 
-    def test_identity_when_depths_match(self) -> None:
+    def test_identity_when_depths_match(self):
         assert select_layers(6, 6) == list(range(6))
 
-    def test_rejects_growing_the_stack(self) -> None:
+    def test_rejects_growing_the_stack(self):
         with pytest.raises(AssertionError):
             select_layers(6, 24)
 
-    def test_shrink_renumbers_kept_layers_contiguously(self) -> None:
+    def test_shrink_renumbers_kept_layers_contiguously(self):
         state = {f"transformer.layers.{i}.w": torch.tensor([float(i)]) for i in range(24)}
         state["out_eos.weight"] = torch.zeros(1)
         out, keep = shrink(state, 6)
@@ -75,13 +75,13 @@ class TestEMA:
             m.bias.fill_(1.0)
         return m
 
-    def test_tracks_only_trainable_parameters(self) -> None:
+    def test_tracks_only_trainable_parameters(self):
         m = self._model()
         m.bias.requires_grad_(False)
         ema = EMA(m, 0.9)
         assert set(ema.shadow) == {"weight"}
 
-    def test_update_moves_towards_the_live_weights(self) -> None:
+    def test_update_moves_towards_the_live_weights(self):
         m = self._model()
         ema = EMA(m, 0.5)
         with torch.no_grad():
@@ -89,7 +89,7 @@ class TestEMA:
         ema.update(m)
         assert ema.shadow["weight"][0, 0].item() == pytest.approx(2.0)
 
-    def test_loading_a_partial_shadow_keeps_untracked_weights(self) -> None:
+    def test_loading_a_partial_shadow_keeps_untracked_weights(self):
         """A distilled student freezes its heads, so its shadow covers only part
         of the model; the rest must survive loading rather than be overwritten."""
         m = self._model()
@@ -103,14 +103,14 @@ class TestDistillProb:
     def _v(self, s: torch.Tensor, t: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
         return x * (s + t)
 
-    def test_skip_rate_matches_probability(self) -> None:
+    def test_skip_rate_matches_probability(self):
         m = LSD(distill_prob=0.25)
         m.train()
         outs = [m.loss(self._v, torch.randn(2, 4), torch.randn(2, 4)) for _ in range(400)]
         rate = sum("flow_distill" in met for _, met, _ in outs) / 400
         assert 0.15 < rate < 0.35
 
-    def test_ranks_agree_on_every_draw(self) -> None:
+    def test_ranks_agree_on_every_draw(self):
         """The skip draw is rank-synchronized: two instances (= two DDP ranks)
         must take the same branch on the same step."""
         a, b = LSD(distill_prob=0.25), LSD(distill_prob=0.25)
@@ -125,7 +125,7 @@ class TestDistillProb:
         ]
         assert sa == sb
 
-    def test_eval_mode_always_computes_the_full_loss(self) -> None:
+    def test_eval_mode_always_computes_the_full_loss(self):
         """Valid losses must stay comparable across distill_prob settings."""
         m = LSD(distill_prob=0.25)
         m.eval()

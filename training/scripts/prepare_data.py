@@ -53,7 +53,7 @@ class Utterance(BaseModel):
     set: str  # "train", "dev", "test", ...
 
 
-def download(url: str, dest: Path, retries: int = 5, timeout: float = 30) -> None:
+def download(url: str, dest: Path, retries: int = 5, timeout: float = 30):
     """Stream `url` to `dest`, retrying transient failures like curl's --retry."""
     for attempt in range(retries + 1):
         try:
@@ -69,7 +69,7 @@ def download(url: str, dest: Path, retries: int = 5, timeout: float = 30) -> Non
             time.sleep(min(2**attempt, 10))
 
 
-def align(manifest: Path, out: Path, shards: int, model: str, what: str = "manifest") -> None:
+def align(manifest: Path, out: Path, shards: int, model: str, what: str = "manifest"):
     if out.exists():
         logger.info(f"{what} {out.resolve()} exists, skipping")
         return
@@ -129,7 +129,7 @@ def align(manifest: Path, out: Path, shards: int, model: str, what: str = "manif
     logger.info(f"merged {shards} shards -> {out.name}")
 
 
-def attach_hf_alignments(manifest: Path, out: Path, repo: str, audio_root: Path) -> None:
+def attach_hf_alignments(manifest: Path, out: Path, repo: str, audio_root: Path):
     """Join a raw manifest against the published word alignments: rows match
     on NVIDIA's per-utterance `audio_filepath`, kept in each row as the join
     key since multiple rows can share one chapter file path. The published
@@ -257,7 +257,7 @@ def prepare_hifitts2(
     def chapter_path(ch: dict[str, Any]) -> Path:
         return audio_root / (Path(ch["chapter_filepath"]).stem + ".mp3")
 
-    def fetch_chapter(ch: dict[str, Any]) -> None:
+    def fetch_chapter(ch: dict[str, Any]):
         """Download chapter `ch`'s whole audio file, if not already present.
 
         One download per chapter, shared by every utterance in it: the
@@ -374,7 +374,7 @@ def main(
     verbose: Annotated[
         bool, typer.Option("--verbose", "-v", help="log the reason each chapter was skipped")
     ] = False,
-) -> None:
+):
     logging.basicConfig(
         level=logging.INFO,
         format="[%(asctime)s %(levelname)s %(name)s] %(message)s",

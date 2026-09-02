@@ -140,7 +140,7 @@ class TrainArgs:
     # the depth) or "first" (the bottom N). No evidence either way -- "first"
     # keeps the early feature extractors contiguous.
 
-    def __post_init__(self) -> None:
+    def __post_init__(self):
         if self.grad_accum_steps < 1:
             raise ValueError(f"grad_accum_steps must be >= 1, got {self.grad_accum_steps}")
         if self.num_ckpt_keep < 1:
@@ -204,6 +204,6 @@ def dump_args(args: TrainArgs) -> str:
     return yaml.safe_dump(plain(dataclasses.asdict(args)), sort_keys=False)
 
 
-def save_args(args: TrainArgs, path: str | Path) -> None:
+def save_args(args: TrainArgs, path: str | Path):
     with open(path, "w") as f:
         f.write(dump_args(args))

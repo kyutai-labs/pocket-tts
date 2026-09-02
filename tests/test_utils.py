@@ -7,11 +7,11 @@ from pocket_tts.utils import utils
 
 def test_download_http_cache_suffix_ignores_query_string(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+):
     class Response:
         content = b"data"
 
-        def raise_for_status(self) -> None:
+        def raise_for_status(self):
             pass
 
     monkeypatch.setattr(utils, "make_cache_directory", lambda: tmp_path)

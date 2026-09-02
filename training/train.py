@@ -163,7 +163,7 @@ def setup(config_path: str) -> Run:
     )
 
 
-def main(config_path: str) -> None:
+def main(config_path: str):
     run = setup(config_path)
     # Unpacked for the hot loop; the thin ones stay run.* at their call sites.
     args, model, mimi = run.args, run.model, run.mimi
@@ -197,7 +197,7 @@ def main(config_path: str) -> None:
     # checkpoint inside that window so a cancelled job resumes losslessly.
     stop_requested = False
 
-    def _request_stop(signum: int, frame: FrameType | None) -> None:
+    def _request_stop(signum: int, frame: FrameType | None):
         nonlocal stop_requested
         stop_requested = True
 

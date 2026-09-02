@@ -90,7 +90,7 @@ class FlowLMModel(nn.Module):
         dtype: torch.dtype | None = None,
         insert_bos_before_voice: bool = False,
         flow_type: str = "lsd",
-    ) -> None:
+    ):
         super().__init__()
         self.flow_type = flow_type
         self.conditioner = conditioner

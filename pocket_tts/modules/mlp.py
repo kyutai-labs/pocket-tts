@@ -26,7 +26,7 @@ def _rms_norm(x: torch.Tensor, alpha: torch.Tensor, eps: float) -> torch.Tensor:
 
 
 class RMSNorm(nn.Module):
-    def __init__(self, dim: int, eps: float = 1e-5) -> None:
+    def __init__(self, dim: int, eps: float = 1e-5):
         super().__init__()
         self.eps = eps
         alpha_shape = (dim,)
@@ -39,7 +39,7 @@ class RMSNorm(nn.Module):
 class LayerNorm(nn.Module):
     """Reimplementation of LayerNorm because the default one doesn't support jvp."""
 
-    def __init__(self, channels: int, eps: float = 1e-6, elementwise_affine: bool = True) -> None:
+    def __init__(self, channels: int, eps: float = 1e-6, elementwise_affine: bool = True):
         super().__init__()
         self.eps = eps
         if elementwise_affine:
@@ -62,7 +62,7 @@ class TimestepEmbedder(nn.Module):
 
     def __init__(
         self, hidden_size: int, frequency_embedding_size: int = 256, max_period: int = 10000
-    ) -> None:
+    ):
         super().__init__()
         blocks = [
             nn.Linear(frequency_embedding_size, hidden_size, bias=True),
@@ -91,7 +91,7 @@ class ResBlock(nn.Module):
     :param channels: the number of input channels.
     """
 
-    def __init__(self, channels: int) -> None:
+    def __init__(self, channels: int):
         super().__init__()
         self.channels = channels
 
@@ -118,7 +118,7 @@ class FinalLayer(nn.Module):
     The final layer adopted from DiT.
     """
 
-    def __init__(self, model_channels: int, out_channels: int) -> None:
+    def __init__(self, model_channels: int, out_channels: int):
         super().__init__()
         self.norm_final = LayerNorm(model_channels, elementwise_affine=False, eps=1e-6)
         self.linear = nn.Linear(model_channels, out_channels, bias=True)
@@ -152,7 +152,7 @@ class SimpleMLPAdaLN(nn.Module):
         cond_channels: int,
         num_res_blocks: int,
         num_time_conds: int = 1,
-    ) -> None:
+    ):
         super().__init__()
 
         self.in_channels = in_channels

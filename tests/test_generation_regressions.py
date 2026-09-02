@@ -11,7 +11,7 @@ from pocket_tts.models.tts_model import TTSModel, _is_safetensors_source
 from pocket_tts.modules.text_conditioner import SentencePieceTokenizer
 
 
-def test_generate_audio_stream_uses_prepared_chunk_text(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_generate_audio_stream_uses_prepared_chunk_text(monkeypatch: pytest.MonkeyPatch):
     calls: list[dict[str, object]] = []
 
     def fake_split_into_best_sentences(
@@ -51,7 +51,7 @@ def test_generate_audio_stream_uses_prepared_chunk_text(monkeypatch: pytest.Monk
     assert calls[0]["frames_after_eos"] == 5
 
 
-def test_generate_reports_autoregressive_errors_before_decoder_done() -> None:
+def test_generate_reports_autoregressive_errors_before_decoder_done():
     error = RuntimeError("generation failed")
 
     def raise_generation(*args: object, **kwargs: object) -> NoReturn:
@@ -94,7 +94,5 @@ def test_generate_reports_autoregressive_errors_before_decoder_done() -> None:
         ("https://example.com/voice.wav?format=safetensors", False),
     ],
 )
-def test_is_safetensors_source_handles_revisions_and_query_strings(
-    source: str, expected: bool
-) -> None:
+def test_is_safetensors_source_handles_revisions_and_query_strings(source: str, expected: bool):
     assert _is_safetensors_source(source) is expected

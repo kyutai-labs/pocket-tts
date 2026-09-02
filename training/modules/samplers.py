@@ -42,7 +42,7 @@ class FlowMatching(FlowType):
 
     num_time_conds = 1
 
-    def __init__(self, sig_min: float = 0.001) -> None:
+    def __init__(self, sig_min: float = 0.001):
         super().__init__()
         self.sig_min = sig_min
 
@@ -81,7 +81,7 @@ class LSD(FlowType):
         normalize: bool = True,
         stopgrad_type: Literal["classic", "minimal"] = "minimal",
         distill_prob: float = 0.25,
-    ) -> None:
+    ):
         super().__init__()
         assert 0.0 < distill_prob <= 1.0, distill_prob
         # The self-distillation term costs ~2 extra flow-net forwards (jvp +

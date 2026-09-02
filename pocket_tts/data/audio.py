@@ -63,7 +63,7 @@ def _audio_read_with_soundfile(filepath: Path) -> tuple[torch.Tensor, int]:
 class StreamingWAVWriter:
     """WAV writer using Python's standard library wave module."""
 
-    def __init__(self, output_stream: BinaryIO, sample_rate: int) -> None:
+    def __init__(self, output_stream: BinaryIO, sample_rate: int):
         self.output_stream = output_stream
         self.sample_rate = sample_rate
         self.wave_writer: wave.Wave_write | None = None
@@ -76,7 +76,7 @@ class StreamingWAVWriter:
             raise RuntimeError("write_header() must be called before writing audio")
         return self.wave_writer
 
-    def write_header(self, sample_rate: int) -> None:
+    def write_header(self, sample_rate: int):
         """Initialize WAV writer with header."""
         # For stdout streaming, we need to handle the unseekable stream case
         # The wave module supports unseekable streams since Python 3.4
@@ -88,7 +88,7 @@ class StreamingWAVWriter:
         if not self.is_seekable:
             self.wave_writer.setnframes(1_000_000_000)
 
-    def write_pcm_data(self, audio_chunk: torch.Tensor) -> None:
+    def write_pcm_data(self, audio_chunk: torch.Tensor):
         """Write PCM data using wave module."""
         # Convert to int16 PCM bytes
         chunk_int16 = (audio_chunk.clamp(-1, 1) * 32767).short()
@@ -108,12 +108,12 @@ class StreamingWAVWriter:
         # Use writeframesraw to avoid frame count validation for streaming
         self._writer.writeframesraw(chunk_bytes)
 
-    def _flush(self) -> None:
+    def _flush(self):
         if self.first_chunk_buffer is not None:
             self._writer.writeframesraw(b"".join(self.first_chunk_buffer))
             self.first_chunk_buffer = None
 
-    def finalize(self) -> None:
+    def finalize(self):
         """Close the wave writer."""
         self._flush()
 
@@ -147,7 +147,7 @@ def _is_seekable(obj: object) -> bool:
 
 def stream_audio_chunks(
     path: str | Path | BinaryIO | None, audio_chunks: Iterator[torch.Tensor], sample_rate: int
-) -> None:
+):
     """Stream audio chunks to a WAV file or stdout, optionally playing them."""
     f: BinaryIO | nullcontext[None]
     if path == "-":

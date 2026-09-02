@@ -24,7 +24,7 @@ TEST_VOICE = "alba"
 runner = CliRunner()
 
 
-def test_quantized_model_produces_audio() -> None:
+def test_quantized_model_produces_audio():
     model = TTSModel.load_model(quantize=True)
     voice_state = model.get_state_for_audio_prompt(TEST_VOICE)
     audio = model.generate_audio(voice_state, SHORT_TEXT)
@@ -35,7 +35,7 @@ def test_quantized_model_produces_audio() -> None:
     assert audio.abs().max() > 0, "Audio is silent"
 
 
-def test_quantize_flag_applies_quantization() -> None:
+def test_quantize_flag_applies_quantization():
     model_q = TTSModel.load_model(quantize=True)
     model_b = TTSModel.load_model(quantize=False)
     # Quantized model's Linear layers should have different weight types than baseline
@@ -50,7 +50,7 @@ def test_quantize_flag_applies_quantization() -> None:
     )
 
 
-def test_cli_quantize_flag(tmp_path: Path) -> None:
+def test_cli_quantize_flag(tmp_path: Path):
     output_file = tmp_path / "quantized_output.wav"
     result = runner.invoke(
         cli_app,
@@ -59,6 +59,6 @@ def test_cli_quantize_flag(tmp_path: Path) -> None:
     assert result.exit_code == 0, f"CLI failed: {result.output}"
 
 
-def test_backend_detection() -> None:
+def test_backend_detection():
     backend = _get_backend()
     assert backend in ("torchao", "torch.ao")

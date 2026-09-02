@@ -63,7 +63,7 @@ LatentQueue = queue.Queue[torch.Tensor | None]
 ResultQueue = queue.Queue[tuple[str, Any]]
 
 
-def stamp_state_names(tts_model: "TTSModel") -> None:
+def stamp_state_names(tts_model: "TTSModel"):
     """StatefulModules find their slice of the state dict by absolute name."""
     for top_module in (tts_model.flow_lm, tts_model.mimi):
         for module_name, module in top_module.named_modules():
@@ -97,7 +97,7 @@ class TTSModel(nn.Module):
         pad_with_spaces_for_short_inputs: bool = False,
         model_recommended_frames_after_eos: int | None = None,
         remove_semicolons: bool = False,
-    ) -> None:
+    ):
         super().__init__()
         self.flow_lm = flow_lm
         self.temp = temp
@@ -150,7 +150,7 @@ class TTSModel(nn.Module):
 
     has_custom_weights: bool = False
 
-    def load_training_checkpoint(self, path: str | Path, use_ema: bool = True) -> None:
+    def load_training_checkpoint(self, path: str | Path, use_ema: bool = True):
         """Load weights from a training checkpoint (.pt) into a config-built model."""
         self.has_custom_weights = True
         flow_lm_state, mimi_state = get_training_checkpoint_state_dicts(Path(path), use_ema)
@@ -429,7 +429,7 @@ class TTSModel(nn.Module):
         )
         return output_embeddings[:, None, :], is_eos
 
-    def _decode_and_dump(self, encoded: torch.Tensor, filename: str) -> None:
+    def _decode_and_dump(self, encoded: torch.Tensor, filename: str):
         mimi_state = init_states(self.mimi, batch_size=1, sequence_length=10000)
         resored_audio = self.mimi.decode_from_latent(encoded, mimi_state)
         scipy.io.wavfile.write(filename, self.sample_rate, resored_audio.numpy())
@@ -446,7 +446,7 @@ class TTSModel(nn.Module):
         conditioning = F.linear(latents, self.flow_lm.speaker_proj_weight)
         return conditioning
 
-    def _expand_kv_cache(self, model_state: ModelState, sequence_length: int) -> None:
+    def _expand_kv_cache(self, model_state: ModelState, sequence_length: int):
         """Expand KV cache back to full sequence_length for generation.
 
         When a model state is retrieved from cache with sliced KV caches,
@@ -496,7 +496,7 @@ class TTSModel(nn.Module):
         result_queue: ResultQueue,
         mimi_sequence_length: int,
         mimi_steps_per_latent: int,
-    ) -> None:
+    ):
         """Worker thread function for decoding audio latents from queue with immediate streaming."""
         try:
             audio_chunks = []
@@ -774,7 +774,7 @@ class TTSModel(nn.Module):
         frames_after_eos: int,
         latents_queue: LatentQueue,
         result_queue: ResultQueue,
-    ) -> None:
+    ):
         token_count = prepared.shape[1]
         current_end = self._flow_lm_current_end(model_state)
         required_len = current_end + token_count + max_gen_len
@@ -783,7 +783,7 @@ class TTSModel(nn.Module):
         with display_execution_time("Prompting text"):
             self._run_flow_lm_and_increment_step(model_state=model_state, text_tokens=prepared)
 
-        def run_generation() -> None:
+        def run_generation():
             try:
                 self._autoregressive_generation(
                     model_state, max_gen_len, frames_after_eos, latents_queue
@@ -808,7 +808,7 @@ class TTSModel(nn.Module):
         max_gen_len: int,
         frames_after_eos: int,
         latents_queue: LatentQueue,
-    ) -> None:
+    ):
         backbone_input = torch.full(
             (1, 1, self.flow_lm.ldim),
             fill_value=float("NaN"),

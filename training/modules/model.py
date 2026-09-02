@@ -30,7 +30,7 @@ class TrainableTTS(nn.Module):
     # (see build_models); None otherwise.
     distill_teacher: FlowLMModel | None
 
-    def __init__(self, flow_lm: FlowLMModel, flow: FlowType, args: TrainArgs) -> None:
+    def __init__(self, flow_lm: FlowLMModel, flow: FlowType, args: TrainArgs):
         super().__init__()
         self.flow_lm = flow_lm
         self.flow = flow
@@ -42,7 +42,7 @@ class TrainableTTS(nn.Module):
     def ldim(self) -> int:
         return self.flow_lm.ldim
 
-    def _update_latent_stats(self, latents: torch.Tensor, mask: torch.Tensor) -> None:
+    def _update_latent_stats(self, latents: torch.Tensor, mask: torch.Tensor):
         fl = self.flow_lm
         with torch.no_grad():
             sel = latents[mask]

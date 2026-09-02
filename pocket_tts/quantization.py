@@ -45,7 +45,7 @@ def _get_backend() -> str:
     return "torch.ao"
 
 
-def _quantize_module_torchao(module: nn.Module) -> None:
+def _quantize_module_torchao(module: nn.Module):
     """Apply int8 dynamic quantization using torchao."""
     from torchao.quantization import (  # ty: ignore[unresolved-import]  -- optional extra
         Int8DynamicActivationInt8WeightConfig,
@@ -55,7 +55,7 @@ def _quantize_module_torchao(module: nn.Module) -> None:
     quantize_(module, Int8DynamicActivationInt8WeightConfig())
 
 
-def _ensure_quantization_engine() -> None:
+def _ensure_quantization_engine():
     """Set the quantization engine for torch.ao (QNNPACK for ARM, FBGEMM for x86)."""
     if platform.machine() in ("arm64", "aarch64"):
         torch.backends.quantized.engine = "qnnpack"
@@ -94,7 +94,7 @@ def apply_dynamic_int8(flow_lm: FlowLMModel, quantize_groups: set[str]) -> FlowL
     return flow_lm
 
 
-def _apply_torchao(flow_lm: FlowLMModel, quantize_groups: set[str]) -> None:
+def _apply_torchao(flow_lm: FlowLMModel, quantize_groups: set[str]):
     """Apply quantization using torchao backend."""
     if "flow_net" in quantize_groups:
         _quantize_module_torchao(flow_lm.flow_net)
@@ -113,7 +113,7 @@ def _apply_torchao(flow_lm: FlowLMModel, quantize_groups: set[str]) -> None:
             layer.linear2 = wrapper2[0]
 
 
-def _apply_torch_ao(flow_lm: FlowLMModel, quantize_groups: set[str]) -> None:
+def _apply_torch_ao(flow_lm: FlowLMModel, quantize_groups: set[str]):
     """Apply quantization using deprecated torch.ao backend (fallback)."""
     from torch.ao.quantization import quantize_dynamic
 

@@ -29,7 +29,7 @@ class MimiModel(nn.Module):
         outer_dim: int | None,
         encoder_transformer: ProjectedTransformer,
         decoder_transformer: ProjectedTransformer,
-    ) -> None:
+    ):
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder

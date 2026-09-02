@@ -51,7 +51,7 @@ def load_model_config(path: str, overrides: dict[str, tp.Any]) -> Config:
     return Config(**raw)
 
 
-def attach_distillation(model: TrainableTTS, flow_lm: FlowLMModel, args: TrainArgs) -> None:
+def attach_distillation(model: TrainableTTS, flow_lm: FlowLMModel, args: TrainArgs):
     """Give `model` a frozen teacher and freeze what distillation must not move.
 
     Two shapes share this path: a separately trained (usually deeper) teacher

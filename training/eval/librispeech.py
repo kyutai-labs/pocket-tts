@@ -397,7 +397,7 @@ def _shard_worker(
     return score_items(items, torch.device("cuda", device_idx), args)
 
 
-def main() -> None:
+def main():
     logging.basicConfig(
         level=logging.INFO,
         format="[%(asctime)s %(levelname)s %(name)s] %(message)s",

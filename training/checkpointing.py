@@ -19,14 +19,14 @@ logger = logging.getLogger(__name__)
 
 
 class EMA:
-    def __init__(self, model: nn.Module, decay: float) -> None:
+    def __init__(self, model: nn.Module, decay: float):
         self.decay = decay
         self.shadow = {
             k: p.detach().clone().float() for k, p in model.named_parameters() if p.requires_grad
         }
         self._tracked: tuple[list[torch.Tensor], list[torch.Tensor]] | None = None
 
-    def update(self, model: nn.Module) -> None:
+    def update(self, model: nn.Module):
         with torch.no_grad():
             if self._tracked is None:
                 named = dict(model.named_parameters())
@@ -40,7 +40,7 @@ class EMA:
     def state_dict(self) -> dict[str, torch.Tensor]:
         return self.shadow
 
-    def load_state_dict(self, state: dict[str, torch.Tensor]) -> None:
+    def load_state_dict(self, state: dict[str, torch.Tensor]):
         self._tracked = None
         # The shadow ends up holding exactly what the checkpoint stored. Keys the
         # checkpoint does not carry are dropped rather than left at their freshly
@@ -68,7 +68,7 @@ def save_checkpoint(
     ema: EMA | None,
     num_keep: int,
     mimi: nn.Module | None = None,
-) -> None:
+):
     """Write the resumable training state; with `mimi`, also refresh the
     pocket-tts-format export (run_dir/model.safetensors)."""
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -131,7 +131,7 @@ def load_checkpoint(
 
 def export_pocket_safetensors(
     path: Path, flow_lm: nn.Module, mimi: nn.Module, ema: EMA | None = None
-) -> None:
+):
     flow_state = {k: v.detach().float().cpu() for k, v in flow_lm.state_dict().items()}
     if ema is not None:
         for k, v in ema.shadow.items():

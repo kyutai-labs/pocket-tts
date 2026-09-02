@@ -155,7 +155,7 @@ def load_and_quantize_model(config_id: str) -> tuple[TTSModel, float, float]:
     return tts_model, load_time, model_size
 
 
-def save_audio(audio_tensor: torch.Tensor, sample_rate: int, output_path: Path) -> None:
+def save_audio(audio_tensor: torch.Tensor, sample_rate: int, output_path: Path):
     """Save audio tensor to WAV file."""
     audio_np = audio_tensor.numpy() if hasattr(audio_tensor, "numpy") else np.array(audio_tensor)
     audio_int16 = (audio_np * 32767).clip(-32768, 32767).astype(np.int16)
@@ -407,7 +407,7 @@ def run_config(config_id: str, output_dir: Path, voices: list[str]) -> ConfigSum
 # ---------------------------------------------------------------------------
 
 
-def write_csv(summaries: list[ConfigSummary], output_dir: Path) -> None:
+def write_csv(summaries: list[ConfigSummary], output_dir: Path):
     csv_path = output_dir / "results.csv"
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(
@@ -445,7 +445,7 @@ def write_csv(summaries: list[ConfigSummary], output_dir: Path) -> None:
     logger.info("CSV written: %s", csv_path)
 
 
-def write_quality_csv(summaries: list[ConfigSummary], output_dir: Path) -> None:
+def write_quality_csv(summaries: list[ConfigSummary], output_dir: Path):
     csv_path = output_dir / "quality_results.csv"
     rows = []
     for s in summaries:
@@ -460,7 +460,7 @@ def write_quality_csv(summaries: list[ConfigSummary], output_dir: Path) -> None:
     logger.info("Quality CSV written: %s", csv_path)
 
 
-def write_markdown_report(summaries: list[ConfigSummary], output_dir: Path) -> None:
+def write_markdown_report(summaries: list[ConfigSummary], output_dir: Path):
     report_path = output_dir / "report.md"
     lines = [
         "# pocket-tts int8 Quantization Evaluation Report",
@@ -518,7 +518,7 @@ def write_markdown_report(summaries: list[ConfigSummary], output_dir: Path) -> N
     logger.info("Report written: %s", report_path)
 
 
-def write_json_summary(summaries: list[ConfigSummary], output_dir: Path) -> None:
+def write_json_summary(summaries: list[ConfigSummary], output_dir: Path):
     json_path = output_dir / "summary.json"
     json_path.write_text(json.dumps([asdict(s) for s in summaries], indent=2))
     logger.info("JSON summary written: %s", json_path)
@@ -529,7 +529,7 @@ def write_json_summary(summaries: list[ConfigSummary], output_dir: Path) -> None
 # ---------------------------------------------------------------------------
 
 
-def main() -> None:
+def main():
     parser = argparse.ArgumentParser(description="Evaluate pocket-tts quantization configs")
     parser.add_argument("--config", nargs="+", choices=list(CONFIGS.keys()))
     parser.add_argument("--all-configs", action="store_true")

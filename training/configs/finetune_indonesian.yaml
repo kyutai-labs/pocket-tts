@@ -1,0 +1,53 @@
+# Indonesian teacher: finetune_language.yaml (released English 24L weights, fresh
+# text embedding) with the batch split a 15 GB Tesla T4 can hold and the LEMAS
+# manifests from training/scripts/prepare_lemas.py.
+#
+# The T4 is pre-Ampere, so train.py autocasts in fp16 with a GradScaler here --
+# bf16 has no tensor cores on sm75 and runs 11x slower.
+model_config: pocket_tts/config/english_2026-04_24l.yaml
+model_overrides:
+  # Fitted on data/id_train_punct.jsonl by train_tokenizer.py; 4000 pieces, so
+  # lookup_table.n_bins needs no override.
+  flow_lm.lookup_table.tokenizer_path: data/tokenizer_id.model
+start_from_pretrained: true
+reset_text_embedding: true  # Indonesian tokenizer, not the one these weights saw
+
+data:
+  train_jsonl: data/id_train_punct.jsonl
+  valid_jsonl: data/id_valid_punct.jsonl
+  max_duration_sec: 30.0
+  max_voice_prompt_sec: 5.0
+  loader_procs: 6  # 32 cores, and every sample is two mp3 decodes
+
+flow:
+  type: lsd
+  kwargs: {}
+
+flow_batch_multiplier: 4
+eos_loss_weight: 0.1
+text_dropout: 0.2
+voice_dropout: 0.2
+
+optim:
+  lr: 2e-4
+  schedule: constant
+  warmup_steps: 1000
+
+run_dir: runs/indonesian
+# Effective batch 64 (the minimum the acoustic-quality flip needs), reached by
+# accumulation because ~10 GB of the T4 is free.
+batch_size: 4
+grad_accum_steps: 16
+max_steps: 250000  # WER plateaus by ~15k; the rest is acoustic quality
+stats_ema_steps: 1000
+ema_decay: 0.999
+log_freq: 50
+valid_freq: 2500
+ckpt_freq: 2500
+num_ckpt_keep: 3
+sample_freq: 2500
+sample_cfg_coef: 2.0
+sample_sentences:
+  - Selamat pagi, semoga hari Anda menyenangkan.
+  - Ibu kota Indonesia adalah Jakarta, kota terbesar di Asia Tenggara.
+  - Model ini masih dilatih, jadi suaranya belum sempurna.

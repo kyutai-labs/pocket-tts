@@ -169,8 +169,11 @@ def ensure_train_latents(args: TrainArgs, mimi, device, rank: int, world_size: i
         if json.loads(meta_path.read_text()).get("mimi_hash") != current:
             return False
         # A manifest from an older layout (no latents_file field) would send
-        # rows down the audio path and crash the latent collate.
-        first = latents_manifest.read_text().split("\n", 1)[0]
+        # rows down the audio path and crash the latent collate. Read only the
+        # first line: read_text() would materialize the whole manifest (tens
+        # of GB for large corpora) in every rank at once.
+        with latents_manifest.open() as f:
+            first = f.readline()
         return "latents_file" in json.loads(first)
 
     if not is_fresh():

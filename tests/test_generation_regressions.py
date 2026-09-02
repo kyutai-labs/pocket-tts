@@ -20,9 +20,11 @@ def test_generate_audio_stream_uses_prepared_chunk_text(monkeypatch: pytest.Monk
         max_tokens: int,
         pad_with_spaces_for_short_inputs: bool,
         remove_semicolons: bool,
+        append_terminal_punctuation: bool,
     ) -> list[str]:
         assert text_to_generate == "hi"
         assert pad_with_spaces_for_short_inputs is True
+        assert append_terminal_punctuation is True
         return ["hi"]
 
     def fake_generate_audio_stream_short_text(**kwargs: object) -> Iterator[torch.Tensor]:
@@ -39,6 +41,7 @@ def test_generate_audio_stream_uses_prepared_chunk_text(monkeypatch: pytest.Monk
             model_recommended_frames_after_eos=None,
             pad_with_spaces_for_short_inputs=True,
             remove_semicolons=False,
+            append_terminal_punctuation=True,
             _generate_audio_stream_short_text=fake_generate_audio_stream_short_text,
         ),
     )

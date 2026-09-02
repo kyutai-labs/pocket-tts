@@ -295,6 +295,11 @@ uvx pocket-tts generate --config hf://user/repo/config_file.yaml@commit_hash
 uvx pocket-tts generate --config hf://vvolhejn/pocket-tts-czech/czech.yaml@7b7760dd0fe994a0800f2fdbc837dc4b8f219d1c
 ```
 
+- [Pocket TTS Hindi](https://huggingface.co/saryps-labs/pocket-tts-hindi) by [Saryps Labs](https://huggingface.co/saryps-labs) (community research release):
+```bash
+uvx pocket-tts generate --config hf://saryps-labs/pocket-tts-hindi/config.yaml@dbaa326069d20bfbdaeb625613736773741a24ea
+```
+
 Want your model here? Head to the [training Readme](https://github.com/kyutai-labs/pocket-tts/blob/main/training/README.md) to get started!
 
 ## Projects using Pocket TTS

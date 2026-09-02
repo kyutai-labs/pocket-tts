@@ -2,7 +2,7 @@
 
 import pytest
 
-from pocket_tts.models.tts_model import split_into_best_sentences
+from pocket_tts.models.tts_model import prepare_text_prompt, split_into_best_sentences
 from pocket_tts.modules.text_conditioner import SentencePieceTokenizer, get_default_tokenizer
 
 
@@ -126,6 +126,16 @@ def test_empty_string_raises(tokenizer: SentencePieceTokenizer):
         split_into_best_sentences(
             tokenizer, "", 50, pad_with_spaces_for_short_inputs=False, remove_semicolons=False
         )
+
+
+def test_terminal_punctuation_can_be_disabled_for_punctuation_free_training():
+    text, _ = prepare_text_prompt(
+        "नमस्ते आज आपका दिन कैसा रहा",
+        pad_with_spaces_for_short_inputs=False,
+        remove_semicolons=False,
+        append_terminal_punctuation=False,
+    )
+    assert text == "नमस्ते आज आपका दिन कैसा रहा"
 
 
 def test_decimals_are_not_split_on_period(tokenizer: SentencePieceTokenizer):

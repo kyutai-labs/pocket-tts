@@ -12,7 +12,10 @@ logger = logging.getLogger(__name__)
 
 
 def prepare_text_prompt(
-    text: str, pad_with_spaces_for_short_inputs: bool, remove_semicolons: bool
+    text: str,
+    pad_with_spaces_for_short_inputs: bool,
+    remove_semicolons: bool,
+    append_terminal_punctuation: bool = True,
 ) -> tuple[str, int]:
     text = text.strip()
     if text == "":
@@ -32,7 +35,7 @@ def prepare_text_prompt(
 
     # Let's make sure it ends with some kind of punctuation
     # If it ends with a letter or digit, we add a period.
-    if text[-1].isalnum():
+    if append_terminal_punctuation and text[-1].isalnum():
         text = text + "."
 
     # The model does not perform well when there are very few tokens, so
@@ -110,9 +113,13 @@ def split_into_best_sentences(
     max_tokens: int,
     pad_with_spaces_for_short_inputs: bool,
     remove_semicolons: bool,
+    append_terminal_punctuation: bool = True,
 ) -> list[str]:
     text_to_generate, _ = prepare_text_prompt(
-        text_to_generate, pad_with_spaces_for_short_inputs, remove_semicolons
+        text_to_generate,
+        pad_with_spaces_for_short_inputs,
+        remove_semicolons,
+        append_terminal_punctuation,
     )
     text_to_generate = text_to_generate.strip()
     tokens = tokenizer(text_to_generate)

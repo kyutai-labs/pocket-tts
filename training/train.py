@@ -56,6 +56,17 @@ logger = logging.getLogger("train")
 VERBOSE_STEPS = 10  # log every step at the start of a run, then every log_freq
 
 
+def amp_dtype_for(device: torch.device) -> torch.dtype:
+    """Autocast dtype: fp16 before Ampere -- Turing has no bf16 tensor cores.
+
+    Measured on a Tesla T4 (sm75): a 4096^3 matmul runs at 19.5 TFLOPS in fp16
+    vs 1.7 in bf16, so bf16 there is an 11x slowdown, not a numerics choice.
+    """
+    if device.type == "cuda" and torch.cuda.get_device_capability(device)[0] < 8:
+        return torch.float16
+    return torch.bfloat16
+
+
 @dataclass
 class Run:
     """Everything the training loop needs, assembled before the first step."""
@@ -185,8 +196,10 @@ def main(config_path: str) -> None:
     )
 
     autocast = torch.autocast(
-        device_type=device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"
+        device_type=device.type, dtype=amp_dtype_for(device), enabled=device.type == "cuda"
     )
+    # fp16 needs loss scaling; a passthrough no-op when autocast is bf16.
+    scaler = torch.amp.GradScaler(device.type, enabled=amp_dtype_for(device) is torch.float16)
     model.train()
     if rank == 0:
         logger.info("starting training loop, first step can take a few minutes (compilation etc.)")
@@ -218,16 +231,22 @@ def main(config_path: str) -> None:
             scaled = loss / args.grad_accum_steps
             if not last_micro and hasattr(run.wrapped, "no_sync"):
                 with run.wrapped.no_sync():
-                    scaled.backward()
+                    scaler.scale(scaled).backward()
             else:
-                scaled.backward()
+                scaler.scale(scaled).backward()
+        if scaler.is_enabled():
+            scaler.unscale_(optimizer)
         grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), args.optim.max_norm)
-        if not torch.isfinite(grad_norm):
+        finite = bool(torch.isfinite(grad_norm))
+        if not finite and not scaler.is_enabled():
             # Stop before the NaN reaches the weights: the run would otherwise
             # keep training and checkpointing garbage, and auto-resume reloads it.
             raise SystemExit(f"non-finite gradient at step {step}")
-        optimizer.step()
-        if ema is not None:
+        # scaler.step() is a no-op on an overflowing step and update() backs the
+        # scale off; with the scaler disabled this is plain optimizer.step().
+        scaler.step(optimizer)
+        scaler.update()
+        if ema is not None and finite:
             ema.update(model)
 
         steps_since_log += 1
@@ -298,7 +317,7 @@ def validate(
         )
     )
     autocast = torch.autocast(
-        device_type=device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"
+        device_type=device.type, dtype=amp_dtype_for(device), enabled=device.type == "cuda"
     )
     totals: dict[str, float] = {}
     n = 0

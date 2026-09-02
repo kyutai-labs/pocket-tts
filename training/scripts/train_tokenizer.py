@@ -54,6 +54,14 @@ def main(
         float, typer.Option(help="lower to 0.9995 for large-alphabet languages (e.g. CJK)")
     ] = 1.0,
     model_type: Annotated[Literal["bpe", "unigram", "char"], typer.Option()] = "bpe",
+    normalization_rule_name: Annotated[
+        str,
+        typer.Option(
+            help="sentencepiece normalizer baked into the .model; 'nmt_nfkc_cf' adds "
+            "case folding, so capitalised text at inference time maps onto pieces "
+            "fitted on lowercased transcripts"
+        ),
+    ] = "nmt_nfkc",
 ) -> None:
     Path(output_prefix).parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as tmp:
@@ -69,6 +77,7 @@ def main(
         vocab_size=vocab_size,
         character_coverage=character_coverage,
         model_type=model_type,
+        normalization_rule_name=normalization_rule_name,
     )
     sp = spm.SentencePieceProcessor(model_file=output_prefix + ".model")
     print(f"wrote {output_prefix}.model (vocab {sp.get_piece_size()})")

@@ -225,6 +225,7 @@ def latents_to_wav(mimi, latents: torch.Tensor, device) -> torch.Tensor | None:
 
 def score_items(items: list[dict], device, args) -> tuple[list[dict], int]:
     """Generate and score `items` on one device. Returns per-item records."""
+    from whisper_normalizer.basic import BasicTextNormalizer
     from whisper_normalizer.english import EnglishTextNormalizer
 
     model, mimi, step = load_run(
@@ -234,7 +235,10 @@ def score_items(items: list[dict], device, args) -> tuple[list[dict], int]:
     # difference between two evals is a real difference and not noise.
     torch.manual_seed(args.seed)
 
-    normalize = EnglishTextNormalizer()
+    # EnglishTextNormalizer applies English spelling and contraction rules, so a
+    # non-English eval wants the language-agnostic one (what Whisper's own
+    # multilingual evals use).
+    normalize = EnglishTextNormalizer() if args.normalizer == "english" else BasicTextNormalizer()
     transcribe = build_transcriber(args.asr, device)
 
     spk = None
@@ -418,6 +422,12 @@ def main() -> None:
         "lower it if you run out of memory, 1 falls back to the per-item path)",
     )
     parser.add_argument("--seed", type=int, default=0, help="sampling seed, per shard")
+    parser.add_argument(
+        "--normalizer",
+        choices=("english", "basic"),
+        default="english",
+        help="text normalization before scoring WER; use 'basic' for any non-English eval",
+    )
     parser.add_argument(
         "--voice-sec",
         type=float,

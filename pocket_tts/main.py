@@ -80,7 +80,7 @@ async def health():
     return {"status": "healthy"}
 
 
-def write_to_queue(queue, text_to_generate, model_state):
+def write_to_queue(queue, text_to_generate, model_state, stop):
     """Allows writing to the StreamingResponse as if it were a file."""
 
     class FileLikeToQueue(io.IOBase):
@@ -97,28 +97,33 @@ def write_to_queue(queue, text_to_generate, model_state):
             self.queue.put(None)
 
     audio_chunks = tts_model.generate_audio_stream(
-        model_state=model_state, text_to_generate=text_to_generate
+        model_state=model_state, text_to_generate=text_to_generate, stop=stop
     )
     stream_audio_chunks(FileLikeToQueue(queue), audio_chunks, tts_model.config.mimi.sample_rate)
 
 
 def generate_data_with_state(text_to_generate: str, model_state: dict):
     queue = Queue()
+    stop = threading.Event()
 
     # Run your function in a thread
-    thread = threading.Thread(target=write_to_queue, args=(queue, text_to_generate, model_state))
+    thread = threading.Thread(
+        target=write_to_queue, args=(queue, text_to_generate, model_state, stop)
+    )
     thread.start()
 
-    # Yield data as it becomes available
-    i = 0
-    while True:
-        data = queue.get()
-        if data is None:
-            break
-        i += 1
-        yield data
-
-    thread.join()
+    try:
+        # Yield data as it becomes available
+        while True:
+            data = queue.get()
+            if data is None:
+                break
+            yield data
+    finally:
+        # Also runs when the client disconnects: stop the generation instead of
+        # finishing it for nobody, and make sure the worker is done with the model.
+        stop.set()
+        thread.join()
 
 
 @web_app.post("/tts")

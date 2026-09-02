@@ -590,6 +590,7 @@ class TTSModel(nn.Module):
         max_tokens: int = MAX_TOKEN_PER_CHUNK,
         frames_after_eos: int | None = None,
         copy_state: bool = True,
+        stop: threading.Event | None = None,
     ):
         """Generate audio streaming chunks from text input.
 
@@ -612,6 +613,9 @@ class TTSModel(nn.Module):
             copy_state: Whether to create a deep copy of the model state before
                 generation. If True, preserves the original state for reuse.
                 If False, modifies the input state in-place. Defaults to True.
+            stop: Optional event for cancelling the generation, for instance
+                when the user interrupts the playback. Once set, no new frames
+                are generated and the stream ends early.
 
         Yields:
             torch.Tensor: Audio chunks with shape [samples] at the model's
@@ -643,6 +647,8 @@ class TTSModel(nn.Module):
         """
         if frames_after_eos is None:
             frames_after_eos = self.model_recommended_frames_after_eos
+        if stop is None:
+            stop = threading.Event()
 
         # This is a very simplistic way of handling long texts. We could do much better
         # by using teacher forcing, but it would be a bit slower.
@@ -657,6 +663,8 @@ class TTSModel(nn.Module):
         )
 
         for chunk in chunks:
+            if stop.is_set():
+                break
             text_to_generate, frames_after_eos_guess = prepare_text_prompt(
                 chunk, self.pad_with_spaces_for_short_inputs, self.remove_semicolons
             )
@@ -669,11 +677,17 @@ class TTSModel(nn.Module):
                 text_to_generate=text_to_generate,
                 frames_after_eos=effective_frames,
                 copy_state=copy_state,
+                stop=stop,
             )
 
     @torch.no_grad
     def _generate_audio_stream_short_text(
-        self, model_state: dict, text_to_generate: str, frames_after_eos: int, copy_state: bool
+        self,
+        model_state: dict,
+        text_to_generate: str,
+        frames_after_eos: int,
+        copy_state: bool,
+        stop: threading.Event,
     ):
         if copy_state:
             model_state = copy.deepcopy(model_state)
@@ -706,6 +720,7 @@ class TTSModel(nn.Module):
             frames_after_eos=frames_after_eos,
             latents_queue=latents_queue,
             result_queue=result_queue,
+            stop=stop,
         )
 
         # Stream audio chunks as they become available
@@ -754,6 +769,7 @@ class TTSModel(nn.Module):
         frames_after_eos: int,
         latents_queue: queue.Queue,
         result_queue: queue.Queue,
+        stop: threading.Event,
     ):
         token_count = prepared.shape[1]
         current_end = self._flow_lm_current_end(model_state)
@@ -766,7 +782,7 @@ class TTSModel(nn.Module):
         def run_generation():
             try:
                 self._autoregressive_generation(
-                    model_state, max_gen_len, frames_after_eos, latents_queue
+                    model_state, max_gen_len, frames_after_eos, latents_queue, stop
                 )
             except Exception as e:
                 logger.error(f"Error in autoregressive generation: {e}")
@@ -783,7 +799,12 @@ class TTSModel(nn.Module):
 
     @torch.no_grad
     def _autoregressive_generation(
-        self, model_state: dict, max_gen_len: int, frames_after_eos: int, latents_queue: queue.Queue
+        self,
+        model_state: dict,
+        max_gen_len: int,
+        frames_after_eos: int,
+        latents_queue: queue.Queue,
+        stop: threading.Event,
     ):
         backbone_input = torch.full(
             (1, 1, self.flow_lm.ldim),
@@ -794,6 +815,8 @@ class TTSModel(nn.Module):
         steps_times = []
         eos_step = None
         for generation_step in range(max_gen_len):
+            if stop.is_set():
+                break
             with display_execution_time("Generating latent", print_output=False) as timer:
                 next_latent, is_eos = self._run_flow_lm_and_increment_step(
                     model_state=model_state, backbone_input_latents=backbone_input
@@ -816,7 +839,8 @@ class TTSModel(nn.Module):
 
         # Add sentinel value to signal end of generation
         latents_queue.put(None)
-        logger.info("Average generation step time: %d ms", int(statistics.mean(steps_times)))
+        if steps_times:
+            logger.info("Average generation step time: %d ms", int(statistics.mean(steps_times)))
 
     @lru_cache(maxsize=2)
     def _cached_get_state_for_audio_prompt(

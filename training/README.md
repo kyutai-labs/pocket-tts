@@ -189,6 +189,11 @@ can expect:
 | 1 x H100 | 64 | 7.61 | 9.7 GiB | ~7.3 h |
 | 8 x H100 | 8 | 23.40 | 5.7 GiB | ~2.4 h |
 
+These rates need the loader to keep up: at 64 sequences per GPU one rank consumes ~490
+samples/s, and each loader subprocess delivers ~90 samples/s, so the default of 6
+`data.loader_procs` is what the 1 x H100 row assumes (with 3 processes the same run
+measures 4.4 steps/s).
+
 ### Training format
 
 By default, the training saves:

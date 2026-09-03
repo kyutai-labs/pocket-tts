@@ -307,7 +307,6 @@ uvx pocket-tts generate \
 ```bash
 uvx pocket-tts generate \
   --config hf://seastar105/pocket-tts-korean-300m/korean.yaml@df328c817a02866f20a6f74e5183e0a1fc6f6435 \
-  --voice ./voice_prompt.wav \
   --text "안녕하세요. 한국어 음성 합성 모델입니다."
 ```
 

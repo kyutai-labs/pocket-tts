@@ -267,6 +267,7 @@ We don't have official support for this yet, but you can try out one of these co
 - [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) by @csukuangfj - Run PocketTTS on **Windows, macOS, Linux**, and embedded boards (Raspberry Pi, Jetson, RK3588, etc.) with bindings for 12 programming languages: **C++, C, Python, JavaScript, Java, C#, Kotlin, Swift, Go, Dart, Rust, Pascal**, plus [WebAssembly](https://huggingface.co/spaces/k2-fsa/web-assembly-en-tts-pocket).
 - [pocket-tts-csharp](https://github.com/TheAjaykrishnanR/pocket-tts-csharp) by @TheAjaykrishnanR - A C# port of Pocket TTS implemented using [TorchSharp](https://github.com/dotnet/TorchSharp) and [TorchSharp.PyBridge](https://github.com/shaltielshmid/TorchSharp.PyBridge) for ease of use as a library in .NET projects.
 - [pocket-tts-timestamped](https://github.com/dpm63/pocket-tts-timestamped) by @dpm63 - A fork that adds support for word-level timestamps.
+- [Pocket-TTS-LiteRT](https://huggingface.co/mlboydaisuke/Pocket-TTS-LiteRT) by @john-rocky - LiteRT (.tflite) graphs that run on Android phone GPUs through the LiteRT CompiledModel API, ~1x real-time on a Pixel 8a, with Python and Kotlin usage snippets.
 
 ## Models trained by the community
 

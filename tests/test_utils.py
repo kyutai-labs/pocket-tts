@@ -1,7 +1,13 @@
+from pathlib import Path
+
+import pytest
+
 from pocket_tts.utils import utils
 
 
-def test_download_http_cache_suffix_ignores_query_string(monkeypatch, tmp_path):
+def test_download_http_cache_suffix_ignores_query_string(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
     class Response:
         content = b"data"
 

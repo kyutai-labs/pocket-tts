@@ -6,12 +6,6 @@ Usage:
 
 import os
 
-# The package-wide beartype claw must be disabled before pocket_tts is first
-# imported: dynamo cannot trace the beartype wrappers and `compile` defaults
-# to on. Export POCKET_TTS_NO_BEARTYPE=0 to force type checking back on
-# (requires `compile: false`).
-os.environ.setdefault("POCKET_TTS_NO_BEARTYPE", "1")
-
 # Utterances are variable-length, so the default caching allocator fragments and
 # a batch that fits can still fail to allocate; expandable segments keep the
 # reserved memory flat at no throughput cost. Set only from the entry point,
@@ -20,15 +14,18 @@ if __name__ == "__main__":
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 import logging
+import signal
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from types import FrameType
 
 import torch
 from torch import nn
 from torch.nn.parallel import DistributedDataParallel as DDP
 
+from pocket_tts.models.mimi import MimiModel
 from training.args import TrainArgs, dump_args, load_args, save_args
 from training.checkpointing import EMA, latest_checkpoint, load_checkpoint, save_checkpoint
 from training.dataloader import DataLoader, SubprocessDataLoader, encode_batch
@@ -41,10 +38,12 @@ from training.distributed import (
     shutdown_distributed,
 )
 from training.modules.builders import build_models
+from training.modules.model import TrainableTTS
 from training.train_utils import (
     ProgressLog,
     _compile_models,
     add_file_logging,
+    ensure_train_latents,
     git_commit,
     lr_at,
     setup_logging,
@@ -72,9 +71,9 @@ class Run:
     """Everything the training loop needs, assembled before the first step."""
 
     args: TrainArgs
-    model: nn.Module  # unwrapped, for EMA/checkpointing
+    model: TrainableTTS  # unwrapped, for EMA/checkpointing
     wrapped: nn.Module  # DDP-wrapped when distributed, else the model itself
-    mimi: nn.Module
+    mimi: MimiModel
     optimizer: torch.optim.Optimizer
     ema: EMA | None
     start_step: int
@@ -114,13 +113,19 @@ def setup(config_path: str) -> Run:
                 "    python -m training.scripts.prepare_data --hours 200\n"
                 "or point data.train_jsonl / data.valid_jsonl at your own manifests."
             )
-
+    if args.data.valid_jsonl and Path(args.data.valid_jsonl).with_suffix(".meta.json").exists():
+        raise SystemExit(
+            f"valid_jsonl is a precomputed-latents manifest: {args.data.valid_jsonl}\n"
+            "Validation must encode audio directly so its metrics stay exact and "
+            "comparable; point valid_jsonl at the original manifest."
+        )
     if rank == 0:
         save_args(args, run_dir / "args.yaml")
 
     model, mimi, _config = build_models(args)
     model.to(device)
     mimi.to(device)
+    ensure_train_latents(args, mimi, device, rank, world_size)
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     if rank == 0:
         logger.info(f"flow_lm + objective: {n_params / 1e6:.1f}M trainable params")
@@ -169,7 +174,7 @@ def setup(config_path: str) -> Run:
     )
 
 
-def main(config_path: str) -> None:
+def main(config_path: str):
     run = setup(config_path)
     # Unpacked for the hot loop; the thin ones stay run.* at their call sites.
     args, model, mimi = run.args, run.model, run.mimi
@@ -189,7 +194,10 @@ def main(config_path: str) -> None:
             args.data.max_voice_prompt_sec,
             rank,
             run.world_size,
-            seed=args.seed,
+            # Fold the resume step into the seed: the loader keeps no state
+            # across restarts, so a fixed seed would replay the same
+            # permutation from the top and bias coverage toward its head.
+            seed=args.seed + start_step,
             shuffle=args.data.shuffle,
             num_procs=args.data.loader_procs,
         )
@@ -201,6 +209,16 @@ def main(config_path: str) -> None:
     # fp16 needs loss scaling; a passthrough no-op when autocast is bf16.
     scaler = torch.amp.GradScaler(device.type, enabled=amp_dtype_for(device) is torch.float16)
     model.train()
+    # scancel sends SIGTERM 30s (KillWait) before SIGKILL; finish the step and
+    # checkpoint inside that window so a cancelled job resumes losslessly.
+    stop_requested = False
+
+    def _request_stop(signum: int, frame: FrameType | None):
+        nonlocal stop_requested
+        stop_requested = True
+
+    signal.signal(signal.SIGTERM, _request_stop)
+    signal.signal(signal.SIGUSR1, _request_stop)
     if rank == 0:
         logger.info("starting training loop, first step can take a few minutes (compilation etc.)")
     last_log = time.time()
@@ -229,7 +247,7 @@ def main(config_path: str) -> None:
             # Under DDP, allreduce only on the last micro-batch.
             last_micro = micro == args.grad_accum_steps - 1
             scaled = loss / args.grad_accum_steps
-            if not last_micro and hasattr(run.wrapped, "no_sync"):
+            if not last_micro and isinstance(run.wrapped, DDP):
                 with run.wrapped.no_sync():
                     scaler.scale(scaled).backward()
             else:
@@ -248,6 +266,21 @@ def main(config_path: str) -> None:
         scaler.update()
         if ema is not None and finite:
             ema.update(model)
+
+        stop = torch.tensor(float(stop_requested), device=device)
+        if run.world_size > 1:
+            torch.distributed.all_reduce(stop, op=torch.distributed.ReduceOp.MAX)
+        if stop.item():
+            if rank == 0:
+                logger.info(
+                    f"termination signal received: checkpointing step {step + 1} before exit"
+                )
+                save_checkpoint(
+                    args.run_dir, step + 1, model, optimizer, ema, args.num_ckpt_keep, mimi
+                )
+                progress.log("checkpoint", step + 1)
+            shutdown_distributed()
+            return
 
         steps_since_log += 1
         if rank == 0 and step == start_step and args.compile:
@@ -268,7 +301,8 @@ def main(config_path: str) -> None:
             logger.info(f"per-step logging done, logging every {args.log_freq} steps from now on")
 
         if sample_voice is None:
-            sample_voice = voice_prompt_latents[0].detach().clone()
+            n = int(num_voice_prompt_frames[0])
+            sample_voice = voice_prompt_latents[0, :n].detach().clone()
         if (
             rank == 0
             and args.sample_sentences
@@ -297,7 +331,13 @@ def main(config_path: str) -> None:
 
 @torch.no_grad()
 def validate(
-    model, mimi, args: TrainArgs, device, rank: int, world_size: int, step: int
+    model: TrainableTTS,
+    mimi: MimiModel,
+    args: TrainArgs,
+    device: torch.device,
+    rank: int,
+    world_size: int,
+    step: int,
 ) -> dict[str, float]:
     model.eval()
     tokenize = model.flow_lm.conditioner.tokenizer.sp.encode

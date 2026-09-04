@@ -6,6 +6,7 @@ and a teacher path pointing at an architecture the distill step cannot load.
 """
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -72,8 +73,9 @@ class TestArgValidation:
 
     def test_zero_frequencies_are_rejected(self):
         for field in ("valid_freq", "ckpt_freq", "log_freq"):
+            kwargs: dict[str, Any] = {field: 0}
             with pytest.raises(ValueError, match=field):
-                TrainArgs(**{field: 0})
+                TrainArgs(**kwargs)
 
     def test_distillation_without_a_teacher_is_rejected(self):
         with pytest.raises(ValueError, match="teacher"):

@@ -4,19 +4,23 @@ chapter share one manifest `path`, distinguished only by `start`."""
 import gzip
 import json
 from pathlib import Path
+from typing import Any
 
 import huggingface_hub
+import pytest
 
 from training.scripts import prepare_data
 
 
-def _write_jsonl(path, records):
+def _write_jsonl(path: Path, records: list[dict[str, Any]]):
     with open(path, "w") as f:
         for r in records:
             f.write(json.dumps(r) + "\n")
 
 
-def test_utterances_in_one_chapter_share_the_manifest_path(tmp_path, monkeypatch):
+def test_utterances_in_one_chapter_share_the_manifest_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     chapters_json = tmp_path / "chapters.json"
     manifest_json = tmp_path / "manifest.json"
     _write_jsonl(
@@ -53,10 +57,10 @@ def test_utterances_in_one_chapter_share_the_manifest_path(tmp_path, monkeypatch
         ],
     )
 
-    def fake_hf_hub_download(repo, filename, repo_type):
+    def fake_hf_hub_download(repo: str, filename: str, repo_type: str | None) -> str:
         return str(chapters_json) if "chapters" in filename else str(manifest_json)
 
-    def fake_download(url, dest, **kwargs):
+    def fake_download(url: str, dest: Path, **kwargs: float):
         # Simulate a successful download: touch the destination.
         open(dest, "w").close()
 
@@ -91,7 +95,9 @@ def test_utterances_in_one_chapter_share_the_manifest_path(tmp_path, monkeypatch
     assert list(audio_out.rglob("*.mp3")) == [audio_out / "hifitts2_audio" / "ch1.mp3"]
 
 
-def test_hf_alignments_join_on_utterance_id_not_path(tmp_path, monkeypatch):
+def test_hf_alignments_join_on_utterance_id_not_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     """Rows that share a chapter file's `path` still join correctly, because
     the join key is each row's `audio_filepath`, not its `path`."""
     # published alignments: two utterances, utterance-relative timestamps

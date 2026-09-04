@@ -29,14 +29,16 @@ Usage:
 import json
 import zlib
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 
 app = typer.Typer(pretty_exceptions_show_locals=False)
 
 
-def convert(record: dict, audio_root: Path, speaker_parts: int = 2) -> dict | None:
+def convert(
+    record: dict[str, Any], audio_root: Path, speaker_parts: int = 2
+) -> dict[str, Any] | None:
     """Manifest entry for one LEMAS record, or None if it carries no alignment."""
     words = [
         {"word": w["word"], "start": w["start"], "end": w["end"]}
@@ -59,7 +61,7 @@ def convert(record: dict, audio_root: Path, speaker_parts: int = 2) -> dict | No
     }
 
 
-def mean_score(record: dict) -> float:
+def mean_score(record: dict[str, Any]) -> float:
     scores = [w.get("score", 0.0) for w in record["align"]["words"]]
     return sum(scores) / len(scores) if scores else 0.0
 

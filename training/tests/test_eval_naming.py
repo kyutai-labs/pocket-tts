@@ -8,8 +8,8 @@ import pytest
 from training.eval.librispeech import DEFAULT_ASR, eval_dir_name
 
 
-def make_args(**over):
-    base = dict(
+def make_args(**over: object) -> Namespace:
+    base: dict[str, object] = dict(
         temp=0.3, cfg=2.0, use_ema=True, num_items=None, seed=0, asr=DEFAULT_ASR, prompt_root=None
     )
     base.update(over)
@@ -30,7 +30,7 @@ def test_default_name_is_bare():
         (dict(prompt_root="/data/libri_prompts_doraclean"), "doraclean"),
     ],
 )
-def test_each_knob_marks_the_name(over, fragment):
+def test_each_knob_marks_the_name(over: dict[str, object], fragment: str):
     assert fragment in eval_dir_name(make_args(**over), 400000)
 
 

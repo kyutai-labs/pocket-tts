@@ -266,6 +266,7 @@ We don't have official support for this yet, but you can try out one of these co
 - [PocketTTS.cpp](https://github.com/VolgaGerm/PocketTTS.cpp) by @VolgaGerm - Single-file C++ runtime using ONNX Runtime, with CLI, HTTP server, and FFI C API.
 - [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) by @csukuangfj - Run PocketTTS on **Windows, macOS, Linux**, and embedded boards (Raspberry Pi, Jetson, RK3588, etc.) with bindings for 12 programming languages: **C++, C, Python, JavaScript, Java, C#, Kotlin, Swift, Go, Dart, Rust, Pascal**, plus [WebAssembly](https://huggingface.co/spaces/k2-fsa/web-assembly-en-tts-pocket).
 - [pocket-tts-csharp](https://github.com/TheAjaykrishnanR/pocket-tts-csharp) by @TheAjaykrishnanR - A C# port of Pocket TTS implemented using [TorchSharp](https://github.com/dotnet/TorchSharp) and [TorchSharp.PyBridge](https://github.com/shaltielshmid/TorchSharp.PyBridge) for ease of use as a library in .NET projects.
+- [pocket-tts-timestamped](https://github.com/dpm63/pocket-tts-timestamped) by @dpm63 - A fork that adds support for word-level timestamps.
 
 ## Models trained by the community
 
@@ -292,7 +293,23 @@ uvx pocket-tts generate --config hf://user/repo/config_file.yaml@commit_hash
 
 - [pocket-tts-czech](https://huggingface.co/vvolhejn/pocket-tts-czech) by @vvolhejn (trained internally at Kyutai):
 ```bash
-uvx pocket-tts generate --config hf://vvolhejn/pocket-tts-czech/czech.yaml@7b7760dd0fe994a0800f2fdbc837dc4b8f219d1c
+uvx pocket-tts generate \
+  --config hf://vvolhejn/pocket-tts-czech/czech.yaml@7b7760dd0fe994a0800f2fdbc837dc4b8f219d1c \
+  --text "Dnešek je velmi dobrý den"
+```
+
+- [Pocket TTS Hindi](https://huggingface.co/saryps-labs/pocket-tts-hindi) by [Saryps Labs](https://huggingface.co/saryps-labs) (community research release):
+```bash
+uvx pocket-tts generate \
+  --config hf://saryps-labs/pocket-tts-hindi/config.yaml@dbaa326069d20bfbdaeb625613736773741a24ea \
+  --text "आज का दिन बहुत अच्छा है"
+```
+
+- [Pocket TTS Korean 300M](https://huggingface.co/seastar105/pocket-tts-korean-300m) by [@seastar105](https://huggingface.co/seastar105) (community research release):
+```bash
+uvx pocket-tts generate \
+  --config hf://seastar105/pocket-tts-korean-300m/korean.yaml@df328c817a02866f20a6f74e5183e0a1fc6f6435 \
+  --text "안녕하세요. 한국어 음성 합성 모델입니다."
 ```
 
 Want your model here? Head to the [training Readme](https://github.com/kyutai-labs/pocket-tts/blob/main/training/README.md) to get started!

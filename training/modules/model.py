@@ -16,8 +16,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from pocket_tts.conditioners.base import TokenizedText
-from pocket_tts.modules.stateful_module import increment_steps, init_states
+from pocket_tts.models.flow_lm import FlowLMModel
+from pocket_tts.modules.stateful_module import ModelState, increment_steps, init_states
 
 from ..args import TrainArgs
 from .conditioner import build_sequences_with_conditions
@@ -26,7 +26,11 @@ from .utils import set_state_padding, stamp_state_names
 
 
 class TrainableTTS(nn.Module):
-    def __init__(self, flow_lm: nn.Module, flow: FlowType, args: TrainArgs):
+    # Frozen teacher for distillation runs, kept out of the submodule registry
+    # (see build_models); None otherwise.
+    distill_teacher: FlowLMModel | None
+
+    def __init__(self, flow_lm: FlowLMModel, flow: FlowType, args: TrainArgs):
         super().__init__()
         self.flow_lm = flow_lm
         self.flow = flow
@@ -38,7 +42,7 @@ class TrainableTTS(nn.Module):
     def ldim(self) -> int:
         return self.flow_lm.ldim
 
-    def _update_latent_stats(self, latents: torch.Tensor, mask: torch.Tensor) -> None:
+    def _update_latent_stats(self, latents: torch.Tensor, mask: torch.Tensor):
         fl = self.flow_lm
         with torch.no_grad():
             sel = latents[mask]
@@ -62,7 +66,9 @@ class TrainableTTS(nn.Module):
             self._update_latent_stats(latents, mask)
         normalized_latents = (latents - fl.emb_mean) / fl.emb_std
 
-        def backbone_z(module, cfg_dropout: bool, force_null: bool = False) -> torch.Tensor:
+        def backbone_z(
+            module: FlowLMModel, cfg_dropout: bool, force_null: bool = False
+        ) -> torch.Tensor:
             x, prefix_lengths = build_sequences_with_conditions(
                 self.args,
                 normalized_latents,
@@ -146,7 +152,7 @@ class TrainableTTS(nn.Module):
 
         rows = []
         for tokens, voice in zip(text_tokens, voice_latents, strict=True):
-            t_emb = fl.conditioner(TokenizedText(tokens[None].to(device)))[0]
+            t_emb = fl.conditioner(tokens[None].to(device))[0]
             v_emb = F.linear(
                 voice[None].to(device, fl.speaker_proj_weight.dtype), fl.speaker_proj_weight
             )[0]
@@ -164,22 +170,24 @@ class TrainableTTS(nn.Module):
             prefixes.append(fl.bos_before_voice.expand(B, -1, -1))
             pads.append(torch.zeros(B, device=device, dtype=torch.long))
 
-        states = []
+        states: list[ModelState] = []
         for p, pd in zip(prefixes, pads, strict=True):
             st = init_states(fl, B, p.shape[1] + max_frames + 2)
             set_state_padding(st, pd)
-            states.append({"state": st, "first": True})
+            states.append(st)
+        first_step = True  # the prefixes are fed along with the first latent
 
         def run(x_lat: torch.Tensor) -> torch.Tensor:
+            nonlocal first_step
             zs = []
             for i, st in enumerate(states):
                 inp = fl.input_linear(x_lat)
-                if st["first"]:
+                if first_step:
                     inp = torch.cat([prefixes[i], inp], dim=1)
-                out = fl.out_norm(fl.transformer(inp, st["state"]))
-                increment_steps(fl, st["state"], increment=inp.shape[1])
-                st["first"] = False
+                out = fl.out_norm(fl.transformer(inp, st))
+                increment_steps(fl, st, increment=inp.shape[1])
                 zs.append(out[:, -1].float())
+            first_step = False
             return zs[0] if len(zs) == 1 else zs[1] + cfg_coef * (zs[0] - zs[1])
 
         x_lat = fl.bos_emb.view(1, 1, -1).expand(B, 1, -1)

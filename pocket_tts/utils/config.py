@@ -120,6 +120,7 @@ class Config(StrictModel):
     weights_path_without_voice_cloning: str | None = None
     pad_with_spaces_for_short_inputs: bool = False
     remove_semicolons: bool = False
+    append_terminal_punctuation: bool = True
     model_recommended_frames_after_eos: int | None = None
     default_temperature: float = 0.7
 

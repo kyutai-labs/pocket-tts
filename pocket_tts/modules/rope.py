@@ -6,7 +6,7 @@ from torch import nn
 
 def apply_rope(
     q: torch.Tensor, k: torch.Tensor, offset: int | torch.Tensor = 0, max_period: float = 10_000
-):
+) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Args:
         q (torch.Tensor): Queries, shape `[B, T, H, D]`.
@@ -66,6 +66,8 @@ class RotaryEmbedding(nn.Module):
         super().__init__()
         self.max_period = max_period
 
-    def forward(self, q: torch.Tensor, k: torch.Tensor, offset: torch.Tensor | int):
+    def forward(
+        self, q: torch.Tensor, k: torch.Tensor, offset: torch.Tensor | int
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Apply rope rotation to query or key tensor."""
         return apply_rope(q, k, offset, self.max_period)

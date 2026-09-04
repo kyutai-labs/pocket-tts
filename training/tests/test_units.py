@@ -1,5 +1,7 @@
 """Unit tests for the pure functions the training loop leans on."""
 
+from typing import Any
+
 import pytest
 import torch
 from torch import nn
@@ -11,7 +13,7 @@ from training.scripts.shrink_checkpoint import select_layers, shrink
 from training.train_utils import lr_at
 
 
-def _args(**kw) -> TrainArgs:
+def _args(**kw: Any) -> TrainArgs:  # noqa: ANN401 -- TrainArgs/OptimArgs passthrough
     optim = OptimArgs(**kw.pop("optim", {}))
     return TrainArgs(optim=optim, **kw)
 
@@ -66,7 +68,7 @@ class TestSelectLayers:
 
 
 class TestEMA:
-    def _model(self):
+    def _model(self) -> nn.Linear:
         m = nn.Linear(2, 2, bias=True)
         with torch.no_grad():
             m.weight.fill_(1.0)
@@ -98,7 +100,7 @@ class TestEMA:
 
 
 class TestDistillProb:
-    def _v(self, s, t, x):
+    def _v(self, s: torch.Tensor, t: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
         return x * (s + t)
 
     def test_skip_rate_matches_probability(self):

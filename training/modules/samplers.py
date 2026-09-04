@@ -28,7 +28,9 @@ from .utils import MLP, f_grad_x_only, zero_init
 class FlowType(nn.Module):
     num_time_conds: int = 1
 
-    def loss(self, v_t: FlowNet, x_0: torch.Tensor, x_1: torch.Tensor):
+    def loss(
+        self, v_t: FlowNet, x_0: torch.Tensor, x_1: torch.Tensor
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor], torch.Tensor]:
         raise NotImplementedError
 
     def decode(self, v_t: FlowNet, x_0: torch.Tensor, num_steps: int = 1) -> torch.Tensor:
@@ -44,7 +46,9 @@ class FlowMatching(FlowType):
         super().__init__()
         self.sig_min = sig_min
 
-    def loss(self, v_t, x_0, x_1):
+    def loss(
+        self, v_t: FlowNet, x_0: torch.Tensor, x_1: torch.Tensor
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor], torch.Tensor]:
         t = torch.rand_like(x_1[..., :1])
         x_t = (1 - (1 - self.sig_min) * t) * x_0 + t * x_1
         v_psi = v_t(t, x_t)
@@ -52,7 +56,7 @@ class FlowMatching(FlowType):
         loss = ((v_psi - d_psi) ** 2).mean(dim=-1)
         return loss, {"loss": loss.mean()}, t
 
-    def decode(self, v_t, x_0, num_steps: int = 1):
+    def decode(self, v_t: FlowNet, x_0: torch.Tensor, num_steps: int = 1) -> torch.Tensor:
         return ot_decode(v_t, x_0, num_steps)
 
 
@@ -100,18 +104,20 @@ class LSD(FlowType):
             self.w_s_t = MLP(2, [w_t_dims] * w_t_depth + [1])
             self.w_s_t.apply(zero_init)
 
-    def sample_t(self, x) -> torch.Tensor:
+    def sample_t(self, x: torch.Tensor) -> torch.Tensor:
         return torch.sigmoid(torch.randn_like(x[..., :1]) * self.lognorm_std + self.lognorm_mean)
 
-    def sample_s_t(self, x) -> tuple[torch.Tensor, torch.Tensor]:
+    def sample_s_t(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         logits = torch.randn_like(x[..., :2]) * self.lognorm_std + self.lognorm_mean
         return torch.sigmoid(logits.min(-1)[0])[..., None], torch.sigmoid(logits.max(-1)[0])[
             ..., None
         ]
 
-    def loss(self, v_t, x_0, x_1):
+    def loss(
+        self, v_t: FlowNet, x_0: torch.Tensor, x_1: torch.Tensor
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor], torch.Tensor]:
         x, e = x_1, x_0
-        metrics = {}
+        metrics: dict[str, torch.Tensor] = {}
 
         # Diagonal (instantaneous flow-matching) term at s == t.
         t = self.sample_t(x)
@@ -137,7 +143,8 @@ class LSD(FlowType):
             return self.p_equal * flow_diag, metrics, t
         s, t = self.sample_s_t(x)
         x_s = s * x + (1 - s) * e
-        vt, dvdt = torch.func.jvp(
+        # The stub's has_aux=True 3-tuple leaks into the return type.
+        vt, dvdt = torch.func.jvp(  # ty: ignore[invalid-assignment]
             v_t, (s, t, x_s), (torch.zeros_like(s), torch.ones_like(t), torch.zeros_like(x_s))
         )
         x_t = x_s + (t - s) * vt
@@ -157,12 +164,12 @@ class LSD(FlowType):
         loss = self.p_equal * flow_diag + distill_w * flow_distill
         return loss, metrics, t
 
-    def decode(self, v_t, x_0, num_steps: int = 1):
+    def decode(self, v_t: FlowNet, x_0: torch.Tensor, num_steps: int = 1) -> torch.Tensor:
         return lsd_decode(v_t, x_0, num_steps)
 
 
 FLOW_TYPES: dict[str, type[FlowType]] = {"flow_matching": FlowMatching, "lsd": LSD}
 
 
-def build_flow(name: str, **kwargs) -> FlowType:
+def build_flow(name: str, **kwargs: object) -> FlowType:
     return FLOW_TYPES[name](**kwargs)

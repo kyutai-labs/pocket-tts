@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import numpy.typing as npt
 import pytest
 import sentencepiece as spm
 import torch
@@ -15,12 +16,11 @@ from torch import nn
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-import training.dataloader as td
-from pocket_tts.conditioners.base import TokenizedText
-from pocket_tts.conditioners.text import LUTConditioner
+import training.dataloader.audio as td_audio
 from pocket_tts.models.flow_lm import FlowLMModel
 from pocket_tts.modules.mlp import SimpleMLPAdaLN
 from pocket_tts.modules.stateful_module import init_states
+from pocket_tts.modules.text_conditioner import LUTConditioner
 from pocket_tts.modules.transformer import StreamingTransformer
 from training.args import TrainArgs
 from training.checkpointing import EMA
@@ -42,8 +42,8 @@ class DummyConditioner(LUTConditioner):
         self.output_dim = dim
         self.embed = nn.Embedding(n_bins + 1, dim)
 
-    def forward(self, inputs: TokenizedText) -> torch.Tensor:
-        return self.embed(inputs[0])
+    def forward(self, tokens: torch.Tensor) -> torch.Tensor:
+        return self.embed(tokens)
 
 
 def tiny_model(flow_type: str, context: int | None = None) -> TrainableTTS:
@@ -69,7 +69,9 @@ def tiny_model(flow_type: str, context: int | None = None) -> TrainableTTS:
     return TrainableTTS(flow_lm, flow, args)
 
 
-def make_batch(B=3, T=11):
+def make_batch(
+    B: int = 3, T: int = 11
+) -> tuple[torch.Tensor, torch.Tensor, list[torch.Tensor], torch.Tensor]:
     latents = torch.randn(B, T, LDIM)
     mask = torch.arange(T)[None, :] < torch.tensor([T, T - 3, T - 5])[:, None]
     text = [torch.randint(0, 10, (n,)) for n in (4, 2, 6)]
@@ -78,7 +80,7 @@ def make_batch(B=3, T=11):
 
 
 @pytest.mark.parametrize("flow_type", ["lsd", "flow_matching"])
-def test_train_step(flow_type):
+def test_train_step(flow_type: str):
     model = tiny_model(flow_type)
     model.train()
     loss, metrics = model(*make_batch())
@@ -91,7 +93,7 @@ def test_train_step(flow_type):
 
 
 @pytest.mark.parametrize("flow_type,cfg", [("lsd", 1.0), ("flow_matching", 1.0)])
-def test_generate(flow_type, cfg):
+def test_generate(flow_type: str, cfg: float):
     model = tiny_model(flow_type)
     tokens = torch.randint(0, 10, (5,))
     voice = torch.randn(4, LDIM)
@@ -134,7 +136,7 @@ def test_cfg_distill():
 
 
 @pytest.mark.parametrize("num_time_conds", [0, 1, 2])
-def test_head_supports_every_time_cond_count(num_time_conds):
+def test_head_supports_every_time_cond_count(num_time_conds: int):
     """The head runs with 0, 1 or 2 time conditions."""
     head = SimpleMLPAdaLN(LDIM, 16, LDIM, DIM, 2, num_time_conds)
     assert len(head.time_embed) == num_time_conds
@@ -201,8 +203,8 @@ def test_generate_ragged_matches_batch_of_one():
 def test_generate_per_row_eos():
     """A row whose EOS fires early must come back shorter than the others."""
     model = tiny_model("lsd")
-    tokens = torch.randint(0, 10, (2, 4))
-    voice = torch.randn(2, 4, LDIM)
+    tokens = list(torch.randint(0, 10, (2, 4)))
+    voice = list(torch.randn(2, 4, LDIM))
     # eos_threshold very low => EOS fires immediately for every row.
     out = model.generate(
         tokens, voice, max_frames=8, temp=0.7, n_steps=1, cfg_coef=1.0, eos_threshold=-1e9
@@ -266,7 +268,7 @@ def test_ema_load_drops_untracked_keys():
         torch.testing.assert_close(model.state_dict()[k], v)
 
 
-def test_prefix_prompt():
+def test_prefix_prompt(monkeypatch: pytest.MonkeyPatch):
     """The cut lands inside the window, the prompt is the utterance start,
     and the target keeps the rest of the utterance."""
     dl = DataLoader.__new__(DataLoader)
@@ -282,26 +284,24 @@ def test_prefix_prompt():
     words = [{"word": f"w{i}", "start": float(i), "end": i + 0.8} for i in range(20)]
     entry = Entry(path="x", duration=20.0, transcript="t", words=words)
 
-    orig = td._load_window
-    calls = []
-    td._load_window = lambda path, start, dur, sr: (
-        calls.append((start, dur)),
-        np.zeros(max(1, int(dur * sr)), dtype=np.float32),
-    )[1]
-    try:
-        for _ in range(50):
-            calls.clear()
-            wav, tokens, prompt, plen = dl._sample(entry)
-            (t_start, t_dur), (p_start, p_dur) = calls[0], calls[1]
-            assert p_start == 0.0, "prefix prompt must start at the utterance start"
-            assert t_start <= 5.5, f"cut must sit inside the window, got {t_start}"
-            assert p_dur == t_start, "prompt must run exactly up to the cut"
-            assert t_dur >= 20.0 - 5.5 - 0.5, "target keeps most of the utterance"
-    finally:
-        td._load_window = orig
+    calls: list[tuple[float, float]] = []
+
+    def fake_load_window(path: str, start: float, dur: float, sr: int) -> npt.NDArray[np.float32]:
+        calls.append((start, dur))
+        return np.zeros(max(1, int(dur * sr)), dtype=np.float32)
+
+    monkeypatch.setattr(td_audio, "_load_window", fake_load_window)
+    for _ in range(50):
+        calls.clear()
+        wav, tokens, prompt, plen = dl._sample(entry)
+        (t_start, t_dur), (p_start, p_dur) = calls[0], calls[1]
+        assert p_start == 0.0, "prefix prompt must start at the utterance start"
+        assert t_start <= 5.5, f"cut must sit inside the window, got {t_start}"
+        assert p_dur == t_start, "prompt must run exactly up to the cut"
+        assert t_dur >= 20.0 - 5.5 - 0.5, "target keeps most of the utterance"
 
 
-def test_train_tokenizer(tmp_path):
+def test_train_tokenizer(tmp_path: Path):
     manifest = tmp_path / "m.jsonl"
     lines = [
         json.dumps({"transcript": f"hello world number {i} testing tokenizers"}) for i in range(64)
@@ -332,15 +332,19 @@ def test_grad_accum_matches_big_batch():
     xs = torch.randn(8, 4)
     ys = torch.randn(8, 1)
 
-    def loss_of(x, y):
+    def loss_of(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         return torch.nn.functional.mse_loss(net(x), y, reduction="mean")
+
+    def grad_of(p: torch.nn.Parameter) -> torch.Tensor:
+        assert p.grad is not None
+        return p.grad
 
     net.zero_grad()
     loss_of(xs, ys).backward()
-    big = [p.grad.clone() for p in net.parameters()]
+    big = [grad_of(p).clone() for p in net.parameters()]
 
     net.zero_grad()
     for half in (slice(0, 4), slice(4, 8)):
         (loss_of(xs[half], ys[half]) / 2).backward()
     for g, p in zip(big, net.parameters(), strict=True):
-        assert torch.allclose(g, p.grad, atol=1e-6)
+        assert torch.allclose(g, grad_of(p), atol=1e-6)

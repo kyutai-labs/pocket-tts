@@ -1,8 +1,11 @@
 """Dataloader behaviour that silently degrades training when it breaks."""
 
 import json
+from pathlib import Path
+from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 import sphn
 
 from training.dataloader import DataLoader, load_entries
@@ -10,12 +13,12 @@ from training.dataloader import DataLoader, load_entries
 SR = 24000
 
 
-def _write_wav(path, seconds=6.0):
+def _write_wav(path: Path, seconds: float = 6.0):
     t = np.linspace(0, seconds, int(seconds * SR), endpoint=False)
     sphn.write_wav(str(path), (0.2 * np.sin(2 * np.pi * 140 * t)).astype(np.float32), SR)
 
 
-def _manifest(tmp_path, n=8, words=True, duration=6.0):
+def _manifest(tmp_path: Path, n: int = 8, words: bool = True, duration: float = 6.0) -> str:
     wav = tmp_path / "a.flac"
     _write_wav(wav, duration)
     path = tmp_path / "m.jsonl"
@@ -31,7 +34,7 @@ def _manifest(tmp_path, n=8, words=True, duration=6.0):
     return str(path)
 
 
-def _loader(manifest, **kw):
+def _loader(manifest: str, **kw: Any) -> DataLoader:  # noqa: ANN401 -- DataLoader passthrough
     kw.setdefault("batch_size", 2)
     return DataLoader(
         manifest,
@@ -49,30 +52,30 @@ def _loader(manifest, **kw):
     )
 
 
-def test_rank_sharding_partitions_entries_without_overlap(tmp_path):
+def test_rank_sharding_partitions_entries_without_overlap(tmp_path: Path):
     m = _manifest(tmp_path, n=8)
     shards = [load_entries(m, rank, 4) for rank in range(4)]
     assert sum(len(s) for s in shards) == 8
     assert all(len(s) == 2 for s in shards)
 
 
-def test_prompt_respects_the_configured_cap(tmp_path):
+def test_prompt_respects_the_configured_cap(tmp_path: Path):
     batch = next(iter(_loader(_manifest(tmp_path), max_voice_prompt_sec=1.0)))
     assert (batch.num_voice_prompt_frames.float() / 12.5).max().item() <= 1.0 + 1e-6
 
 
-def test_batches_have_the_requested_size(tmp_path):
+def test_batches_have_the_requested_size(tmp_path: Path):
     batch = next(iter(_loader(_manifest(tmp_path, n=8), batch_size=4)))
     assert batch.audio.shape[0] == 4
     assert len(batch.text_tokens) == 4
 
 
-def test_target_audio_never_exceeds_max_duration(tmp_path):
+def test_target_audio_never_exceeds_max_duration(tmp_path: Path):
     batch = next(iter(_loader(_manifest(tmp_path, duration=30.0), max_duration_sec=5.0)))
     assert batch.audio.shape[-1] <= int(5.0 * SR) + 1
 
 
-def test_unaligned_manifest_still_yields_batches(tmp_path):
+def test_unaligned_manifest_still_yields_batches(tmp_path: Path):
     """Manifests without word alignments are a documented input: the loader
     falls back to a random window as the prompt instead of hanging."""
     loader = _loader(_manifest(tmp_path, n=8, words=False))
@@ -80,7 +83,7 @@ def test_unaligned_manifest_still_yields_batches(tmp_path):
     assert batch.audio.shape[0] == 2
 
 
-def test_entry_start_offsets_into_a_shared_file(tmp_path):
+def test_entry_start_offsets_into_a_shared_file(tmp_path: Path):
     """Two utterances can share one audio file: each entry reads its own
     window, at `start`, out of the shared file."""
     low_hz, high_hz = 220, 880
@@ -109,7 +112,7 @@ def test_entry_start_offsets_into_a_shared_file(tmp_path):
     low_wav, *_ = loader._sample(low_entry)
     high_wav, *_ = loader._sample(high_entry)
 
-    def dominant_freq(x):
+    def dominant_freq(x: npt.NDArray[np.float32]) -> float:
         spectrum = np.abs(np.fft.rfft(x))
         freqs = np.fft.rfftfreq(len(x), d=1 / SR)
         return freqs[np.argmax(spectrum)]

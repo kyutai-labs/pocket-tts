@@ -2,7 +2,7 @@
 name = "pocket-tts"
 requires-python = ">= 3.10,<3.15"
 description = "Kyutai's pocket-sized text-to-speech!"
-version = "3.0.2"
+version = "3.1.0"
 readme = "README.md"
 dependencies = [
     "numpy>=2",
@@ -10,10 +10,9 @@ dependencies = [
     "torch>=2.5.0",
     "pydantic>=2",
     "sentencepiece>=0.2.1",
-    "beartype>=0.22.5",
     "safetensors>=0.4.0",
     "typer>=0.10.0",
-    "typing_extensions>=4.0.0",
+    "typing_extensions>=4.10.0",
     "fastapi>=0.100",
     "uvicorn>=0.13.0",
     "python-multipart>=0.0.21",
@@ -50,11 +49,18 @@ dev = [
     "tqdm>=4.60",
     "utmos-pytorch>=0.1.0",
     "whisper-normalizer>=0.0.10",
+    "ty>=0.0.77",
 ]
 
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
+extend-select = ["ANN"]
+
+[tool.ruff.lint.flake8-annotations]
+suppress-none-returning = true
 
 [tool.ruff.format]
 line-ending = "lf"
@@ -79,3 +85,17 @@ python-preference = "only-managed"
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
+
+[tool.ty.src]
+# The example notebook imports IPython, which is not a dependency.
+exclude = ["docs/"]
+
+[tool.ty.rules]
+missing-type-argument = "error"
+
+[[tool.ty.overrides]]
+# The torch.ao fallback is deliberately on a deprecated API (see the module docstring).
+include = ["pocket_tts/quantization.py"]
+
+[tool.ty.overrides.rules]
+deprecated = "ignore"

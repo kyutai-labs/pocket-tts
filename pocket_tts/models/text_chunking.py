@@ -6,11 +6,16 @@ boundaries and regrouped into chunks that fit `max_tokens`.
 
 import logging
 
+from pocket_tts.modules.text_conditioner import SentencePieceTokenizer
+
 logger = logging.getLogger(__name__)
 
 
 def prepare_text_prompt(
-    text: str, pad_with_spaces_for_short_inputs: bool, remove_semicolons: bool
+    text: str,
+    pad_with_spaces_for_short_inputs: bool,
+    remove_semicolons: bool,
+    append_terminal_punctuation: bool = True,
 ) -> tuple[str, int]:
     text = text.strip()
     if text == "":
@@ -30,7 +35,7 @@ def prepare_text_prompt(
 
     # Let's make sure it ends with some kind of punctuation
     # If it ends with a letter or digit, we add a period.
-    if text[-1].isalnum():
+    if append_terminal_punctuation and text[-1].isalnum():
         text = text + "."
 
     # The model does not perform well when there are very few tokens, so
@@ -42,7 +47,7 @@ def prepare_text_prompt(
 
 
 def _is_decimal_period_boundary(
-    list_of_tokens: list[int], segment_start_idx: int, tokenizer
+    list_of_tokens: list[int], segment_start_idx: int, tokenizer: SentencePieceTokenizer
 ) -> bool:
     """Return True when segment_start_idx begins right after a decimal period."""
     prefix = tokenizer.sp.decode(list_of_tokens[:segment_start_idx])
@@ -59,7 +64,7 @@ def _is_decimal_period_boundary(
 def _find_boundary_indices(
     list_of_tokens: list[int],
     boundary_tokens: list[int],
-    tokenizer=None,
+    tokenizer: SentencePieceTokenizer | None = None,
     skip_decimal_periods: bool = False,
 ) -> list[int]:
     """Find token indices where text should be split based on boundary tokens.
@@ -90,7 +95,7 @@ def _find_boundary_indices(
 
 
 def _segments_from_boundaries(
-    list_of_tokens: list[int], boundary_indices: list[int], tokenizer
+    list_of_tokens: list[int], boundary_indices: list[int], tokenizer: SentencePieceTokenizer
 ) -> list[tuple[int, str]]:
     """Decode token segments between boundary indices into (token_count, text) pairs."""
     segments = []
@@ -103,20 +108,24 @@ def _segments_from_boundaries(
 
 
 def split_into_best_sentences(
-    tokenizer,
+    tokenizer: SentencePieceTokenizer,
     text_to_generate: str,
     max_tokens: int,
     pad_with_spaces_for_short_inputs: bool,
     remove_semicolons: bool,
+    append_terminal_punctuation: bool = True,
 ) -> list[str]:
     text_to_generate, _ = prepare_text_prompt(
-        text_to_generate, pad_with_spaces_for_short_inputs, remove_semicolons
+        text_to_generate,
+        pad_with_spaces_for_short_inputs,
+        remove_semicolons,
+        append_terminal_punctuation,
     )
     text_to_generate = text_to_generate.strip()
     tokens = tokenizer(text_to_generate)
-    list_of_tokens = tokens.tokens[0].tolist()
+    list_of_tokens = tokens[0].tolist()
 
-    _, *end_of_sentence_tokens = tokenizer(".!...?").tokens[0].tolist()
+    _, *end_of_sentence_tokens = tokenizer(".!...?")[0].tolist()
     sentence_boundaries = _find_boundary_indices(
         list_of_tokens, end_of_sentence_tokens, tokenizer, skip_decimal_periods=True
     )
@@ -125,13 +134,13 @@ def split_into_best_sentences(
     )
 
     # Sub-split oversized sentences on commas, semicolons, and colons to prevent skipped words
-    _, *fallback_tokens = tokenizer(",;:").tokens[0].tolist()
+    _, *fallback_tokens = tokenizer(",;:")[0].tolist()
     refined_segments = []
     for nb_tokens, text in nb_tokens_and_sentences:
         if nb_tokens <= max_tokens:
             refined_segments.append((nb_tokens, text))
         else:
-            sub_tokens = tokenizer(text.strip()).tokens[0].tolist()
+            sub_tokens = tokenizer(text.strip())[0].tolist()
             sub_boundaries = _find_boundary_indices(sub_tokens, fallback_tokens)
             sub_segments = _segments_from_boundaries(sub_tokens, sub_boundaries, tokenizer)
             if len(sub_segments) > 1:
@@ -161,7 +170,7 @@ def split_into_best_sentences(
         chunks.append(current_chunk.strip())
 
     for chunk in chunks:
-        chunk_tokens = tokenizer(chunk.strip()).tokens[0].tolist()
+        chunk_tokens = tokenizer(chunk.strip())[0].tolist()
         if len(chunk_tokens) > max_tokens:
             logger.warning(
                 "Chunk has %d tokens (max %d), generation may skip words: '%.50s...'",

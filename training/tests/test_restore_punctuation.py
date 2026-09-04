@@ -1,6 +1,8 @@
+from typing import Any
+
 from training.scripts.restore_punctuation import reattach
 
-ENTRY = {
+ENTRY: dict[str, Any] = {
     "path": "/data/a.mp3",
     "duration": 3.0,
     "transcript": "selamat pagi indonesia",

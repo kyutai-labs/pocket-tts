@@ -1,13 +1,14 @@
 import logging
+from collections.abc import Callable
 from functools import partial
 
 import torch
-from beartype.typing import Callable
 from torch import nn
 from typing_extensions import Self
 
-from pocket_tts.conditioners.text import LUTConditioner
 from pocket_tts.modules.mlp import SimpleMLPAdaLN
+from pocket_tts.modules.stateful_module import ModelState
+from pocket_tts.modules.text_conditioner import LUTConditioner
 from pocket_tts.modules.transformer import StreamingTransformer
 from pocket_tts.utils.config import FlowLMConfig
 
@@ -68,6 +69,15 @@ class FlowLMModel(nn.Module):
         **kwargs: Additional parameters for the transformer encoder.
     """
 
+    # Latent normalization buffers (register_buffer in __init__).
+    emb_std: torch.Tensor
+    emb_mean: torch.Tensor
+    # Voice-conditioning projection, created by whoever loads the weights
+    # (TTSModel, training.modules.builders) since it only exists with voice cloning.
+    speaker_proj_weight: nn.Parameter
+    # Only exists when insert_bos_before_voice is set.
+    bos_before_voice: nn.Parameter
+
     def __init__(
         self,
         conditioner: LUTConditioner,
@@ -77,7 +87,7 @@ class FlowLMModel(nn.Module):
         ldim: int = 64,
         stats_ema_decay: float = 0.999,
         text_padding_weight: float = 1.0,
-        dtype=None,
+        dtype: torch.dtype | None = None,
         insert_bos_before_voice: bool = False,
         flow_type: str = "lsd",
     ):
@@ -112,7 +122,7 @@ class FlowLMModel(nn.Module):
         self,
         sequence: torch.Tensor,
         text_embeddings: torch.Tensor,
-        model_state: dict,
+        model_state: ModelState,
         sampler_decode_steps: int,
         temp: float,
         noise_clamp: float | None,
@@ -155,7 +165,11 @@ class FlowLMModel(nn.Module):
         return decode(conditioned_flow, noise, sampler_decode_steps), out_eos
 
     def backbone(
-        self, input_, text_embeddings: torch.Tensor, sequence, model_state: dict
+        self,
+        input_: torch.Tensor,
+        text_embeddings: torch.Tensor,
+        sequence: torch.Tensor,
+        model_state: ModelState,
     ) -> torch.Tensor:
         # Most of the time, one of those two tensors is empty, it allows us
         # to input text or audio embeddings into the model without adding an
@@ -176,7 +190,7 @@ class FlowLMModel(nn.Module):
         self,
         sequence: torch.Tensor,
         text_embeddings: torch.Tensor,
-        model_state: dict,
+        model_state: ModelState,
         sampler_decode_steps: int,
         temp: float,
         noise_clamp: float | None,

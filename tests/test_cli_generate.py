@@ -1,6 +1,7 @@
 """Integration tests for the CLI generate command using real implementation."""
 
 import os
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -16,7 +17,7 @@ IS_CI = os.environ.get("CI") == "true"
 CI_SKIP_REASON = "Voice cloning is not publicly available, skipping in the CI"
 
 
-def test_generate_basic_usage(tmp_path):
+def test_generate_basic_usage(tmp_path: Path):
     """Test basic generate command with default parameters."""
     output_file = tmp_path / "test_output.wav"
 
@@ -38,7 +39,7 @@ def test_generate_basic_usage(tmp_path):
 
 
 @pytest.mark.skipif(IS_CI, reason=CI_SKIP_REASON)
-def test_generate_with_custom_voice(tmp_path):
+def test_generate_with_custom_voice(tmp_path: Path):
     """Test generate command with custom voice prompt."""
     output_file = tmp_path / "custom_voice_test.wav"
 
@@ -65,7 +66,7 @@ def test_generate_with_custom_voice(tmp_path):
     assert sample_rate == 24000
 
 
-def test_generate_with_custom_parameters(tmp_path):
+def test_generate_with_custom_parameters(tmp_path: Path):
     """Test generate command with custom generation parameters."""
     output_file = tmp_path / "custom_params_test.wav"
 
@@ -99,7 +100,7 @@ def test_generate_with_custom_parameters(tmp_path):
     assert sample_rate == 24000
 
 
-def test_generate_verbose_mode(tmp_path):
+def test_generate_verbose_mode(tmp_path: Path):
     """Test generate command with verbose logging."""
     output_file = tmp_path / "verbose_test.wav"
 
@@ -112,7 +113,7 @@ def test_generate_verbose_mode(tmp_path):
     assert output_file.exists()
 
 
-def test_generate_default_text(tmp_path):
+def test_generate_default_text(tmp_path: Path):
     """Test generate command with default text when no text provided."""
     output_file = tmp_path / "default_text_test.wav"
 
@@ -127,7 +128,7 @@ def test_generate_default_text(tmp_path):
     assert sample_rate == 24000
 
 
-def test_generate_long_text(tmp_path):
+def test_generate_long_text(tmp_path: Path):
     """Test generate command with longer text."""
     long_text = "This is a longer text to test the TTS system. " * 5
     output_file = tmp_path / "long_text_test.wav"
@@ -147,7 +148,7 @@ def test_generate_long_text(tmp_path):
     assert audio.shape[1] > 24000 * 10  # At least 10 second of audio
 
 
-def test_generate_multiple_runs(tmp_path):
+def test_generate_multiple_runs(tmp_path: Path):
     """Test multiple consecutive generate commands."""
     for i in range(3):
         output_file = tmp_path / f"test_run_{i + 1}.wav"

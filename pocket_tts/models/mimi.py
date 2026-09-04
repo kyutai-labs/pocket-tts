@@ -1,4 +1,5 @@
 import logging
+from typing import NoReturn
 
 import torch
 from torch import nn
@@ -7,7 +8,9 @@ from pocket_tts.modules.conv import pad_for_conv1d
 from pocket_tts.modules.dummy_quantizer import DummyQuantizer
 from pocket_tts.modules.resample import ConvDownsample1d, ConvTrUpsample1d
 from pocket_tts.modules.seanet import SEANetDecoder, SEANetEncoder
+from pocket_tts.modules.stateful_module import ModelState
 from pocket_tts.modules.transformer import ProjectedTransformer
+from pocket_tts.utils.config import MimiConfig
 
 logger = logging.getLogger()
 
@@ -65,7 +68,7 @@ class MimiModel(nn.Module):
     def frame_size(self) -> int:
         return int(self.sample_rate / self.frame_rate)
 
-    def _to_framerate(self, x: torch.Tensor):
+    def _to_framerate(self, x: torch.Tensor) -> torch.Tensor:
         # Convert from the encoder frame rate to the overall framerate.
         _, _, length = x.shape
         frame_rate = self.encoder_frame_rate
@@ -74,7 +77,7 @@ class MimiModel(nn.Module):
             return x
         return self.downsample(x, model_state=None)
 
-    def _to_encoder_framerate(self, x: torch.Tensor, mimi_state) -> torch.Tensor:
+    def _to_encoder_framerate(self, x: torch.Tensor, mimi_state: ModelState) -> torch.Tensor:
         # Convert from overall framerate to the encoder frame rate.
         _, _, length = x.shape
         frame_rate = self.encoder_frame_rate
@@ -83,10 +86,10 @@ class MimiModel(nn.Module):
             return x
         return self.upsample(x, mimi_state)
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> NoReturn:
         raise NotImplementedError()
 
-    def decode_from_latent(self, latent: torch.Tensor, mimi_state) -> torch.Tensor:
+    def decode_from_latent(self, latent: torch.Tensor, mimi_state: ModelState) -> torch.Tensor:
         """Decodes [B, T, C] quantizer-space latents (as produced by
         encode_to_latent or the flow LM) back to audio."""
         latent = self.quantizer(latent.transpose(-1, -2))
@@ -122,7 +125,7 @@ class MimiModel(nn.Module):
         return emb.transpose(-1, -2)
 
 
-def build_mimi(config) -> MimiModel:
+def build_mimi(config: MimiConfig) -> MimiModel:
     """MimiModel from a pocket-tts config's `mimi` section."""
     from pocket_tts.modules import transformer
     from pocket_tts.modules.dummy_quantizer import DummyQuantizer

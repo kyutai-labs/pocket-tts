@@ -23,9 +23,10 @@ Run it standalone (no project deps, and `punctuators` stays out of pyproject):
 import argparse
 import json
 from pathlib import Path
+from typing import Any, TextIO
 
 
-def reattach(entry: dict, restored: str) -> dict:
+def reattach(entry: dict[str, Any], restored: str) -> dict[str, Any]:
     """Copy `restored`'s tokens onto the entry's words, or return it unchanged.
 
     The punctuation model attaches marks to the token they follow and never
@@ -52,13 +53,17 @@ def main() -> None:
     )
     args = ap.parse_args()
 
-    from punctuators.models import PunctCapSegModelONNX
+    # Deliberately not a project dependency: run this script standalone with
+    # `uv run --with punctuators --no-project`.
+    from punctuators.models import (  # ty: ignore[unresolved-import]  -- optional extra
+        PunctCapSegModelONNX,
+    )
 
     model = PunctCapSegModelONNX.from_pretrained(args.model)
 
     n = n_changed = 0
 
-    def flush(chunk: list[dict], fout) -> None:
+    def flush(chunk: list[dict[str, Any]], fout: TextIO) -> None:
         nonlocal n, n_changed
         # infer() returns the sentences it split each input into; the TTS
         # manifest wants one flat transcript, so join them back.
@@ -71,7 +76,7 @@ def main() -> None:
             print(f"{n} utterances, {n_changed} repunctuated", flush=True)
 
     with open(args.input_jsonl) as fin, open(args.output_jsonl, "w") as fout:
-        chunk: list[dict] = []
+        chunk: list[dict[str, Any]] = []
         for line in fin:
             chunk.append(json.loads(line))
             if len(chunk) == args.batch:

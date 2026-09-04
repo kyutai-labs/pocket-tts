@@ -1,8 +1,9 @@
 from pathlib import Path
+from typing import Any
 
 from training.scripts.prepare_lemas import convert, mean_score, speaker_of
 
-RECORD = {
+RECORD: dict[str, Any] = {
     "key": "id_UJwgKZklwB4-00524-00177227-00177461",
     "audio": "id000/UJwgKZklwB4-00524-00177227-00177461.mp3",
     "dur": 2.33,

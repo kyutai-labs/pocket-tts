@@ -22,6 +22,7 @@ import argparse
 import json
 from collections import defaultdict
 from pathlib import Path
+from typing import Any
 
 import soundfile
 import sphn
@@ -45,7 +46,7 @@ def main() -> None:
     ap.add_argument("--min-words", type=int, default=5, help="skip near-empty targets")
     args = ap.parse_args()
 
-    by_speaker: dict[str, list[dict]] = defaultdict(list)
+    by_speaker: dict[str, list[dict[str, Any]]] = defaultdict(list)
     with open(args.manifest_jsonl) as f:
         for line in f:
             e = json.loads(line)
@@ -61,7 +62,7 @@ def main() -> None:
     lst_path = args.out_dir / "pairs.lst"
     audio_root.mkdir(parents=True, exist_ok=True)
 
-    def export(entry: dict) -> str:
+    def export(entry: dict[str, Any]) -> str:
         """Copy one utterance into the .flac layout librispeech.py expects."""
         uid = utt_id(entry["path"])
         out = flac_path(audio_root, uid)

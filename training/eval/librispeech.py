@@ -22,19 +22,24 @@ import logging
 import multiprocessing
 import os
 import re
+from collections.abc import Callable, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
+from typing import Any
 
 import huggingface_hub
 import jiwer
+import numpy.typing as npt
 import sphn
 import torch
 from pydantic import BaseModel
 
+from pocket_tts.models.mimi import MimiModel
 from pocket_tts.modules.stateful_module import init_states
 from training.args import load_args
 from training.checkpointing import EMA, latest_checkpoint, load_checkpoint
 from training.modules.builders import build_models
+from training.modules.model import TrainableTTS
 
 logger = logging.getLogger("eval_librispeech")
 DEFAULT_ASR = "ibm-granite/granite-speech-4.1-2b"
@@ -64,7 +69,7 @@ class EvalResults(BaseModel):
     n_steps: int
 
 
-def eval_dir_name(args, step: int) -> str:
+def eval_dir_name(args: argparse.Namespace, step: int) -> str:
     """Output directory for one eval.
 
     Anything that changes the numbers belongs in the name, so two evals of the
@@ -89,7 +94,9 @@ def eval_dir_name(args, step: int) -> str:
     return name
 
 
-def read_lst(path: str, root: str, limit: int | None, prompt_root: str | None = None) -> list[dict]:
+def read_lst(
+    path: str, root: str, limit: int | None, prompt_root: str | None = None
+) -> list[dict[str, Any]]:
     items = []
     with open(path) as f:
         for line in f:
@@ -98,7 +105,7 @@ def read_lst(path: str, root: str, limit: int | None, prompt_root: str | None = 
                 continue
             id0, _, _, id1, _, txt1 = line.split("\t")
 
-            def p(utt, r=root, exts=(".flac",)):
+            def p(utt: str, r: str = root, exts: tuple[str, ...] = (".flac",)) -> str:
                 base = os.path.join(r, "/".join(utt.split("-")[:-1]), utt)
                 for ext in exts:
                     if os.path.exists(base + ext):
@@ -116,7 +123,7 @@ def read_lst(path: str, root: str, limit: int | None, prompt_root: str | None = 
     return items
 
 
-def load_16k(path: str, device) -> torch.Tensor:
+def load_16k(path: str, device: torch.device) -> torch.Tensor:
     wav, sr = sphn.read(path)
     wav = wav.mean(axis=0)
     if sr != 16000:
@@ -124,7 +131,9 @@ def load_16k(path: str, device) -> torch.Tensor:
     return torch.from_numpy(wav).float().to(device)
 
 
-def build_transcriber(asr_name: str, device):
+def build_transcriber(
+    asr_name: str, device: torch.device
+) -> Callable[[list[npt.NDArray[Any]]], list[str]]:
     """Granite is a chat-prompted speech-seq2seq model; whisper is a pipeline."""
     if "granite" in asr_name:
         from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor
@@ -145,7 +154,7 @@ def build_transcriber(asr_name: str, device):
             add_generation_prompt=True,
         )
 
-        def transcribe(wavs: list) -> list[str]:
+        def transcribe(wavs: list[npt.NDArray[Any]]) -> list[str]:
             n = len(wavs)
             longest = max(len(w) for w in wavs)
             audio = torch.stack(
@@ -169,9 +178,9 @@ def build_transcriber(asr_name: str, device):
         "automatic-speech-recognition", model=asr_name, device=device, torch_dtype=torch.float16
     )
 
-    def transcribe(wavs: list) -> list[str]:
+    def transcribe(wavs: list[npt.NDArray[Any]]) -> list[str]:
         outs = asr(
-            [{"array": w, "sampling_rate": 16000} for w in wavs],
+            [{"array": w, "sampling_rate": 16000} for w in wavs],  # ty: ignore[invalid-argument-type]  -- batched call
             return_timestamps=True,
             batch_size=len(wavs),
         )
@@ -183,7 +192,12 @@ def build_transcriber(asr_name: str, device):
 MIN_FRAMES = 8
 
 
-def load_run(run_dir, device, use_ema: bool = False, checkpoint=None):
+def load_run(
+    run_dir: str | Path,
+    device: torch.device,
+    use_ema: bool = False,
+    checkpoint: str | Path | None = None,
+) -> tuple[TrainableTTS, MimiModel, int]:
     """(model, mimi, step) from a run dir, weights on `device`, in eval mode."""
     run_dir = Path(run_dir)
     args = load_args(run_dir / "args.yaml")
@@ -213,7 +227,9 @@ def load_mono(path: str, sample_rate: int) -> torch.Tensor:
     return torch.from_numpy(wav.copy()).float()
 
 
-def latents_to_wav(mimi, latents: torch.Tensor, device) -> torch.Tensor | None:
+def latents_to_wav(
+    mimi: MimiModel, latents: torch.Tensor, device: torch.device
+) -> torch.Tensor | None:
     """[T, C] latents to a mono waveform; None when the generation was empty."""
     if latents.shape[0] < MIN_FRAMES:
         return None
@@ -223,7 +239,9 @@ def latents_to_wav(mimi, latents: torch.Tensor, device) -> torch.Tensor | None:
         return mimi.decode_from_latent(latents[None].to(device), state)[0, 0]
 
 
-def score_items(items: list[dict], device, args) -> tuple[list[dict], int]:
+def score_items(
+    items: list[dict[str, Any]], device: torch.device, args: argparse.Namespace
+) -> tuple[list[dict[str, Any]], int]:
     """Generate and score `items` on one device. Returns per-item records."""
     from whisper_normalizer.basic import BasicTextNormalizer
     from whisper_normalizer.english import EnglishTextNormalizer
@@ -247,10 +265,11 @@ def score_items(items: list[dict], device, args) -> tuple[list[dict], int]:
 
         spk_fe = AutoFeatureExtractor.from_pretrained("microsoft/wavlm-base-plus-sv")
         spk_model = (
-            WavLMForXVector.from_pretrained("microsoft/wavlm-base-plus-sv").to(device).eval()
+            # transformers wraps .to() in a way that loses the bound self.
+            WavLMForXVector.from_pretrained("microsoft/wavlm-base-plus-sv").to(device).eval()  # ty: ignore[invalid-argument-type]
         )
 
-        def embed(wavs: list) -> torch.Tensor:
+        def embed(wavs: Sequence[npt.NDArray[Any] | torch.Tensor]) -> torch.Tensor:
             """Batched x-vectors; the feature extractor emits an attention mask,
             so padding does not affect the embeddings."""
             inputs = spk_fe(
@@ -274,7 +293,7 @@ def score_items(items: list[dict], device, args) -> tuple[list[dict], int]:
     sp_encode = model.flow_lm.conditioner.tokenizer.sp.encode
     if args.match_train_text:
 
-        def tokenize(text: str):
+        def tokenize(text: str) -> list[int]:
             return sp_encode(re.sub(r"[^a-z' ]", "", text.lower()).strip())
     else:
         tokenize = sp_encode
@@ -289,7 +308,9 @@ def score_items(items: list[dict], device, args) -> tuple[list[dict], int]:
         return wav
 
     def decode(latents: torch.Tensor) -> torch.Tensor:
-        return latents_to_wav(mimi, latents, device)
+        wav = latents_to_wav(mimi, latents, device)
+        assert wav is not None, "generations shorter than MIN_FRAMES are skipped above"
+        return wav
 
     records = []
     bs = max(1, args.batch_size)
@@ -372,13 +393,15 @@ def score_items(items: list[dict], device, args) -> tuple[list[dict], int]:
     return records, step
 
 
-def _shard_worker(payload):
+def _shard_worker(
+    payload: tuple[int, list[dict[str, Any]], argparse.Namespace],
+) -> tuple[list[dict[str, Any]], int]:
     device_idx, items, args = payload
     torch.cuda.set_device(device_idx)
     return score_items(items, torch.device("cuda", device_idx), args)
 
 
-def main() -> None:
+def main():
     logging.basicConfig(
         level=logging.INFO,
         format="[%(asctime)s %(levelname)s %(name)s] %(message)s",

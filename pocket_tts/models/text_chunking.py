@@ -33,10 +33,8 @@ def prepare_text_prompt(
     if not text[0].isupper():
         text = text[0].upper() + text[1:]
 
-    # Let's make sure it ends with some kind of punctuation
-    # If it ends with a letter or digit, we add a period.
-    if append_terminal_punctuation and text[-1].isalnum():
-        text = text + "."
+    if append_terminal_punctuation:
+        text = _ensure_terminal_punctuation(text)
 
     # The model does not perform well when there are very few tokens, so
     # we can add empty spaces at the beginning to increase the token count.
@@ -44,6 +42,29 @@ def prepare_text_prompt(
         text = " " * 8 + text
 
     return text, frames_after_eos_guess
+
+
+_TERMINAL_PUNCTUATION = ".!?\u2026"
+_WEAK_PUNCTUATION = ",;:-\u2013\u2014"
+_CLOSING_QUOTES = "\"'\u201d\u2019"
+
+
+def _ensure_terminal_punctuation(text: str) -> str:
+    """Make sure the prompt ends with sentence-final punctuation.
+
+    The model is trained on sentences that end with a period, a question mark
+    or an exclamation mark. Without one, the last word is often mispronounced
+    or repeated. A trailing comma, colon or dash is replaced by a period; any
+    other ending gets a period appended, placed before closing quotes.
+    """
+    body = text.rstrip(_CLOSING_QUOTES)
+    quotes = text[len(body) :]
+    body = body.rstrip()
+    if body and body[-1] in _WEAK_PUNCTUATION:
+        body = body.rstrip(_WEAK_PUNCTUATION + " ") + "."
+    elif body and body[-1] not in _TERMINAL_PUNCTUATION:
+        body = body + "."
+    return body + quotes
 
 
 def _is_decimal_period_boundary(

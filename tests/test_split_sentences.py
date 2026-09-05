@@ -206,3 +206,27 @@ def test_oversized_clause_without_commas_still_returns(tokenizer: SentencePieceT
     # prepare_text_prompt capitalizes the first char and adds a trailing period,
     # so compare case-insensitively and strip punctuation
     assert chunks[0].lower().rstrip(".") == text.lower()
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("hello world", "Hello world."),
+        ("it costs 42", "It costs 42."),
+        ("hello world!", "Hello world!"),
+        ("wait for it...", "Wait for it..."),
+        ("hello world,", "Hello world."),
+        ("hello world:", "Hello world."),
+        ("hello world -", "Hello world."),
+        ('he said "go home"', 'He said "go home."'),
+        ("he said \u201cgo home\u201d", "He said \u201cgo home.\u201d"),
+        ('he said "go home."', 'He said "go home."'),
+        ("see the note (below)", "See the note (below)."),
+        ("up by 50%", "Up by 50%."),
+    ],
+)
+def test_terminal_punctuation_is_added_when_missing(text: str, expected: str):
+    got, _ = prepare_text_prompt(
+        text, pad_with_spaces_for_short_inputs=False, remove_semicolons=False
+    )
+    assert got == expected

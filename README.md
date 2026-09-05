@@ -312,10 +312,11 @@ uvx pocket-tts generate \
   --text "안녕하세요. 한국어 음성 합성 모델입니다."
 ```
 
-- [Pocket TTS Indonesian 24L](https://huggingface.co/anak10thn/pocket-tts-indonesian) by [@anak10thn](https://huggingface.co/anak10thn) (community research release):
+- [Pocket TTS Indonesian](https://huggingface.co/anak10thn/pocket-tts-indonesian) by [@anak10thn](https://huggingface.co/anak10thn) (community research release), 6 layers, distilled with guidance baked in:
 ```bash
 uvx pocket-tts generate \
-  --config hf://anak10thn/pocket-tts-indonesian/config.yaml@6160f98e7a6e71e3aa3e063e582d7827518c632f \
+  --config hf://anak10thn/pocket-tts-indonesian/indonesian_6l.yaml@f44e4fc2b2fd79918667a1264e34505ea39f04fa \
+  --eos-threshold -6.0 \
   --text "Selamat pagi. Ini model sintesis suara bahasa Indonesia."
 ```
 

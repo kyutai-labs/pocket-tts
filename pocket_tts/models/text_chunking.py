@@ -46,7 +46,7 @@ def prepare_text_prompt(
 
 _TERMINAL_PUNCTUATION = ".!?\u2026"
 _WEAK_PUNCTUATION = ",;:-\u2013\u2014"
-_CLOSING_QUOTES = "\"'\u201d\u2019"
+_CLOSERS = "\"'\u201d\u2019)]\u00bb"
 
 
 def _ensure_terminal_punctuation(text: str) -> str:
@@ -54,17 +54,20 @@ def _ensure_terminal_punctuation(text: str) -> str:
 
     The model is trained on sentences that end with a period, a question mark
     or an exclamation mark. Without one, the last word is often mispronounced
-    or repeated. A trailing comma, colon or dash is replaced by a period; any
-    other ending gets a period appended, placed before closing quotes.
+    or repeated. Text that already ends with one, possibly followed by closing
+    quotes or brackets, is left alone. A trailing comma, colon or dash is
+    replaced by a period. Anything else gets a period appended after the
+    closing quote or bracket: the sentence splitter only recognizes a bare
+    period token, and a quote left alone after a period would become a chunk
+    of its own.
     """
-    body = text.rstrip(_CLOSING_QUOTES)
-    quotes = text[len(body) :]
-    body = body.rstrip()
-    if body and body[-1] in _WEAK_PUNCTUATION:
-        body = body.rstrip(_WEAK_PUNCTUATION + " ") + "."
-    elif body and body[-1] not in _TERMINAL_PUNCTUATION:
-        body = body + "."
-    return body + quotes
+    core = text.rstrip(_CLOSERS + " ")
+    closers = text[len(core) :].strip()
+    if not core or core[-1] in _TERMINAL_PUNCTUATION:
+        return text
+    if core[-1] in _WEAK_PUNCTUATION:
+        return core.rstrip(_WEAK_PUNCTUATION + " ") + "." + closers
+    return text + "."
 
 
 def _is_decimal_period_boundary(

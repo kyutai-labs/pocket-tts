@@ -294,6 +294,11 @@ uvx pocket-tts generate --config hf://user/repo/config_file.yaml@commit_hash
 ```bash
 uvx pocket-tts generate --config hf://vvolhejn/pocket-tts-czech/czech.yaml@7b7760dd0fe994a0800f2fdbc837dc4b8f219d1c
 ```
+- [pocket-tts-farsi](https://huggingface.co/mehdi-hf/pocket-tts-farsi) by @mallahyari — Persian (Farsi), a 6-layer student distilled from a 24-layer teacher trained from scratch on 497h of CC0 speech:
+```bash
+uvx --with soundfile pocket-tts generate --config hf://mehdi-hf/pocket-tts-farsi/farsi.yaml@3c59d06b3177b21c5cd0df9e9e3e899f4d361c1c \
+    --voice hf://mehdi-hf/pocket-tts-farsi/example_voice.wav --text "سلام، حال شما چطور است؟"
+```
 
 Want your model here? Head to the [training Readme](https://github.com/kyutai-labs/pocket-tts/blob/main/training/README.md) to get started!
 

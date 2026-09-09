@@ -326,6 +326,14 @@ uvx pocket-tts generate \
   --text "Selamat pagi. Ini model sintesis suara bahasa Indonesia."
 ```
 
+- [Pocket TTS Estonian](https://huggingface.co/cbentes/pocket-tts-estonian) by @cbentes (community research release):
+```bash
+uvx pocket-tts generate \
+  --config hf://cbentes/pocket-tts-estonian/estonian.yaml@8934022f1befb3dc568351e3b88e48a9edb94d7d \
+  --voice hf://cbentes/pocket-tts-estonian/voices/et_f_reporter.wav@8934022f1befb3dc568351e3b88e48a9edb94d7d \
+  --text "Tere! Mina olen eesti keele kõnesüntesaator ja töötan tavalises arvutis kiiremini kui reaalajas."
+```
+
 Want your model here? Head to the [training Readme](https://github.com/kyutai-labs/pocket-tts/blob/main/training/README.md) to get started!
 
 ## Projects using Pocket TTS

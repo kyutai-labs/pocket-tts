@@ -14,6 +14,6 @@ repos:
       entry: doccmd --language python --no-pad-file --command "ruff format"
       additional_dependencies: ["doccmd"]
 - repo: https://github.com/astral-sh/uv-pre-commit
-  rev: 0.8.22
+  rev: 0.12.11
   hooks:
     - id: uv-lock

@@ -377,6 +377,25 @@ Want your model here? Head to the [training Readme](https://github.com/kyutai-la
 - [LocalVocal.ai](https://localvocal.ai) by @joshwhiton - Fully local conversational voice-harness for Macs with Apple Silicon. Includes voice-activity & turn detection, dictation, voice cloning, CLI to talk to Claude, Codex... and more.
 
 
+## Evaluation
+
+As of **September 9, 2026**, on Hugging Face's [Open TTS Leaderboard](https://huggingface.co/spaces/hf-audio/open_tts_leaderboard), Pocket TTS stands out on the quality/size tradeoff for voice cloning and on latency:
+
+- 📈 On the **Pareto frontier** for both **Model size vs WER** and **Model size vs Speaker SIM** in voice-cloning mode.
+- 🥉 **3rd on TTFA** (time-to-first-audio) on GPU (H200).
+- 🥇 **1st on TTFA** on CPU.
+
+<p align="center">
+  <img width="45%" alt="Model size vs WER Pareto frontier (voice cloning)" src="https://huggingface.co/datasets/bezzam/tts_leaderboard_screenshots/resolve/main/pocket-tts/voice_clone_wer_size.png" />
+  <img width="45%" alt="Model size vs Speaker SIM Pareto frontier (voice cloning)" src="https://huggingface.co/datasets/bezzam/tts_leaderboard_screenshots/resolve/main/pocket-tts/voice_clone_sim_size.png" />
+</p>
+
+<p align="center">
+  <img width="45%" alt="Top models by TTFA on GPU (H200)" src="https://huggingface.co/datasets/bezzam/tts_leaderboard_screenshots/resolve/main/pocket-tts/ttfa_gpu.png" />
+  <img width="45%" alt="Top models by TTFA on CPU" src="https://huggingface.co/datasets/bezzam/tts_leaderboard_screenshots/resolve/main/pocket-tts/ttfa_cpu.png" />
+</p>
+
+
 ## Prohibited use
 
 Use of our model must comply with all applicable laws and regulations and must not result in, involve, or facilitate any illegal, harmful, deceptive, fraudulent, or unauthorized activity. Prohibited uses include, without limitation, voice impersonation or cloning without explicit and lawful consent; misinformation, disinformation, or deception (including fake news, fraudulent calls, or presenting generated content as genuine recordings of real people or events); and the generation of unlawful, harmful, libelous, abusive, harassing, discriminatory, hateful, or privacy-invasive content. We disclaim all liability for any non-compliant use.

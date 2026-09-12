@@ -336,8 +336,7 @@ uvx --with soundfile pocket-tts generate --config hf://mehdi-hf/pocket-tts-farsi
 
 ```bash
 uvx pocket-tts generate \
-  --config hf://anak10thn/pocket-tts-indonesian/indonesian_6l.yaml@635cde7a28301861b120f57ec4dda8525073017c \
-  --eos-threshold -5.0 \
+  --config hf://anak10thn/pocket-tts-indonesian/indonesian_6l.yaml@6196fe14c6c2108332c16d33c864c8901c044aaa \
   --text "Selamat pagi. Ini model sintesis suara bahasa Indonesia."
 ```
 </details>

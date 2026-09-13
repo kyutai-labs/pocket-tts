@@ -232,3 +232,26 @@ def test_terminal_punctuation_is_added_when_missing(text: str, expected: str):
         text, pad_with_spaces_for_short_inputs=False, remove_semicolons=False
     )
     assert got == expected
+
+
+def test_capitalization_can_be_switched_off():
+    """A model whose text is phonemes, not spelling, must not be capitalized.
+
+    Capitalizing rewrites the first sound of the first word. In a romanized
+    phoneme alphabet the capital is usually absent from the vocabulary, so the
+    opening word becomes the unknown token and is not spoken at all; and where a
+    capital *is* a phoneme it changes the sound silently rather than erroring.
+    Both were observed in a Persian model whose alphabet uses "S" for sh: "salAm"
+    was capitalized to "SalAm" and came out as /shalaam/.
+    """
+    kwargs = dict(pad_with_spaces_for_short_inputs=False, remove_semicolons=False)
+
+    on, _ = prepare_text_prompt("salAm hAle SomA", **kwargs)
+    assert on.startswith("SalAm")
+
+    off, _ = prepare_text_prompt("salAm hAle SomA", capitalize_first_letter=False, **kwargs)
+    assert off.startswith("salAm")
+
+    # The default is unchanged, so nothing moves for the shipped languages.
+    default, _ = prepare_text_prompt("hello there", **kwargs)
+    assert default == "Hello there."

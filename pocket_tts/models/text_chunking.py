@@ -16,6 +16,7 @@ def prepare_text_prompt(
     pad_with_spaces_for_short_inputs: bool,
     remove_semicolons: bool,
     append_terminal_punctuation: bool = True,
+    capitalize_first_letter: bool = True,
 ) -> tuple[str, int]:
     text = text.strip()
     if text == "":
@@ -29,8 +30,9 @@ def prepare_text_prompt(
     else:
         frames_after_eos_guess = 1
 
-    # Make sure it starts with an uppercase letter
-    if not text[0].isupper():
+    # Make sure it starts with an uppercase letter. Only meaningful for
+    # orthographies that have case; see Config.capitalize_first_letter.
+    if capitalize_first_letter and not text[0].isupper():
         text = text[0].upper() + text[1:]
 
     if append_terminal_punctuation:
@@ -138,12 +140,14 @@ def split_into_best_sentences(
     pad_with_spaces_for_short_inputs: bool,
     remove_semicolons: bool,
     append_terminal_punctuation: bool = True,
+    capitalize_first_letter: bool = True,
 ) -> list[str]:
     text_to_generate, _ = prepare_text_prompt(
         text_to_generate,
         pad_with_spaces_for_short_inputs,
         remove_semicolons,
         append_terminal_punctuation,
+        capitalize_first_letter,
     )
     text_to_generate = text_to_generate.strip()
     tokens = tokenizer(text_to_generate)

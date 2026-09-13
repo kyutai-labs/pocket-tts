@@ -121,6 +121,13 @@ class Config(StrictModel):
     pad_with_spaces_for_short_inputs: bool = False
     remove_semicolons: bool = False
     append_terminal_punctuation: bool = True
+    # Upper-casing the first letter is an orthographic convention of the
+    # Latin-script languages this model shipped with. A model whose text is
+    # romanised phonemes must switch it off: the capital is not in the phoneme
+    # inventory, so the first word's onset becomes the unknown token, and where
+    # a capital *is* a phoneme it silently changes the sound ("salAm" -> "SalAm"
+    # is /salaam/ -> /shalaam/).
+    capitalize_first_letter: bool = True
     model_recommended_frames_after_eos: int | None = None
     default_temperature: float = 0.7
 

@@ -307,6 +307,8 @@ def main(config_path: str):
             args.run_dir, args.max_steps, model, optimizer, ema, args.num_ckpt_keep, mimi
         )
         progress.log("checkpoint", args.max_steps)
+        if device.type == "cuda":
+            logger.info(f"peak GPU memory {torch.cuda.max_memory_allocated() / 2**30:.1f} GiB")
         logger.info("done")
     shutdown_distributed()
 

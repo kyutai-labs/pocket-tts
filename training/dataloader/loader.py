@@ -324,7 +324,9 @@ class DataLoader:
                         continue
                     samples.sort(key=self._target_len)
                     n = len(samples) // self.batch_size
-                    batches = [samples[i * self.batch_size : (i + 1) * self.batch_size] for i in range(n)]
+                    batches = [
+                        samples[i * self.batch_size : (i + 1) * self.batch_size] for i in range(n)
+                    ]
                     samples = samples[n * self.batch_size :]
                     if self.shuffle:
                         self.rng.shuffle(batches)

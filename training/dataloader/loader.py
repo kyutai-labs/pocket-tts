@@ -316,11 +316,11 @@ class DataLoader:
                 chunk_entries = [self.get_entry(i) for i in chunk]
                 got = [s for s in pool.map(self._sample_or_none, chunk_entries) if s is not None]
                 samples.extend(got)
-                # Pool num_bucket_batches batches, sort by row length and batch
+                # Gather num_bucket_batches batches, sort by row length and batch
                 # neighbours, then shuffle the batch order so consecutive steps
                 # are not all short then all long. A pool of 1 is plain batching.
-                pool = max(1, self.num_bucket_batches) * self.batch_size
-                if len(samples) < pool:
+                pool_size = max(1, self.num_bucket_batches) * self.batch_size
+                if len(samples) < pool_size:
                     continue
                 samples.sort(key=self._row_len)
                 n = len(samples) // self.batch_size

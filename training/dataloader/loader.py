@@ -322,7 +322,7 @@ class DataLoader:
                     # steps are not all short then all long.
                     if len(samples) < self.batch_size * self.num_bucket_batches:
                         continue
-                    samples.sort(key=self._target_len)
+                    samples.sort(key=self._row_len)
                     n = len(samples) // self.batch_size
                     batches = [
                         samples[i * self.batch_size : (i + 1) * self.batch_size] for i in range(n)
@@ -345,9 +345,13 @@ class DataLoader:
                     f"({self._failures} failures). Check the paths in the manifest."
                 )
 
-    def _target_len(self, sample: tuple[Any, ...]) -> int:
-        # latent samples carry target_frames last; raw samples start with the target wav
-        return int(sample[4]) if self.stitch_frames else len(sample[0])
+    def _row_len(self, sample: tuple[Any, ...]) -> float:
+        """Transformer row length in frames: voice prompt + text tokens + target audio.
+        A batch is padded to the longest prefix plus the longest target, so both count."""
+        if self.stitch_frames:  # (stitch wav, tokens, prompt latents, tail latents, target frames)
+            return sample[2].shape[0] + len(sample[1]) + int(sample[4])
+        wav, tokens, _prompt, prompt_samples = sample
+        return (prompt_samples + len(wav)) * self.frame_rate / self.sample_rate + len(tokens)
 
     def _collate(self, batch: list[tuple[Any, ...]]) -> Batch:
         if self.stitch_frames:

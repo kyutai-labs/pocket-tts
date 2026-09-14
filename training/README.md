@@ -166,20 +166,9 @@ If you train on 2k hours of HiFiTTS-2 and batch size 64, this is the metrics pro
 
 See [Evaluate](#Evaluate) for more info about the metrics.
 
-Batches are length-bucketed by default (`data.bucket_batches: 20`): the
-loader pools 20 batches of samples, sorts them by target length and batches
-neighbours, so the rows of a batch have similar lengths. Random batches of
-10 s utterances spend about 40% of the computed frames on padding; bucketed
-ones about 1%. On one H100 the teacher recipe goes from 5.05 to 6.2 steps/s
-with identical loss curves. Set `data.bucket_batches: 0` for plain shuffled
-batches. The peak memory of a bucketed run is higher, since some batches
-hold only long utterances (about 51 GiB instead of 41.5 GiB for the 1-GPU
-teacher).
-
 Regarding timing: the first run precomputes Mimi latents for the train
 manifest (once, using all GPUs; validation always encodes audio directly),
-then trains from them. On 2000 h of HiFiTTS-2, effective batch size 64
-(timings measured without bucketing; refreshed numbers to follow):
+then trains from them. On 2000 h of HiFiTTS-2, effective batch size 64:
 
 | GPUs | per-GPU batch | precompute (once) | steps/s | peak VRAM/GPU | to 200k | to 400k |
 |---|---|---|---|---|---|---|

@@ -51,7 +51,7 @@ class SubprocessDataLoader:
         io_workers: int = 16,
         num_procs: int = 6,
         depth: int = 8,
-        bucket_batches: int = 0,
+        num_bucket_batches: int = 0,
     ):
         ctx = torch_mp.get_context("spawn")
         self._queue = ctx.Queue(maxsize=depth)
@@ -69,7 +69,7 @@ class SubprocessDataLoader:
                 "seed": seed + rank * num_procs + i,
                 "shuffle": shuffle,
                 "io_workers": io_workers,
-                "bucket_batches": bucket_batches,
+                "num_bucket_batches": num_bucket_batches,
             }
             proc = ctx.Process(
                 target=_feed_queue,

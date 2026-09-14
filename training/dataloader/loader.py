@@ -60,10 +60,10 @@ class DataLoader:
         seed: int = 0,
         shuffle: bool = True,
         io_workers: int = 16,
-        bucket_batches: int = 0,
+        num_bucket_batches: int = 0,
     ):
         self.jsonl = jsonl
-        self.bucket_batches = bucket_batches
+        self.num_bucket_batches = num_bucket_batches
         self.entries = load_entries(jsonl, rank, world_size)
         self.tokenize = tokenize
         self.batch_size = batch_size
@@ -316,11 +316,11 @@ class DataLoader:
                 chunk_entries = [self.get_entry(i) for i in chunk]
                 got = [s for s in pool.map(self._sample_or_none, chunk_entries) if s is not None]
                 samples.extend(got)
-                if self.bucket_batches:
-                    # Sort a pool of bucket_batches batches by target length and
+                if self.num_bucket_batches:
+                    # Sort a pool of num_bucket_batches batches by target length and
                     # batch neighbours; shuffle the batch order so consecutive
                     # steps are not all short then all long.
-                    if len(samples) < self.batch_size * self.bucket_batches:
+                    if len(samples) < self.batch_size * self.num_bucket_batches:
                         continue
                     samples.sort(key=self._target_len)
                     n = len(samples) // self.batch_size

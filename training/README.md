@@ -177,15 +177,6 @@ then trains from them. On 2000 h of HiFiTTS-2, effective batch size 64:
 | 4 x H100-80GB | 16 | ~15 min | 9.3 | 18 GiB | ~6 h | ~12 h |
 | 8 x H100-80GB | 8 | ~10 min | 9.4 | 12 GiB | ~6 h | ~12 h |
 
-Batches are length-bucketed (`data.num_bucket_batches`, default 20: the
-loader gathers 20 batches of samples, sorts them by row length and batches
-neighbours), which removes most of the padding. On one GPU that is +23%
-over plain shuffled batches (5.0 steps/s), on 2 to 8 GPUs +3 to +9%, where
-the step is bound by gradient synchronisation rather than by frames. Peak
-memory is higher with bucketing, since some batches hold only long
-utterances (40 GiB without it on one GPU). `data.num_bucket_batches: 1`
-restores plain shuffled batches.
-
 Precompute stores ~6 GB of latents per 1000 h of audio next to the manifest.
 `data.precompute: false` skips the precomputing, which will start training
 immediately but at slower speeds.
@@ -197,9 +188,6 @@ can expect:
 |---|---|---|---|---|
 | 1 x H100 | 64 | 10.5 | 8.8 GiB | ~5.3 h |
 | 8 x H100 | 8 | 18.5 | 3.7 GiB | ~3 h |
-
-(7.6 and 18.5 steps/s with plain shuffled batches: bucketing pays on one
-GPU, not on eight.)
 
 ### Training format
 

@@ -316,9 +316,7 @@ class DataLoader:
                 chunk_entries = [self.get_entry(i) for i in chunk]
                 got = [s for s in pool.map(self._sample_or_none, chunk_entries) if s is not None]
                 samples.extend(got)
-                # Gather num_bucket_batches batches, sort by row length and batch
-                # neighbours, then shuffle the batch order so consecutive steps
-                # are not all short then all long. A pool of 1 is plain batching.
+                # Sort a pool of batches by row length so rows in a batch have similar lengths.
                 pool_size = max(1, self.num_bucket_batches) * self.batch_size
                 if len(samples) < pool_size:
                     continue
@@ -340,8 +338,7 @@ class DataLoader:
                 )
 
     def _row_len(self, sample: tuple[Any, ...]) -> float:
-        """Transformer row length in frames: voice prompt + text tokens + target audio.
-        A batch is padded to the longest prefix plus the longest target, so both count."""
+        """Voice prompt + text tokens + target audio frames: what a row costs after padding."""
         if self.stitch_frames:  # (stitch wav, tokens, prompt latents, tail latents, target frames)
             return sample[2].shape[0] + len(sample[1]) + int(sample[4])
         wav, tokens, _prompt, prompt_samples = sample

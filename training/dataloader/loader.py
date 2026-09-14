@@ -60,7 +60,7 @@ class DataLoader:
         seed: int = 0,
         shuffle: bool = True,
         io_workers: int = 16,
-        num_bucket_batches: int = 0,
+        num_bucket_batches: int = 1,
     ):
         self.jsonl = jsonl
         self.num_bucket_batches = num_bucket_batches
@@ -316,29 +316,23 @@ class DataLoader:
                 chunk_entries = [self.get_entry(i) for i in chunk]
                 got = [s for s in pool.map(self._sample_or_none, chunk_entries) if s is not None]
                 samples.extend(got)
-                if self.num_bucket_batches:
-                    # Sort a pool of num_bucket_batches batches by target length and
-                    # batch neighbours; shuffle the batch order so consecutive
-                    # steps are not all short then all long.
-                    if len(samples) < self.batch_size * self.num_bucket_batches:
-                        continue
-                    samples.sort(key=self._row_len)
-                    n = len(samples) // self.batch_size
-                    batches = [
-                        samples[i * self.batch_size : (i + 1) * self.batch_size] for i in range(n)
-                    ]
-                    samples = samples[n * self.batch_size :]
-                    if self.shuffle:
-                        self.rng.shuffle(batches)
-                    for batch in batches:
-                        yielded += 1
-                        yield self._collate(batch)
+                # Pool num_bucket_batches batches, sort by row length and batch
+                # neighbours, then shuffle the batch order so consecutive steps
+                # are not all short then all long. A pool of 1 is plain batching.
+                pool = max(1, self.num_bucket_batches) * self.batch_size
+                if len(samples) < pool:
                     continue
-                if len(samples) < self.batch_size:
-                    continue
-                batch, samples = samples[: self.batch_size], samples[self.batch_size :]
-                yielded += 1
-                yield self._collate(batch)
+                samples.sort(key=self._row_len)
+                n = len(samples) // self.batch_size
+                batches = [
+                    samples[i * self.batch_size : (i + 1) * self.batch_size] for i in range(n)
+                ]
+                samples = samples[n * self.batch_size :]
+                if self.shuffle:
+                    self.rng.shuffle(batches)
+                for batch in batches:
+                    yielded += 1
+                    yield self._collate(batch)
             if not yielded:
                 raise ValueError(
                     f"no readable samples in {self.jsonl}: every entry failed to load "

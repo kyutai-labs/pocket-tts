@@ -51,7 +51,7 @@ class SubprocessDataLoader:
         io_workers: int = 16,
         num_procs: int = 6,
         depth: int = 8,
-        num_bucket_batches: int = 0,
+        num_bucket_batches: int = 1,
     ):
         ctx = torch_mp.get_context("spawn")
         self._queue = ctx.Queue(maxsize=depth)

@@ -31,7 +31,7 @@ class DataArgs:
     # Length bucketing: pool this many batches of samples, sort them by target
     # length and batch neighbours together, so rows in a batch have similar
     # lengths and little padding (random batches of 10 s utterances waste ~40%
-    # of the computed frames). 0 keeps plain shuffled batches.
+    # of the computed frames). 1 is plain shuffled batches.
     num_bucket_batches: int = 20
     # Precompute Mimi latents for train_jsonl on first run and train from
     # them (rank 0 encodes once; other ranks wait). False keeps the

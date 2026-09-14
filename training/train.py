@@ -189,6 +189,7 @@ def main(config_path: str):
             seed=args.seed + start_step,
             shuffle=args.data.shuffle,
             num_procs=args.data.loader_procs,
+            bucket_batches=args.data.bucket_batches,
         )
     )
 

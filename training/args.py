@@ -28,6 +28,11 @@ class DataArgs:
     # network storage (extra IO threads do not help), and a rank consumes
     # batch_size x steps/s: 6 keeps a small model at 35 it/s x 16 fed.
     loader_procs: int = 6
+    # Length bucketing: pool this many batches of samples, sort them by target
+    # length and batch neighbours together, so rows in a batch have similar
+    # lengths and little padding (random batches of 10 s utterances waste ~40%
+    # of the computed frames). 0 keeps plain shuffled batches.
+    bucket_batches: int = 20
     # Precompute Mimi latents for train_jsonl on first run and train from
     # them (rank 0 encodes once; other ranks wait). False keeps the
     # on-the-fly audio pipeline.

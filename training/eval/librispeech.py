@@ -82,6 +82,8 @@ def eval_dir_name(args: argparse.Namespace, step: int) -> str:
         name += f"_n{args.num_items}"
     if args.seed:
         name += f"_seed{args.seed}"
+    if args.strip_final_punct:
+        name += "_nodot"
     if args.asr != DEFAULT_ASR:
         name += "_" + re.sub(r"[^a-z0-9]+", "", args.asr.split("/")[-1].lower())[:12]
     if args.prompt_root:
@@ -291,6 +293,10 @@ def score_items(
 
         def tokenize(text: str) -> list[int]:
             return sp_encode(re.sub(r"[^a-z' ]", "", text.lower()).strip())
+    elif args.strip_final_punct:
+
+        def tokenize(text: str) -> list[int]:
+            return sp_encode(re.sub(r"""[.!?;:,'"\u2019\u201d\u2026\s]+$""", "", text))
     else:
         tokenize = sp_encode
 
@@ -411,6 +417,12 @@ def main():
     parser.add_argument("--eos-threshold", type=float, default=-1.0)
     parser.add_argument("--max-sec", type=float, default=30.0)
     parser.add_argument("--use-ema", action="store_true")
+    parser.add_argument(
+        "--strip-final-punct",
+        action="store_true",
+        help="drop the sentence-final punctuation from the prompt text (the reference "
+        "transcript is unchanged): probes unpunctuated endings",
+    )
     parser.add_argument(
         "--list",
         default=None,

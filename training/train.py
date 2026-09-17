@@ -112,6 +112,10 @@ def setup(config_path: str) -> Run:
         save_args(args, run_dir / "args.yaml")
 
     model, mimi, _config = build_models(args)
+    if args.freeze_head:
+        for name, p in model.named_parameters():
+            if "flow_net." in name:
+                p.requires_grad_(False)
     model.to(device)
     mimi.to(device)
     ensure_train_latents(args, mimi, device, rank, world_size)
@@ -190,6 +194,8 @@ def main(config_path: str):
             shuffle=args.data.shuffle,
             num_procs=args.data.loader_procs,
             num_bucket_batches=args.data.num_bucket_batches,
+            prompt_trim_max_sec=args.data.prompt_trim_max_sec,
+            final_punct_dropout=args.data.final_punct_dropout,
         )
     )
 

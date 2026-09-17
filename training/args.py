@@ -150,6 +150,10 @@ class TrainArgs:
     # Use the teacher checkpoint's EMA shadow as the regression target (falls
     # back to raw weights when the checkpoint carries no EMA).
     distill_teacher_use_ema: bool = True
+    # Warm-start the student's backbone and conditioning from these weights (a training
+    # checkpoint, or a released model.safetensors, local or hf://) instead of the
+    # teacher's bottom+top layers; the per-frame heads still come from the teacher.
+    student_init_from: str = ""
     # Which teacher layers seed the student backbone: "spaced" (evenly across
     # the depth) or "first" (the bottom N). No evidence either way -- "first"
     # keeps the early feature extractors contiguous.

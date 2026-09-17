@@ -79,14 +79,7 @@ def attach_distillation(model: TrainableTTS, flow_lm: FlowLMModel, args: TrainAr
         t_args.distill_cfg_coef = 0.0
         t_args.start_from_pretrained = False
         teacher = build_models(t_args)[0].flow_lm
-        payload = torch.load(args.distill_teacher_weights, map_location="cpu", weights_only=True)
-        state = dict(payload.get("model", payload))
-        if args.distill_teacher_use_ema and payload.get("ema"):
-            # The shadow tracks trainable params only; buffers stay raw.
-            state.update(payload["ema"])
-        state = {
-            k.removeprefix("flow_lm."): v for k, v in state.items() if k.startswith("flow_lm.")
-        }
+        state = _load_flow_lm_state(args.distill_teacher_weights, args.distill_teacher_use_ema)
         teacher.load_state_dict(state, strict=True)
         teacher = teacher.eval()
         # Seed the student from the teacher: non-backbone tensors verbatim,
@@ -99,6 +92,18 @@ def attach_distillation(model: TrainableTTS, flow_lm: FlowLMModel, args: TrainAr
             for k, v in seeded.items()
             if k in student_state and student_state[k].shape == v.shape
         }
+        if args.student_init_from:
+            src = _load_flow_lm_state(args.student_init_from, use_ema=False)
+            copied.update(
+                {
+                    k: v
+                    for k, v in src.items()
+                    if not k.startswith(("flow_net.", "out_eos."))
+                    and k in student_state
+                    and student_state[k].shape == v.shape
+                }
+            )
+            logger.info(f"student backbone seeded from {args.student_init_from}")
         flow_lm.load_state_dict(copied, strict=False)
         logger.info(
             f"depth distillation: teacher={args.distill_teacher_config}, "
@@ -124,6 +129,21 @@ def attach_distillation(model: TrainableTTS, flow_lm: FlowLMModel, args: TrainAr
     # find_unused_parameters=False sees no grad-less trainables.
     disable_grad(model.flow)
 
+
+
+def _load_flow_lm_state(path: str, use_ema: bool) -> dict[str, torch.Tensor]:
+    """FlowLM tensors (without the "flow_lm." prefix) from a training checkpoint or a
+    released model.safetensors, local or hf://. With use_ema the checkpoint's EMA shadow
+    overrides the raw weights it tracks."""
+    file = download_if_necessary(path)
+    if file.suffix == ".safetensors":
+        state = safetensors.torch.load_file(str(file))
+    else:
+        payload = torch.load(file, map_location="cpu", weights_only=True)
+        state = dict(payload.get("model", payload))
+        if use_ema and payload.get("ema"):
+            state.update(payload["ema"])
+    return {k.removeprefix("flow_lm."): v for k, v in state.items() if k.startswith("flow_lm.")}
 
 def build_models(args: TrainArgs) -> tuple[TrainableTTS, MimiModel, Config]:
     """Build (trainable model, frozen mimi, pocket config) from a pocket-tts config."""

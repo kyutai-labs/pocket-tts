@@ -23,12 +23,13 @@ class DataArgs:
     # so prompts vary in length and the target keeps most of the utterance.
     # <= 0 removes the window (any word boundary; full-prefix prompt).
     max_voice_prompt_sec: float = 5.0
-    # Robustness augmentations. prompt_trim_max_sec trims a uniform 0..N seconds off the
-    # end of every voice prompt (prompts cut mid-word at inference stay in distribution);
-    # final_punct_dropout drops the target text's final period with this probability
-    # (unpunctuated prompts stay in distribution). Both default off.
-    prompt_trim_max_sec: float = 0.0
-    final_punct_dropout: float = 0.0
+    # Robustness augmentations, on by default at the values the released models used.
+    # prompt_trim_max_sec trims a uniform 0..N seconds off the end of every voice prompt
+    # (prompts cut mid-word at inference stay in distribution); final_punct_dropout drops
+    # the target text's final period with this probability (unpunctuated prompts stay in
+    # distribution). Set to 0 to disable.
+    prompt_trim_max_sec: float = 0.5
+    final_punct_dropout: float = 0.3
     shuffle: bool = True
     # Loader subprocesses per rank. Each one is GIL-bound at ~90 samples/s from
     # network storage (extra IO threads do not help), and a rank consumes

@@ -53,8 +53,6 @@ uvx pocket-tts generate
 pocket-tts generate
 ```
 Modify the voice with `--voice` and the text with `--text`. We provide a small catalog of voices.
-The default English model is `english_2026-09`, a fine-tune of `english_2026-04` that stays clean when the voice prompt is cut in the middle of a word or the text has no final punctuation (see `training/configs/robustness_finetune.yaml` and `robustness_redistill.yaml`). `english_2026-04` and `english_2026-01` remain available by name.
-
 Choose a pretrained language model with `--language` when running `generate`, `export-voice`, or `serve` (default: `english`). Non-english languages have also biggers 24 layers variants that are higher quality but slower. You can select them by using for example `--language italian_24l`.
 The `--config` option accepts a local YAML path, an `https://` URL, or an `hf://` path (e.g. `hf://<repo_id>/<path>[@revision]`) for custom weights.
 

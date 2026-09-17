@@ -103,10 +103,11 @@ class DataLoader:
         return prompt, len(prompt)
 
     def _tokens(self, text: str) -> torch.Tensor:
-        """Tokenize the target text, dropping its sentence-final punctuation with
-        probability final_punct_dropout so unpunctuated prompts are in distribution."""
+        """Tokenize the target text, dropping a final period with probability
+        final_punct_dropout so unpunctuated prompts are in distribution. Only the
+        period goes: "?" and "!" change how the sentence is said."""
         if self.final_punct_dropout > 0 and self.rng.random() < self.final_punct_dropout:
-            text = re.sub(r"[.!?;:,\u2026\s]+$", "", text) or text
+            text = re.sub(r"\.\s*$", "", text) or text
         return torch.tensor(self.tokenize(text), dtype=torch.long)
 
     @staticmethod

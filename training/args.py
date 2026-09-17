@@ -25,8 +25,8 @@ class DataArgs:
     max_voice_prompt_sec: float = 5.0
     # Robustness augmentations. prompt_trim_max_sec trims a uniform 0..N seconds off the
     # end of every voice prompt (prompts cut mid-word at inference stay in distribution);
-    # final_punct_dropout drops the target text's sentence-final punctuation with this
-    # probability (unpunctuated prompts stay in distribution). Both default off.
+    # final_punct_dropout drops the target text's final period with this probability
+    # (unpunctuated prompts stay in distribution). Both default off.
     prompt_trim_max_sec: float = 0.0
     final_punct_dropout: float = 0.0
     shuffle: bool = True

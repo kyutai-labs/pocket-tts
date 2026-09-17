@@ -130,7 +130,6 @@ def attach_distillation(model: TrainableTTS, flow_lm: FlowLMModel, args: TrainAr
     disable_grad(model.flow)
 
 
-
 def _load_flow_lm_state(path: str, use_ema: bool) -> dict[str, torch.Tensor]:
     """FlowLM tensors (without the "flow_lm." prefix) from a training checkpoint or a
     released model.safetensors, local or hf://. With use_ema the checkpoint's EMA shadow
@@ -144,6 +143,7 @@ def _load_flow_lm_state(path: str, use_ema: bool) -> dict[str, torch.Tensor]:
         if use_ema and payload.get("ema"):
             state.update(payload["ema"])
     return {k.removeprefix("flow_lm."): v for k, v in state.items() if k.startswith("flow_lm.")}
+
 
 def build_models(args: TrainArgs) -> tuple[TrainableTTS, MimiModel, Config]:
     """Build (trainable model, frozen mimi, pocket config) from a pocket-tts config."""

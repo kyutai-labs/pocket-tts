@@ -1,7 +1,9 @@
-# Default English model: identical weights to english_2026-09.yaml.
+# english_2026-04 re-distilled from a robustness-fine-tuned 24-layer teacher
+# (training/configs/robustness_redistill.yaml): voice prompts cut mid-word and text
+# without final punctuation are in distribution.
 
-weights_path: hf://kyutai/pocket-tts/languages/english/model.safetensors@983151f13aaeab1b13c1e5e3c2c383d49a9edf3f
-weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/english/model.safetensors@e7205b6ee50e654a5ea19f0e9df2b0813b05e921
+weights_path: hf://kyutai/pocket-tts/languages/english_2026-09/model.safetensors@983151f13aaeab1b13c1e5e3c2c383d49a9edf3f
+weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/english_2026-09/model.safetensors@e7205b6ee50e654a5ea19f0e9df2b0813b05e921
 # Human evals preferred this model at 0.3 (equal WER/similarity/speech rate).
 default_temperature: 0.3
 
@@ -22,7 +24,7 @@ flow_lm:
     dim: 1024
     n_bins: 4000
     tokenizer: sentencepiece
-    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/languages/english/tokenizer.model@d29db7978e464fb90cb3359ee0c69a273b9142cc
+    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/languages/english_2026-09/tokenizer.model@e7205b6ee50e654a5ea19f0e9df2b0813b05e921
   #weights_path: final.safetensors
 
 mimi:

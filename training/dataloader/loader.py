@@ -47,6 +47,10 @@ def _prefetch(iterator: Iterator[Batch], depth: int = 4) -> Iterator[Batch]:
 
 
 class DataLoader:
+    # Augmentation knobs; class defaults keep instances built without __init__ (tests) valid.
+    prompt_trim_max_sec: float = 0.0
+    final_punct_dropout: float = 0.0
+
     def __init__(
         self,
         jsonl: str,

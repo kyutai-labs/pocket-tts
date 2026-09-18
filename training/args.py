@@ -75,6 +75,8 @@ class OptimArgs:
     # Scale the orthogonal update by 0.2 * sqrt(max(rows, cols)) so its RMS matches AdamW's
     # (Liu et al. 2025) instead of sqrt(max(1, rows / cols)); with it, muon_lr should equal lr.
     muon_rms_match: bool = False
+    # Polar Express iterations; 6 reaches singular values within 1%, fewer is cheaper but looser.
+    muon_polar_steps: int = 6
 
 
 @dataclass

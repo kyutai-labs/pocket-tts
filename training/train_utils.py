@@ -285,6 +285,7 @@ def build_optimizer(
             "momentum": args.optim.muon_momentum,
             "split_sizes": list(sizes) or None,
             "rms_match": args.optim.muon_rms_match,
+            "polar_steps": args.optim.muon_polar_steps,
         }
         for sizes, ps in blocks.items()
     ]

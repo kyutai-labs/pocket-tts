@@ -18,6 +18,7 @@ from pocket_tts.modules.stateful_module import init_states
 from training.args import TrainArgs
 from training.modules.builders import load_model_config
 from training.modules.model import TrainableTTS
+from training.modules.muon import MuonWithAuxAdam
 
 logger = logging.getLogger("train")
 
@@ -244,8 +245,6 @@ def build_optimizer(
             fused=device.type == "cuda",
         )
     assert args.optim.type == "muon", args.optim.type
-    from training.modules.muon import MuonWithAuxAdam
-
     # Muon on the backbone's 2D weights, the fused q/k/v projection as three blocks;
     # AdamW for embeddings, gains, 1D params and (unless muon_head) the sampler head.
     qkv, hidden = [], []

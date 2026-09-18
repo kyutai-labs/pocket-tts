@@ -362,6 +362,17 @@ uvx pocket-tts generate \
 ```
 </details>
 
+<details>
+<summary><a href="https://huggingface.co/shefowl/pocket-tts-polish-6l">Pocket TTS Polish</a> by <a href="https://huggingface.co/shefowl">@shefowl</a> (community research release), 6 layers</summary>
+
+```bash
+uvx pocket-tts generate \
+  --config hf://shefowl/pocket-tts-polish-6l/config.yaml@a8630f2a39055d3e5a91acb7922e31bd0c506cfe \
+  --voice hf://shefowl/pocket-tts-polish-6l/reference.wav@a8630f2a39055d3e5a91acb7922e31bd0c506cfe \
+  --text "Dzień dobry. Nazywam się Krzysztof Wiśniewski i mówię po polsku."
+```
+</details>
+
 Want your model here? Head to the [training Readme](https://github.com/kyutai-labs/pocket-tts/blob/main/training/README.md) to get started!
 
 ## Projects using Pocket TTS

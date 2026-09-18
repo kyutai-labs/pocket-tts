@@ -72,6 +72,9 @@ class OptimArgs:
     muon_lr: float = 0.005
     muon_momentum: float = 0.95
     muon_head: bool = False
+    # Scale the orthogonal update by 0.2 * sqrt(max(rows, cols)) so its RMS matches AdamW's
+    # (Liu et al. 2025) instead of sqrt(max(1, rows / cols)); with it, muon_lr should equal lr.
+    muon_rms_match: bool = False
 
 
 @dataclass

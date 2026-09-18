@@ -1,35 +1,61 @@
-"""Muon optimizer (Newton-Schulz orthogonalized momentum) with an aux AdamW.
+"""Muon optimizer (orthogonalized momentum) with an aux AdamW.
 
 Muon applies to 2D hidden weights only; embeddings, heads, gains and 1D
 params need AdamW, so a single optimizer instance carries both update rules
 selected per param group via `use_muon` (keeps checkpointing's single
 `optimizer.state_dict()` contract).
 
-Reference: Jordan et al., "Muon: An optimizer for hidden layers in neural
-networks" (github.com/KellerJordan/Muon).
+The orthogonalization is the Polar Express polynomial iteration (Amsel et al.,
+arXiv 2505.16932): a composition of degree-5 polynomials whose coefficients are
+optimal per step, evaluated in bfloat16 with matrix products only. Fused
+weights (q/k/v projections, adaLN modulations) are orthogonalized per logical
+block through the group's `split_sizes`.
+
+References: Jordan et al., "Muon: An optimizer for hidden layers in neural
+networks" (github.com/KellerJordan/Muon); Liu et al., "Muon is scalable for
+LLM training" (arXiv 2502.16982) for the RMS-matched update scale.
 """
 
 from collections.abc import Callable
+from itertools import repeat
 from typing import Any
 
 import torch
+from torch.optim.adamw import adamw as functional_adamw
+
+# Optimal degree-5 coefficients per iteration (l=1e-3, safety 1e-2, cushion 0.02),
+# from github.com/NoahAmsel/PolarExpress; the last one is the fixed point.
+_POLAR_EXPRESS_RAW = [
+    (8.287212018145630, -23.595886519098837, 17.300387312530933),
+    (4.107059111542203, -2.947849916737911, 0.544843108292660),
+    (3.948690853482295, -2.908902115962949, 0.551819139437014),
+    (3.318419657370602, -2.488488024314874, 0.510048940123720),
+    (2.300652019954817, -1.668903984574749, 0.418807311952567),
+    (1.891301407787398, -1.267995827194587, 0.376804089485248),
+    (1.875001480853448, -1.250001645399949, 0.375000164547425),
+    (1.875, -1.25, 0.375),
+]
+_POLAR_EXPRESS = [(a / 1.01, b / 1.01**3, c / 1.01**5) for a, b, c in _POLAR_EXPRESS_RAW[:-1]] + [
+    _POLAR_EXPRESS_RAW[-1]
+]
 
 
-def _zeropower_via_newtonschulz5(G: torch.Tensor, steps: int) -> torch.Tensor:
-    """Approximate orthogonalization of G (semi-orthogonal factor of its SVD), batched over
-    a leading dim when G is 3D: each [rows, cols] slice is orthogonalized on its own.
+def polar_express(G: torch.Tensor, steps: int = 6) -> torch.Tensor:
+    """Approximate polar factor of G (semi-orthogonal, same shape), batched over leading dims.
 
-    Quintic Newton-Schulz iteration in bf16; coefficients from the reference
-    implementation, tuned for fast convergence at slight loss of precision.
+    Polar Express applies `steps` degree-5 polynomials X <- aX + bX^3 + cX^5 to the
+    normalized input; bf16 throughout, matrix products only.
     """
-    assert G.ndim in (2, 3)
-    a, b, c = (3.4445, -4.7750, 2.0315)
+    assert G.ndim >= 2
     X = G.bfloat16()
     transposed = G.size(-2) > G.size(-1)
     if transposed:
         X = X.mT
-    X = X / (X.norm(dim=(-2, -1), keepdim=True) + 1e-7)
-    for _ in range(steps):
+    X = X / (X.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-7)
+    coeffs = _POLAR_EXPRESS[:steps] + list(
+        repeat(_POLAR_EXPRESS[-1], max(0, steps - len(_POLAR_EXPRESS)))
+    )
+    for a, b, c in coeffs:
         A = X @ X.mT
         B = b * A + c * A @ A
         X = a * X + B @ X
@@ -38,12 +64,24 @@ def _zeropower_via_newtonschulz5(G: torch.Tensor, steps: int) -> torch.Tensor:
     return X
 
 
+_polar_express_compiled = torch.compile(polar_express, dynamic=False)
+
+
+def _orthogonalize(G: torch.Tensor, steps: int) -> torch.Tensor:
+    if G.is_cuda:
+        return _polar_express_compiled(G, steps)
+    return polar_express(G, steps)
+
+
 class MuonWithAuxAdam(torch.optim.Optimizer):
     """Param groups with use_muon=True get Muon; the rest get AdamW.
 
-    Group keys: muon groups use (lr, momentum, ns_steps, weight_decay);
-    adamw groups use (lr, betas, eps, weight_decay). The training loop's
-    scheduler rescales each group's lr through group["initial_lr"].
+    Muon group keys: lr, momentum, polar_steps, weight_decay, split_sizes
+    (row block sizes of a fused weight; default one block), rms_match (scale
+    the orthogonal update by 0.2 * sqrt(max(rows, cols)) so its RMS matches an
+    AdamW update, instead of sqrt(max(1, rows / cols))). AdamW group keys: lr,
+    betas, eps, weight_decay. The training loop rescales each group's lr through
+    group["lr_scale"].
     """
 
     def __init__(self, param_groups: list[dict[str, Any]]):
@@ -51,9 +89,10 @@ class MuonWithAuxAdam(torch.optim.Optimizer):
             if g.get("use_muon"):
                 g.setdefault("lr", 0.02)
                 g.setdefault("momentum", 0.95)
-                g.setdefault("ns_steps", 5)
+                g.setdefault("polar_steps", 6)
                 g.setdefault("weight_decay", 0.01)
-                g.setdefault("split", 1)
+                g.setdefault("split_sizes", None)
+                g.setdefault("rms_match", False)
             else:
                 g.setdefault("lr", 2e-4)
                 g.setdefault("betas", (0.9, 0.95))
@@ -61,6 +100,14 @@ class MuonWithAuxAdam(torch.optim.Optimizer):
                 g.setdefault("weight_decay", 0.1)
             g["initial_lr"] = g["lr"]
         super().__init__(param_groups, {})
+        self._adamw_steps: dict[int, torch.Tensor] = {}
+
+    def load_state_dict(self, state_dict: dict[str, Any]) -> None:
+        super().load_state_dict(state_dict)
+        self._adamw_steps.clear()
+        for state in self.state.values():
+            if "step" in state:
+                state["step"] = int(state["step"])
 
     @torch.no_grad()
     def step(self, closure: Callable[[], float] | None = None) -> float | None:  # ty: ignore[invalid-method-override]
@@ -72,11 +119,19 @@ class MuonWithAuxAdam(torch.optim.Optimizer):
                 self._adamw_step(group)
         return None
 
+    @staticmethod
+    def _blocks(p: torch.Tensor, g: torch.Tensor, sizes: list[int] | None) -> list[torch.Tensor]:
+        """Logical matrices of a (possibly fused) weight, as views of its lookahead grad."""
+        g = g.view(p.size(0), -1)
+        if not sizes:
+            return [g]
+        assert sum(sizes) == g.size(0), (sizes, g.shape)
+        return list(torch.split(g, sizes, dim=0))
+
     def _muon_step(self, group: dict[str, Any]) -> None:
-        # Nesterov lookahead per param (multi-tensor ops), then one batched Newton-Schulz per
-        # distinct shape: 24 layers x a few matrices as sequential small NS iterations were
-        # launch-bound (~45% of the step), stacked they are a handful of large bmm calls.
-        split = group.get("split", 1)
+        # Nesterov lookahead per param (multi-tensor ops), then one batched polar
+        # iteration per distinct block shape: sequential small iterations are
+        # launch-bound, stacked they are a handful of large bmm calls.
         params = [p for p in group["params"] if p.grad is not None]
         if not params:
             return
@@ -89,70 +144,101 @@ class MuonWithAuxAdam(torch.optim.Optimizer):
             bufs.append(state["momentum_buffer"])
         torch._foreach_lerp_(bufs, grads, 1 - group["momentum"])
         looks = torch._foreach_lerp(grads, bufs, group["momentum"])
-        by_shape: dict[tuple[int, ...], list[tuple[torch.Tensor, torch.Tensor]]] = {}
-        for p, g in zip(params, looks):
-            g = g.view(p.size(0), -1)
-            if split > 1:
-                g = g.view(split, g.size(0) // split, g.size(1))
-            by_shape.setdefault(tuple(g.shape), []).append((p, g))
-        # Under DDP every rank holds identical grads and momentum, so the orthogonalization is
-        # sharded: rank r computes the matrices with index % world == r, then one all_gather
-        # per shape puts every orthogonalized matrix on every rank.
+        # (param index, block index) -> block; batched per block shape
+        by_shape: dict[tuple[int, ...], list[tuple[int, int, torch.Tensor]]] = {}
+        blocks_of: list[list[torch.Tensor]] = []
+        for i, (p, g) in enumerate(zip(params, looks)):
+            blocks = self._blocks(p, g, group["split_sizes"])
+            blocks_of.append(blocks)
+            for j, b in enumerate(blocks):
+                by_shape.setdefault(tuple(b.shape), []).append((i, j, b))
+        # Under DDP every rank holds identical grads and momentum, so the orthogonalization
+        # is sharded: rank r computes a contiguous slice of each shape's blocks, then one
+        # all_gather per shape puts every orthogonalized block on every rank.
         dist = torch.distributed
         world = dist.get_world_size() if dist.is_available() and dist.is_initialized() else 1
         rank = dist.get_rank() if world > 1 else 0
-        lr, wd = group["lr"], group["weight_decay"]
+        out: dict[tuple[int, int], torch.Tensor] = {}
         for shape, items in by_shape.items():
-            rows, cols = shape[-2], shape[-1]
-            scale = max(1.0, rows / cols) ** 0.5  # keeps update RMS ~constant across aspect ratios
+            rows, cols = int(shape[0]), int(shape[1])
             n = len(items)
-            per = -(-n // world)  # matrices per rank, padded so all_gather shapes agree
-            mine = [g for i, (_, g) in enumerate(items) if i // per == rank]
+            per = -(-n // world)
+            mine = [b for k, (_, _, b) in enumerate(items) if k // per == rank]
             if mine:
-                G = torch.stack(mine)
-                flat = G.reshape(-1, rows, cols) if G.ndim == 4 else G
-                ortho = _zeropower_via_newtonschulz5(flat, group["ns_steps"]).reshape(G.shape)
+                ortho = _orthogonalize(torch.stack(mine), group["polar_steps"])
             else:
-                ortho = torch.empty((0,) + shape, dtype=torch.bfloat16, device=items[0][1].device)
+                ortho = torch.empty(
+                    (0, rows, cols), dtype=torch.bfloat16, device=items[0][2].device
+                )
             if world > 1:
                 pad = per - ortho.size(0)
                 if pad:
                     ortho = torch.cat(
-                        [ortho, torch.zeros((pad,) + shape, dtype=ortho.dtype, device=ortho.device)]
+                        [
+                            ortho,
+                            torch.zeros((pad, rows, cols), dtype=ortho.dtype, device=ortho.device),
+                        ]
                     )
-                out = torch.empty((per * world,) + shape, dtype=ortho.dtype, device=ortho.device)
-                dist.all_gather_into_tensor(out, ortho.contiguous())
-                ortho = out[:n]
-            ps = [p for p, _ in items]
-            torch._foreach_mul_(ps, 1 - lr * wd)
-            torch._foreach_add_(
-                ps, [o.reshape(p.shape).to(p.dtype) for p, o in zip(ps, ortho)], alpha=-lr * scale
-            )
+                gathered = torch.empty(
+                    (per * world, rows, cols), dtype=ortho.dtype, device=ortho.device
+                )
+                dist.all_gather_into_tensor(gathered, ortho.contiguous())
+                ortho = gathered[:n]
+            if group["rms_match"]:
+                scale = 0.2 * max(rows, cols) ** 0.5
+            else:
+                scale = (
+                    max(1.0, rows / cols) ** 0.5
+                )  # keeps update RMS ~constant across aspect ratios
+            for (i, j, _), o in zip(items, ortho):
+                out[(i, j)] = o * scale
+        lr, wd = group["lr"], group["weight_decay"]
+        torch._foreach_mul_(params, 1 - lr * wd)
+        updates = [
+            torch.cat([out[(i, j)] for j in range(len(blocks_of[i]))], dim=0)
+            .reshape(p.shape)
+            .to(p.dtype)
+            for i, p in enumerate(params)
+        ]
+        torch._foreach_add_(params, updates, alpha=-lr)
 
     def _adamw_step(self, group: dict[str, Any]) -> None:
         params = [p for p in group["params"] if p.grad is not None]
         if not params:
             return
-        grads = [p.grad for p in params]
-        m, v = [], []
-        for p, g in zip(params, grads):
+        fused = all(p.is_cuda for p in params)
+        grads, avgs, squares, counters = [], [], [], []
+        for p in params:
             state = self.state[p]
             if "exp_avg" not in state:
                 state["step"] = 0
-                state["exp_avg"] = torch.zeros_like(g)
-                state["exp_avg_sq"] = torch.zeros_like(g)
+                state["exp_avg"] = torch.zeros_like(p)
+                state["exp_avg_sq"] = torch.zeros_like(p)
+            device = p.device if fused else torch.device("cpu")
+            counter = self._adamw_steps.get(id(p))
+            if counter is None or counter.device != device:
+                counter = torch.tensor(float(state["step"]), dtype=torch.float32, device=device)
+                self._adamw_steps[id(p)] = counter
             state["step"] += 1
-            m.append(state["exp_avg"])
-            v.append(state["exp_avg_sq"])
-        step = self.state[params[0]]["step"]
+            grads.append(p.grad)
+            avgs.append(state["exp_avg"])
+            squares.append(state["exp_avg_sq"])
+            counters.append(counter)
         beta1, beta2 = group["betas"]
-        torch._foreach_lerp_(m, grads, 1 - beta1)
-        torch._foreach_mul_(v, beta2)
-        torch._foreach_addcmul_(v, grads, grads, value=1 - beta2)
-        bias1 = 1 - beta1**step
-        bias2 = 1 - beta2**step
-        denom = torch._foreach_div(v, bias2)
-        torch._foreach_sqrt_(denom)
-        torch._foreach_add_(denom, group["eps"])
-        torch._foreach_mul_(params, 1 - group["lr"] * group["weight_decay"])
-        torch._foreach_addcdiv_(params, m, denom, value=-group["lr"] / bias1)
+        functional_adamw(
+            params,
+            grads,
+            avgs,
+            squares,
+            [],
+            counters,
+            amsgrad=False,
+            beta1=beta1,
+            beta2=beta2,
+            lr=group["lr"],
+            weight_decay=group["weight_decay"],
+            eps=group["eps"],
+            maximize=False,
+            foreach=not fused,
+            fused=fused,
+        )

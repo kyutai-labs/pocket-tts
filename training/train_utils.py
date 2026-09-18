@@ -14,6 +14,7 @@ import torch
 
 from pocket_tts.models.flow_lm import FlowLMModel
 from pocket_tts.models.mimi import MimiModel
+from pocket_tts.modules.attention import StreamingMultiheadAttention
 from pocket_tts.modules.stateful_module import init_states
 from training.args import TrainArgs
 from training.modules.builders import load_model_config
@@ -245,45 +246,62 @@ def build_optimizer(
             fused=device.type == "cuda",
         )
     assert args.optim.type == "muon", args.optim.type
-    # Muon on the backbone's 2D weights, the fused q/k/v projection as three blocks;
-    # AdamW for embeddings, gains, 1D params and (unless muon_head) the sampler head.
-    qkv, hidden = [], []
+    # Muon on the backbone's 2D weights; fused weights are orthogonalized per logical block
+    # (q, k and v of the attention projection, the chunks of an adaLN modulation). AdamW for
+    # embeddings, gains, 1D params and (unless muon_head) the sampler head.
+    blocks: dict[tuple[int, ...], list[torch.Tensor]] = {}
+
+    def add(p: torch.Tensor, sizes: tuple[int, ...] = ()) -> None:
+        if p.ndim == 2 and p.requires_grad:
+            if sizes not in blocks:
+                blocks[sizes] = []
+            blocks[sizes].append(p)
+
     for layer in model.flow_lm.transformer.layers:
-        for name, p in layer.named_parameters():
-            if p.ndim != 2 or not p.requires_grad:
-                continue
-            is_qkv = name.endswith("in_proj.weight") and p.size(0) == 3 * p.size(1)
-            (qkv if is_qkv else hidden).append(p)
+        fused: dict[int, tuple[int, ...]] = {}
+        for module in layer.modules():
+            if isinstance(module, StreamingMultiheadAttention):
+                kv_dim = (module.in_proj.weight.size(0) - module.embed_dim) // 2
+                fused[id(module.in_proj.weight)] = (module.embed_dim, kv_dim, kv_dim)
+        for p in layer.parameters():
+            add(p, fused.get(id(p), ()))
     if args.optim.muon_head:
-        hidden += [
-            p for p in model.flow_lm.flow_net.parameters() if p.ndim == 2 and p.requires_grad
-        ]
-    muon_params = set(qkv) | set(hidden)
-    rest = [p for p in model.parameters() if p.requires_grad and p not in muon_params]
-    muon_scale = args.optim.muon_lr / args.optim.lr
+        for p in model.flow_lm.flow_net.parameters():
+            if p.ndim == 2 and p.size(0) in (2 * p.size(1), 3 * p.size(1)):
+                add(p, (p.size(1),) * (p.size(0) // p.size(1)))  # adaLN shift/scale(/gate) chunks
+            else:
+                add(p)
+    muon_params = {id(p) for ps in blocks.values() for p in ps}
+    rest = [p for p in model.parameters() if p.requires_grad and id(p) not in muon_params]
+    muon_scale = 1.0 if args.optim.muon_rms_match else args.optim.muon_lr / args.optim.lr
     # Decoupled decay multiplies by (1 - lr * wd) per step; at muon_lr the same wd would
     # decay muon_scale times faster, so rescale it to the AdamW per-step decay.
-    muon_group = {
-        "use_muon": True,
-        "lr_scale": muon_scale,
-        "weight_decay": args.optim.weight_decay / muon_scale,
-        "momentum": args.optim.muon_momentum,
-    }
-    groups = [
-        {"params": hidden, **muon_group},
-        {"params": qkv, **muon_group, "split": 3},
+    groups: list[dict[str, Any]] = [
+        {
+            "params": ps,
+            "use_muon": True,
+            "lr_scale": muon_scale,
+            "weight_decay": args.optim.weight_decay / muon_scale,
+            "momentum": args.optim.muon_momentum,
+            "split_sizes": list(sizes) or None,
+            "rms_match": args.optim.muon_rms_match,
+        }
+        for sizes, ps in blocks.items()
+    ]
+    groups.append(
         {
             "params": rest,
             "lr_scale": 1.0,
             "betas": args.optim.betas,
             "eps": args.optim.eps,
             "weight_decay": args.optim.weight_decay,
-        },
-    ]
+        }
+    )
     groups = [g for g in groups if g["params"]]
     if rank == 0:
+        n_split = sum(len(ps) for sizes, ps in blocks.items() if sizes)
         logger.info(
-            f"muon on {sum(p.numel() for p in muon_params) / 1e6:.1f}M params "
-            f"({len(qkv)} split q/k/v matrices), adamw on the rest"
+            f"muon on {sum(p.numel() for ps in blocks.values() for p in ps) / 1e6:.1f}M params "
+            f"({n_split} fused weights orthogonalized per block), adamw on the rest"
         )
     return MuonWithAuxAdam(groups)

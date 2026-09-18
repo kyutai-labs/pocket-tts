@@ -10,6 +10,7 @@ networks" (github.com/KellerJordan/Muon).
 """
 
 from collections.abc import Callable
+from typing import Any
 
 import torch
 
@@ -45,7 +46,7 @@ class MuonWithAuxAdam(torch.optim.Optimizer):
     scheduler rescales each group's lr through group["initial_lr"].
     """
 
-    def __init__(self, param_groups: list[dict]):
+    def __init__(self, param_groups: list[dict[str, Any]]):
         for g in param_groups:
             if g.get("use_muon"):
                 g.setdefault("lr", 0.02)
@@ -62,15 +63,16 @@ class MuonWithAuxAdam(torch.optim.Optimizer):
         super().__init__(param_groups, {})
 
     @torch.no_grad()
-    def step(self, closure: Callable | None = None) -> None:
+    def step(self, closure: Callable[[], float] | None = None) -> float | None:  # ty: ignore[invalid-method-override]
         assert closure is None
         for group in self.param_groups:
             if group.get("use_muon"):
                 self._muon_step(group)
             else:
                 self._adamw_step(group)
+        return None
 
-    def _muon_step(self, group: dict) -> None:
+    def _muon_step(self, group: dict[str, Any]) -> None:
         # Nesterov lookahead per param (multi-tensor ops), then one batched Newton-Schulz per
         # distinct shape: 24 layers x a few matrices as sequential small NS iterations were
         # launch-bound (~45% of the step), stacked they are a handful of large bmm calls.
@@ -87,7 +89,7 @@ class MuonWithAuxAdam(torch.optim.Optimizer):
             bufs.append(state["momentum_buffer"])
         torch._foreach_lerp_(bufs, grads, 1 - group["momentum"])
         looks = torch._foreach_lerp(grads, bufs, group["momentum"])
-        by_shape: dict[tuple, list] = {}
+        by_shape: dict[tuple[int, ...], list[tuple[torch.Tensor, torch.Tensor]]] = {}
         for p, g in zip(params, looks):
             g = g.view(p.size(0), -1)
             if split > 1:
@@ -127,7 +129,7 @@ class MuonWithAuxAdam(torch.optim.Optimizer):
                 ps, [o.reshape(p.shape).to(p.dtype) for p, o in zip(ps, ortho)], alpha=-lr * scale
             )
 
-    def _adamw_step(self, group: dict) -> None:
+    def _adamw_step(self, group: dict[str, Any]) -> None:
         params = [p for p in group["params"] if p.grad is not None]
         if not params:
             return

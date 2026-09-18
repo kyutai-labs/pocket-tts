@@ -189,10 +189,6 @@ can expect:
 | 1 x H100 | 64 | 10.5 | 7.5 | 9.8 GiB | ~5.3 h |
 | 8 x H100 | 8 | 21.3 | 21.4 | 3.8 GiB | ~2.6 h |
 
-### Optimizer
-
-`optim.type: muon` trains the backbone's 2D weights with Muon (Newton-Schulz orthogonalized momentum, the fused q/k/v projection orthogonalized as three blocks) and keeps AdamW for embeddings, gains and the sampler head; `muon_lr` (0.005) is the Muon step size and the learning-rate schedule applies to both. On the 24-layer teacher recipe it costs 6-17% in steps/s (1 to 8 GPUs) and reaches the same quality at the same step on the full HiFiTTS-2 corpus, so it is not the default. It pays off when steps are scarce: on a 2000 h subset it reached UTMOS 4.0 50-75k steps before AdamW, and in depth distillation the student reaches its plateau in a quarter to half the steps. `muon_head: true` also puts the sampler head under Muon (off by default; the head is normally frozen or trained by distillation).
-
 ### Training format
 
 By default, the training saves:

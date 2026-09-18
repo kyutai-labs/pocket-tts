@@ -293,7 +293,7 @@ uvx pocket-tts generate --config hf://user/repo/config_file.yaml@commit_hash
 ### List of community-trained models
 
 <details>
-<summary><a href="https://huggingface.co/vvolhejn/pocket-tts-czech">Pocket TTS Czech</a> by @vvolhejn (trained internally at Kyutai)</summary>
+<summary><a href="https://huggingface.co/vvolhejn/pocket-tts-czech">Pocket TTS Czech</a> by @vvolhejn</summary>
 
 ```bash
 uvx pocket-tts generate \
@@ -303,7 +303,7 @@ uvx pocket-tts generate \
 </details>
 
 <details>
-<summary><a href="https://huggingface.co/saryps-labs/pocket-tts-hindi">Pocket TTS Hindi</a> by <a href="https://huggingface.co/saryps-labs">Saryps Labs</a> (community research release)</summary>
+<summary><a href="https://huggingface.co/saryps-labs/pocket-tts-hindi">Pocket TTS Hindi</a> by <a href="https://huggingface.co/saryps-labs">Saryps Labs</a></summary>
 
 ```bash
 uvx pocket-tts generate \
@@ -313,7 +313,7 @@ uvx pocket-tts generate \
 </details>
 
 <details>
-<summary><a href="https://huggingface.co/seastar105/pocket-tts-korean-300m">Pocket TTS Korean 300M</a> by <a href="https://huggingface.co/seastar105">@seastar105</a> (community research release)</summary>
+<summary><a href="https://huggingface.co/seastar105/pocket-tts-korean-300m">Pocket TTS Korean 300M</a> by <a href="https://huggingface.co/seastar105">@seastar105</a></summary>
 
 ```bash
 uvx pocket-tts generate \
@@ -323,7 +323,7 @@ uvx pocket-tts generate \
 </details>
 
 <details>
-<summary><a href="https://huggingface.co/mehdi-hf/pocket-tts-farsi">Pocket TTS Persian (Farsi)</a> by @mallahyari (community research release)</summary>
+<summary><a href="https://huggingface.co/mehdi-hf/pocket-tts-farsi">Pocket TTS Persian (Farsi)</a> by @mallahyari</summary>
 
 ```bash
 uvx --with soundfile pocket-tts generate --config hf://mehdi-hf/pocket-tts-farsi/farsi.yaml@3c59d06b3177b21c5cd0df9e9e3e899f4d361c1c \
@@ -332,7 +332,7 @@ uvx --with soundfile pocket-tts generate --config hf://mehdi-hf/pocket-tts-farsi
 </details>
 
 <details>
-<summary><a href="https://huggingface.co/anak10thn/pocket-tts-indonesian">Pocket TTS Indonesian</a> by <a href="https://huggingface.co/anak10thn">@anak10thn</a> (community research release), 6 layers</summary>
+<summary><a href="https://huggingface.co/anak10thn/pocket-tts-indonesian">Pocket TTS Indonesian</a> by <a href="https://huggingface.co/anak10thn">@anak10thn</a>, 6 layers</summary>
 
 ```bash
 uvx pocket-tts generate \
@@ -342,7 +342,7 @@ uvx pocket-tts generate \
 </details>
 
 <details>
-<summary><a href="https://huggingface.co/cbentes/pocket-tts-estonian">Pocket TTS Estonian</a> by @cbentes (community research release)</summary>
+<summary><a href="https://huggingface.co/cbentes/pocket-tts-estonian">Pocket TTS Estonian</a> by @cbentes</summary>
 
 ```bash
 uvx pocket-tts generate \
@@ -353,7 +353,7 @@ uvx pocket-tts generate \
 </details>
 
 <details>
-<summary><a href="https://huggingface.co/EryriLabs/pocket-tts-cymraeg">Pocket TTS Cymraeg (Welsh)</a> by <a href="https://huggingface.co/EryriLabs">EryriLabs</a> (community research release), 24 layers</summary>
+<summary><a href="https://huggingface.co/EryriLabs/pocket-tts-cymraeg">Pocket TTS Cymraeg (Welsh)</a> by <a href="https://huggingface.co/EryriLabs">EryriLabs</a>, 24 layers</summary>
 
 ```bash
 uvx pocket-tts generate \
@@ -363,7 +363,7 @@ uvx pocket-tts generate \
 </details>
 
 <details>
-<summary><a href="https://huggingface.co/shefowl/pocket-tts-polish-6l">Pocket TTS Polish</a> by <a href="https://huggingface.co/shefowl">@shefowl</a> (community research release), 6 layers</summary>
+<summary><a href="https://huggingface.co/shefowl/pocket-tts-polish-6l">Pocket TTS Polish</a> by <a href="https://huggingface.co/shefowl">@shefowl</a>, 6 layers</summary>
 
 ```bash
 uvx pocket-tts generate \

@@ -63,6 +63,15 @@ class OptimArgs:
     # a cosine fine-tune.
     schedule: str = "constant"
     lr_min_ratio: float = 0.0
+    # "adamw", or "muon": Newton-Schulz orthogonalized momentum on the backbone's 2D
+    # weights (the fused q/k/v projection orthogonalized as three blocks), AdamW on
+    # everything else. muon_lr is the Muon step size; the AdamW groups keep `lr`, and
+    # the schedule applies to both. muon_head also puts the sampler head's 2D weights
+    # under Muon (useful for head-only fine-tunes).
+    type: str = "adamw"
+    muon_lr: float = 0.005
+    muon_momentum: float = 0.95
+    muon_head: bool = False
 
 
 @dataclass

@@ -123,14 +123,7 @@ def setup(config_path: str) -> Run:
     if rank == 0:
         logger.info(f"flow_lm + objective: {n_params / 1e6:.1f}M trainable params")
 
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=args.optim.lr,
-        betas=args.optim.betas,
-        eps=args.optim.eps,
-        weight_decay=args.optim.weight_decay,
-        fused=device.type == "cuda",
-    )
+    optimizer = build_optimizer(model, args, device, rank)
     ema = EMA(model, args.ema_decay) if args.ema_decay > 0 else None
 
     start_step = 0
@@ -165,6 +158,65 @@ def setup(config_path: str) -> Run:
         world_size=world_size,
         progress=progress,
     )
+
+
+def build_optimizer(
+    model: nn.Module, args: TrainArgs, device: torch.device, rank: int
+) -> torch.optim.Optimizer:
+    if args.optim.type == "adamw":
+        return torch.optim.AdamW(
+            model.parameters(),
+            lr=args.optim.lr,
+            betas=args.optim.betas,
+            eps=args.optim.eps,
+            weight_decay=args.optim.weight_decay,
+            fused=device.type == "cuda",
+        )
+    assert args.optim.type == "muon", args.optim.type
+    from training.modules.muon import MuonWithAuxAdam
+
+    # Muon on the backbone's 2D weights, the fused q/k/v projection as three blocks;
+    # AdamW for embeddings, gains, 1D params and (unless muon_head) the sampler head.
+    qkv, hidden = [], []
+    for layer in model.flow_lm.transformer.layers:
+        for name, p in layer.named_parameters():
+            if p.ndim != 2 or not p.requires_grad:
+                continue
+            is_qkv = name.endswith("in_proj.weight") and p.size(0) == 3 * p.size(1)
+            (qkv if is_qkv else hidden).append(p)
+    if args.optim.muon_head:
+        hidden += [
+            p for p in model.flow_lm.flow_net.parameters() if p.ndim == 2 and p.requires_grad
+        ]
+    muon_params = set(qkv) | set(hidden)
+    rest = [p for p in model.parameters() if p.requires_grad and p not in muon_params]
+    muon_scale = args.optim.muon_lr / args.optim.lr
+    # Decoupled decay multiplies by (1 - lr * wd) per step; at muon_lr the same wd would
+    # decay muon_scale times faster, so rescale it to the AdamW per-step decay.
+    muon_group = {
+        "use_muon": True,
+        "lr_scale": muon_scale,
+        "weight_decay": args.optim.weight_decay / muon_scale,
+        "momentum": args.optim.muon_momentum,
+    }
+    groups = [
+        {"params": hidden, **muon_group},
+        {"params": qkv, **muon_group, "split": 3},
+        {
+            "params": rest,
+            "lr_scale": 1.0,
+            "betas": args.optim.betas,
+            "eps": args.optim.eps,
+            "weight_decay": args.optim.weight_decay,
+        },
+    ]
+    groups = [g for g in groups if g["params"]]
+    if rank == 0:
+        logger.info(
+            f"muon on {sum(p.numel() for p in muon_params) / 1e6:.1f}M params "
+            f"({len(qkv)} split q/k/v matrices), adamw on the rest"
+        )
+    return MuonWithAuxAdam(groups)
 
 
 def main(config_path: str):
@@ -222,7 +274,7 @@ def main(config_path: str):
         step_start = time.time()
         lr = lr_at(step, args)
         for group in optimizer.param_groups:
-            group["lr"] = lr
+            group["lr"] = lr * group.get("lr_scale", 1.0)
         optimizer.zero_grad()
         for micro in range(args.grad_accum_steps):
             batch = next(train_loader)

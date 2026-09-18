@@ -109,20 +109,22 @@ class MuonWithAuxAdam(torch.optim.Optimizer):
             if mine:
                 G = torch.stack(mine)
                 flat = G.reshape(-1, rows, cols) if G.ndim == 4 else G
-                O = _zeropower_via_newtonschulz5(flat, group["ns_steps"]).reshape(G.shape)
+                ortho = _zeropower_via_newtonschulz5(flat, group["ns_steps"]).reshape(G.shape)
             else:
-                O = torch.empty((0,) + shape, dtype=torch.bfloat16, device=items[0][1].device)
+                ortho = torch.empty((0,) + shape, dtype=torch.bfloat16, device=items[0][1].device)
             if world > 1:
-                pad = per - O.size(0)
+                pad = per - ortho.size(0)
                 if pad:
-                    O = torch.cat([O, torch.zeros((pad,) + shape, dtype=O.dtype, device=O.device)])
-                out = torch.empty((per * world,) + shape, dtype=O.dtype, device=O.device)
-                dist.all_gather_into_tensor(out, O.contiguous())
-                O = out[:n]
+                    ortho = torch.cat(
+                        [ortho, torch.zeros((pad,) + shape, dtype=ortho.dtype, device=ortho.device)]
+                    )
+                out = torch.empty((per * world,) + shape, dtype=ortho.dtype, device=ortho.device)
+                dist.all_gather_into_tensor(out, ortho.contiguous())
+                ortho = out[:n]
             ps = [p for p, _ in items]
             torch._foreach_mul_(ps, 1 - lr * wd)
             torch._foreach_add_(
-                ps, [o.reshape(p.shape).to(p.dtype) for p, o in zip(ps, O)], alpha=-lr * scale
+                ps, [o.reshape(p.shape).to(p.dtype) for p, o in zip(ps, ortho)], alpha=-lr * scale
             )
 
     def _adamw_step(self, group: dict) -> None:

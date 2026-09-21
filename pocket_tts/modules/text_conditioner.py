@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Callable
 
 import sentencepiece
 import tokenizers
@@ -37,6 +38,10 @@ class SentencePieceTokenizer:
     def decode(self, tokens: list[int]) -> str:
         return self.sp.decode(tokens)
 
+    def serialize(self) -> tuple[str, bytes]:
+        """(kind, payload) for `encoder_from_serialized`, to cross a process boundary."""
+        return "sentencepiece", self.sp.serialized_model_proto()
+
     def __call__(self, text: str) -> torch.Tensor:
         return torch.tensor(self.encode(text))[None, :]
 
@@ -64,11 +69,24 @@ class JsonTokenizer:
     def decode(self, tokens: list[int]) -> str:
         return self.tokenizer.decode(tokens)
 
+    def serialize(self) -> tuple[str, bytes]:
+        return "tokenizers", self.tokenizer.to_str().encode()
+
     def __call__(self, text: str) -> torch.Tensor:
         return torch.tensor(self.encode(text))[None, :]
 
 
 Tokenizer = SentencePieceTokenizer | JsonTokenizer
+
+
+def encoder_from_serialized(kind: str, payload: bytes) -> Callable[[str], list[int]]:
+    """Rebuild just the text -> ids function in a worker process."""
+    if kind == "tokenizers":
+        tokenizer = tokenizers.Tokenizer.from_str(payload.decode())
+        return lambda text: tokenizer.encode(text).ids
+    sp = sentencepiece.SentencePieceProcessor()
+    sp.load_from_serialized_proto(payload)
+    return lambda text: sp.encode(text, out_type=int)
 
 
 def build_tokenizer(nbins: int, tokenizer_path: str, kind: str = "sentencepiece") -> Tokenizer:

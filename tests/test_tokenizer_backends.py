@@ -46,3 +46,13 @@ def test_build_tokenizer_picks_the_backend() -> None:
     assert isinstance(
         build_tokenizer(DEFAULT_TOKENIZER_N_BINS, SP_PATH, "sentencepiece"), SentencePieceTokenizer
     )
+
+
+@pytest.mark.parametrize("path", [SP_PATH, JSON_PATH])
+def test_serialize_round_trips_through_a_worker_payload(path: str) -> None:
+    from pocket_tts.modules.text_conditioner import encoder_from_serialized
+
+    tokenizer = build_tokenizer(DEFAULT_TOKENIZER_N_BINS, path)
+    encode = encoder_from_serialized(*tokenizer.serialize())
+    for text in TEXTS:
+        assert encode(text) == tokenizer.encode(text)

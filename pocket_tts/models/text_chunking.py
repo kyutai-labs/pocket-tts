@@ -6,7 +6,7 @@ boundaries and regrouped into chunks that fit `max_tokens`.
 
 import logging
 
-from pocket_tts.modules.text_conditioner import SentencePieceTokenizer
+from pocket_tts.modules.text_conditioner import Tokenizer
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +73,7 @@ def _ensure_terminal_punctuation(text: str) -> str:
 
 
 def _is_decimal_period_boundary(
-    list_of_tokens: list[int], segment_start_idx: int, tokenizer: SentencePieceTokenizer
+    list_of_tokens: list[int], segment_start_idx: int, tokenizer: Tokenizer
 ) -> bool:
     """Return True when segment_start_idx begins right after a decimal period."""
     prefix = tokenizer.decode(list_of_tokens[:segment_start_idx])
@@ -90,7 +90,7 @@ def _is_decimal_period_boundary(
 def _find_boundary_indices(
     list_of_tokens: list[int],
     boundary_tokens: list[int],
-    tokenizer: SentencePieceTokenizer | None = None,
+    tokenizer: Tokenizer | None = None,
     skip_decimal_periods: bool = False,
 ) -> list[int]:
     """Find token indices where text should be split based on boundary tokens.
@@ -121,7 +121,7 @@ def _find_boundary_indices(
 
 
 def _segments_from_boundaries(
-    list_of_tokens: list[int], boundary_indices: list[int], tokenizer: SentencePieceTokenizer
+    list_of_tokens: list[int], boundary_indices: list[int], tokenizer: Tokenizer
 ) -> list[tuple[int, str]]:
     """Decode token segments between boundary indices into (token_count, text) pairs."""
     segments = []
@@ -134,7 +134,7 @@ def _segments_from_boundaries(
 
 
 def split_into_best_sentences(
-    tokenizer: SentencePieceTokenizer,
+    tokenizer: Tokenizer,
     text_to_generate: str,
     max_tokens: int,
     pad_with_spaces_for_short_inputs: bool,

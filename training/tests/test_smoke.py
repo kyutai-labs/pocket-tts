@@ -303,8 +303,12 @@ def test_prefix_prompt(monkeypatch: pytest.MonkeyPatch):
 
 def test_train_tokenizer(tmp_path: Path):
     manifest = tmp_path / "m.jsonl"
+    # Unigram, the default, seeds its vocabulary from the substrings it sees, so a
+    # corpus of one repeated sentence cannot fill 64 pieces. Vary the words.
+    words = [f"{a}{b}{c}" for a in "bcdfgpst" for b in "aeiou" for c in "lmnrs"]
     lines = [
-        json.dumps({"transcript": f"hello world number {i} testing tokenizers"}) for i in range(64)
+        json.dumps({"transcript": " ".join(words[i % len(words) :][:6] or words[:6])})
+        for i in range(64)
     ]
     manifest.write_text("\n".join(lines))
     prefix = tmp_path / "tok"

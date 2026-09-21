@@ -1,5 +1,7 @@
 """The tokenizer.json backend must reproduce the SentencePiece ids exactly."""
 
+from pathlib import Path
+
 import pytest
 
 from pocket_tts.modules.text_conditioner import (
@@ -56,3 +58,17 @@ def test_serialize_round_trips_through_a_worker_payload(path: str) -> None:
     encode = encoder_from_serialized(*tokenizer.serialize())
     for text in TEXTS:
         assert encode(text) == tokenizer.encode(text)
+
+
+def test_convert_tokenizer_reproduces_sentencepiece() -> None:
+    """The shipped tokenizer.json is what training/scripts/convert_tokenizer.py emits."""
+    import sentencepiece as spm
+
+    from pocket_tts.utils.utils import download_if_necessary
+    from training.scripts.convert_tokenizer import CHECKS, build
+
+    model = download_if_necessary(SP_PATH)
+    tokenizer = build(Path(model))
+    sp = spm.SentencePieceProcessor(model_file=str(model))
+    for text in CHECKS + TEXTS:
+        assert tokenizer.encode(text).ids == sp.encode(text, out_type=int), text

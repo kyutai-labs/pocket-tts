@@ -77,6 +77,7 @@ def main(
     )
     sp = spm.SentencePieceProcessor(model_file=output_prefix + ".model")
     print(f"wrote {output_prefix}.model (vocab {sp.get_piece_size()})")
+    print(f"convert it with: python -m training.scripts.convert_tokenizer {output_prefix}.model")
 
 
 if __name__ == "__main__":

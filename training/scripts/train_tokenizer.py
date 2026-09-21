@@ -11,6 +11,10 @@ field, e.g. the training manifests) or plain-text files (one utterance per
 line). Point the model config's lookup_table.tokenizer_path at the produced
 <prefix>.model to train with it.
 
+The default model type is unigram, the type every released tokenizer uses: a
+tokenizer.json converted from a unigram .model reproduces its ids exactly,
+which is not true of bpe.
+
 Usage:
     python -m training.scripts.train_tokenizer out/tokenizer \
         data/train.jsonl [more files ...]
@@ -54,7 +58,7 @@ def main(
     character_coverage: Annotated[
         float, typer.Option(help="lower to 0.9995 for large-alphabet languages (e.g. CJK)")
     ] = 1.0,
-    model_type: Annotated[Literal["bpe", "unigram", "char"], typer.Option()] = "bpe",
+    model_type: Annotated[Literal["unigram", "bpe", "char"], typer.Option()] = "unigram",
 ):
     Path(output_prefix).parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as tmp:

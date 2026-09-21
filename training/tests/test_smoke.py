@@ -11,10 +11,10 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 import sentencepiece as spm
-
-from training.scripts.convert_tokenizer import MODEL_TYPES, _fields
 import torch
 from torch import nn
+
+from training.scripts.convert_tokenizer import MODEL_TYPES, _fields
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 

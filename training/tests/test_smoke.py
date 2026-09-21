@@ -11,6 +11,8 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 import sentencepiece as spm
+
+from training.scripts.convert_tokenizer import MODEL_TYPES, _fields
 import torch
 from torch import nn
 
@@ -320,12 +322,12 @@ def test_train_tokenizer(tmp_path: Path):
             str(prefix),
             str(manifest),
             "--vocab-size",
-            "64",
+            "320",
         ],
         check=True,
     )
     sp = spm.SentencePieceProcessor(model_file=str(prefix) + ".model")
-    assert sp.get_piece_size() == 64
+    assert sp.get_piece_size() == 320
     assert sp.encode("hello world") != []
 
 
@@ -352,3 +354,37 @@ def test_grad_accum_matches_big_batch():
         (loss_of(xs[half], ys[half]) / 2).backward()
     for g, p in zip(big, net.parameters(), strict=True):
         assert torch.allclose(g, grad_of(p), atol=1e-6)
+
+
+def test_train_tokenizer_matches_the_released_spec(tmp_path: Path):
+    """A tokenizer trained by the script carries the spec the released ones have."""
+    manifest = tmp_path / "m.jsonl"
+    words = [f"{a}{b}{c}" for a in "bcdfgpst" for b in "aeiou" for c in "lmnrs"]
+    manifest.write_text(
+        "\n".join(
+            json.dumps({"transcript": " ".join(words[i % len(words) :][:6])}) for i in range(64)
+        )
+    )
+    prefix = tmp_path / "tok"
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "training.scripts.train_tokenizer",
+            str(prefix),
+            str(manifest),
+            "--vocab-size",
+            "320",
+        ],
+        check=True,
+    )
+    spec = _fields((prefix.with_suffix(".model")).read_bytes())
+    trainer, normalizer = _fields(spec[2][0]), _fields(spec[3][0])
+    assert MODEL_TYPES[trainer.get(3, [1])[0]] == "UNIGRAM"
+    assert trainer[20][0] == 6  # max_sentencepiece_length
+    assert trainer[25][0] == 1  # split_digits
+    assert trainer[26][0] == 1  # allow_whitespace_only_pieces
+    assert trainer[35][0] == 1  # byte_fallback
+    assert trainer[43][0] == 3  # pad_id
+    assert normalizer.get(4, [1])[0] == 0  # remove_extra_whitespaces off
+    assert not normalizer.get(2, [b""])[0]  # identity: no precompiled charsmap

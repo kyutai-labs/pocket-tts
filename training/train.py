@@ -168,7 +168,7 @@ def main(config_path: str):
     optimizer, ema, device, rank = run.optimizer, run.ema, run.device, run.rank
     progress, start_step = run.progress, run.start_step
 
-    sentence_piece = model.flow_lm.conditioner.tokenizer.sp
+    sentence_piece = model.flow_lm.conditioner.tokenizer
     tokenize = sentence_piece.encode
     train_loader = iter(
         SubprocessDataLoader(
@@ -324,7 +324,7 @@ def validate(
     step: int,
 ) -> dict[str, float]:
     model.eval()
-    tokenize = model.flow_lm.conditioner.tokenizer.sp.encode
+    tokenize = model.flow_lm.conditioner.tokenizer.encode
     loader = iter(
         DataLoader(
             args.data.valid_jsonl,

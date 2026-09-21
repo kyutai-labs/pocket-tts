@@ -10,6 +10,7 @@ dependencies = [
     "torch>=2.5.0",
     "pydantic>=2",
     "sentencepiece>=0.2.1",
+    "tokenizers>=0.21",
     "safetensors>=0.4.0",
     "typer>=0.10.0",
     "typing_extensions>=4.10.0",

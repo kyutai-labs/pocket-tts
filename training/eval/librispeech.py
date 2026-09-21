@@ -286,7 +286,7 @@ def score_items(
     except ImportError:
         pass
 
-    sp_encode = model.flow_lm.conditioner.tokenizer.sp.encode
+    sp_encode = model.flow_lm.conditioner.tokenizer.encode
     if args.match_train_text:
 
         def tokenize(text: str) -> list[int]:

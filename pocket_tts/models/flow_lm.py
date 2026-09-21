@@ -231,6 +231,7 @@ class FlowLMModel(nn.Module):
             tokenizer_path=str(config.lookup_table.tokenizer_path),
             dim=config.lookup_table.dim,
             output_dim=d_model,
+            tokenizer=config.lookup_table.tokenizer,
         )
 
         transformer = StreamingTransformer.from_pydantic_config(config.transformer)

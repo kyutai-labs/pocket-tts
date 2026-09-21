@@ -76,8 +76,8 @@ def _is_decimal_period_boundary(
     list_of_tokens: list[int], segment_start_idx: int, tokenizer: SentencePieceTokenizer
 ) -> bool:
     """Return True when segment_start_idx begins right after a decimal period."""
-    prefix = tokenizer.sp.decode(list_of_tokens[:segment_start_idx])
-    suffix = tokenizer.sp.decode(list_of_tokens[segment_start_idx:])
+    prefix = tokenizer.decode(list_of_tokens[:segment_start_idx])
+    suffix = tokenizer.decode(list_of_tokens[segment_start_idx:])
     return (
         len(prefix) >= 2
         and prefix[-1] == "."
@@ -128,7 +128,7 @@ def _segments_from_boundaries(
     for i in range(len(boundary_indices) - 1):
         start = boundary_indices[i]
         end = boundary_indices[i + 1]
-        text = tokenizer.sp.decode(list_of_tokens[start:end])
+        text = tokenizer.decode(list_of_tokens[start:end])
         segments.append((end - start, text))
     return segments
 

@@ -23,8 +23,8 @@ flow_lm:
   lookup_table:
     dim: 1024
     n_bins: 4000
-    tokenizer: sentencepiece
-    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/languages/english_2026-09/tokenizer.model@e7205b6ee50e654a5ea19f0e9df2b0813b05e921
+    tokenizer: tokenizers
+    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/languages/english_2026-09/tokenizer.json@00eac05ed3d16bdc3f6b5d598874019c34a89214
   #weights_path: final.safetensors
 
 mimi:

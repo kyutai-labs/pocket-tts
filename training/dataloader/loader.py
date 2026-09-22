@@ -31,11 +31,14 @@ logger = logging.getLogger(__name__)
 
 def _prefetch(iterator: Iterator[Batch], depth: int = 4) -> Iterator[Batch]:
     """Run the (synchronous, IO-bound) loader in a background thread."""
-    q: queue.Queue[Batch | None] = queue.Queue(maxsize=depth)
+    q: queue.Queue[Batch | BaseException | None] = queue.Queue(maxsize=depth)
 
     def worker():
-        for item in iterator:
-            q.put(item)
+        try:
+            for item in iterator:
+                q.put(item)
+        except BaseException as exc:  # noqa: BLE001 -- re-raised in the consumer
+            q.put(exc)
         q.put(None)
 
     threading.Thread(target=worker, daemon=True).start()
@@ -43,7 +46,13 @@ def _prefetch(iterator: Iterator[Batch], depth: int = 4) -> Iterator[Batch]:
         item = q.get()
         if item is None:
             return
+        if isinstance(item, BaseException):
+            raise item
         yield item
+
+
+class UnalignedEntry(ValueError):
+    """A manifest entry without word alignments (see training/scripts/align_data.py)."""
 
 
 class DataLoader:
@@ -132,7 +141,11 @@ class DataLoader:
         # audio before the cut = voice conditioning, audio after = target,
         # paired with the remaining words as text (see training/scripts/align_data.py).
         if not entry.words:
-            return None
+            # Without a boundary to cut at, the prompt would be a window of the target
+            # itself and the model would learn to copy it instead of reading the text.
+            raise UnalignedEntry(
+                f"{entry.path}: no word alignments; run training/scripts/align_data.py first"
+            )
         cuts = []
         for i in range(1, len(entry.words)):
             prev, cur = entry.words[i - 1], entry.words[i]
@@ -306,6 +319,8 @@ class DataLoader:
     def _sample_or_none(self, entry: Entry) -> tuple[Any, ...] | None:
         try:
             return self._sample(entry)
+        except UnalignedEntry:
+            raise
         except Exception as exc:  # noqa: BLE001 — skip unreadable samples, whatever the cause
             self._failures += 1
             if self._failures % 1000 == 1:

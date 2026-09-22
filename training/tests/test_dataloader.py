@@ -6,6 +6,7 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
+import pytest
 import sphn
 
 from training.dataloader import DataLoader, load_entries
@@ -75,12 +76,12 @@ def test_target_audio_never_exceeds_max_duration(tmp_path: Path):
     assert batch.audio.shape[-1] <= int(5.0 * SR) + 1
 
 
-def test_unaligned_manifest_still_yields_batches(tmp_path: Path):
-    """Manifests without word alignments are a documented input: the loader
-    falls back to a random window as the prompt instead of hanging."""
+def test_unaligned_manifest_is_refused(tmp_path: Path):
+    """Without word alignments the prompt would be a window of the target itself,
+    so the loader refuses the manifest instead of training a prompt-copier."""
     loader = _loader(_manifest(tmp_path, n=8, words=False))
-    batch = next(iter(loader))
-    assert batch.audio.shape[0] == 2
+    with pytest.raises(ValueError, match="align_data"):
+        next(iter(loader))
 
 
 def test_entry_start_offsets_into_a_shared_file(tmp_path: Path):
@@ -96,10 +97,22 @@ def test_entry_start_offsets_into_a_shared_file(tmp_path: Path):
 
     manifest = tmp_path / "m.jsonl"
     with open(manifest, "w") as f:
-        f.write(json.dumps({"path": str(audio_path), "duration": 5.0, "transcript": "low"}) + "\n")
+        words = [{"word": "w", "start": 0.5, "end": 1.5}, {"word": "x", "start": 3.0, "end": 4.0}]
         f.write(
             json.dumps(
-                {"path": str(audio_path), "duration": 5.0, "transcript": "high", "start": 5.0}
+                {"path": str(audio_path), "duration": 5.0, "transcript": "w x", "words": words}
+            )
+            + "\n"
+        )
+        f.write(
+            json.dumps(
+                {
+                    "path": str(audio_path),
+                    "duration": 5.0,
+                    "transcript": "w x",
+                    "start": 5.0,
+                    "words": words,
+                }
             )
             + "\n"
         )

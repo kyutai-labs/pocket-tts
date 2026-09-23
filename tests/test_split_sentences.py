@@ -244,14 +244,34 @@ def test_capitalization_can_be_switched_off():
     Both were observed in a Persian model whose alphabet uses "S" for sh: "salAm"
     was capitalized to "SalAm" and came out as /shalaam/.
     """
-    kwargs = dict(pad_with_spaces_for_short_inputs=False, remove_semicolons=False)
-
-    on, _ = prepare_text_prompt("salAm hAle SomA", **kwargs)
+    on, _ = prepare_text_prompt("salAm hAle SomA", False, False)
     assert on.startswith("SalAm")
 
-    off, _ = prepare_text_prompt("salAm hAle SomA", capitalize_first_letter=False, **kwargs)
+    off, _ = prepare_text_prompt("salAm hAle SomA", False, False, capitalize_first_letter=False)
     assert off.startswith("salAm")
 
     # The default is unchanged, so nothing moves for the shipped languages.
-    default, _ = prepare_text_prompt("hello there", **kwargs)
+    default, _ = prepare_text_prompt("hello there", False, False)
     assert default == "Hello there."
+
+
+def test_replace_characters_rewrites_unseen_characters_before_capitalizing():
+    """Characters a model never saw in training are rewritten, and the text is re-tidied."""
+    drop = {c: "" for c in '"¡¿«»'}
+
+    got, _ = prepare_text_prompt(
+        '"¡Venid a mí, hombres!" Alzó la voz.', False, False, replace_characters=drop
+    )
+    assert got == "Venid a mí, hombres! Alzó la voz."
+
+    got, _ = prepare_text_prompt(
+        "il a dit « l’homme »", False, False, replace_characters={**drop, "’": "'"}
+    )
+    assert got == "Il a dit l'homme."
+
+    with pytest.raises(ValueError):
+        prepare_text_prompt('"  "', False, False, replace_characters=drop)
+
+    # Empty by default: shipped configs that don't set it are unchanged.
+    got, _ = prepare_text_prompt('"Yes," she said.', False, False)
+    assert got == '"Yes," she said.'

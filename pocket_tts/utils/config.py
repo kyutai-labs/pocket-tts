@@ -128,6 +128,10 @@ class Config(StrictModel):
     # a capital *is* a phoneme it silently changes the sound ("salAm" -> "SalAm"
     # is /salaam/ -> /shalaam/).
     capitalize_first_letter: bool = True
+    # Per-character rewrites applied before tokenization ("" deletes). For characters the model's
+    # training text never contained (straight quotes, curly apostrophes in CML-TTS/MLS): their
+    # embeddings are untrained and the model speaks filler syllables where they occur.
+    replace_characters: dict[str, str] = {}
     model_recommended_frames_after_eos: int | None = None
     default_temperature: float = 0.7
 

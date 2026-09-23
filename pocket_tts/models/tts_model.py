@@ -84,8 +84,8 @@ VOICE_CLONING_UNSUPPORTED = (
 class TTSModel(nn.Module):
     _TOKENS_PER_SECOND_ESTIMATE = 3.0
     _GEN_SECONDS_PADDING = 2.0
-    # EOS is ignored on the first frames: before speech starts, the EOS logit of some voices and
-    # models (french_24l, short texts) crosses the threshold and generation ends before the word.
+    # EOS is ignored on the first frames: before speech starts, the EOS logit of some voices can
+    # cross the threshold, and a short text then ends before the word is spoken.
     _MIN_FRAMES_BEFORE_EOS = 6
 
     def __init__(

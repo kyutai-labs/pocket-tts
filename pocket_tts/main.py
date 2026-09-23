@@ -217,7 +217,7 @@ def serve(
         str | None,
         typer.Option(
             help="Language for the TTS model. "
-            "'english_2026-01', 'english_2026-04', 'english', 'french_24l', 'german_24l', 'portuguese', 'italian', 'spanish'."
+            "'english_2026-01', 'english_2026-04', 'english', 'french', 'french_24l', 'german_24l', 'portuguese', 'italian', 'spanish'."
             " Incompatible with the config argument. Default is 'english', which is the same model as 'english_2026-04'.",
             show_default=False,
         ),
@@ -283,7 +283,7 @@ def generate(
         typer.Option(
             help=(
                 "Language for the TTS model. "
-                "'english_2026-01', 'english_2026-04', 'english', 'french_24l', 'spanish_24l',"
+                "'english_2026-01', 'english_2026-04', 'english', 'french', 'french_24l', 'spanish_24l',"
                 "'german_24l', 'portuguese_24l', 'italian_24l'."
                 " Incompatible with the config argument. Default is 'english', which is the same model as 'english_2026-04'. "
                 "The '24l' variants are bigger models, "
@@ -404,7 +404,7 @@ def export_voice(
         typer.Option(
             help=(
                 "Language for the TTS model. "
-                "'english_2026-01', 'english_2026-04', 'english', 'french_24l', 'german_24l','spanish_24l',"
+                "'english_2026-01', 'english_2026-04', 'english', 'french', 'french_24l', 'german_24l','spanish_24l',"
                 " 'portuguese_24l', 'italian_24l'."
                 " Incompatible with the config argument. Default is 'english', which is the same model as 'english_2026-04'. "
                 "The '24l' variants are bigger models, "

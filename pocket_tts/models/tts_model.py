@@ -300,7 +300,7 @@ class TTSModel(nn.Module):
         Args:
             language: Optional language identifier to select a predefined config. Incompatible with
                 the `config` argument. Available options
-                are `"english_2026-01"`, `"english_2026-04"`, `"english"`, `"french_24l"`, `"german_24l"`, `"portuguese"`, `"italian"`, `"spanish_24l"`.
+                are `"english_2026-01"`, `"english_2026-04"`, `"english"`, `"french"`, `"french_24l"`, `"german_24l"`, `"portuguese"`, `"italian"`, `"spanish_24l"`.
                 If neither `config` nor `language` is provided, defaults to `"english", which is the same model as 'english_2026-04'`.
             config: A path to a custom YAML config file: a local path (e.g., `"C://pocket_tts/pocket_tts_config.yaml"`),
                 an `https://` URL, or an `hf://` path (e.g. `"hf://<repo_id>/<path>[@revision]"`).
@@ -351,10 +351,6 @@ class TTSModel(nn.Module):
         if config is None and language is None:
             language = DEFAULT_LANGUAGE
         if language is not None:
-            if language == "french":
-                raise ValueError(
-                    "For technical reasons, only a larger 24-layer model is available for French. Please use the 'french_24l' language instead."
-                )
             config = CONFIGS_DIR / f"{language}.yaml"
         if lsd_decode_steps is not None:
             logger.warning("lsd_decode_steps is deprecated, use sampler_decode_steps")

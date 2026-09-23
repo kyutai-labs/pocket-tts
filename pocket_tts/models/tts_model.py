@@ -858,6 +858,7 @@ class TTSModel(nn.Module):
         frames_after_eos: int,
         latents_queue: LatentQueue,
         stop: threading.Event,
+        latents_of_previous_chunk: torch.Tensor,  # [1, N, self.flow_lm.ldim]
     ):
         backbone_input = torch.full(
             (1, 1, self.flow_lm.ldim),
@@ -865,6 +866,15 @@ class TTSModel(nn.Module):
             device=next(iter(self.flow_lm.parameters())).device,
             dtype=self.flow_lm.dtype,
         )
+        num_forced = latents_of_previous_chunk.shape[1]
+        # Feed the BOS and the previous latents one by one, discarding the predictions.
+        # The last previous latent is fed as the first input of the autoregressive loop.
+        for i in range(num_forced):
+            self._run_flow_lm_and_increment_step(
+                model_state=model_state, backbone_input_latents=backbone_input
+            )
+            backbone_input = latents_of_previous_chunk[:, i : i + 1]
+
         steps_times = []
         eos_step = None
         for generation_step in range(max_gen_len):

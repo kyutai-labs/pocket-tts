@@ -84,6 +84,9 @@ VOICE_CLONING_UNSUPPORTED = (
 class TTSModel(nn.Module):
     _TOKENS_PER_SECOND_ESTIMATE = 3.0
     _GEN_SECONDS_PADDING = 2.0
+    # EOS is ignored on the first frames: before speech starts, the EOS logit of some voices and
+    # models (french_24l, short texts) crosses the threshold and generation ends before the word.
+    _MIN_FRAMES_BEFORE_EOS = 6
 
     def __init__(
         self,
@@ -874,7 +877,11 @@ class TTSModel(nn.Module):
                 next_latent, is_eos = self._run_flow_lm_and_increment_step(
                     model_state=model_state, backbone_input_latents=backbone_input
                 )
-                if is_eos.item() and eos_step is None:
+                if (
+                    is_eos.item()
+                    and eos_step is None
+                    and generation_step >= self._MIN_FRAMES_BEFORE_EOS
+                ):
                     eos_step = generation_step
                 if eos_step is not None and generation_step >= eos_step + frames_after_eos:
                     break

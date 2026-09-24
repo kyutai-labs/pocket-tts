@@ -5,6 +5,7 @@ boundaries and regrouped into chunks that fit `max_tokens`.
 """
 
 import logging
+import re
 
 from pocket_tts.modules.text_conditioner import Tokenizer
 
@@ -22,6 +23,9 @@ def prepare_text_prompt(
     text = text.strip()
     if replace_characters:
         text = " ".join(text.translate(str.maketrans(replace_characters)).split())
+        # Deleted quotes leave '"Hi?", she said' as 'Hi?, she said', which reads as a sentence end
+        # followed by a stray comma; keep the sentence mark only.
+        text = re.sub(r"([.!?\u2026])\s*[,;:]", r"\1", text)
     if text == "":
         raise ValueError("Text prompt cannot be empty")
     text = text.replace("\n", " ").replace("\r", " ").replace("  ", " ")

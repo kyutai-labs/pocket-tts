@@ -269,6 +269,9 @@ def test_replace_characters_rewrites_unseen_characters_before_capitalizing():
     )
     assert got == "Il a dit l'homme."
 
+    got, _ = prepare_text_prompt('"Vieni stasera?", chiese.', False, False, replace_characters=drop)
+    assert got == "Vieni stasera? chiese."
+
     with pytest.raises(ValueError):
         prepare_text_prompt('"  "', False, False, replace_characters=drop)
 

@@ -1,8 +1,19 @@
-# sig: 78c8126d.yaml
+weights_path: hf://kyutai/pocket-tts/languages/italian/model.safetensors@2dd944b099d06bb9edbd221fef138685711d9bf0
+weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/italian/model.safetensors@4e1e0a3e611c51c0b4ed8174fc10f32a54644303
 
-weights_path: hf://kyutai/pocket-tts/languages/italian/model.safetensors@39592ff23c9ef80098bb74895d104c26275fe2c9
-weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/italian/model.safetensors@d29db7978e464fb90cb3359ee0c69a273b9142cc
-
+replace_characters:
+  '"': ''
+  '“': ''
+  '”': ''
+  '„': ''
+  '«': ''
+  '»': ''
+  '’': ''''
+  '‘': ''''
+  '(': ''
+  ')': ''
+  '[': ''
+  ']': ''
 
 flow_lm:
   insert_bos_before_voice: true
@@ -20,7 +31,7 @@ flow_lm:
     dim: 1024
     n_bins: 4000
     tokenizer: tokenizers
-    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/languages/italian/tokenizer.json@00eac05ed3d16bdc3f6b5d598874019c34a89214
+    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/languages/italian/tokenizer.json@4e1e0a3e611c51c0b4ed8174fc10f32a54644303
   #weights_path: partial.safetensors
 
 mimi:

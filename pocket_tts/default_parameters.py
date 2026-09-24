@@ -35,6 +35,11 @@ DEFAULT_TEXT_FOR_LANGUAGE = {
         "Sono abbastanza veloce da funzionare su piccole CPU. "
         "Spero che ti piacerò."
     ),
+    "dutch": (
+        "Hallo wereld. Ik ben Pocket TTS van Kyutai. "
+        "Ik ben snel genoeg om op kleine CPU's te draaien. "
+        "Ik hoop dat je me leuk vindt."
+    ),
     "spanish": (
         "Hola mundo. Soy el Pocket TTS de Kyutai. "
         "Soy lo suficientemente rápido para funcionar en pequeñas CPU. "
@@ -48,6 +53,7 @@ DEFAULT_VOICE_FOR_LANGUAGE = {
     "german": "juergen",
     "portuguese": "rafael",
     "french": "estelle",
+    "dutch": "daan",
 }
 DEFAULT_VOICE_FALLBACK = "alba"
 # Predefined voices are states precomputed with the released weights of a language model,

@@ -42,7 +42,7 @@ The main class for text-to-speech generation.
 Load and return a TTSModel instance with pre-trained weights.
 
 **Parameters:**
-- `language` (str | None): Name of built-in language config to load. Supported values: `"english_2026-01"`, `"english_2026-04"`, `"english"`, `"french"`, `"french_24l"`, `"german_24l"`, `"portuguese_24l"`, `"italian_24l"`, `"spanish_24l"`. If both `language` and `config` are omitted, defaults to `"english"`, which is the same model as `"english_2026-04"`. The "24l" variants are larger models that are not distilled yet and are here only as a preview.
+- `language` (str | None): Name of built-in language config to load. Supported values: `"english_2026-01"`, `"english_2026-04"`, `"english_2026-09"`, `"english"`, `"french"`, `"french_24l"`, `"german"`, `"german_24l"`, `"portuguese"`, `"portuguese_24l"`, `"italian"`, `"italian_24l"`, `"spanish"`, `"spanish_24l"`, `"dutch"`, `"dutch_24l"`. If both `language` and `config` are omitted, defaults to `"english"`, which is the same model as `"english_2026-09"`. The "24l" variants are larger models that are not distilled yet and are here only as a preview.
 - `config` (str | None): Path to model config YAML file. Incompatible with `language`.
 - `temp` (float | None): Sampling temperature for generation. `None` uses the model's recommended default from its config file (`default_temperature`, 0.3).
 - `sampler_decode_steps` (int): Number of generation steps (default: 1)

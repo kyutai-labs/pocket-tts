@@ -1,5 +1,5 @@
-weights_path: hf://kyutai/pocket-tts/languages/spanish/model.safetensors@2dd944b099d06bb9edbd221fef138685711d9bf0
-weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/spanish/model.safetensors@4e1e0a3e611c51c0b4ed8174fc10f32a54644303
+weights_path: hf://kyutai/pocket-tts/languages/dutch_24l/model.safetensors@2dd944b099d06bb9edbd221fef138685711d9bf0
+weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/dutch_24l/model.safetensors@4e1e0a3e611c51c0b4ed8174fc10f32a54644303
 
 replace_characters:
   '"': ''
@@ -14,8 +14,6 @@ replace_characters:
   ')': ''
   '[': ''
   ']': ''
-  '¡': ''
-  '¿': ''
 
 flow_lm:
   insert_bos_before_voice: true
@@ -28,12 +26,12 @@ flow_lm:
     hidden_scale: 4
     max_period: 10000
     num_heads: 16
-    num_layers: 6
+    num_layers: 24
   lookup_table:
     dim: 1024
     n_bins: 4000
     tokenizer: tokenizers
-    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/languages/spanish/tokenizer.json@4e1e0a3e611c51c0b4ed8174fc10f32a54644303
+    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/languages/dutch_24l/tokenizer.json@4e1e0a3e611c51c0b4ed8174fc10f32a54644303
   #weights_path: partial.safetensors
 
 mimi:

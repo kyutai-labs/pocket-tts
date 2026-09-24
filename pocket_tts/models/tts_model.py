@@ -303,8 +303,8 @@ class TTSModel(nn.Module):
         Args:
             language: Optional language identifier to select a predefined config. Incompatible with
                 the `config` argument. Available options
-                are `"english_2026-01"`, `"english_2026-04"`, `"english"`, `"french"`, `"french_24l"`, `"german_24l"`, `"portuguese"`, `"italian"`, `"spanish_24l"`.
-                If neither `config` nor `language` is provided, defaults to `"english", which is the same model as 'english_2026-04'`.
+                are `"english_2026-01"`, `"english_2026-04"`, `"english_2026-09"`, `"english"`, `"french"`, `"french_24l"`, `"german"`, `"german_24l"`, `"portuguese"`, `"portuguese_24l"`, `"italian"`, `"italian_24l"`, `"spanish"`, `"spanish_24l"`, `"dutch"`, `"dutch_24l"`.
+                If neither `config` nor `language` is provided, defaults to `"english", which is the same model as 'english_2026-09'`.
             config: A path to a custom YAML config file: a local path (e.g., `"C://pocket_tts/pocket_tts_config.yaml"`),
                 an `https://` URL, or an `hf://` path (e.g. `"hf://<repo_id>/<path>[@revision]"`).
             temp: Sampling temperature for generation. Higher values produce more

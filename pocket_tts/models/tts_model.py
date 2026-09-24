@@ -307,7 +307,7 @@ class TTSModel(nn.Module):
             temp: Sampling temperature for generation. Higher values produce more
                 diverse but potentially lower quality output. If None, defaults to
                 the model's recommended value from its config file
-                (``default_temperature``, 0.3 for every shipped model).
+                (``default_temperature``).
             sampler_decode_steps: Number of steps for Lagrangian Self Distillation
                 decoding. More steps can improve quality but increase computation.
             noise_clamp: Maximum value for noise sampling. If None, no clamping

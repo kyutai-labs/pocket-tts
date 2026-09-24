@@ -314,7 +314,7 @@ def generate(
         float | None,
         typer.Option(
             help="Temperature for generation. Defaults to the model's recommended "
-            "value from its config (0.3 for every shipped model)."
+            "value from its config."
         ),
     ] = None,
     noise_clamp: Annotated[

@@ -2,9 +2,7 @@ weights_path: hf://kyutai/pocket-tts/languages/french/model.safetensors@d0ebc5de
 weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/french/model.safetensors@8843db76457a91db32077edf8dfcd1c0e3e755fd
 
 remove_semicolons: true
-# Characters the French training text (MLS + Emilia-FR) never contains: their tokens are untrained
-# and come out as filler syllables. Measured on 1127 translated LibriSpeech sentences: curly
-# apostrophes 12.2% WER -> 3.8% with this map, straight quotes 8.4% -> 4.9%.
+# Replace characters that are absent from the training data.
 replace_characters:
   '"': ''
   '“': ''

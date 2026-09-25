@@ -395,6 +395,7 @@ Want your model here? Head to the [training Readme](https://github.com/kyutai-la
 - [tts-audiobook-tool](https://github.com/zeropointnine/tts-audiobook-tool) by @zeropointnine - Multi-model audiobook generator with automatic error detection, 48khz upscaling, synced browser reader, stand-alone server-mode.
 - [seshat-tts](https://github.com/scriptriva/seshat-tts) by @scriptriva - Accessibility tool that provides real-time audio synthesis for games and apps. It also features a voice manager capable of cloning voices based on user presets.
 - [LocalVocal.ai](https://localvocal.ai) by @joshwhiton - Fully local conversational voice-harness for Macs with Apple Silicon. Includes voice-activity & turn detection, dictation, voice cloning, CLI to talk to Claude, Codex... and more.
+- [Libratory](https://github.com/subev/libratory) by @subev - Turns PDFs into read-along audiobooks with the narration highlighted on the printed page; Pocket TTS is one of its local narrators, with voice cloning from the picker.
 
 
 ## Prohibited use

@@ -217,7 +217,7 @@ def serve(
         str | None,
         typer.Option(
             help="Language for the TTS model. "
-            "'english_2026-01', 'english_2026-04', 'english_2026-09', 'english_drifting_26_09', 'english', 'french', 'french_24l', 'german', 'german_24l', 'portuguese', 'portuguese_24l', 'italian', 'italian_24l', 'spanish', 'spanish_24l', 'dutch', 'dutch_24l'."
+            "'english_2026-01', 'english_2026-04', 'english_2026-09', 'english_drifting_26-09', 'english', 'french', 'french_24l', 'german', 'german_24l', 'portuguese', 'portuguese_24l', 'italian', 'italian_24l', 'spanish', 'spanish_24l', 'dutch', 'dutch_24l'."
             " Incompatible with the config argument. Default is 'english', which is the same model as 'english_2026-09'.",
             show_default=False,
         ),
@@ -283,7 +283,7 @@ def generate(
         typer.Option(
             help=(
                 "Language for the TTS model. "
-                "'english_2026-01', 'english_2026-04', 'english_2026-09', 'english_drifting_26_09', 'english', 'french', 'french_24l', 'german', 'german_24l', 'portuguese', 'portuguese_24l', 'italian', 'italian_24l', 'spanish', 'spanish_24l', 'dutch', 'dutch_24l'."
+                "'english_2026-01', 'english_2026-04', 'english_2026-09', 'english_drifting_26-09', 'english', 'french', 'french_24l', 'german', 'german_24l', 'portuguese', 'portuguese_24l', 'italian', 'italian_24l', 'spanish', 'spanish_24l', 'dutch', 'dutch_24l'."
                 " Incompatible with the config argument. Default is 'english', which is the same model as 'english_2026-09'. "
                 "The '24l' variants are bigger models, "
                 "not distilled yet and here only as preview. They're not the final "
@@ -403,7 +403,7 @@ def export_voice(
         typer.Option(
             help=(
                 "Language for the TTS model. "
-                "'english_2026-01', 'english_2026-04', 'english_2026-09', 'english_drifting_26_09', 'english', 'french', 'french_24l', 'german', 'german_24l', 'portuguese', 'portuguese_24l', 'italian', 'italian_24l', 'spanish', 'spanish_24l', 'dutch', 'dutch_24l'."
+                "'english_2026-01', 'english_2026-04', 'english_2026-09', 'english_drifting_26-09', 'english', 'french', 'french_24l', 'german', 'german_24l', 'portuguese', 'portuguese_24l', 'italian', 'italian_24l', 'spanish', 'spanish_24l', 'dutch', 'dutch_24l'."
                 " Incompatible with the config argument. Default is 'english', which is the same model as 'english_2026-09'. "
                 "The '24l' variants are bigger models, "
                 "not distilled yet and here only as preview."

@@ -1,8 +1,8 @@
 # English 6-layer model with a one-step drifting sampler head, CFG-distilled (guidance 2.0 baked in)
 # from a 24-layer drifting teacher. training/configs/drifting*.yaml trains this kind of model.
 
-weights_path: hf://kyutai/pocket-tts/languages/english_drifting_26_09/model.safetensors@659ad4ce5a1986fae8be39a1b97632620340fd00
-weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/english_drifting_26_09/model.safetensors@8d70788dca6af70d4849b088a11e8d87758daccd
+weights_path: hf://kyutai/pocket-tts/languages/english_drifting_26-09/model.safetensors@75cfe24e3142233bb81887fed3482e9652bb4a6e
+weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/english_drifting_26-09/model.safetensors@a5ce31f3eba7a3b0cb9c24ba2015b098f278eaae
 default_temperature: 0.3
 
 flow_lm:

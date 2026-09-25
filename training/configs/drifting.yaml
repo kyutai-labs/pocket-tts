@@ -1,11 +1,11 @@
-# Train a drifting teacher from scratch (stage 1 of 2). The sampler head maps
+# Train a drifting teacher from scratch. The sampler head maps
 # noise to a latent in one step and is trained with a kernel drift field
 # instead of LSD (training/modules/samplers.py: Drifting). The kernel
 # temperature is learned, from 10 down to ~0.05 within the first few thousand
 # steps; the logged `temp` metric shows where it settles.
 # Keep the learning rate constant. UTMOS on LibriSpeech goes from ~3.5 at 50k
 # steps to ~4.25 at 400k, and in our runs annealing the learning rate before
-# that jump stopped it. drifting_finetune.yaml anneals afterwards.
+# that jump stopped it.
 model_config: pocket_tts/config/english.yaml
 model_overrides:
   flow_lm.transformer.num_layers: 24

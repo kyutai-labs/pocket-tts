@@ -170,12 +170,12 @@ Regarding timing: the first run precomputes Mimi latents for the train
 manifest (once, using all GPUs; validation always encodes audio directly),
 then trains from them. On 2000 h of HiFiTTS-2, effective batch size 64:
 
-| GPUs | per-GPU batch | precompute (once) | steps/s | steps/s, no bucketing | peak VRAM/GPU | to 200k | to 400k |
-|---|---|---|---|---|---|---|---|
-| 1 x H100-80GB | 64 | ~50 min | 6.3 | 5.1 | 54 GiB | ~8.8 h | ~17.5 h |
-| 2 x H100-80GB | 32 | ~25 min | 8.1 | 8.0 | 30 GiB | ~6.8 h | ~13.7 h |
-| 4 x H100-80GB | 16 | ~15 min | 9.8 | 10.2 | 18 GiB | ~5.7 h | ~11.3 h |
-| 8 x H100-80GB | 8 | ~10 min | 10.4 | 10.6 | 12 GiB | ~5.3 h | ~10.7 h |
+| GPUs | per-GPU batch | precompute (once) | steps/s | peak VRAM/GPU | to 200k | to 400k |
+|---|---|---|---|---|---|---|
+| 1 x H100-80GB | 64 | ~50 min | 6.3 | 54 GiB | ~8.8 h | ~17.5 h |
+| 2 x H100-80GB | 32 | ~25 min | 8.1 | 30 GiB | ~6.8 h | ~13.7 h |
+| 4 x H100-80GB | 16 | ~15 min | 9.8 | 18 GiB | ~5.7 h | ~11.3 h |
+| 8 x H100-80GB | 8 | ~10 min | 10.4 | 12 GiB | ~5.3 h | ~10.7 h |
 
 Precompute stores ~6 GB of latents per 1000 h of audio next to the manifest.
 `data.precompute: false` skips the precomputing, which will start training
@@ -184,10 +184,10 @@ immediately but at slower speeds.
 And for the distillation step (`depth_distill.yaml`), here is the speed you
 can expect:
 
-| GPUs | per-GPU batch | steps/s | steps/s, no bucketing | peak VRAM/GPU | 200k steps |
-|---|---|---|---|---|---|
-| 1 x H100 | 64 | 10.5 | 7.5 | 9.8 GiB | ~5.3 h |
-| 8 x H100 | 8 | 21.3 | 21.4 | 3.8 GiB | ~2.6 h |
+| GPUs | per-GPU batch | steps/s | peak VRAM/GPU | 200k steps |
+|---|---|---|---|---|
+| 1 x H100 | 64 | 10.5 | 9.8 GiB | ~5.3 h |
+| 8 x H100 | 8 | 21.3 | 3.8 GiB | ~2.6 h |
 
 ### Training format
 

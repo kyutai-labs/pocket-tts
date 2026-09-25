@@ -13,14 +13,17 @@ backbone output for one frame, `x_0` is noise and `x_1` the target latent.
 - LSD: Lagrangian Self Distillation (arXiv:2505.18825), 2 time conds (s, t),
   1-step (or few-step) decode. This is the objective of the released
   pocket-tts models.
+- Drifting: one-step noise-to-data generator trained with a kernel drift
+  field (arXiv:2602.04770), no time cond.
 """
 
+import math
 from typing import Literal
 
 import torch
 from torch import nn
 
-from pocket_tts.models.flow_lm import FlowNet, lsd_decode, ot_decode
+from pocket_tts.models.flow_lm import FlowNet, drifting_decode, lsd_decode, ot_decode
 
 from .utils import MLP, f_grad_x_only, zero_init
 
@@ -168,7 +171,117 @@ class LSD(FlowType):
         return lsd_decode(v_t, x_0, num_steps)
 
 
-FLOW_TYPES: dict[str, type[FlowType]] = {"flow_matching": FlowMatching, "lsd": LSD}
+def cdist(x: torch.Tensor, y: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+    """Pairwise Euclidean distances, [B, N, D] x [B, M, D] -> [B, N, M]."""
+    sq = (
+        x.square().sum(-1)[:, :, None]
+        + y.square().sum(-1)[:, None, :]
+        - 2 * torch.einsum("bnd,bmd->bnm", x, y)
+    )
+    return sq.clamp(min=eps).sqrt()
+
+
+class Drifting(FlowType):
+    """Drifting generative model (https://arxiv.org/abs/2602.04770).
+
+    A one-step noise-to-data generator. Each step draws `num_neg` generations per
+    position (the negatives) and moves the generator output along a kernel drift
+    field V: attraction to the data sample minus repulsion from the other
+    generations, via the fixed-point loss ||x - stopgrad(x + V)||^2. The kernel is
+    Laplacian, on distances normalized by their per-position mean.
+
+    The kernel temperature starts at `temp` and, with temp_loss_weight > 0, is
+    learned by maximizing the data sample's share of the kernel mass; with 0 it
+    stays fixed (at `temp`, or at the learned value when resuming a run that
+    learned it).
+    """
+
+    num_time_conds = 0
+    # The backward through num_neg vmapped head draws per position overflows in
+    # bf16; the head is small, so the loss runs in fp32.
+    fp32_loss = True
+
+    def __init__(
+        self,
+        temp: float = 10.0,
+        temp_loss_weight: float = 1.0,
+        num_neg: int = 64,
+        normalize_force: bool | Literal["batch"] = "batch",
+        min_scale: float = 1e-3,
+        min_temp: float = 1e-3,
+    ):
+        super().__init__()
+        assert normalize_force in (True, False, "batch"), normalize_force
+        self.num_neg = num_neg
+        self.normalize_force = normalize_force
+        self.min_scale = min_scale
+        self.min_temp = min_temp
+        self.temp_loss_weight = temp_loss_weight
+        self.temp = nn.Parameter(torch.full((1,), temp), requires_grad=temp_loss_weight > 0)
+
+    def _drift(
+        self,
+        dists: torch.Tensor,
+        x: torch.Tensor,
+        y_pos: torch.Tensor,
+        y_neg: torch.Tensor,
+        temp: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        logit = -dists / temp  # [N, num_neg, 1 + num_neg]: each generation vs data + generations
+        # Log-mass of the data sample relative to a flat kernel (0 = chance).
+        pos_log_mass = logit.log_softmax(dim=-1)[..., 0] + math.log(self.num_neg)
+        A = (logit.softmax(dim=-1) * logit.softmax(dim=-2)).clamp(min=1e-6).sqrt().detach()
+        A_pos, A_neg = A[..., :1], A[..., 1:]
+        W_pos = A_pos * A_neg.sum(dim=-1, keepdim=True)
+        W_neg = A_neg * A_pos.sum(dim=-1, keepdim=True)
+        force = W_pos @ y_pos - W_neg @ y_neg
+        force = force - (W_pos.sum(dim=-1, keepdim=True) - W_neg.sum(dim=-1, keepdim=True)) * x
+        rms = force.square().mean((-1, -2), keepdim=True).clamp(min=1e-8).sqrt()
+        if self.normalize_force == "batch":
+            force = force / rms.mean(dim=0, keepdim=True)
+        elif self.normalize_force:
+            force = force / rms
+        return force, pos_log_mass
+
+    def loss(
+        self, v_t: FlowNet, x_0: torch.Tensor, x_1: torch.Tensor
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor], torch.Tensor]:
+        e = torch.randn(self.num_neg, *x_0.shape, device=x_0.device, dtype=x_0.dtype)
+        x = torch.vmap(v_t, out_dims=1)(e)  # [N, num_neg, D]
+        y_neg = x.detach()
+        y_pos = x_1[:, None]  # [N, 1, D]
+        with torch.no_grad():
+            dists = torch.cat([cdist(y_neg, y_pos), cdist(y_neg, y_neg)], dim=-1)
+            n = self.num_neg + 1
+            scale = (dists * n / (n - 1)).mean(dim=(-1, -2), keepdim=True).clamp(min=self.min_scale)
+            # A generation never attracts or repels itself.
+            self_mask = torch.eye(self.num_neg, device=x.device) * 100.0
+            dists = dists / scale + torch.cat(
+                [torch.zeros_like(dists[..., :1]), self_mask.expand_as(dists[..., 1:])], dim=-1
+            )
+            scale_input = scale / x.shape[-1] ** 0.5
+        x, y_pos, y_neg = (z / scale_input for z in (x, y_pos, y_neg))
+        temp = self.temp.clamp(min=self.min_temp)
+        V, pos_log_mass = self._drift(dists, x.detach(), y_pos, y_neg, temp)
+        loss = (x - (x + V).detach()).square().mean(dim=(-1, -2))
+        # Per position, the generation that puts the most mass on the data sample sets the temperature.
+        temp_loss = -pos_log_mass.amax(dim=-1).mean()
+        metrics = {
+            "drifting_loss": loss.mean(),
+            "temp": self.temp.detach().squeeze(),
+            "std_mean": y_neg.std(dim=1).norm(dim=-1).mean(),
+        }
+        return loss + self.temp_loss_weight * temp_loss, metrics, torch.zeros_like(x_0[..., :1])
+
+    def decode(self, v_t: FlowNet, x_0: torch.Tensor, num_steps: int = 1) -> torch.Tensor:
+        return drifting_decode(v_t, x_0)
+
+
+FLOW_TYPES: dict[str, type[FlowType]] = {
+    "flow_matching": FlowMatching,
+    "lsd": LSD,
+    "drifting": Drifting,
+}
 
 
 def build_flow(name: str, **kwargs: object) -> FlowType:

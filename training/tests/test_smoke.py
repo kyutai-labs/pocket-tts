@@ -81,7 +81,7 @@ def make_batch(
     return latents, mask, text, voice
 
 
-@pytest.mark.parametrize("flow_type", ["lsd", "flow_matching"])
+@pytest.mark.parametrize("flow_type", ["lsd", "flow_matching", "drifting"])
 def test_train_step(flow_type: str):
     model = tiny_model(flow_type)
     model.train()
@@ -94,7 +94,7 @@ def test_train_step(flow_type: str):
     assert "flow_loss" in metrics and "eos_loss" in metrics
 
 
-@pytest.mark.parametrize("flow_type,cfg", [("lsd", 1.0), ("flow_matching", 1.0)])
+@pytest.mark.parametrize("flow_type,cfg", [("lsd", 1.0), ("flow_matching", 1.0), ("drifting", 1.0)])
 def test_generate(flow_type: str, cfg: float):
     model = tiny_model(flow_type)
     tokens = torch.randint(0, 10, (5,))

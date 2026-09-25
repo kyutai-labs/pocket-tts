@@ -157,6 +157,12 @@ If you want to finetune from the English teacher model, we provide two more conf
 The two configs above will give you a teacher that you can then distil down to 6 layers.
 Training the model in two steps like this works better than training a 6-layer model from scratch.
 
+We also provide the recipe of the `english_drifting_26_09` model, whose sampler head is trained with drifting instead of LSD.
+It generates each latent in one step without time conditioning:
+- `drifting.yaml`: trains a 24-layer drifting teacher from scratch for 400k steps at a constant learning rate. The kernel temperature is learned.
+- `drifting_finetune.yaml`: resumes that run for 100k more steps with a cosine decay and the temperature frozen at its learned value.
+- `drifting_distill.yaml`: distills the fine-tuned teacher into 6 layers, like `depth_distill.yaml`.
+
 ### Reproducing our results
 
 If you train on 2k hours of HiFiTTS-2 and batch size 64, this is the metrics progress you should expect to see:

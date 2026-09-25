@@ -116,7 +116,13 @@ class TrainableTTS(nn.Module):
         sel_z = z_flat[mask_flat]
         sel_target = target_flat[mask_flat]
         noise = torch.randn_like(sel_target)
-        flow_loss, metrics, _ = self.flow.loss(partial(fl.flow_net, sel_z), noise, sel_target)
+        if getattr(self.flow, "fp32_loss", False):
+            with torch.autocast(device_type=latents.device.type, enabled=False):
+                flow_loss, metrics, _ = self.flow.loss(
+                    partial(fl.flow_net, sel_z.float()), noise.float(), sel_target.float()
+                )
+        else:
+            flow_loss, metrics, _ = self.flow.loss(partial(fl.flow_net, sel_z), noise, sel_target)
         flow_loss = flow_loss.mean()
 
         loss = flow_loss + self.args.eos_loss_weight * eos_loss

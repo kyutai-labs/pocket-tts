@@ -18,8 +18,9 @@ class StrictModel(BaseModel):
 class FlowConfig(StrictModel):
     dim: int
     depth: int
-    # "lsd" (2 time conditions, 1-step decode) or "flow_matching" (1 time
-    # condition, Euler integration; needs >= 16 decode steps).
+    # "lsd" (2 time conditions, 1-step decode), "flow_matching" (1 time
+    # condition, Euler integration; needs >= 16 decode steps) or "drifting"
+    # (no time condition, the head maps noise to a sample in one step).
     type: str = "lsd"
 
 

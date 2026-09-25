@@ -1,0 +1,52 @@
+# Train a drifting teacher from scratch (stage 1 of 2). The sampler head maps
+# noise to a latent in one step and is trained with a kernel drift field
+# instead of LSD (training/modules/samplers.py: Drifting). The kernel
+# temperature is learned, from 10 down to ~0.05 within the first few thousand
+# steps; the logged `temp` metric shows where it settles.
+# Keep the learning rate constant. UTMOS on LibriSpeech goes from ~3.5 at 50k
+# steps to ~4.25 at 400k, and in our runs annealing the learning rate before
+# that jump stopped it. drifting_finetune.yaml anneals afterwards.
+model_config: pocket_tts/config/english.yaml
+model_overrides:
+  flow_lm.transformer.num_layers: 24
+start_from_pretrained: false
+
+data:
+  # The quickstart's 200h subset; the reference numbers need --hours 2000.
+  train_jsonl: data/hifitts2_200h/train_aligned.jsonl
+  valid_jsonl: data/hifitts2_200h/valid_aligned.jsonl
+  max_duration_sec: 60.0
+  max_voice_prompt_sec: 5.0
+
+flow:
+  type: drifting
+  kwargs:
+    temp: 10.0
+    temp_loss_weight: 1.0
+    num_neg: 64
+
+flow_batch_multiplier: 1  # the 64 generations per position already average the noise
+eos_loss_weight: 0.1
+text_dropout: 0.2
+voice_dropout: 0.2
+
+optim:
+  lr: 2e-4
+  schedule: constant
+  warmup_steps: 4000
+  betas: [0.9, 0.999]
+  weight_decay: 0.0  # would also decay the learned temperature
+  max_norm: 3.0
+
+run_dir: runs/drifting
+# Effective batch 128 (batch_size x GPUs x grad_accum_steps); on 8 GPUs use batch_size: 16.
+batch_size: 128
+grad_accum_steps: 1
+max_steps: 400000
+stats_ema_steps: 0
+ema_decay: 0.999
+log_freq: 50
+valid_freq: 2500
+ckpt_freq: 5000
+num_ckpt_keep: 3
+sample_cfg_coef: 2.0

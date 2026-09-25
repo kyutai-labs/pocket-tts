@@ -181,7 +181,14 @@ class SimpleMLPAdaLN(nn.Module):
 
         flow_dim = config.dim
         flow_depth = config.depth
-        num_time_conds = {"flow_matching": 1, "drifting": 0}.get(config.type, 2)
+        if config.type == "lsd":
+            num_time_conds = 2
+        elif config.type == "flow_matching":
+            num_time_conds = 1
+        elif config.type == "drifting":
+            num_time_conds = 0
+        else:
+            raise ValueError(f"Unknown flow type: {config.type}")
         return cls(
             latent_dim, flow_dim, latent_dim, cond_dim, flow_depth, num_time_conds=num_time_conds
         )

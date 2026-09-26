@@ -41,6 +41,11 @@ def lsd_decode(v_t: FlowNet, x_0: torch.Tensor, num_steps: int = 1) -> torch.Ten
     return current
 
 
+def drifting_decode(v_t: FlowNet, x_0: torch.Tensor, num_steps: int = 1) -> torch.Tensor:
+    """One-step head without time conditions: the sample is the head's output for the noise."""
+    return v_t(x_0)
+
+
 def ot_decode(v_t: FlowNet, x_0: torch.Tensor, num_steps: int = 16) -> torch.Tensor:
     """Euler integration of an optimal-transport conditional flow.
 
@@ -161,7 +166,14 @@ class FlowLMModel(nn.Module):
         else:
             torch.nn.init.trunc_normal_(noise, mean=0.0, std=std, a=-noise_clamp, b=noise_clamp)
         conditioned_flow = partial(self.flow_net, transformer_out)
-        decode = ot_decode if self.flow_type == "flow_matching" else lsd_decode
+        if self.flow_type == "lsd":
+            decode = lsd_decode
+        elif self.flow_type == "flow_matching":
+            decode = ot_decode
+        elif self.flow_type == "drifting":
+            decode = drifting_decode
+        else:
+            raise ValueError(f"Unknown flow type: {self.flow_type}")
         return decode(conditioned_flow, noise, sampler_decode_steps), out_eos
 
     def backbone(

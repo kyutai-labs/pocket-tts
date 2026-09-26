@@ -157,6 +157,8 @@ If you want to finetune from the English teacher model, we provide two more conf
 The two configs above will give you a teacher that you can then distil down to 6 layers.
 Training the model in two steps like this works better than training a 6-layer model from scratch.
 
+`drifting.yaml` trains a 24-layer teacher whose sampler head uses drifting instead of LSD, as in `english_drifting_26-09`. Distill it with `depth_distill.yaml` and `flow.type: drifting`.
+
 ### Reproducing our results
 
 If you train on 2k hours of HiFiTTS-2 and batch size 64, this is the metrics progress you should expect to see:

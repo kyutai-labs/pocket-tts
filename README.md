@@ -54,6 +54,7 @@ pocket-tts generate
 ```
 Modify the voice with `--voice` and the text with `--text`. We provide a small catalog of voices.
 Choose a pretrained language model with `--language` when running `generate`, `export-voice`, or `serve` (default: `english`). Non-english languages have also biggers 24 layers variants that are higher quality but slower. You can select them by using for example `--language italian_24l`.
+`--language english_drifting_26-09` selects an English model whose sampler head was trained with drifting instead of LSD (see [training/README.md](training/README.md) for the recipe).
 The `--config` option accepts a local YAML path, an `https://` URL, or an `hf://` path (e.g. `hf://<repo_id>/<path>[@revision]`) for custom weights.
 
 You can take a look at [this page](https://huggingface.co/kyutai/tts-voices) which details the licenses

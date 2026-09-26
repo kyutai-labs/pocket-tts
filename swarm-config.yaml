@@ -50,6 +50,25 @@ services:
         - "traefik.http.services.server-english.loadbalancer.server.port=80"
         - "traefik.http.routers.server-english.priority=100"
 
+  # Above english: PathPrefix(`/english`) also matches /english_drifting_26-09.
+  backend-english-drifting:
+    image: rg.fr-par.scw.cloud/namespace-unruffled-tereshkova/pocket-tts-server:${COMMIT_SHA}
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+    command: ["serve", "--port", "80", "--host", "0.0.0.0", "--language", "english_drifting_26-09", "--quantize"]
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.server-english-drifting.rule=Host(`pocket-tts-api.kyutai.org`) && PathPrefix(`/english_drifting_26-09`)"
+        - "traefik.http.routers.server-english-drifting.middlewares=strip-api-english-drifting"
+        - "traefik.http.middlewares.strip-api-english-drifting.replacepathregex.regex=^/english_drifting_26-09/(.*)"
+        - "traefik.http.middlewares.strip-api-english-drifting.replacepathregex.replacement=/$$1"
+        - "traefik.http.routers.server-english-drifting.entrypoints=websecure"
+        - "traefik.http.routers.server-english-drifting.tls=true"
+        - "traefik.http.routers.server-english-drifting.tls.certresolver=letsencrypt"
+        - "traefik.http.services.server-english-drifting.loadbalancer.server.port=80"
+        - "traefik.http.routers.server-english-drifting.priority=110"
+
   backend-german:
     image: rg.fr-par.scw.cloud/namespace-unruffled-tereshkova/pocket-tts-server:${COMMIT_SHA}
     volumes:

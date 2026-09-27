@@ -511,6 +511,10 @@ class TTSModel(nn.Module):
         try:
             audio_chunks = []
             mimi_state = init_states(self.mimi, batch_size=1, sequence_length=mimi_sequence_length)
+            # The first latent after BOS carries an onset transient ahead of the speech,
+            # audible as a click once this chunk follows audio: its samples are decoded,
+            # to keep the decoder state continuous, but not emitted.
+            skip = self.mimi.frame_size
             while True:
                 latent = latents_queue.get()
                 if latent is None:
@@ -540,6 +544,8 @@ class TTSModel(nn.Module):
                 increment_steps(
                     self.mimi, mimi_state, increment=mimi_steps_per_latent * len(latents)
                 )
+                audio_frame = audio_frame[..., skip:]
+                skip = 0
                 audio_frame_duration = audio_frame.shape[2] / self.config.mimi.sample_rate
                 logger.debug(
                     " " * 30 + "Decoded %d ms of audio (%d frames) with mimi in %d ms",
@@ -547,9 +553,9 @@ class TTSModel(nn.Module):
                     len(latents),
                     int((time.monotonic() - t) * 1000),
                 )
-                audio_chunks.append(audio_frame)
-
-                result_queue.put(("chunk", audio_frame))
+                if audio_frame.shape[-1] > 0:
+                    audio_chunks.append(audio_frame)
+                    result_queue.put(("chunk", audio_frame))
 
                 for _ in latents:
                     latents_queue.task_done()

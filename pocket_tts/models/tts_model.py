@@ -20,7 +20,7 @@ from torch.nn import functional as F
 from typing_extensions import Self
 
 from pocket_tts.data.audio import audio_read
-from pocket_tts.data.audio_utils import convert_audio
+from pocket_tts.data.audio_utils import convert_audio, end_on_pause
 from pocket_tts.default_parameters import (
     DEFAULT_EOS_THRESHOLD,
     DEFAULT_LANGUAGE,
@@ -1028,6 +1028,7 @@ class TTSModel(nn.Module):
                 audio, conditioning_sample_rate, self.config.mimi.sample_rate, 1
             )
 
+        audio_conditioning = end_on_pause(audio_conditioning, self.config.mimi.sample_rate)
         with display_execution_time("Encoding audio prompt"):
             prompt = self._encode_audio(audio_conditioning.unsqueeze(0).to(self.device))
 

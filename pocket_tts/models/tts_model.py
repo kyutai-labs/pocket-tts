@@ -511,10 +511,10 @@ class TTSModel(nn.Module):
         try:
             audio_chunks = []
             mimi_state = init_states(self.mimi, batch_size=1, sequence_length=mimi_sequence_length)
-            # Each chunk starts with a fresh Mimi decoder state, which puts a small step in the first
-            # samples, and with the first latent after BOS, which can decode to a burst of about 40 ms.
-            # Both are heard as a click at every chunk start: fade the first frame (80 ms) in.
-            fade_in: torch.Tensor | None = torch.linspace(0, 1, self.mimi.frame_size)
+            # A fresh Mimi decoder state puts a small step (about -41 dBFS) in its first samples, heard
+            # as a click at the start of every chunk: fade the first 5 ms in. (The longer burst some
+            # voices produced came from prompts ending on speech, handled by end_on_pause.)
+            fade_in: torch.Tensor | None = torch.linspace(0, 1, self.config.mimi.sample_rate // 200)
             while True:
                 latent = latents_queue.get()
                 if latent is None:

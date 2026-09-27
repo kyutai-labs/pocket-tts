@@ -31,7 +31,7 @@ def convert_audio(
 def end_on_pause(
     wav: torch.Tensor,
     sample_rate: int,
-    pause_sec: float = 0.2,
+    pause_sec: float = 0.08,
     fade_sec: float = 0.02,
     floor_db: float = 35.0,
 ) -> torch.Tensor:

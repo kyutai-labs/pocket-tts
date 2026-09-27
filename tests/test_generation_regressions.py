@@ -2,7 +2,7 @@ import queue
 import threading
 from collections.abc import Iterator
 from types import SimpleNamespace
-from typing import NoReturn, cast
+from typing import Any, NoReturn, cast
 
 import pytest
 import torch
@@ -106,3 +106,26 @@ def test_generate_reports_autoregressive_errors_before_decoder_done():
 )
 def test_is_safetensors_source_handles_revisions_and_query_strings(source: str, expected: bool):
     assert _is_safetensors_source(source) is expected
+
+
+def test_decode_audio_worker_fades_in_only_the_first_decoded_frame():
+    # A fresh Mimi decoder state starts with a small step, heard as a click at every chunk start.
+    class FakeMimi(torch.nn.Module):
+        def decode_from_latent(self, latent: torch.Tensor, state: object) -> torch.Tensor:
+            return torch.ones(1, 1, 1920 * latent.shape[1])
+
+    model = object.__new__(TTSModel)
+    torch.nn.Module.__init__(model)
+    model.mimi = cast(Any, FakeMimi())
+    model.flow_lm = cast(Any, SimpleNamespace(emb_std=1.0, emb_mean=0.0))
+    model.config = cast(Any, SimpleNamespace(mimi=SimpleNamespace(sample_rate=24000)))
+    model.max_decoder_frames_per_call = 1
+    latents: queue.Queue[torch.Tensor | None] = queue.Queue()
+    results: queue.Queue[tuple[str, Any]] = queue.Queue()
+    for item in (torch.zeros(1, 1, 32), torch.zeros(1, 1, 32), None):
+        latents.put(item)
+    model._decode_audio_worker(latents, results, mimi_sequence_length=8, mimi_steps_per_latent=1)
+    first, second = results.get()[1], results.get()[1]
+    assert first[..., 0].item() == 0.0 and first[..., 119].item() == 1.0
+    assert torch.all(first[..., 120:] == 1.0) and torch.all(second == 1.0)
+    assert results.get() == ("done", None)

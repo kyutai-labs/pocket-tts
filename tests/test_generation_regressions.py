@@ -109,8 +109,10 @@ def test_is_safetensors_source_handles_revisions_and_query_strings(source: str, 
 
 
 def test_decode_audio_worker_fades_in_only_the_first_decoded_frame():
-    # A fresh Mimi decoder state starts with a small step, heard as a click at every chunk start.
+    # The first frame of each chunk can carry a click (decoder cold start, first latent after BOS).
     class FakeMimi(torch.nn.Module):
+        frame_size = 1920
+
         def decode_from_latent(self, latent: torch.Tensor, state: object) -> torch.Tensor:
             return torch.ones(1, 1, 1920 * latent.shape[1])
 
@@ -125,7 +127,7 @@ def test_decode_audio_worker_fades_in_only_the_first_decoded_frame():
     for item in (torch.zeros(1, 1, 32), torch.zeros(1, 1, 32), None):
         latents.put(item)
     model._decode_audio_worker(latents, results, mimi_sequence_length=8, mimi_steps_per_latent=1)
-    first, second = results.get()[1], results.get()[1]
-    assert first[..., 0].item() == 0.0 and first[..., 119].item() == 1.0
-    assert torch.all(first[..., 120:] == 1.0) and torch.all(second == 1.0)
+    first, second = results.get(timeout=5)[1], results.get(timeout=5)[1]
+    assert torch.equal(first.flatten(), torch.linspace(0, 1, 1920))
+    assert torch.all(second == 1.0)
     assert results.get() == ("done", None)

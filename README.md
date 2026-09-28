@@ -374,6 +374,17 @@ uvx pocket-tts generate \
 ```
 </details>
 
+<details>
+<summary><a href="https://huggingface.co/myned-ai/pocket-tts-greek">Pocket TTS Greek (Ελληνικά)</a> by <a href="https://huggingface.co/myned-ai">Myned AI</a>, 6 layers</summary>
+
+```bash
+uvx pocket-tts generate \
+  --config hf://myned-ai/pocket-tts-greek/greek.yaml@c578b65949df101ac352e84ac5c236206e5bb348 \
+  --voice hf://myned-ai/pocket-tts-greek/voices/eleni.wav@c578b65949df101ac352e84ac5c236206e5bb348 \
+  --text "Καλημέρα! Θέλετε να κλείσουμε ένα ραντεβού για αύριο;"
+```
+</details>
+
 Want your model here? Head to the [training Readme](https://github.com/kyutai-labs/pocket-tts/blob/main/training/README.md) to get started!
 
 ## Projects using Pocket TTS

@@ -157,6 +157,17 @@ If you want to finetune from the English teacher model, we provide two more conf
 The two configs above will give you a teacher that you can then distil down to 6 layers.
 Training the model in two steps like this works better than training a 6-layer model from scratch.
 
+**Finetuning on a small dataset.** The data loader draws batches from a length-sorted pool of
+`data.num_bucket_batches` x `batch_size` samples, and each GPU splits the manifest across
+`data.loader_procs` loader processes. Every one of those shards has to fill the pool before
+the first batch comes out. With the defaults (`num_bucket_batches: 20`, `loader_procs: 6`) and
+`batch_size: 64` from `finetune.yaml`, that means at least 20 x 64 x 6 = 7,680 utterances per GPU.
+With less data, set `data.num_bucket_batches: 1` (plain shuffled batches) and lower
+`data.loader_procs`; otherwise the loader fails with `no readable samples ... (0 failures)`
+even though every entry in the manifest is readable (see #338).
+The validation manifest (`data.valid_jsonl`) also needs at least `batch_size` entries, and this
+is only checked at the first validation step, not at startup.
+
 `drifting.yaml` trains a 24-layer teacher whose sampler head uses drifting instead of LSD, as in `english_drifting_26-09`. Distill it with `depth_distill.yaml` and `flow.type: drifting`.
 
 ### Reproducing our results

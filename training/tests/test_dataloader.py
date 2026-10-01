@@ -142,7 +142,7 @@ def test_shard_smaller_than_the_bucket_pool_names_the_knobs(tmp_path: Path):
 
 def test_startup_check_rejects_manifests_too_small_for_the_loaders(tmp_path: Path):
     from training.args import TrainArgs
-    from training.train import check_manifest_sizes
+    from training.train_utils import check_manifest_sizes
 
     args = TrainArgs()
     args.batch_size = 2

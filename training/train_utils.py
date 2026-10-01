@@ -17,6 +17,7 @@ from pocket_tts.models.mimi import MimiModel
 from pocket_tts.modules.attention import StreamingMultiheadAttention
 from pocket_tts.modules.stateful_module import init_states
 from training.args import TrainArgs
+from training.dataloader.manifest import LazyEntries
 from training.modules.builders import load_model_config
 from training.modules.model import TrainableTTS
 from training.modules.muon import MuonWithAuxAdam
@@ -306,3 +307,43 @@ def build_optimizer(
             f"({n_split} fused weights orthogonalized per block), adamw on the rest"
         )
     return MuonWithAuxAdam(groups)
+
+
+def check_manifest_sizes(args: TrainArgs, world_size: int) -> None:
+    """Fail at startup, not at the first batch or validation step, when a loader shard is too
+    small to ever fill a batch: train_jsonl is split over world_size x loader_procs loaders that
+    each need num_bucket_batches x batch_size entries, valid_jsonl over world_size ranks that
+    each need batch_size."""
+    procs = max(1, args.data.loader_procs)
+    checks = [
+        (
+            "train_jsonl",
+            args.data.train_jsonl,
+            world_size * procs,
+            max(1, args.data.num_bucket_batches) * args.batch_size,
+            f"{world_size} rank(s) x {procs} data.loader_procs",
+            (
+                f"data.num_bucket_batches {args.data.num_bucket_batches} x batch_size "
+                f"{args.batch_size}"
+            ),
+        ),
+        (
+            "valid_jsonl",
+            args.data.valid_jsonl,
+            world_size,
+            args.batch_size,
+            f"{world_size} rank(s)",
+            "batch_size",
+        ),
+    ]
+    for name, path, shards, need, split, needs in checks:
+        if not path:
+            continue
+        n = len(LazyEntries(path, 0, 1))
+        if n // shards < need:
+            raise SystemExit(
+                f"{name} has {n} entries, split into {shards} shards ({split}) of about "
+                f"{n // shards}, but each shard needs {need} ({needs}) for its first batch.\n"
+                "Lower data.num_bucket_batches (1 disables length bucketing), data.loader_procs "
+                "or batch_size, or use a larger manifest."
+            )

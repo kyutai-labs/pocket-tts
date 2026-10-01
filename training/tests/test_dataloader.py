@@ -132,3 +132,23 @@ def test_entry_start_offsets_into_a_shared_file(tmp_path: Path):
 
     assert abs(dominant_freq(low_wav) - low_hz) < 2
     assert abs(dominant_freq(high_wav) - high_hz) < 2
+
+
+def test_shard_smaller_than_the_bucket_pool_names_the_knobs(tmp_path: Path):
+    loader = _loader(_manifest(tmp_path, n=8), batch_size=2, num_bucket_batches=5)
+    with pytest.raises(ValueError, match="num_bucket_batches"):
+        next(iter(loader))
+
+
+def test_startup_check_rejects_manifests_too_small_for_the_loaders(tmp_path: Path):
+    from training.args import TrainArgs
+    from training.train import check_manifest_sizes
+
+    args = TrainArgs()
+    args.batch_size = 2
+    args.data.train_jsonl = _manifest(tmp_path, n=12)
+    args.data.valid_jsonl = ""
+    args.data.loader_procs, args.data.num_bucket_batches = 3, 2
+    check_manifest_sizes(args, world_size=1)  # 12 // 3 = 4 entries per shard, 2 x 2 needed
+    with pytest.raises(SystemExit, match="num_bucket_batches"):
+        check_manifest_sizes(args, world_size=2)  # 12 // 6 = 2 < 4

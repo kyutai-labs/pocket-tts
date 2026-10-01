@@ -339,11 +339,13 @@ class DataLoader:
         # concurrently keeps the GPUs fed. sphn releases the GIL, so threads are
         # enough. Without this a cold, wide corpus starves training (~2x).
         pool = ThreadPoolExecutor(max_workers=self.io_workers)
-        if len(self.entries) < self.batch_size:
+        need = max(1, self.num_bucket_batches) * self.batch_size
+        if len(self.entries) < need:
             raise ValueError(
-                f"{len(self.entries)} usable entries for this rank but batch_size="
-                f"{self.batch_size}: a batch can never be filled. Lower batch_size, "
-                "use fewer ranks, or point at a larger manifest."
+                f"{len(self.entries)} entries in this loader's shard of {self.jsonl}, but the "
+                f"first batch needs num_bucket_batches x batch_size = {need}. Lower "
+                "data.num_bucket_batches (1 disables length bucketing), data.loader_procs or "
+                "batch_size, use fewer ranks, or point at a larger manifest."
             )
         while True:
             yielded = 0

@@ -33,10 +33,12 @@ class DataArgs:
     shuffle: bool = True
     # Loader subprocesses per rank. Each one is GIL-bound at ~90 samples/s from
     # network storage (extra IO threads do not help), and a rank consumes
-    # batch_size x steps/s: 6 keeps a small model at 35 it/s x 16 fed.
-    loader_procs: int = 6
+    # batch_size x steps/s: raise it if training waits on data (6 keeps a small
+    # model at 35 it/s x 16 fed). Each process reads its own shard of the manifest.
+    loader_procs: int = 3
     # Batches are drawn from a pool of this many batches sorted by row length; 1 = plain shuffled batches.
-    num_bucket_batches: int = 20
+    # Every loader shard needs num_bucket_batches x batch_size entries before its first batch.
+    num_bucket_batches: int = 5
     # Precompute Mimi latents for train_jsonl on first run and train from
     # them (rank 0 encodes once; other ranks wait). False keeps the
     # on-the-fly audio pipeline.

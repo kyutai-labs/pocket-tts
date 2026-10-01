@@ -1,5 +1,5 @@
-weights_path: hf://kyutai/pocket-tts/languages/dutch/model.safetensors@2dd944b099d06bb9edbd221fef138685711d9bf0
-weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/dutch/model.safetensors@4e1e0a3e611c51c0b4ed8174fc10f32a54644303
+weights_path: hf://kyutai/pocket-tts/languages/dutch/model.safetensors@3e82814a68665eec246ff649b14c71331f955c06
+weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/dutch/model.safetensors@1e08e6a23401048648a9fdcfde2f89348215c2a7
 
 replace_characters:
   '"': ''

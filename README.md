@@ -408,6 +408,7 @@ Want your model here? Head to the [training Readme](https://github.com/kyutai-la
 - [seshat-tts](https://github.com/scriptriva/seshat-tts) by @scriptriva - Accessibility tool that provides real-time audio synthesis for games and apps. It also features a voice manager capable of cloning voices based on user presets.
 - [LocalVocal.ai](https://localvocal.ai) by @joshwhiton - Fully local conversational voice-harness for Macs with Apple Silicon. Includes voice-activity & turn detection, dictation, voice cloning, CLI to talk to Claude, Codex... and more.
 - [Libratory](https://github.com/subev/libratory) by @subev - Turns PDFs into read-along audiobooks with the narration highlighted on the printed page; Pocket TTS is one of its local narrators, with voice cloning from the picker.
+- [ToBe SAID Android](https://play.google.com/store/apps/details?id=ai.lookbe.tts), [iOS/Mac](https://apps.apple.com/us/app/tobe-said/id6801981584), [Windows](https://apps.microsoft.com/detail/9mtw9scqhggc) by @lookbe - Pocket TTS that integrate into OS system voice with low latency and realtime streaming. Support quick language addition by using only HuggingFace url.
 
 
 ## Prohibited use

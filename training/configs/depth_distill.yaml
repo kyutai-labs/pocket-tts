@@ -15,6 +15,9 @@ distill_teacher_weights: runs/scratch/checkpoint_00400000.pt
 data:
   train_jsonl: data/train_aligned.jsonl
   valid_jsonl: data/valid_aligned.jsonl
+  # Full-prefix voice prompts: 6-layer students trained on 5 s prompts end early when
+  # given long prompts (over ~12 s) at inference; the 24-layer teachers do not.
+  max_voice_prompt_sec: 0.0
 
 flow:
   type: lsd

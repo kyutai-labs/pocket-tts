@@ -7,7 +7,9 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 import pytest
+import safetensors.torch
 import sphn
+import torch
 
 from training.dataloader import DataLoader, load_entries
 
@@ -152,3 +154,94 @@ def test_startup_check_rejects_manifests_too_small_for_the_loaders(tmp_path: Pat
     check_manifest_sizes(args, world_size=1)  # 12 // 3 = 4 entries per shard, 2 x 2 needed
     with pytest.raises(SystemExit, match="num_bucket_batches"):
         check_manifest_sizes(args, world_size=2)  # 12 // 6 = 2 < 4
+
+
+def _voice_manifest(tmp_path: Path, voices: list[str | None], words: bool = False) -> str:
+    """Unaligned entries (a voice-bank target needs no cut), each naming a voice."""
+    wav = tmp_path / "v.flac"
+    _write_wav(wav, 3.0)
+    path = tmp_path / "voices.jsonl"
+    with open(path, "w") as f:
+        for voice in voices:
+            entry: dict[str, Any] = {"path": str(wav), "duration": 3.0, "transcript": "one two"}
+            if voice is not None:
+                entry["voice"] = voice
+            if words:
+                entry["words"] = [
+                    {"word": "one", "start": 0.2, "end": 0.6},
+                    {"word": "two", "start": 2.0, "end": 2.6},
+                ]
+            f.write(json.dumps(entry) + "\n")
+    return str(path)
+
+
+def _bank() -> dict[str, torch.Tensor]:
+    # Constant rows tell the voices apart in the batch: voice "a" is all 1, "b" all 2.
+    return {"b": torch.full((125, 4), 2.0), "a": torch.full((125, 4), 1.0)}
+
+
+def test_voice_bank_prompts_and_ids(tmp_path: Path):
+    loader = _loader(
+        _voice_manifest(tmp_path, ["a", "b", "b", "a"]), batch_size=4, voice_bank=_bank()
+    )
+    batch = next(iter(loader))
+    assert batch.voice_ids is not None and batch.prompt_latents is not None
+    assert batch.voice_ids.tolist() == [0, 1, 1, 0], "rows follow the sorted voice names"
+    assert batch.num_voice_prompt_frames.tolist() == [125] * 4, "no crop by default"
+    for b, voice_id in enumerate(batch.voice_ids.tolist()):
+        assert (batch.prompt_latents[b] == voice_id + 1).all(), "prompt is the voice's reference"
+    assert batch.voice_audio.shape[-1] == 0, "no prompt audio to encode"
+    assert batch.audio.shape[-1] == int(3.0 * SR), "the target is the whole utterance"
+    assert [t.numel() for t in batch.text_tokens] == [2] * 4, "with the full transcript"
+
+
+def test_voice_bank_crop_lengths(tmp_path: Path):
+    loader = _loader(
+        _voice_manifest(tmp_path, ["a"] * 2),
+        batch_size=2,
+        voice_bank=_bank(),
+        voice_prompt_crop_prob=0.5,
+        voice_prompt_min_sec=2.5,
+    )
+    entry = loader.get_entry(0)
+    lengths = [loader._voice_prompt(entry)[0].shape[0] for _ in range(400)]
+    full = sum(n == 125 for n in lengths)
+    assert 140 < full < 260, f"about half the prompts keep the full reference, got {full}/400"
+    assert min(lengths) >= 31 and len(set(lengths)) > 40, "crops spread over 2.5 s .. 10 s"
+
+
+def test_voice_bank_target_drops_words_past_the_max_duration(tmp_path: Path):
+    loader = _loader(
+        _voice_manifest(tmp_path, ["a"], words=True), max_duration_sec=1.5, voice_bank=_bank()
+    )
+    duration, text = loader._voice_target(loader.get_entry(0))
+    assert duration == 1.5 and text == "one"
+
+
+@pytest.mark.parametrize("voice", [None, "z"])
+def test_voice_bank_refuses_unknown_voices(tmp_path: Path, voice: str | None):
+    loader = _loader(_voice_manifest(tmp_path, [voice] * 2), voice_bank=_bank())
+    with pytest.raises(ValueError, match="TrainArgs.voices"):
+        next(iter(loader))
+
+
+def test_voice_bank_with_precomputed_latents(tmp_path: Path):
+    manifest = Path(_voice_manifest(tmp_path, ["b", "a"]))
+    lat_dir = tmp_path / "lat"
+    lat_dir.mkdir()
+    rows = []
+    for i, line in enumerate(manifest.read_text().splitlines()):
+        entry = json.loads(line)
+        safetensors.torch.save_file({"latents": torch.randn(37, 4)}, str(lat_dir / f"{i}.st"))
+        entry["latents_file"] = f"lat/{i}.st"
+        rows.append(json.dumps(entry))
+    latents_manifest = tmp_path / "voices_latents.jsonl"
+    latents_manifest.write_text("\n".join(rows) + "\n")
+    latents_manifest.with_suffix(".meta.json").write_text(json.dumps({"stitch_frames": 4}))
+    batch = next(iter(_loader(str(latents_manifest), voice_bank=_bank())))
+    assert batch.voice_ids is not None and batch.prompt_latents is not None
+    assert sorted(batch.voice_ids.tolist()) == [0, 1]
+    assert batch.tail_latents is not None
+    # Target: 3 s of audio minus nothing (no words) = 37 frames: 4 stitched + 33 stored.
+    assert batch.num_audio_frames.tolist() == [37, 37]
+    assert batch.tail_latents.shape[1] == 33

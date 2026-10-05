@@ -59,6 +59,7 @@ class TrainableTTS(nn.Module):
         update_stats: bool = False,
         num_voice_prompt_frames: torch.Tensor
         | None = None,  # [B] valid voice frames (rest is padding)
+        voice_ids: torch.Tensor | None = None,  # [B] voice LUT rows, with TrainArgs.voices
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         fl = self.flow_lm
         _, T, C = latents.shape
@@ -78,6 +79,7 @@ class TrainableTTS(nn.Module):
                 num_voice_prompt_frames=num_voice_prompt_frames,
                 fl=module,
                 force_null=force_null,
+                voice_ids=voice_ids,
             )
             out = module.out_norm(module.transformer(x, model_state=None))
             idx = prefix_lengths[:, None] + torch.arange(T, device=out.device)[None, :]
@@ -143,12 +145,17 @@ class TrainableTTS(nn.Module):
         cfg_coef: float = 1.0,
         eos_threshold: float = -1.0,
         eos_countdown: int = 1,
+        voice_ids: list[int] | None = None,
     ) -> list[torch.Tensor]:
         """Sample a batch of utterances with arbitrary prefix lengths.
 
         Rows are right-aligned (padded on the left) so every row's first audio
         frame lands on the same step; the padding is masked out via the
         per-row `pad` entry in the streaming state.
+
+        With a voice LUT, `voice_ids` picks each row's voice (-1 for none, the
+        learnt padding), and the CFG null branch always gets the padding. A row
+        with an empty voice prompt is conditioned on the LUT alone.
         """
         fl = self.flow_lm
         device = fl.bos_emb.device
@@ -175,6 +182,16 @@ class TrainableTTS(nn.Module):
         if cfg_coef != 1.0:
             prefixes.append(fl.bos_before_voice.expand(B, -1, -1))
             pads.append(torch.zeros(B, device=device, dtype=torch.long))
+        # Per-branch [B, 1, dim] term summed onto every audio frame.
+        frame_sums: list[torch.Tensor | int] = [0] * len(prefixes)
+        voice_lut = fl.voice_lut
+        if voice_lut is not None:
+            ids = torch.tensor(voice_ids if voice_ids is not None else [-1] * B, device=device)
+            frame_sums[0] = voice_lut(ids.clamp(min=0), ids >= 0)
+            if len(prefixes) > 1:
+                frame_sums[1] = voice_lut(ids.clamp(min=0), torch.zeros_like(ids, dtype=torch.bool))
+        else:
+            assert voice_ids is None, "voice_ids given but the model has no voice LUT"
 
         states: list[ModelState] = []
         for p, pd in zip(prefixes, pads, strict=True):
@@ -187,7 +204,7 @@ class TrainableTTS(nn.Module):
             nonlocal first_step
             zs = []
             for i, st in enumerate(states):
-                inp = fl.input_linear(x_lat)
+                inp = fl.input_linear(x_lat) + frame_sums[i]
                 if first_step:
                     inp = torch.cat([prefixes[i], inp], dim=1)
                 out = fl.out_norm(fl.transformer(inp, st))

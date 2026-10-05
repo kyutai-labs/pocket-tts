@@ -89,3 +89,38 @@ class TestArgValidation:
         """A key the parser doesn't recognize is a setting the user thinks is applied."""
         with pytest.raises(ValueError, match="distill_seed_layers"):
             _from_dict(TrainArgs, {"distill_seed_layers": "first"})
+
+
+def test_xn_ptts_export_config_matches_the_stock_architecture():
+    """xn-ptts's TTSConfig::v202601 is the released 6-layer English model, run the pocket-tts
+    way (alex/pocket-tts-models)."""
+    from training.scripts.export_xn_ptts import xn_ptts_config
+
+    config = load_model_config(str(CONFIGS.parents[1] / "pocket_tts/config/english.yaml"), {})
+    xn = xn_ptts_config(config, eos_threshold=-4.0)
+    assert xn["flow_lm"] == {
+        "d_model": 1024,
+        "num_heads": 16,
+        "num_layers": 6,
+        "dim_feedforward": 4096,
+        "max_period": 10000.0,
+        "n_bins": 4000,
+        "lut_dim": 1024,
+        "flow_dim": 512,
+        "flow_depth": 6,
+        "ldim": 32,
+        "gelu": "tanh",
+        "time_rms_norm": "var",
+        "insert_bos_before_voice": True,
+    }
+    assert xn["mimi"]["dimension"] == 512 and xn["mimi"]["quantizer_dimension"] == 32
+    assert xn["cfg_null_audio_empty"], "the CFG null is the bare bos_before_voice"
+    assert xn["mimi"]["ratios"] == [6, 5, 4] and xn["mimi"]["transformer_context"] == 250
+
+
+def test_small_voices_configs_share_their_voice_table():
+    finetune = load_args(CONFIGS / "small_voices_finetune.yaml")
+    distill = load_args(CONFIGS / "small_voices_distill.yaml")
+    assert finetune.voices and finetune.voices == distill.voices
+    assert finetune.voice_lut_dim == distill.voice_lut_dim
+    assert distill.voice_lut_dropout == distill.voice_dropout == distill.text_dropout == 0

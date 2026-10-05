@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 import pytest
+import safetensors.torch
 import sentencepiece as spm
 import torch
 from torch import nn
@@ -21,12 +22,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import training.dataloader.audio as td_audio
 from pocket_tts.models.flow_lm import FlowLMModel
 from pocket_tts.modules.mlp import SimpleMLPAdaLN
-from pocket_tts.modules.stateful_module import init_states
+from pocket_tts.modules.stateful_module import increment_steps, init_states
 from pocket_tts.modules.text_conditioner import LUTConditioner
 from pocket_tts.modules.transformer import StreamingTransformer
+from pocket_tts.modules.voice_lut import VoiceLUT
 from training.args import TrainArgs
 from training.checkpointing import EMA
 from training.dataloader import DataLoader, Entry
+from training.modules.conditioner import build_sequences_with_conditions
 from training.modules.model import TrainableTTS
 from training.modules.samplers import build_flow
 from training.modules.utils import dit_init, stamp_state_names
@@ -388,3 +391,185 @@ def test_train_tokenizer_matches_the_released_spec(tmp_path: Path):
     assert trainer[43][0] == 3  # pad_id
     assert normalizer.get(4, [1])[0] == 0  # remove_extra_whitespaces off
     assert not normalizer.get(2, [b""])[0]  # identity: no precompiled charsmap
+
+
+def tiny_voice_model() -> TrainableTTS:
+    """tiny_model with a 3-voice LUT, its projection randomized so voices matter."""
+    model = tiny_model("lsd")
+    model.flow_lm.voice_lut = VoiceLUT(["b", "a", "c"], 4, DIM)
+    nn.init.normal_(model.flow_lm.voice_lut.output_proj.weight)
+    nn.init.normal_(model.flow_lm.voice_lut.learnt_padding)
+    model.args.voices = {"a": "a.wav", "b": "b.wav", "c": "c.wav"}
+    stamp_state_names(model.flow_lm)  # the LUT came after TrainableTTS stamped the others
+    return model
+
+
+def voice_lut_of(model: TrainableTTS) -> VoiceLUT:
+    lut = model.flow_lm.voice_lut
+    assert isinstance(lut, VoiceLUT)
+    return lut
+
+
+def test_voice_lut_is_sorted_and_starts_at_zero():
+    lut = VoiceLUT(["b", "a"], 4, DIM)
+    assert lut.names == ["a", "b"] and lut.index("b") == 1
+    assert lut.embed.weight.shape == (3, 4), "a row per voice plus the padding row"
+    out = lut(torch.tensor([0, 1]), torch.tensor([True, False]))
+    assert out.shape == (2, 1, DIM) and not out.any(), "zero init leaves a warm start unchanged"
+    with pytest.raises(KeyError):
+        lut.index("z")
+
+
+def test_voice_lut_train_step_reaches_the_lut():
+    model = tiny_voice_model()
+    model.train()
+    latents, mask, text, voice = make_batch()
+    loss, _ = model(latents, mask, text, voice, voice_ids=torch.tensor([0, 1, 2]))
+    loss.backward()
+    lut = voice_lut_of(model)
+    assert lut.embed.weight.grad is not None and lut.output_proj.weight.grad is not None
+
+
+def test_voice_lut_changes_the_backbone_input():
+    """Different voices give different outputs."""
+    model = tiny_voice_model()
+    model.eval()
+    latents, mask, text, voice = make_batch()
+    zs = []
+    for ids in ([0, 0, 0], [1, 1, 1]):
+        torch.manual_seed(0)
+        _, metrics = model(latents, mask, text, voice, voice_ids=torch.tensor(ids))
+        zs.append(metrics["eos_loss"])
+    assert zs[0] != zs[1]
+
+
+def test_voice_lut_dropout_and_null():
+    """force_null drops the LUT to the padding, voice_lut_dropout drops it per row."""
+    model = tiny_voice_model()
+    fl, lut = model.flow_lm, voice_lut_of(model)
+    latents, _, text, voice = make_batch()
+    normalized = (latents - fl.emb_mean) / fl.emb_std
+    ids = torch.tensor([0, 1, 2])
+
+    def audio_rows(cfg_dropout: bool, force_null: bool = False) -> torch.Tensor:
+        x, prefix = build_sequences_with_conditions(
+            model.args,
+            normalized,
+            text,
+            voice,
+            cfg_dropout=cfg_dropout,
+            fl=fl,
+            force_null=force_null,
+            voice_ids=ids,
+        )
+        return torch.stack([x[b, prefix[b]] for b in range(3)])  # each row's BOS frame
+
+    bos = fl.input_linear(fl.bos_emb)
+    kept = audio_rows(cfg_dropout=False)
+    torch.testing.assert_close(kept, bos + lut(ids, torch.ones(3, dtype=torch.bool))[:, 0])
+    null = audio_rows(cfg_dropout=False, force_null=True)
+    torch.testing.assert_close(null, (bos + lut.learnt_padding[0]).expand(3, -1))
+    model.args.voice_lut_dropout, model.args.voice_dropout, model.args.text_dropout = 1.0, 0, 0
+    torch.testing.assert_close(audio_rows(cfg_dropout=True), null)
+
+
+@pytest.mark.parametrize("cfg", [1.0, 2.0])
+def test_generate_with_voice_ids(cfg: float):
+    model = tiny_voice_model()
+    # dit_init zeroes the head's modulations: at temp 0 every latent would be 0.
+    final = model.flow_lm.flow_net.final_layer
+    modulation = final.adaLN_modulation[-1]
+    assert isinstance(modulation, nn.Linear)
+    nn.init.normal_(final.linear.weight)
+    nn.init.normal_(modulation.weight)
+    tokens = [torch.randint(0, 10, (5,)) for _ in range(3)]
+    voices = [torch.randn(4, LDIM), torch.zeros(0, LDIM), torch.randn(2, LDIM)]
+    outs = model.generate(
+        tokens,
+        voices,
+        max_frames=4,
+        temp=0.0,
+        cfg_coef=cfg,
+        eos_threshold=1e9,
+        voice_ids=[0, 2, -1],
+    )
+    assert [o.shape for o in outs] == [(4, LDIM)] * 3
+    same = model.generate(
+        tokens[:1],
+        voices[:1],
+        max_frames=4,
+        temp=0.0,
+        cfg_coef=cfg,
+        eos_threshold=1e9,
+        voice_ids=[1],
+    )[0]
+    assert not torch.allclose(outs[0], same), "the voice id must reach generation"
+
+
+def test_inference_path_matches_training_generate_with_a_voice():
+    """pocket-tts inference (voice selected in the streaming state, prompt then text then
+    frames, as TTSModel runs it) reproduces TrainableTTS.generate frame for frame."""
+    model = tiny_voice_model()
+    final = model.flow_lm.flow_net.final_layer
+    modulation = final.adaLN_modulation[-1]
+    assert isinstance(modulation, nn.Linear)
+    nn.init.normal_(final.linear.weight)
+    nn.init.normal_(modulation.weight)
+    model.eval()
+    fl, lut = model.flow_lm, voice_lut_of(model)
+    tokens, voice = torch.randint(0, 10, (5,)), torch.randn(4, LDIM)
+    expected = model.generate(
+        [tokens], [voice], max_frames=4, temp=0.0, eos_threshold=1e9, voice_ids=[lut.index("b")]
+    )[0]
+
+    state = init_states(fl, batch_size=1, sequence_length=32)
+    lut.select(lut.get_state(state), "b")
+    empty_latents = torch.empty(1, 0, LDIM)
+    with torch.no_grad():
+        prompt = torch.cat(
+            [
+                fl.bos_before_voice,
+                torch.nn.functional.linear(voice[None], fl.speaker_proj_weight),
+                fl.conditioner(tokens[None]),
+            ],
+            dim=1,
+        )
+        fl(empty_latents, prompt, state, 1, 0.0, None, 1e9)
+        increment_steps(fl, state, increment=prompt.shape[1])
+        x = torch.full((1, 1, LDIM), float("nan"))
+        frames = []
+        for _ in range(4):
+            latent, _ = fl(x, torch.empty(1, 0, DIM), state, 1, 0.0, None, 1e9)
+            increment_steps(fl, state, increment=1)
+            frames.append(latent[0] * fl.emb_std + fl.emb_mean)
+            x = latent[:, None]
+    torch.testing.assert_close(torch.stack(frames), expected)
+
+    other = init_states(fl, batch_size=1, sequence_length=32)
+    lut.select(lut.get_state(other), None)
+    torch.testing.assert_close(lut.get_state(other)["term"], lut.learnt_padding.detach())
+    assert not torch.equal(lut.get_state(other)["term"], lut.get_state(state)["term"])
+
+
+def test_checkpoint_carries_voice_prompts(tmp_path: Path):
+    """Inference names the LUT rows after the prompts a checkpoint carries."""
+    from pocket_tts.utils.weights_loading import (
+        get_training_checkpoint_state_dicts,
+        pop_voice_prompts,
+    )
+    from training.checkpointing import export_pocket_safetensors, save_checkpoint
+
+    model = tiny_voice_model()
+    prompts = {name: torch.randn(n, LDIM) for name, n in (("b", 7), ("a", 5), ("c", 6))}
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+    save_checkpoint(tmp_path, 3, model, optimizer, None, 1, voice_prompts=prompts)
+    flow_lm, _, loaded = get_training_checkpoint_state_dicts(tmp_path / "checkpoint_00000003.pt")
+    assert set(loaded) == {"a", "b", "c"} and torch.equal(loaded["b"], prompts["b"])
+    assert flow_lm["voice_lut.embed.weight"].shape[0] == len(prompts) + 1
+
+    export_pocket_safetensors(
+        tmp_path / "model.safetensors", model.flow_lm, nn.Linear(1, 1), None, prompts
+    )
+    state = safetensors.torch.load_file(str(tmp_path / "model.safetensors"))
+    popped = pop_voice_prompts(state)
+    assert set(popped) == {"a", "b", "c"} and not any(k.startswith("voice_prompts.") for k in state)

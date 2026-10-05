@@ -3,6 +3,17 @@ from pathlib import Path
 import safetensors
 import torch
 
+# Tensor-name prefix of the voice prompts a model trained on a closed set of voices carries:
+# voice_prompts.<name> holds that voice's [T, C] prompt latents, and the sorted names are the rows
+# of its voice LUT (flow_lm.voice_lut.*).
+VOICE_PROMPTS_PREFIX = "voice_prompts."
+
+
+def pop_voice_prompts(state: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    """Remove the voice_prompts.<name> tensors from `state`, returning them by name."""
+    names = [k for k in state if k.startswith(VOICE_PROMPTS_PREFIX)]
+    return {k.removeprefix(VOICE_PROMPTS_PREFIX): state.pop(k) for k in names}
+
 
 def get_flow_lm_state_dict(path: Path) -> dict[str, torch.Tensor]:
     state_dict: dict[str, torch.Tensor] = {}
@@ -81,8 +92,8 @@ def get_mimi_state_dict(path: Path) -> dict[str, torch.Tensor]:
 
 def get_training_checkpoint_state_dicts(
     path: str | Path, use_ema: bool = True
-) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]]:
-    """(flow_lm, mimi) state dicts from a training checkpoint (.pt).
+) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor], dict[str, torch.Tensor]]:
+    """(flow_lm, mimi, voice prompts) state dicts from a training checkpoint (.pt).
 
     Training checkpoints hold the trainable model under "model" and, when the
     run tracked one, its EMA shadow under "ema"; both are keyed with the
@@ -103,4 +114,4 @@ def get_training_checkpoint_state_dicts(
     mimi = {k.removeprefix("mimi."): v for k, v in state.items() if k.startswith("mimi.")}
     if not flow_lm:
         raise ValueError(f"no flow_lm.* weights in {path}")
-    return flow_lm, mimi
+    return flow_lm, mimi, dict(payload.get("voice_prompts") or {})

@@ -23,6 +23,9 @@ class FakeTTSModel:
         self.config = SimpleNamespace(mimi=SimpleNamespace(sample_rate=24000))
         self.voices_requested: list[Path | str | torch.Tensor] = []
         self.states_used: list[dict[str, Any]] = []
+        # A model without voices known by name, like every released one.
+        self.voice_prompts: dict[str, torch.Tensor] = {}
+        self.voice_names: list[str] = []
 
     def get_state_for_audio_prompt(
         self, audio_conditioning: Path | str | torch.Tensor, truncate: bool = False

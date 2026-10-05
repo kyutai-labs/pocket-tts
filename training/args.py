@@ -30,6 +30,12 @@ class DataArgs:
     # distribution). Set to 0 to disable.
     prompt_trim_max_sec: float = 0.5
     final_punct_dropout: float = 0.3
+    # Voice-bank prompts (TrainArgs.voices): the prompt is the start of the voice's reference,
+    # at most voice_prompt_max_sec, and voice_prompt_crop_prob of the rows crop it further to a
+    # uniform voice_prompt_min_sec..full length, so short prompts stay in distribution.
+    voice_prompt_max_sec: float = 10.0
+    voice_prompt_crop_prob: float = 0.3
+    voice_prompt_min_sec: float = 2.5
     shuffle: bool = True
     # Loader subprocesses per rank. Each one is GIL-bound at ~90 samples/s from
     # network storage (extra IO threads do not help), and a rank consumes
@@ -121,6 +127,16 @@ class TrainArgs:
     eos_loss_weight: float = 0.1
     text_dropout: float = 0.2  # CFG dropout of the text prefix
     voice_dropout: float = 0.2  # CFG dropout of the voice prefix
+    # A closed set of voices (e.g. a synthetic corpus spoken by a few fixed voices), name ->
+    # reference audio. Every train/valid entry then names its voice in a "voice" field, its
+    # prompt is that voice's reference (see data.voice_prompt_*) instead of the start of the
+    # utterance, and a voice lookup table (one row per name, in sorted order) is summed into
+    # every audio frame. The LUT and the prompt are dropped independently (voice_lut_dropout,
+    # voice_dropout), so the model serves a voice from its name, its prompt, or both; a dropped
+    # LUT is a learnt null embedding, which the CFG null branch uses too.
+    voices: dict[str, str] = field(default_factory=dict)
+    voice_lut_dim: int = 128
+    voice_lut_dropout: float = 0.2
     # Update the emb_mean/emb_std latent-normalization buffers by EMA for this
     # many first steps (0 keeps whatever the loaded weights contain).
     stats_ema_steps: int = 0

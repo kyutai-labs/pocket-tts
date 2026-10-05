@@ -55,10 +55,17 @@ class UnalignedEntry(ValueError):
     """A manifest entry without word alignments (see training/scripts/align_data.py)."""
 
 
+class UnknownVoice(ValueError):
+    """A manifest entry whose "voice" is missing from TrainArgs.voices."""
+
+
 class DataLoader:
     # Augmentation knobs; class defaults keep instances built without __init__ (tests) valid.
     prompt_trim_max_sec: float = 0.0
     final_punct_dropout: float = 0.0
+    voice_bank: dict[str, torch.Tensor] | None = None
+    voice_prompt_crop_prob: float = 0.0
+    voice_prompt_min_sec: float = 0.0
 
     def __init__(
         self,
@@ -77,6 +84,9 @@ class DataLoader:
         num_bucket_batches: int = 1,
         prompt_trim_max_sec: float = 0.0,
         final_punct_dropout: float = 0.0,
+        voice_bank: dict[str, torch.Tensor] | None = None,
+        voice_prompt_crop_prob: float = 0.0,
+        voice_prompt_min_sec: float = 0.0,
     ):
         self.jsonl = jsonl
         self.num_bucket_batches = num_bucket_batches
@@ -89,6 +99,12 @@ class DataLoader:
         self.max_voice_prompt_sec = max_voice_prompt_sec
         self.prompt_trim_max_sec = prompt_trim_max_sec
         self.final_punct_dropout = final_punct_dropout
+        # Voice name -> [T, C] reference latents (see training.voices); every entry then
+        # names one of them and is prompted with it.
+        self.voice_bank = voice_bank or None
+        self.voice_names = sorted(voice_bank) if voice_bank else []
+        self.voice_prompt_crop_prob = voice_prompt_crop_prob
+        self.voice_prompt_min_sec = voice_prompt_min_sec
         self.shuffle = shuffle
         self.io_workers = io_workers
         self._failures = 0
@@ -173,9 +189,12 @@ class DataLoader:
         return cut, " ".join(w["word"] for w in entry.words[i:])
 
     def _sample(self, entry: Entry) -> tuple[Any, ...]:
-        """(wav, tokens, prompt wav, prompt samples), or _sample_latent's tuple."""
+        """(wav, tokens, prompt wav, prompt samples), or _sample_latent's tuple, or with a
+        voice bank _sample_voice's."""
         if entry.latents_file is not None:
             return self._sample_latent(entry)
+        if self.voice_bank is not None:
+            return self._sample_voice(entry)
         chosen = self._choose_cut(entry)
         if chosen is not None:
             cut, text = chosen
@@ -215,6 +234,43 @@ class DataLoader:
             )
         )
         return wav, tokens, prompt, length
+
+    def _voice_prompt(self, entry: Entry) -> tuple[torch.Tensor, int]:
+        """(prompt latents, voice LUT row): the start of the voice's reference, cropped to a
+        uniform voice_prompt_min_sec..full length with probability voice_prompt_crop_prob."""
+        assert self.voice_bank is not None
+        if entry.voice not in self.voice_bank:
+            raise UnknownVoice(
+                f"{entry.path}: voice {entry.voice!r} is not one of TrainArgs.voices "
+                f'{self.voice_names}; every entry needs a known "voice"'
+            )
+        reference = self.voice_bank[entry.voice]
+        if self.voice_prompt_crop_prob > 0 and self.rng.random() < self.voice_prompt_crop_prob:
+            shortest = min(
+                reference.shape[0], max(1, int(self.voice_prompt_min_sec * self.frame_rate))
+            )
+            reference = reference[: self.rng.randint(shortest, reference.shape[0])]
+        return reference, self.voice_names.index(entry.voice)
+
+    def _voice_target(self, entry: Entry) -> tuple[float, str]:
+        """(duration, text) of a voice-bank target: the whole utterance up to its last word
+        (plus TRAIL_SEC), capped at max_duration_sec with the words that still fit."""
+        last = self._last_word_end(entry)
+        end = min(entry.duration, last + self.TRAIL_SEC) if last is not None else entry.duration
+        duration = min(end, self.max_duration_sec)
+        text = entry.transcript
+        if duration < end and entry.words:
+            kept = [w["word"] for w in entry.words if (w.get("end") or 0.0) <= duration]
+            text = " ".join(kept) or text
+        return duration, text
+
+    def _sample_voice(self, entry: Entry) -> tuple[Any, ...]:
+        """(wav, tokens, prompt latents, prompt frames, voice row): the target is the whole
+        utterance, so no alignment is needed, and the prompt comes from the voice bank."""
+        duration, text = self._voice_target(entry)
+        wav = audio._load_window(entry.path, entry.start, duration, self.sample_rate)
+        prompt, voice_id = self._voice_prompt(entry)
+        return wav, self._tokens(text), prompt, prompt.shape[0], voice_id
 
     def _load_latents(self, latents_file: str) -> torch.Tensor:
         path = self.latents_root / latents_file
@@ -263,6 +319,16 @@ class DataLoader:
         assert self.stitch_frames > 0, f"{entry.path}: latents entry but no meta file loaded"
         assert entry.latents_file is not None, f"{entry.path}: not a latents entry"
         lat = self._load_latents(entry.latents_file)
+        if self.voice_bank is not None:
+            _, text = self._voice_target(entry)
+            prompt, voice_id = self._voice_prompt(entry)
+            target_frames = self._latent_target_frames(entry, 0, lat.shape[0])
+            stitch_frames = min(self.stitch_frames, target_frames)
+            stitch = audio._load_window(
+                entry.path, entry.start, stitch_frames / self.frame_rate, self.sample_rate
+            )
+            tail = lat[stitch_frames:target_frames]
+            return stitch, self._tokens(text), prompt, tail, target_frames, voice_id
         cut_frames, text = self._latent_cut(entry, lat.shape[0])
         tokens = self._tokens(text)
         target_frames = self._latent_target_frames(entry, cut_frames, lat.shape[0])
@@ -292,8 +358,15 @@ class DataLoader:
             audio[b, 0, :n] = torch.from_numpy(w[:n])
         return audio
 
+    def _voice_ids(self, batch: list[tuple[Any, ...]]) -> torch.Tensor | None:
+        if self.voice_bank is None:
+            return None
+        return torch.tensor([sample[-1] for sample in batch], dtype=torch.long)
+
     def _collate_latent(self, batch: list[tuple[Any, ...]]) -> Batch:
-        stitches, tokens, prompts, tails, target_frames = zip(*batch, strict=True)
+        stitches, tokens, prompts, tails, target_frames = zip(
+            *(sample[:5] for sample in batch), strict=True
+        )
         num_prompt_frames = torch.tensor([max(1, p.shape[0]) for p in prompts], dtype=torch.long)
         return Batch(
             self._collate_stitch_audio(stitches),
@@ -303,6 +376,7 @@ class DataLoader:
             num_prompt_frames,
             tail_latents=self._pad_latents(tails, 0),
             prompt_latents=self._pad_latents(prompts, 1),
+            voice_ids=self._voice_ids(batch),
         )
 
     def get_entry(self, index: int) -> Entry:
@@ -314,12 +388,13 @@ class DataLoader:
             d.get("words"),
             float(d.get("start", 0.0)),
             d.get("latents_file"),
+            d.get("voice"),
         )
 
     def _sample_or_none(self, entry: Entry) -> tuple[Any, ...] | None:
         try:
             return self._sample(entry)
-        except UnalignedEntry:
+        except (UnalignedEntry, UnknownVoice):
             raise
         except Exception as exc:  # noqa: BLE001 — skip unreadable samples, whatever the cause
             self._failures += 1
@@ -386,19 +461,32 @@ class DataLoader:
         """Voice prompt + text tokens + target audio frames: what a row costs after padding."""
         if self.stitch_frames:  # (stitch wav, tokens, prompt latents, tail latents, target frames)
             return sample[2].shape[0] + len(sample[1]) + int(sample[4])
+        if self.voice_bank is not None:  # (wav, tokens, prompt latents, prompt frames, voice)
+            wav, tokens, _prompt, prompt_frames, _voice = sample
+            return len(wav) * self.frame_rate / self.sample_rate + prompt_frames + len(tokens)
         wav, tokens, _prompt, prompt_samples = sample
         return (prompt_samples + len(wav)) * self.frame_rate / self.sample_rate + len(tokens)
 
     def _collate(self, batch: list[tuple[Any, ...]]) -> Batch:
         if self.stitch_frames:
             return self._collate_latent(batch)
-        wavs, tokens, prompts, prompt_lens = zip(*batch, strict=True)
+        wavs, tokens, prompts, prompt_lens = zip(*(sample[:4] for sample in batch), strict=True)
         max_len = max(len(w) for w in wavs)
         audio = torch.zeros(len(wavs), 1, max_len)
         frames = torch.zeros(len(wavs), dtype=torch.long)
         for b, w in enumerate(wavs):
             audio[b, 0, : len(w)] = torch.from_numpy(w)
             frames[b] = max(1, int(len(w) * self.frame_rate / self.sample_rate))
+        if self.voice_bank is not None:
+            return Batch(
+                audio,
+                frames,
+                list(tokens),
+                torch.zeros(len(wavs), 1, 0),
+                torch.tensor(prompt_lens, dtype=torch.long),
+                prompt_latents=self._pad_latents(prompts, 1),
+                voice_ids=self._voice_ids(batch),
+            )
         max_prompt = max(len(p) for p in prompts)
         voice = torch.zeros(len(prompts), 1, max_prompt)
         for b, pr in enumerate(prompts):

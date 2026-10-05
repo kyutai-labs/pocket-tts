@@ -38,6 +38,7 @@ from pocket_tts.modules.stateful_module import (
     increment_steps,
     init_states,
 )
+from pocket_tts.modules.voice_lut import VoiceLUT
 from pocket_tts.quantization import RECOMMENDED_CONFIG, apply_dynamic_int8
 from pocket_tts.utils.config import CONFIGS_DIR, Config, load_config
 from pocket_tts.utils.utils import (
@@ -52,6 +53,7 @@ from pocket_tts.utils.weights_loading import (
     get_flow_lm_state_dict,
     get_mimi_state_dict,
     get_training_checkpoint_state_dicts,
+    pop_voice_prompts,
 )
 
 torch.set_num_threads(1)
@@ -121,6 +123,9 @@ class TTSModel(nn.Module):
         self.append_terminal_punctuation = append_terminal_punctuation
         self.capitalize_first_letter = capitalize_first_letter
         self.replace_characters = replace_characters or {}
+        # Voice name -> [T, C] prompt latents, for a model trained on a closed set of voices
+        # (see _attach_voices); empty otherwise.
+        self.voice_prompts: dict[str, torch.Tensor] = {}
 
     @property
     def device(self) -> torch.device:
@@ -164,10 +169,35 @@ class TTSModel(nn.Module):
 
     has_custom_weights: bool = False
 
+    @property
+    def voice_names(self) -> list[str]:
+        """The voices this model knows by name, the first being its default; usually none."""
+        return sorted(self.voice_prompts)
+
+    def _attach_voices(
+        self, flow_lm_state: dict[str, torch.Tensor], voice_prompts: dict[str, torch.Tensor]
+    ):
+        """Give the flow LM the voice LUT its weights carry, named after their voice prompts."""
+        embed = flow_lm_state.get("voice_lut.embed.weight")
+        if embed is None:
+            if voice_prompts:
+                raise ValueError("the weights carry voice prompts but no voice LUT")
+            return
+        if embed.shape[0] != len(voice_prompts) + 1:
+            raise ValueError(
+                f"the voice LUT has {embed.shape[0] - 1} voices but the weights carry "
+                f"{len(voice_prompts)} voice prompts"
+            )
+        d_model = self.config.flow_lm.transformer.d_model
+        self.flow_lm.voice_lut = VoiceLUT(list(voice_prompts), embed.shape[1], d_model)
+        self.voice_prompts = voice_prompts
+
     def load_training_checkpoint(self, path: str | Path, use_ema: bool = True):
         """Load weights from a training checkpoint (.pt) into a config-built model."""
         self.has_custom_weights = True
-        flow_lm_state, mimi_state = get_training_checkpoint_state_dicts(Path(path), use_ema)
+        flow_lm_state, mimi_state, voice_prompts = get_training_checkpoint_state_dicts(
+            Path(path), use_ema
+        )
         config = self.config
         self.flow_lm.speaker_proj_weight = torch.nn.Parameter(
             torch.zeros(
@@ -178,6 +208,7 @@ class TTSModel(nn.Module):
                 dtype=torch.float32,
             )
         )
+        self._attach_voices(flow_lm_state, voice_prompts)
         self.flow_lm.load_state_dict(flow_lm_state, strict=True)
         self.mimi = build_mimi(config.mimi).to(device="cpu")
         # Training freezes Mimi and does not checkpoint it, so its weights come
@@ -265,6 +296,13 @@ class TTSModel(nn.Module):
                 weights_file = download_if_necessary(config.weights_path_without_voice_cloning)
 
             state_dict = safetensors.torch.load_file(weights_file)
+            voice_prompts = pop_voice_prompts(state_dict)
+            flow_lm_state = {
+                k.removeprefix("flow_lm."): v
+                for k, v in state_dict.items()
+                if k.startswith("flow_lm.")
+            }
+            tts_model._attach_voices(flow_lm_state, voice_prompts)
             tts_model.load_state_dict(state_dict, strict=True)
 
         if config.flow_lm.weights_path is None and config.weights_path is None:
@@ -914,13 +952,19 @@ class TTSModel(nn.Module):
 
     @lru_cache(maxsize=2)
     def _cached_get_state_for_audio_prompt(
-        self, audio_conditioning: Path | str | torch.Tensor, truncate: bool = False
+        self,
+        audio_conditioning: Path | str | torch.Tensor,
+        truncate: bool = False,
+        voice_name: str | None = None,
     ) -> ModelState:
-        return self.get_state_for_audio_prompt(audio_conditioning, truncate)
+        return self.get_state_for_audio_prompt(audio_conditioning, truncate, voice_name)
 
     @torch.no_grad
     def get_state_for_audio_prompt(
-        self, audio_conditioning: Path | str | torch.Tensor, truncate: bool = False
+        self,
+        audio_conditioning: Path | str | torch.Tensor,
+        truncate: bool = False,
+        voice_name: str | None = None,
     ) -> ModelState:
         """Create model state conditioned on audio prompt for continuation.
 
@@ -934,8 +978,14 @@ class TTSModel(nn.Module):
                 - Path: Local file path to audio file (or .safetensors)
                 - str: URL to download audio file (or .safetensors) from
                 - torch.Tensor: Pre-loaded audio tensor with shape [channels, samples]
+                - str: for a model trained on a closed set of voices, one of its
+                  `voice_names`, which prompts with that voice and selects it by name
             truncate: Whether to truncate long audio prompts to 30 seconds.
                 Helps prevent memory issues with very long inputs. Defaults to False.
+            voice_name: For a model trained on a closed set of voices, the voice to select
+                by name (one of `voice_names`) along with an audio prompt. Without it, an
+                audio prompt is cloned with no voice name, which such a model only does well
+                if it was trained with the name dropped (not a CFG-distilled one).
 
         Returns:
             dict: Model state dictionary containing hidden states and positional
@@ -976,13 +1026,30 @@ class TTSModel(nn.Module):
             - Processing time is logged for performance monitoring
             - The state preserves speaker characteristics for voice cloning
         """
+        if voice_name is not None and self.flow_lm.voice_lut is None:
+            raise ValueError("voice_name is only for models trained on a closed set of voices")
+        if isinstance(audio_conditioning, str) and audio_conditioning in self.voice_prompts:
+            # Already encoded: the voice's training prompt, plus its name.
+            if voice_name is not None and voice_name != audio_conditioning:
+                raise ValueError(
+                    f"voice {audio_conditioning!r} given with voice_name {voice_name!r}"
+                )
+            latents = self.voice_prompts[audio_conditioning].to(self.device)
+            prompt = F.linear(latents[None].float(), self.flow_lm.speaker_proj_weight)
+            return self._prompt_state(prompt, audio_conditioning)
+
         if isinstance(audio_conditioning, (str, Path)) and _is_safetensors_source(
             audio_conditioning
         ):
             if isinstance(audio_conditioning, str):
                 audio_conditioning = download_if_necessary(audio_conditioning)
 
-            return _import_model_state(audio_conditioning, self.device)
+            model_state = _import_model_state(audio_conditioning, self.device)
+            lut = self.flow_lm.voice_lut
+            if lut is not None and voice_name is not None:
+                lut_state = model_state.setdefault(lut.get_state_name(), lut.init_state(1, 0))
+                lut.select(lut_state, voice_name)
+            return model_state
 
         elif (
             isinstance(audio_conditioning, str)
@@ -1031,11 +1098,16 @@ class TTSModel(nn.Module):
         audio_conditioning = end_on_pause(audio_conditioning, self.config.mimi.sample_rate)
         with display_execution_time("Encoding audio prompt"):
             prompt = self._encode_audio(audio_conditioning.unsqueeze(0).to(self.device))
+        return self._prompt_state(prompt, voice_name)
 
+    def _prompt_state(self, prompt: torch.Tensor, voice_name: str | None) -> ModelState:
+        """The state after prompting with `prompt` (projected [1, T, dim]), in `voice_name`."""
         if self.flow_lm.insert_bos_before_voice:
             prompt = torch.cat([self.flow_lm.bos_before_voice, prompt], dim=1)
 
         model_state = init_states(self.flow_lm, batch_size=1, sequence_length=prompt.shape[1])
+        if self.flow_lm.voice_lut is not None:
+            self.flow_lm.voice_lut.select(self.flow_lm.voice_lut.get_state(model_state), voice_name)
 
         with display_execution_time("Prompting audio"):
             self._run_flow_lm_and_increment_step(model_state=model_state, audio_conditioning=prompt)

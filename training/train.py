@@ -28,7 +28,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from pocket_tts.models.mimi import MimiModel
 from training.args import TrainArgs, dump_args, load_args, save_args
 from training.checkpointing import EMA, latest_checkpoint, load_checkpoint, save_checkpoint
-from training.dataloader import DataLoader, SubprocessDataLoader, encode_batch
+from training.dataloader import DataLoader, SubprocessDataLoader, encode_batch, encode_voice_bank
 from training.distributed import (
     avg_across_ranks,
     get_rank,
@@ -65,6 +65,8 @@ class Run:
     model: TrainableTTS  # unwrapped, for EMA/checkpointing
     wrapped: nn.Module  # DDP-wrapped when distributed, else the model itself
     mimi: MimiModel
+    # Voice name -> reference latents when TrainArgs.voices is set, else None.
+    voice_bank: dict[str, torch.Tensor] | None
     optimizer: torch.optim.Optimizer
     ema: EMA | None
     start_step: int
@@ -122,6 +124,9 @@ def setup(config_path: str) -> Run:
     model.to(device)
     mimi.to(device)
     ensure_train_latents(args, mimi, device, rank, world_size)
+    voice_bank = None
+    if args.voices:
+        voice_bank = encode_voice_bank(mimi, args.voices, args.data.voice_prompt_max_sec, device)
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     if rank == 0:
         logger.info(f"flow_lm + objective: {n_params / 1e6:.1f}M trainable params")
@@ -153,6 +158,7 @@ def setup(config_path: str) -> Run:
         model=model,
         wrapped=wrapped,
         mimi=mimi,
+        voice_bank=voice_bank,
         optimizer=optimizer,
         ema=ema,
         start_step=start_step,
@@ -191,6 +197,9 @@ def main(config_path: str):
         num_bucket_batches=args.data.num_bucket_batches,
         prompt_trim_max_sec=args.data.prompt_trim_max_sec,
         final_punct_dropout=args.data.final_punct_dropout,
+        voice_bank=run.voice_bank,
+        voice_prompt_crop_prob=args.data.voice_prompt_crop_prob,
+        voice_prompt_min_sec=args.data.voice_prompt_min_sec,
     )
     train_loader = iter(train_data)
 
@@ -213,6 +222,7 @@ def main(config_path: str):
     last_log = time.time()
     steps_since_log = 0
     sample_voice = None
+    sample_voice_id: int | None = None
     for step in range(start_step, args.max_steps):
         step_start = time.time()
         lr = lr_at(step, args)
@@ -232,6 +242,7 @@ def main(config_path: str):
                     voice_prompt_latents,
                     update_stats=step < args.stats_ema_steps,
                     num_voice_prompt_frames=num_voice_prompt_frames,
+                    voice_ids=batch.voice_ids,
                 )
             # Under DDP, allreduce only on the last micro-batch.
             last_micro = micro == args.grad_accum_steps - 1
@@ -259,7 +270,14 @@ def main(config_path: str):
                     f"termination signal received: checkpointing step {step + 1} before exit"
                 )
                 save_checkpoint(
-                    args.run_dir, step + 1, model, optimizer, ema, args.num_ckpt_keep, mimi
+                    args.run_dir,
+                    step + 1,
+                    model,
+                    optimizer,
+                    ema,
+                    args.num_ckpt_keep,
+                    mimi,
+                    run.voice_bank,
                 )
                 progress.log("checkpoint", step + 1)
             train_data.close()
@@ -287,26 +305,56 @@ def main(config_path: str):
         if sample_voice is None:
             n = int(num_voice_prompt_frames[0])
             sample_voice = voice_prompt_latents[0, :n].detach().clone()
+            if batch.voice_ids is not None:
+                sample_voice_id = int(batch.voice_ids[0])
         if (
             rank == 0
             and args.sample_sentences
             and args.sample_freq > 0
             and (step + 1) % args.sample_freq == 0
         ):
-            write_samples(model, mimi, tokenize, args, args.run_dir, step + 1, sample_voice, device)
+            write_samples(
+                model,
+                mimi,
+                tokenize,
+                args,
+                args.run_dir,
+                step + 1,
+                sample_voice,
+                device,
+                voice_id=sample_voice_id,
+            )
 
         if (step + 1) % args.valid_freq == 0 and args.data.valid_jsonl:
-            valid_metrics = validate(model, mimi, args, device, rank, run.world_size, step + 1)
+            valid_metrics = validate(
+                model, mimi, args, device, rank, run.world_size, step + 1, run.voice_bank
+            )
             progress.log("valid", step + 1, valid_metrics)
             model.train()
 
         if rank == 0 and (step + 1) % args.ckpt_freq == 0:
-            save_checkpoint(args.run_dir, step + 1, model, optimizer, ema, args.num_ckpt_keep, mimi)
+            save_checkpoint(
+                args.run_dir,
+                step + 1,
+                model,
+                optimizer,
+                ema,
+                args.num_ckpt_keep,
+                mimi,
+                run.voice_bank,
+            )
             progress.log("checkpoint", step + 1)
 
     if rank == 0:
         save_checkpoint(
-            args.run_dir, args.max_steps, model, optimizer, ema, args.num_ckpt_keep, mimi
+            args.run_dir,
+            args.max_steps,
+            model,
+            optimizer,
+            ema,
+            args.num_ckpt_keep,
+            mimi,
+            run.voice_bank,
         )
         progress.log("checkpoint", args.max_steps)
         if device.type == "cuda":
@@ -325,6 +373,7 @@ def validate(
     rank: int,
     world_size: int,
     step: int,
+    voice_bank: dict[str, torch.Tensor] | None = None,
 ) -> dict[str, float]:
     model.eval()
     tokenize = model.flow_lm.conditioner.tokenizer.encode
@@ -341,6 +390,8 @@ def validate(
             world_size,
             seed=0,
             shuffle=False,
+            # Full-length voice prompts: validation stays comparable across steps.
+            voice_bank=voice_bank,
         )
     )
     autocast = torch.autocast(
@@ -363,6 +414,7 @@ def validate(
                 batch.text_tokens,
                 voice_prompt_latents,
                 num_voice_prompt_frames=num_voice_prompt_frames,
+                voice_ids=batch.voice_ids,
             )
         for k, v in metrics.items():
             if v.numel() == 1:

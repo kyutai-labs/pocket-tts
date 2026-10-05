@@ -16,6 +16,7 @@ from pocket_tts.models.flow_lm import FlowLMModel
 from pocket_tts.models.mimi import MimiModel, build_mimi
 from pocket_tts.models.tts_model import TTSModel
 from pocket_tts.modules.mlp import SimpleMLPAdaLN
+from pocket_tts.modules.voice_lut import VoiceLUT
 from pocket_tts.utils.config import Config, load_config
 from pocket_tts.utils.utils import download_if_necessary
 
@@ -58,15 +59,16 @@ def attach_distillation(model: TrainableTTS, flow_lm: FlowLMModel, args: TrainAr
     named by distill_teacher_config, or a frozen copy of the model itself when
     only guidance is being baked in.
     """
-    if args.text_dropout or args.voice_dropout:
+    if args.text_dropout or args.voice_dropout or (args.voices and args.voice_lut_dropout):
         # The teacher's targets are always fully conditioned, and a distilled
         # student is sampled at cfg 1 with no null branch. Dropping the
         # student's conditioning asks it to predict the conditioned target
         # from a null input.
         logger.warning(
-            "distillation with text_dropout=%s voice_dropout=%s: set both to 0",
+            "distillation with text_dropout=%s voice_dropout=%s voice_lut_dropout=%s: set all to 0",
             args.text_dropout,
             args.voice_dropout,
+            args.voice_lut_dropout,
         )
 
     if args.distill_teacher_config:
@@ -157,6 +159,10 @@ def build_models(args: TrainArgs) -> tuple[TrainableTTS, MimiModel, Config]:
     flow_lm.speaker_proj_weight = torch.nn.Parameter(
         torch.zeros((d_model, latent_dim), dtype=torch.float32)
     )
+    if args.voices:
+        # A submodule of flow_lm, so the EMA, checkpoints and a distillation teacher copied
+        # from flow_lm all carry it; released weights do not, see the warm start below.
+        flow_lm.voice_lut = VoiceLUT(list(args.voices), args.voice_lut_dim, d_model)
 
     flow = build_flow(args.flow.type, **args.flow.kwargs)
     if flow.num_time_conds != 2:
@@ -188,15 +194,19 @@ def build_models(args: TrainArgs) -> tuple[TrainableTTS, MimiModel, Config]:
             k.removeprefix("flow_lm."): v for k, v in state.items() if k.startswith("flow_lm.")
         }
         dropped: list[str] = []
+        if args.voices and not any(k.startswith("voice_lut.") for k in flow_state):
+            # A released model has no voice LUT: it starts from its zero init.
+            dropped += [k for k in flow_lm.state_dict() if k.startswith("voice_lut.")]
         if args.reset_text_embedding:
-            dropped = [k for k in flow_state if k.startswith("conditioner.embed.")]
-            logger.info("starting the text embedding from scratch: %s", dropped)
-            flow_state = {k: v for k, v in flow_state.items() if k not in dropped}
+            reset = [k for k in flow_state if k.startswith("conditioner.embed.")]
+            logger.info("starting the text embedding from scratch: %s", reset)
+            flow_state = {k: v for k, v in flow_state.items() if k not in reset}
+            dropped += reset
         if flow.num_time_conds != 2:
             flow_state = {k: v for k, v in flow_state.items() if not k.startswith("flow_net.")}
             missing, unexpected = flow_lm.load_state_dict(flow_state, strict=False)
             assert not unexpected, unexpected
-            assert all(k.startswith("flow_net.") for k in missing), missing
+            assert all(k.startswith("flow_net.") or k in dropped for k in missing), missing
             logger.info(
                 "warm-started backbone; flow_net freshly initialized (objective %s)", args.flow.type
             )

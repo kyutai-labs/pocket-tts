@@ -13,6 +13,7 @@ import signal
 from collections.abc import Iterator
 from typing import Any
 
+import torch
 import torch.multiprocessing as torch_mp
 
 from pocket_tts.modules.text_conditioner import Tokenizer, encoder_from_serialized
@@ -67,6 +68,9 @@ class SubprocessDataLoader:
         num_bucket_batches: int = 1,
         prompt_trim_max_sec: float = 0.0,
         final_punct_dropout: float = 0.0,
+        voice_bank: dict[str, torch.Tensor] | None = None,
+        voice_prompt_crop_prob: float = 0.0,
+        voice_prompt_min_sec: float = 0.0,
     ):
         ctx = torch_mp.get_context("spawn")
         self._queue = ctx.Queue(maxsize=depth)
@@ -87,6 +91,9 @@ class SubprocessDataLoader:
                 "num_bucket_batches": num_bucket_batches,
                 "prompt_trim_max_sec": prompt_trim_max_sec,
                 "final_punct_dropout": final_punct_dropout,
+                "voice_bank": voice_bank,
+                "voice_prompt_crop_prob": voice_prompt_crop_prob,
+                "voice_prompt_min_sec": voice_prompt_min_sec,
             }
             proc = ctx.Process(
                 target=_feed_queue,

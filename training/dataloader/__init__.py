@@ -1,7 +1,7 @@
 """Data loading: manifest access, sampling, batching, subprocess feeding."""
 
 from training.dataloader.audio import _load_window
-from training.dataloader.encode import encode_batch
+from training.dataloader.encode import encode_batch, encode_voice_bank
 from training.dataloader.loader import DataLoader, _prefetch
 from training.dataloader.manifest import LazyEntries, load_entries
 from training.dataloader.subproc import SubprocessDataLoader
@@ -16,5 +16,6 @@ __all__ = [
     "_load_window",
     "_prefetch",
     "encode_batch",
+    "encode_voice_bank",
     "load_entries",
 ]

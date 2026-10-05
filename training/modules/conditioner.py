@@ -22,6 +22,7 @@ def build_sequences_with_conditions(
     fl: FlowLMModel,
     num_voice_prompt_frames: torch.Tensor | None = None,
     force_null: bool = False,
+    voice_ids: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Assemble per-sample [beginning_of_prefix, voice_conditioning,
     text_conditioning, beginning_of_sequence, target_audio] rows,
@@ -55,6 +56,19 @@ def build_sequences_with_conditions(
     # torch.rand is in [0, 1), so prob 1.0 keeps every row and 0.0 keeps none.
     keep_voice_cpu = torch.rand(B) < keep_voice_prob
     keep_text_cpu = torch.rand(B) < keep_text_prob
+
+    voice_lut = fl.voice_lut
+    if voice_lut is not None:
+        assert voice_ids is not None, "a model with a voice LUT needs the batch's voice_ids"
+        if force_null:
+            keep_lut_prob = 0.0
+        elif cfg_dropout:
+            keep_lut_prob = 1 - args.voice_lut_dropout
+        else:
+            keep_lut_prob = 1.0
+        keep_lut = (torch.rand(B) < keep_lut_prob).to(device)
+        # Summed onto every audio frame, the BOS one included, as audiocraft's fuser sums.
+        audio_emb = audio_emb + voice_lut(voice_ids.to(device), keep_lut).to(audio_emb.dtype)
 
     if num_voice_prompt_frames is not None:
         v_len_cpu = num_voice_prompt_frames.cpu().long().clamp(max=Tv) * keep_voice_cpu

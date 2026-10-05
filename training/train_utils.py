@@ -133,8 +133,10 @@ def write_samples(
     step: int,
     voice_latents: torch.Tensor,
     device: torch.device,
+    voice_id: int | None = None,
 ):
-    """Synthesize the configured sentences from the live (raw) weights."""
+    """Synthesize the configured sentences from the live (raw) weights, in the first batch's
+    voice (its prompt, and its LUT row with TrainArgs.voices)."""
     out_dir = run_dir / "samples"
     out_dir.mkdir(exist_ok=True)
     model.eval()
@@ -145,6 +147,7 @@ def write_samples(
             [voice_latents] * len(tokens),
             temp=args.sample_temp,
             cfg_coef=args.sample_cfg_coef,
+            voice_ids=None if voice_id is None else [voice_id] * len(tokens),
         )
         ratio = round(mimi.encoder_frame_rate / mimi.frame_rate)
         for i, latents in enumerate(outs):

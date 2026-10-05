@@ -23,6 +23,7 @@ class Entry:
     words: list[dict[str, Any]] | None = None  # [{"word", "start", "end"}] from align_data
     start: float = 0.0  # offset of the utterance inside the audio file (long recordings)
     latents_file: str | None = None
+    voice: str | None = None  # a TrainArgs.voices name, whose reference is the prompt
 
 
 @dataclass
@@ -33,4 +34,6 @@ class Batch:
     voice_audio: torch.Tensor  # [B, 1, prompt_samples]
     num_voice_prompt_frames: torch.Tensor  # [B] valid codec frames of each voice prompt
     tail_latents: torch.Tensor | None = None
+    # Set with tail_latents (precomputed latents), or alone for voice-bank prompts.
     prompt_latents: torch.Tensor | None = None
+    voice_ids: torch.Tensor | None = None  # [B] voice LUT rows, with TrainArgs.voices

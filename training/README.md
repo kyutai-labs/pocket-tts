@@ -286,6 +286,51 @@ state = model.get_state_for_audio_prompt("voice.wav")
 audio = model.generate_audio(state, "The quick brown fox jumps over the lazy dog.")
 ```
 
+## A small set of fixed voices
+
+When the corpus is spoken by a handful of known voices (e.g. synthetic data generated with a
+few fixed voices), the model can learn each voice by name as well as from a prompt.
+`small_voices_finetune.yaml` lists the voices in `voices` (name -> reference audio), and each
+manifest entry names its voice:
+
+```json
+{"path": "clip.wav", "duration": 3.4, "transcript": "Just because you can't see it...", "voice": "alice"}
+```
+
+The prompt is then the voice's reference audio, not the start of the utterance: the first 10 s,
+and 30% of the time cropped to between 2.5 and 10 s. Since nothing is cut from the target, word
+alignments are optional. A voice lookup table, one row per name, is also summed into every audio
+frame. The table and the prompt are dropped independently (`voice_lut_dropout` 0.2,
+`voice_dropout` 0.5), so the model learns to take the voice from its name alone, its prompt
+alone, or both. A dropped table entry is a learnt null embedding, which the CFG null branch uses
+too.
+
+`small_voices_distill.yaml` then bakes CFG in, with a frozen copy of that run as the teacher.
+The distilled model never saw a dropped condition, so serve it with both the voice's name and
+its prompt, without CFG.
+
+Checkpoints and `model.safetensors` carry each voice's encoded prompt, so pocket-tts knows the
+voices by name: `--voice <name>` prompts with that voice and selects its table entry, and
+without `--voice` the first voice is used. `--voice clip.wav --voice-name <name>` clones a
+recording while also selecting a voice by name. From Python, `model.voice_names` lists them
+and `model.get_state_for_audio_prompt(name)` gives a voice state.
+
+```bash
+uv run pocket-tts generate --config pocket_tts/config/english_2026-09.yaml \
+    --checkpoint runs/small_voices_distill/checkpoint_00040000.pt --voice alice --text "Hello there."
+```
+
+To serve them with [xn-ptts](https://github.com/gradium-ai/xn-ptts) (a version with summed conditions and bundled
+voices), export with every voice bundled under its name:
+
+```bash
+uv run python -m training.scripts.export_xn_ptts runs/small_voices_distill --out exports/small_voices
+```
+
+Each voice is bundled as its prompt together with its table entry, and the export also
+clones voices from audio. It needs an xn-ptts that runs pocket-tts models natively (tanh GELU,
+`bos_before_voice`, Mimi's `inner_dim`).
+
 ## Tests
 
 To run the unit tests (nothing to do with the models, just checks the correctness of the code):

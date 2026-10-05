@@ -10,6 +10,7 @@ from pocket_tts.modules.mlp import SimpleMLPAdaLN
 from pocket_tts.modules.stateful_module import ModelState
 from pocket_tts.modules.text_conditioner import LUTConditioner
 from pocket_tts.modules.transformer import StreamingTransformer
+from pocket_tts.modules.voice_lut import VoiceLUT
 from pocket_tts.utils.config import FlowLMConfig
 
 logger = logging.getLogger(__name__)
@@ -82,6 +83,9 @@ class FlowLMModel(nn.Module):
     speaker_proj_weight: nn.Parameter
     # Only exists when insert_bos_before_voice is set.
     bos_before_voice: nn.Parameter
+    # Only exists for models trained on a closed set of voices, created by whoever loads the
+    # weights (TTSModel, training.modules.builders) since the voice names come with them.
+    voice_lut: VoiceLUT | None
 
     def __init__(
         self,
@@ -110,6 +114,7 @@ class FlowLMModel(nn.Module):
         self.register_buffer("emb_mean", torch.zeros(ldim, dtype=dtype))
         self.bos_emb = torch.nn.Parameter(torch.randn(ldim, dtype=dtype))
         self.insert_bos_before_voice = insert_bos_before_voice
+        self.voice_lut = None
         if self.insert_bos_before_voice:
             # Add BOS value that's to be inserted before the voice condition
             self.bos_before_voice = torch.nn.Parameter(torch.randn((1, 1, self.dim), dtype=dtype))
@@ -189,6 +194,9 @@ class FlowLMModel(nn.Module):
         # print("text_embeddings shape:", text_embeddings.shape)
         # if text_embeddings.numel() != 0:
         #     torch.save(text_embeddings, "debug_flow_lm_text_embeddings.pt")
+        if self.voice_lut is not None and input_.shape[1] > 0:
+            # Summed onto every audio frame (not the prompt or the text), as in training.
+            input_ = input_ + self.voice_lut.term(model_state).to(input_.dtype)
         input_ = torch.cat([text_embeddings, input_], dim=1)
         # transformer_out = self.transformer(input_, model_state=model_state)
         transformer_out = self.transformer(input_, model_state)

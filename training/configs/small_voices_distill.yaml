@@ -1,0 +1,45 @@
+# Bake CFG into a small_voices_finetune.yaml run: a frozen copy of it is the teacher (guidance
+# combined at distill_cfg_coef), the student starts from the same weights. Recipe of phonon
+# 424a6129. The student never sees dropped conditioning, so serve it with the voice's name and
+# its prompt together, without CFG -- as training/scripts/export_xn_ptts.py bundles voices.
+model_config: pocket_tts/config/english_2026-09.yaml
+start_from_pretrained: false
+distill_cfg_coef: 1.5
+distill_teacher_config: pocket_tts/config/english_2026-09.yaml
+distill_teacher_weights: runs/small_voices_finetune/checkpoint_00160000.pt
+student_init_from: runs/small_voices_finetune/checkpoint_00160000.pt
+
+# Must match the teacher's: the LUT rows follow the sorted names.
+voices:
+  alice: data/voices/alice.wav
+  bob: data/voices/bob.wav
+voice_lut_dim: 128
+voice_lut_dropout: 0.0
+voice_dropout: 0.0
+text_dropout: 0.0
+
+data:
+  train_jsonl: data/small_voices_train.jsonl
+  valid_jsonl: data/small_voices_valid.jsonl
+  max_duration_sec: 30.0
+  voice_prompt_max_sec: 10.0
+  voice_prompt_crop_prob: 0.3
+  voice_prompt_min_sec: 2.5
+
+flow:
+  type: lsd
+  kwargs: {}
+
+optim:
+  lr: 4e-5
+  schedule: constant
+  warmup_steps: 1000
+
+run_dir: runs/small_voices_distill
+batch_size: 8
+max_steps: 40000
+ema_decay: 0.999
+log_freq: 50
+valid_freq: 2500
+ckpt_freq: 2500
+num_ckpt_keep: 999

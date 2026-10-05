@@ -3,6 +3,9 @@
 `export_pocket_safetensors` writes a single model.safetensors with flow_lm.*
 and mimi.* keys — the exact format pocket-tts loads via `weights_path` in a
 model config (point a copy of the config's weights_path at the exported file).
+A run with a voice LUT (TrainArgs.voices) also stores each voice's prompt
+latents, under voice_prompts.<name>: they name the LUT's rows and let
+inference pick a voice by name.
 """
 
 import logging
@@ -13,6 +16,7 @@ import safetensors.torch
 import torch
 from torch import nn
 
+from pocket_tts.utils.weights_loading import VOICE_PROMPTS_PREFIX
 from training.modules.model import TrainableTTS
 
 logger = logging.getLogger(__name__)
@@ -68,6 +72,7 @@ def save_checkpoint(
     ema: EMA | None,
     num_keep: int,
     mimi: nn.Module | None = None,
+    voice_prompts: dict[str, torch.Tensor] | None = None,
 ):
     """Write the resumable training state; with `mimi`, also refresh the
     pocket-tts-format export (run_dir/model.safetensors)."""
@@ -77,6 +82,8 @@ def save_checkpoint(
         "model": model.state_dict(),
         "ema": ema.state_dict() if ema is not None else None,
     }
+    if voice_prompts:
+        payload["voice_prompts"] = voice_prompts
     path = run_dir / f"checkpoint_{step:08d}.pt"
     tmp = path.with_suffix(".tmp")
     torch.save(payload, tmp)
@@ -95,7 +102,9 @@ def save_checkpoint(
     for old_opt in sorted(run_dir.glob("optim_*.pt"))[:-1]:
         old_opt.unlink()
     if mimi is not None:
-        export_pocket_safetensors(run_dir / "model.safetensors", model.flow_lm, mimi, ema)
+        export_pocket_safetensors(
+            run_dir / "model.safetensors", model.flow_lm, mimi, ema, voice_prompts
+        )
 
 
 def latest_checkpoint(run_dir: Path) -> Path | None:
@@ -130,7 +139,11 @@ def load_checkpoint(
 
 
 def export_pocket_safetensors(
-    path: Path, flow_lm: nn.Module, mimi: nn.Module, ema: EMA | None = None
+    path: Path,
+    flow_lm: nn.Module,
+    mimi: nn.Module,
+    ema: EMA | None = None,
+    voice_prompts: dict[str, torch.Tensor] | None = None,
 ):
     flow_state = {k: v.detach().float().cpu() for k, v in flow_lm.state_dict().items()}
     if ema is not None:
@@ -139,6 +152,8 @@ def export_pocket_safetensors(
                 flow_state[k.removeprefix("flow_lm.")] = v.cpu()
     state = {f"flow_lm.{k}": v for k, v in flow_state.items()}
     state.update({f"mimi.{k}": v.detach().cpu() for k, v in mimi.state_dict().items()})
+    for name, latents in (voice_prompts or {}).items():
+        state[f"{VOICE_PROMPTS_PREFIX}{name}"] = latents.detach().float().cpu().contiguous()
     path = Path(path)
     tmp = path.with_suffix(".tmp")
     safetensors.torch.save_file(state, str(tmp))

@@ -1,0 +1,52 @@
+# Fine-tune a released model on a corpus spoken by a closed set of voices (e.g. synthetic data
+# from a few fixed voices), mixing two ways of asking for a voice: its name, through a voice
+# lookup table summed into every audio frame, and its reference audio as the prompt. Both are
+# dropped independently, so the model learns each alone:
+#   LUT + prompt 40%, LUT only 40%, prompt only 10%, neither 10% (the CFG null).
+# Recipe of phonon 424a6129's fine-tuning stage; distill it with small_voices_distill.yaml.
+#
+# Every manifest entry names its voice: {"path", "duration", "transcript", "voice": "<name>"}.
+# The target is the whole utterance, so word alignments are optional (with them, trailing
+# silence is trimmed and words past max_duration_sec dropped).
+model_config: pocket_tts/config/english_2026-09.yaml
+start_from_pretrained: true
+
+# Voice name -> reference audio; the LUT has one row per name, in sorted order.
+voices:
+  alice: data/voices/alice.wav
+  bob: data/voices/bob.wav
+voice_lut_dim: 128
+voice_lut_dropout: 0.2
+voice_dropout: 0.5
+text_dropout: 0.2
+
+data:
+  train_jsonl: data/small_voices_train.jsonl
+  valid_jsonl: data/small_voices_valid.jsonl
+  max_duration_sec: 30.0
+  # The prompt is the first 10 s of the reference; 30% of rows crop it to 2.5..10 s.
+  voice_prompt_max_sec: 10.0
+  voice_prompt_crop_prob: 0.3
+  voice_prompt_min_sec: 2.5
+
+flow:
+  type: lsd
+  kwargs: {}
+
+flow_batch_multiplier: 4
+eos_loss_weight: 0.1
+
+optim:
+  lr: 4e-5
+  schedule: constant
+  warmup_steps: 1000
+
+run_dir: runs/small_voices_finetune
+batch_size: 8
+max_steps: 160000
+ema_decay: 0.999
+log_freq: 50
+valid_freq: 2500
+ckpt_freq: 2500
+num_ckpt_keep: 3
+sample_cfg_coef: 1.5

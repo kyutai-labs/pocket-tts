@@ -116,6 +116,7 @@ def test_xn_ptts_export_config_matches_the_stock_architecture():
     assert xn["mimi"]["dimension"] == 512 and xn["mimi"]["quantizer_dimension"] == 32
     assert xn["cfg_null_audio_empty"], "the CFG null is the bare bos_before_voice"
     assert xn["mimi"]["ratios"] == [6, 5, 4] and xn["mimi"]["transformer_context"] == 250
+    assert xn["mimi"]["gelu"] == "tanh", "pocket-tts's Mimi uses the flow LM's tanh-GELU layer"
 
 
 def test_small_voices_configs_share_their_voice_table():

@@ -90,6 +90,8 @@ def xn_ptts_config(config: Config, eos_threshold: float) -> dict[str, Any]:
             "transformer_dim_feedforward": mimi.transformer.dim_feedforward,
             "inner_dim": mimi.inner_dim,
             "outer_dim": mimi.outer_dim,
+            # pocket-tts runs Mimi's transformer with the same tanh-GELU layer as the flow LM.
+            "gelu": "tanh",
         },
         "lsd_decode_steps": 1,
         "eos_threshold": eos_threshold,
@@ -147,7 +149,9 @@ def export(
             f"{ckpt} has a {lut['embed.weight'].shape[0] - 1}-voice LUT, but {len(names)} voices"
         )
 
-    state = {f"flow_lm.{k}": v.float() for k, v in flow_lm.items() if not k.startswith("voice_lut.")}
+    state = {
+        f"flow_lm.{k}": v.float() for k, v in flow_lm.items() if not k.startswith("voice_lut.")
+    }
     state.update({VOICE_LUT_PREFIX + k: v.float() for k, v in lut.items()})
 
     assert config.weights_path is not None, "model_config must define weights_path (for Mimi)"

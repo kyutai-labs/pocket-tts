@@ -117,6 +117,8 @@ def test_xn_ptts_export_config_matches_the_stock_architecture():
     assert xn["cfg_null_audio_empty"], "the CFG null is the bare bos_before_voice"
     assert xn["mimi"]["ratios"] == [6, 5, 4] and xn["mimi"]["transformer_context"] == 250
     assert xn["mimi"]["gelu"] == "tanh", "pocket-tts's Mimi uses the flow LM's tanh-GELU layer"
+    assert xn["mimi"]["attention_window"] == "exclusive", "pocket-tts attends to delta < context"
+    assert not xn["normalize_voice_prompt"], "pocket-tts encodes prompts as they are"
 
 
 def test_small_voices_configs_share_their_voice_table():

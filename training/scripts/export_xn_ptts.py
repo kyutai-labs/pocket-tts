@@ -90,13 +90,17 @@ def xn_ptts_config(config: Config, eos_threshold: float) -> dict[str, Any]:
             "transformer_dim_feedforward": mimi.transformer.dim_feedforward,
             "inner_dim": mimi.inner_dim,
             "outer_dim": mimi.outer_dim,
-            # pocket-tts runs Mimi's transformer with the same tanh-GELU layer as the flow LM.
+            # pocket-tts runs Mimi's transformer with the same tanh-GELU layer as the flow LM, and
+            # attends to `context` keys (delta < context, as audiocraft), not context + 1.
             "gelu": "tanh",
+            "attention_window": "exclusive",
         },
         "lsd_decode_steps": 1,
         "eos_threshold": eos_threshold,
         # The CFG null is the bare bos_before_voice, as training's (no prompt, no text).
         "cfg_null_audio_empty": True,
+        # pocket-tts encodes a cloned prompt as it is, without loudness normalization.
+        "normalize_voice_prompt": False,
         "temp": config.default_temperature,
         "weights_name": "model.safetensors",
         "tokenizer_name": "tokenizer.json",

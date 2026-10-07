@@ -135,6 +135,11 @@ class TrainArgs:
     # voice_dropout), so the model serves a voice from its name, its prompt, or both; a dropped
     # LUT is a learnt null embedding, which the CFG null branch uses too.
     voices: dict[str, str] = field(default_factory=dict)
+    # A closed set of voices known to the LUT *only*, with no reference audio: every entry still
+    # names its voice (one of these), but the voice prompt is empty, so the model identifies the
+    # voice from the LUT alone (see training/configs/small_voices_en_scratch.yaml). Mutually
+    # exclusive with `voices`. The LUT has one row per name, in sorted order, same as `voices`.
+    voice_names: list[str] = field(default_factory=list)
     voice_lut_dim: int = 128
     voice_lut_dropout: float = 0.2
     # Update the emb_mean/emb_std latent-normalization buffers by EMA for this
@@ -211,6 +216,19 @@ class TrainArgs:
             )
         if self.distill_teacher_config and not self.distill_teacher_weights:
             raise ValueError("distill_teacher_config is set but distill_teacher_weights is not")
+        if self.voices and self.voice_names:
+            raise ValueError(
+                "set voices (name -> reference audio, LUT + prompt) or voice_names "
+                "(LUT only, no prompt), not both"
+            )
+
+    def has_voice_lut(self) -> bool:
+        """Whether the model carries a voice LUT (either voice-bank or LUT-only mode)."""
+        return bool(self.voices or self.voice_names)
+
+    def lut_names(self) -> list[str]:
+        """The LUT's voice names, in the sorted order its rows follow (empty without a LUT)."""
+        return sorted(self.voices) if self.voices else sorted(self.voice_names)
 
 
 def _from_dict(cls: type[T], data: dict[str, Any]) -> T:

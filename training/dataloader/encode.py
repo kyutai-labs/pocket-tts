@@ -35,6 +35,10 @@ def encode_batch(
     mask = torch.arange(T, device=device)[None, :] < num_audio_frames[:, None]
     if batch.prompt_latents is not None:  # precomputed, or from the voice bank
         voice_prompt_latents = batch.prompt_latents.to(device)
+    elif batch.voice_audio.shape[-1] == 0:
+        # LUT-only mode: the voice is identified by its LUT row, there is no prompt. An empty
+        # [B, 0, C] prompt places no voice frames (num_voice_prompt_frames is all zeros too).
+        voice_prompt_latents = latents.new_zeros(latents.shape[0], 0, latents.shape[2])
     else:
         voice_prompt_latents = mimi.encode_to_latent(batch.voice_audio.to(device))
     num_voice_prompt_frames = batch.num_voice_prompt_frames.to(device).clamp(

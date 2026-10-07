@@ -1,0 +1,67 @@
+# Train an English TTS from scratch on the phonon "small voices" corpus, with the speaker
+# identified by a voice lookup table ALONE -- no reference-audio prompt (TrainArgs.voice_names,
+# LUT-only mode). Each manifest entry names its voice (the filename stem of the utterance's
+# generating voice); the LUT has one row per name and is summed into every audio frame, and the
+# voice prompt is always empty. Serve a voice by its name; there is no audio conditioning.
+#
+# Build the manifests first (prints the voice_names list below):
+#   python -m training.scripts.prepare_small_voices --out-dir data/small_voices_en
+# then:
+#   torchrun --nproc-per-node 8 -m training.train training/configs/small_voices_en_scratch.yaml
+#
+# This trains the 24-layer teacher (the proven from-scratch recipe, see scratch.yaml); distil it
+# down to the deployable 6-layer model afterwards. Drop the num_layers override to train a
+# 6-layer model directly (faster, lower quality).
+model_config: pocket_tts/config/english_2026-09.yaml
+model_overrides:
+  flow_lm.transformer.num_layers: 24
+start_from_pretrained: false
+
+# The 9 English voices present in en_mix_small_voices_keep_{0,1} (name/region/gender in comments).
+# The LUT's rows follow sorted(voice_names), so the order here does not matter. Regenerate with
+# prepare_small_voices.py if the corpus changes -- it logs the exact list.
+voice_names:
+  - "4SZHfMpw-p46Ywgs"  # Harper   en us F
+  - "4rdlkbxRv4m3UQTW"  # Tilly    en gb F
+  - "6MFfc37kq0sBjBjy"  # Sterling en us M
+  - "Bla6SbVMczYnOhfK"  # Marlowe  en us F
+  - "CF0NgaMwHMMrHZn0"  # Reuben   en gb M
+  - "D6COLz20Hw7uh3UK"  # Brooklyn en us F
+  - "GgfEkEJtxZR7gnpy"  # Freya    en gb F
+  - "_6Aslh2DxfmnRLmP"  # Russell  en us M
+  - "dME3IWyZBvmh1n1q"  # Toby     en gb M
+voice_lut_dim: 128
+voice_lut_dropout: 0.1  # a dropped LUT is the learnt null (also the CFG null branch)
+voice_dropout: 0.0  # no voice prompt in LUT-only mode, so nothing to drop
+text_dropout: 0.2
+
+data:
+  train_jsonl: data/small_voices_en/train.jsonl
+  valid_jsonl: data/small_voices_en/valid.jsonl
+  max_duration_sec: 30.0
+  precompute: false  # LUT-only trains from on-the-fly audio; no latent precompute
+
+flow:
+  type: lsd
+  kwargs: {}
+
+flow_batch_multiplier: 4
+eos_loss_weight: 0.1
+
+optim:
+  lr: 2e-4
+  schedule: cosine
+  warmup_steps: 1000
+
+run_dir: runs/small_voices_en_scratch
+# Effective batch (batch_size x GPUs x grad_accum_steps) must reach 64; on 8 GPUs use batch_size 8.
+batch_size: 64
+grad_accum_steps: 1
+max_steps: 400000
+stats_ema_steps: 1000
+ema_decay: 0.999
+log_freq: 50
+valid_freq: 2500
+ckpt_freq: 2500
+num_ckpt_keep: 3
+sample_cfg_coef: 2.0  # the teacher samples guided

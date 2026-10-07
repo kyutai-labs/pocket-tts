@@ -225,6 +225,29 @@ def test_voice_bank_refuses_unknown_voices(tmp_path: Path, voice: str | None):
         next(iter(loader))
 
 
+def test_lut_only_ids_and_empty_prompt(tmp_path: Path):
+    """LUT-only mode (TrainArgs.voice_names): every row carries a voice id for the LUT, the whole
+    utterance is the target, and there is no voice prompt at all."""
+    loader = _loader(
+        _voice_manifest(tmp_path, ["a", "b", "b", "a"]), batch_size=4, lut_names=["b", "a"]
+    )
+    batch = next(iter(loader))
+    assert batch.voice_ids is not None, "LUT-only still needs voice ids"
+    assert batch.voice_ids.tolist() == [0, 1, 1, 0], "rows follow the sorted voice names"
+    assert batch.prompt_latents is None and batch.tail_latents is None, "no prompt latents"
+    assert batch.voice_audio.shape[-1] == 0, "no voice prompt audio"
+    assert batch.num_voice_prompt_frames.tolist() == [0] * 4, "zero voice-prompt frames"
+    assert batch.audio.shape[-1] == int(3.0 * SR), "the target is the whole utterance"
+    assert [t.numel() for t in batch.text_tokens] == [2] * 4, "with the full transcript"
+
+
+@pytest.mark.parametrize("voice", [None, "z"])
+def test_lut_only_refuses_unknown_voices(tmp_path: Path, voice: str | None):
+    loader = _loader(_voice_manifest(tmp_path, [voice] * 2), lut_names=["a", "b"])
+    with pytest.raises(ValueError, match="TrainArgs.voice_names"):
+        next(iter(loader))
+
+
 def test_voice_bank_with_precomputed_latents(tmp_path: Path):
     manifest = Path(_voice_manifest(tmp_path, ["b", "a"]))
     lat_dir = tmp_path / "lat"

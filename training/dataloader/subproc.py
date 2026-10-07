@@ -71,6 +71,7 @@ class SubprocessDataLoader:
         voice_bank: dict[str, torch.Tensor] | None = None,
         voice_prompt_crop_prob: float = 0.0,
         voice_prompt_min_sec: float = 0.0,
+        lut_names: list[str] | None = None,
     ):
         ctx = torch_mp.get_context("spawn")
         self._queue = ctx.Queue(maxsize=depth)
@@ -94,6 +95,7 @@ class SubprocessDataLoader:
                 "voice_bank": voice_bank,
                 "voice_prompt_crop_prob": voice_prompt_crop_prob,
                 "voice_prompt_min_sec": voice_prompt_min_sec,
+                "lut_names": lut_names,
             }
             proc = ctx.Process(
                 target=_feed_queue,

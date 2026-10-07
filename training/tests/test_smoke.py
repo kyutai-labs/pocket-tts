@@ -430,6 +430,29 @@ def test_voice_lut_train_step_reaches_the_lut():
     assert lut.embed.weight.grad is not None and lut.output_proj.weight.grad is not None
 
 
+def test_lut_only_train_step_with_empty_prompt():
+    """LUT-only training (TrainArgs.voice_names): the whole batch has an empty [B, 0, C] voice
+    prompt and zero prompt frames, so the voice reaches the model through the LUT alone. The
+    dataloader emits exactly this; here we check the forward builds and the LUT gets gradient."""
+    model = tiny_voice_model()
+    model.train()
+    latents, mask, text, _ = make_batch()
+    B = latents.shape[0]
+    empty_voice = torch.zeros(B, 0, LDIM)
+    loss, metrics = model(
+        latents,
+        mask,
+        text,
+        empty_voice,
+        num_voice_prompt_frames=torch.zeros(B, dtype=torch.long),
+        voice_ids=torch.tensor([0, 1, 2]),
+    )
+    assert loss.isfinite() and "flow_loss" in metrics
+    loss.backward()
+    lut = voice_lut_of(model)
+    assert lut.embed.weight.grad is not None, "the LUT must receive gradient with no prompt"
+
+
 def test_voice_lut_changes_the_backbone_input():
     """Different voices give different outputs."""
     model = tiny_voice_model()

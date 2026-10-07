@@ -59,7 +59,7 @@ def attach_distillation(model: TrainableTTS, flow_lm: FlowLMModel, args: TrainAr
     named by distill_teacher_config, or a frozen copy of the model itself when
     only guidance is being baked in.
     """
-    if args.text_dropout or args.voice_dropout or (args.voices and args.voice_lut_dropout):
+    if args.text_dropout or args.voice_dropout or (args.has_voice_lut() and args.voice_lut_dropout):
         # The teacher's targets are always fully conditioned, and a distilled
         # student is sampled at cfg 1 with no null branch. Dropping the
         # student's conditioning asks it to predict the conditioned target
@@ -159,10 +159,10 @@ def build_models(args: TrainArgs) -> tuple[TrainableTTS, MimiModel, Config]:
     flow_lm.speaker_proj_weight = torch.nn.Parameter(
         torch.zeros((d_model, latent_dim), dtype=torch.float32)
     )
-    if args.voices:
+    if args.has_voice_lut():
         # A submodule of flow_lm, so the EMA, checkpoints and a distillation teacher copied
         # from flow_lm all carry it; released weights do not, see the warm start below.
-        flow_lm.voice_lut = VoiceLUT(list(args.voices), args.voice_lut_dim, d_model)
+        flow_lm.voice_lut = VoiceLUT(args.lut_names(), args.voice_lut_dim, d_model)
 
     flow = build_flow(args.flow.type, **args.flow.kwargs)
     if flow.num_time_conds != 2:
@@ -194,7 +194,7 @@ def build_models(args: TrainArgs) -> tuple[TrainableTTS, MimiModel, Config]:
             k.removeprefix("flow_lm."): v for k, v in state.items() if k.startswith("flow_lm.")
         }
         dropped: list[str] = []
-        if args.voices and not any(k.startswith("voice_lut.") for k in flow_state):
+        if args.has_voice_lut() and not any(k.startswith("voice_lut.") for k in flow_state):
             # A released model has no voice LUT: it starts from its zero init.
             dropped += [k for k in flow_lm.state_dict() if k.startswith("voice_lut.")]
         if args.reset_text_embedding:

@@ -200,6 +200,7 @@ def main(config_path: str):
         voice_bank=run.voice_bank,
         voice_prompt_crop_prob=args.data.voice_prompt_crop_prob,
         voice_prompt_min_sec=args.data.voice_prompt_min_sec,
+        lut_names=args.lut_names() if args.voice_names else None,
     )
     train_loader = iter(train_data)
 
@@ -392,6 +393,7 @@ def validate(
             shuffle=False,
             # Full-length voice prompts: validation stays comparable across steps.
             voice_bank=voice_bank,
+            lut_names=args.lut_names() if args.voice_names else None,
         )
     )
     autocast = torch.autocast(

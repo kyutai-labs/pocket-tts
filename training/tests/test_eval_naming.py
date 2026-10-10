@@ -73,3 +73,8 @@ def test_hf_prompt_root_tags_by_repo_name_not_snapshot_path():
 def test_local_prompt_root_keeps_directory_tag():
     a = make_args(prompt_root="/data/libri_prompts_doraclean/")
     assert eval_dir_name(a, 400000).endswith("ptsdoraclean")
+
+
+def test_robustness_knobs_mark_the_name():
+    assert eval_dir_name(make_args(prompt_midcut=True), 400000).endswith("_midcut")
+    assert eval_dir_name(make_args(strip_final_punct=True), 400000).endswith("_nodot")

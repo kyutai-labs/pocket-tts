@@ -258,58 +258,6 @@ And for the distillation step (distilling a 24-layer teacher into a 6-layer stud
 | teacher (31.7kh) | 24 | 0.82% | 0.929 | 4.33 |
 | **distilled student** | 6 | 0.76% | 0.921 | **4.35** |
 
-### Limit tests
-
-A model can be at parity on LibriSpeech and still fail on inputs that real users send:
-`english_2026-09` read the ending of some sentences twice (#347) and pauses less than
-`english_2026-04` (#323), and neither showed in the WER above. These checks catch that kind of
-regression; run them before releasing.
-
-Two flags of `training/eval/librispeech.py`:
-
-- `--prompt-midcut` cuts every voice prompt in the middle of its last word, as a recording
-  trimmed blindly would be (models trained without `prompt_trim_max_sec` degrade).
-- `--strip-final-punct` drops the sentence-final punctuation from the text the model reads; the
-  reference transcript is unchanged (models trained without `final_punct_dropout` degrade).
-
-`training/eval/release_checks.py` runs through the public `TTSModel` API, with the predefined
-voices (or their audio for a training checkpoint), 3 voices x 10 seeds per text, and transcribes
-with a CTC ASR without language model, so that repeats show up literally:
-
-| check | what it catches |
-|---|---|
-| end repeats | the end of the text read again ("... an hour an hour"), for texts ending in ".", nothing, "!" and "..." |
-| stutters | a repeated word group the text does not have ("two hundred and eighty-eighty") |
-| extra digit | a digit read once too often ("288" read "two eight eight eight") |
-| exact (short texts) | one- to three-word texts that come out wrong, and their duration |
-| bursts | a click or burst in the first 50 ms of a clip followed by silence |
-| pacing | articulation rate, share of pauses and mean pause on multi-sentence texts |
-| prompt length | WER when the voice is cloned from 2.5, 5 or 10 s of audio (should stay flat) |
-
-```bash
-uv run --frozen python -m training.eval.release_checks --language english --reference english_2026-04
-uv run --frozen python -m training.eval.release_checks --config pocket_tts/config/english.yaml \
-    --checkpoint runs/distill/checkpoint_00030000.pt --reference english
-```
-
-Reference numbers (the `english_2026-09` weights of 2026-09-17; end repeats and stutters are
-counts over the 120 clips of the "hour" texts, the other rows over all texts of their kind):
-
-| | english_2026-04 | english_2026-09 | english_drifting_26-09 |
-|---|---|---|---|
-| end repeats, "hour" texts ending in "." / nothing / "!" / "..." | 0 / 5 / 0 / 0 | 24 / 26 / 22 / 24 | 0 / 0 / 0 / 0 |
-| stutters, numbers in words (480 clips) | 5 | 14 | 0 |
-| extra digit (120 clips) | 0 | 0 | 0 |
-| short texts exact (210 clips), mean duration | 90, 0.93 s | 131, 1.07 s | 94, 0.94 s |
-| bursts at clip starts (2010 clips) | 145 | 14 | 59 |
-| pacing: words/s, pause share, mean pause | 3.98, 25.8%, 0.63 s | 4.03, 11.4%, 0.31 s | 3.74, 18.7%, 0.43 s |
-| WER at 2.5 / 5 / 10 s prompts | 0.0 / 0.0 / 0.3% | 0.0 / 0.0 / 0.5% | 0.5 / 0.0 / 0.0% |
-| LibriSpeech WER: intact / `--prompt-midcut` / `--strip-final-punct` | 0.86 / 1.16 / 0.97% | 0.97 / 0.97 / 0.96% | 0.92 / 1.23 / 1.09% |
-
-LibriSpeech: 1127 items, mean of 3 seeds, `--temp 0.3 --cfg 1.0 --eos-threshold -1` (-3 for the
-drifting model, whose released EOS bias is shifted by -2). The predefined voice states of
-`english_2026-04` predate `end_on_pause`, hence its bursts.
-
 ### Bring your own data
 
 When training on a new language, not all of these metrics transfer directly:

@@ -29,6 +29,7 @@ from typing import Any
 
 import huggingface_hub
 import jiwer
+import numpy as np
 import numpy.typing as npt
 import sphn
 import torch
@@ -82,6 +83,10 @@ def eval_dir_name(args: argparse.Namespace, step: int) -> str:
         name += f"_n{args.num_items}"
     if args.seed:
         name += f"_seed{args.seed}"
+    if getattr(args, "prompt_midcut", False):
+        name += "_midcut"
+    if getattr(args, "strip_final_punct", False):
+        name += "_nodot"
     if args.asr != DEFAULT_ASR:
         name += "_" + re.sub(r"[^a-z0-9]+", "", args.asr.split("/")[-1].lower())[:12]
     if args.prompt_root:
@@ -218,6 +223,27 @@ def load_run(
     return model, mimi, step
 
 
+def cut_mid_last_word(wav: torch.Tensor, sample_rate: int) -> torch.Tensor:
+    """Cut a voice prompt in the middle of its last word, as a user trimming a recording blindly would.
+
+    The last word is the last voiced region (25 ms frames above 5% of the peak energy, gaps of up to
+    30 ms kept inside the word, at most 0.5 s long); the prompt ends at its midpoint.
+    """
+    hop, win = int(0.01 * sample_rate), int(0.025 * sample_rate)
+    x = wav.numpy()
+    frames = np.lib.stride_tricks.sliding_window_view(x, win)[: len(x) - win : hop]
+    energy = np.sqrt((frames**2).mean(axis=1))
+    voiced = energy > max(energy.max() * 0.05, 1e-4)
+    if not voiced.any():
+        return wav
+    end = int(np.flatnonzero(voiced)[-1])
+    start = end
+    while start > 0 and voiced[max(0, start - 3) : start].any():
+        start -= 1
+    start = max(start, end - int(0.5 * sample_rate / hop))
+    return wav[: int((start + end) / 2 * hop)]
+
+
 def load_mono(path: str, sample_rate: int) -> torch.Tensor:
     """Audio file as a mono float tensor at `sample_rate`."""
     wav, sr = sphn.read(path)
@@ -291,6 +317,10 @@ def score_items(
 
         def tokenize(text: str) -> list[int]:
             return sp_encode(re.sub(r"[^a-z' ]", "", text.lower()).strip())
+    elif args.strip_final_punct:
+
+        def tokenize(text: str) -> list[int]:
+            return sp_encode(re.sub(r"""[.!?;:,'"\u2019\u201d\u2026\s]+$""", "", text))
     else:
         tokenize = sp_encode
 
@@ -301,6 +331,8 @@ def score_items(
         wav = load_mono(path, mimi.sample_rate)
         if args.voice_sec:
             wav = wav[: int(args.voice_sec * mimi.sample_rate)]
+        if args.prompt_midcut:
+            wav = cut_mid_last_word(wav, mimi.sample_rate)
         return wav
 
     def decode(latents: torch.Tensor) -> torch.Tensor:
@@ -441,6 +473,18 @@ def main():
         "lower it if you run out of memory, 1 falls back to the per-item path)",
     )
     parser.add_argument("--seed", type=int, default=0, help="sampling seed, per shard")
+    parser.add_argument(
+        "--prompt-midcut",
+        action="store_true",
+        help="cut every voice prompt in the middle of its last word (robustness to prompts "
+        "trimmed mid-word)",
+    )
+    parser.add_argument(
+        "--strip-final-punct",
+        action="store_true",
+        help="drop the sentence-final punctuation from the text the model reads (the reference "
+        "transcript is unchanged): robustness to unpunctuated input",
+    )
     parser.add_argument(
         "--voice-sec",
         type=float,

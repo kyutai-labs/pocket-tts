@@ -1,7 +1,7 @@
-# Default English model: identical weights to english_2026-09.yaml.
+# Default English model: identical weights to english_2026-09_2.yaml.
 
-weights_path: hf://kyutai/pocket-tts/languages/english/model.safetensors@983151f13aaeab1b13c1e5e3c2c383d49a9edf3f
-weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/english/model.safetensors@e7205b6ee50e654a5ea19f0e9df2b0813b05e921
+weights_path: hf://kyutai/pocket-tts/languages/english/model.safetensors@7f364c05d1be3faf2b234cdbe4cbb68a026d4218
+weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/english/model.safetensors@575d14372df89a4534bcb989870a34e77544b09f
 # Human evals preferred this model at 0.3 (equal WER/similarity/speech rate).
 default_temperature: 0.3
 

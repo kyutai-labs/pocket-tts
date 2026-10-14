@@ -27,7 +27,7 @@ def residual_cov(config: str, checkpoint: str, num_batches: int, use_ema: bool) 
     args = load_args(config)
     args.distill_cfg_coef = 0.0  # only the model itself runs
     args.start_from_pretrained = False
-    model, mimi, _ = build_models(args)
+    model, mimi, model_config = build_models(args)
     missing, unexpected = model.flow_lm.load_state_dict(
         _load_flow_lm_state(checkpoint, use_ema), strict=False
     )
@@ -71,12 +71,20 @@ def residual_cov(config: str, checkpoint: str, num_batches: int, use_ema: bool) 
             rank=0,
             world_size=1,
             seed=0,
+            voices=tuple(model_config.flow_lm.voices),
         )
     )
     for _ in range(num_batches):
         batch = next(loader)
         latents, mask, voice, num_voice_frames = encode_batch(mimi, batch, device)
-        model(latents, mask, batch.text_tokens, voice, num_voice_prompt_frames=num_voice_frames)
+        model(
+            latents,
+            mask,
+            batch.text_tokens,
+            voice,
+            num_voice_prompt_frames=num_voice_frames,
+            voice_ids=batch.voice_ids,
+        )
     for h in handles:
         h.remove()
     return {"cov": {n: (sums[n] / counts[n]).cpu() for n in names}, "tokens": counts["out_norm"]}

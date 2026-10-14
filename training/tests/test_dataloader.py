@@ -152,3 +152,26 @@ def test_startup_check_rejects_manifests_too_small_for_the_loaders(tmp_path: Pat
     check_manifest_sizes(args, world_size=1)  # 12 // 3 = 4 entries per shard, 2 x 2 needed
     with pytest.raises(SystemExit, match="num_bucket_batches"):
         check_manifest_sizes(args, world_size=2)  # 12 // 6 = 2 < 4
+
+
+def test_builtin_voices_give_whole_utterances_without_a_prompt(tmp_path: Path):
+    m = _manifest(tmp_path, n=4)
+    lines = [json.loads(line) for line in Path(m).read_text().splitlines()]
+    Path(m).write_text(
+        "".join(json.dumps({**e, "voice": "ab"[i % 2]}) + "\n" for i, e in enumerate(lines))
+    )
+    batch = next(iter(_loader(m, voices=("a", "b"))))
+    assert batch.voice_ids is not None and sorted(batch.voice_ids.tolist()) in (
+        [0, 1],
+        [0, 0],
+        [1, 1],
+    )
+    assert batch.num_voice_prompt_frames.tolist() == [0, 0]
+    # The whole transcript is the target text.
+    assert [len(t) for t in batch.text_tokens] == [len("one two three four") // 3] * 2
+
+
+def test_builtin_voices_reject_an_unknown_voice(tmp_path: Path):
+    m = _manifest(tmp_path, n=2)
+    with pytest.raises(ValueError, match="not one of"):
+        next(iter(_loader(m, voices=("a",))))

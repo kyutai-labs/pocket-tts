@@ -87,6 +87,8 @@ def eval_dir_name(args: argparse.Namespace, step: int) -> str:
         name += "_midcut"
     if getattr(args, "strip_final_punct", False):
         name += "_nodot"
+    if getattr(args, "builtin_voices", False):
+        name += "_builtin"
     if args.asr != DEFAULT_ASR:
         name += "_" + re.sub(r"[^a-z0-9]+", "", args.asr.split("/")[-1].lower())[:12]
     if args.prompt_root:
@@ -345,11 +347,19 @@ def score_items(
     for start_i in range(0, len(items), bs):
         chunk = items[start_i : start_i + bs]
         tokens = [torch.tensor(tokenize(c["text"]), dtype=torch.long) for c in chunk]
+        voice_ids = None
         with torch.no_grad():
-            voice_latents = [
-                mimi.encode_to_latent(load_voice(c["prompt"])[None, None].to(device))[0]
-                for c in chunk
-            ]
+            if args.builtin_voices:
+                # Row i speaks built-in voice i mod V, with no voice prompt.
+                assert model.flow_lm.voice_table is not None, "the model has no built-in voices"
+                num_voices = model.flow_lm.voice_table.embed.num_embeddings
+                voice_ids = [c["idx"] % num_voices for c in chunk]
+                voice_latents = [torch.zeros(0, model.ldim, device=device) for _ in chunk]
+            else:
+                voice_latents = [
+                    mimi.encode_to_latent(load_voice(c["prompt"])[None, None].to(device))[0]
+                    for c in chunk
+                ]
             outs = model.generate(
                 tokens,
                 voice_latents,
@@ -358,6 +368,7 @@ def score_items(
                 n_steps=args.n_steps,
                 cfg_coef=args.cfg,
                 eos_threshold=args.eos_threshold,
+                voice_ids=voice_ids,
             )
         good, gens = [], []
         for item, latents in zip(chunk, outs, strict=True):
@@ -492,6 +503,12 @@ def main():
         help="voice-prompt length used for every item, so batched rows share a prefix length",
     )
     parser.add_argument(
+        "--builtin-voices",
+        action="store_true",
+        help="for a model with built-in voices: item i is spoken by built-in voice i mod V, "
+        "without a voice prompt (implies --skip-sim, the reference speakers differ)",
+    )
+    parser.add_argument(
         "--save-audio",
         default=None,
         help="directory to save each generated clip as <row_index>_<prompt_id>.wav at the "
@@ -512,6 +529,7 @@ def main():
         help="GPUs to split the list across (0 = all visible). Each worker loads its own models.",
     )
     args = parser.parse_args()
+    args.skip_sim = args.skip_sim or args.builtin_voices
 
     # Resolve prompt assets. The output-dir tag is taken from the user-facing
     # name before hf:// resolution replaces it with a local snapshot path.

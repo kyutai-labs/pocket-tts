@@ -59,6 +59,7 @@ class DataLoader:
     # Augmentation knobs; class defaults keep instances built without __init__ (tests) valid.
     prompt_trim_max_sec: float = 0.0
     final_punct_dropout: float = 0.0
+    voices: tuple[str, ...] = ()
 
     def __init__(
         self,
@@ -77,8 +78,12 @@ class DataLoader:
         num_bucket_batches: int = 1,
         prompt_trim_max_sec: float = 0.0,
         final_punct_dropout: float = 0.0,
+        voices: tuple[str, ...] = (),
     ):
+        """With `voices` (the model's built-in voices), every entry names one in its "voice"
+        field, and a sample is the whole utterance with no voice prompt, plus that voice."""
         self.jsonl = jsonl
+        self.voices = tuple(voices)
         self.num_bucket_batches = num_bucket_batches
         self.entries = load_entries(jsonl, rank, world_size)
         self.tokenize = tokenize
@@ -174,6 +179,8 @@ class DataLoader:
 
     def _sample(self, entry: Entry) -> tuple[Any, ...]:
         """(wav, tokens, prompt wav, prompt samples), or _sample_latent's tuple."""
+        if self.voices:
+            return self._sample_without_prompt(entry)
         if entry.latents_file is not None:
             return self._sample_latent(entry)
         chosen = self._choose_cut(entry)
@@ -215,6 +222,30 @@ class DataLoader:
             )
         )
         return wav, tokens, prompt, length
+
+    def _sample_without_prompt(self, entry: Entry) -> tuple[Any, ...]:
+        """The whole utterance as the target, with an empty voice prompt (built-in voices)."""
+        tokens = self._tokens(entry.transcript)
+        if entry.latents_file is not None:
+            lat = self._load_latents(entry.latents_file)
+            target_frames = self._latent_target_frames(entry, 0, lat.shape[0])
+            stitch_frames = min(self.stitch_frames, target_frames)
+            stitch = audio._load_window(
+                entry.path, entry.start, stitch_frames / self.frame_rate, self.sample_rate
+            )
+            return stitch, tokens, lat[:0], lat[stitch_frames:target_frames], target_frames
+        last = self._last_word_end(entry)
+        end = min(entry.duration, last + self.TRAIL_SEC) if last is not None else entry.duration
+        duration = min(end, self.max_duration_sec)
+        wav = audio._load_window(entry.path, entry.start, duration, self.sample_rate)
+        return wav, tokens, np.zeros(0, dtype=np.float32), 0
+
+    def _voice_id(self, entry: Entry) -> int:
+        if not self.voices:
+            return -1
+        if entry.voice not in self.voices:
+            raise ValueError(f"{entry.path}: voice {entry.voice!r} is not one of {self.voices}")
+        return self.voices.index(entry.voice)
 
     def _load_latents(self, latents_file: str) -> torch.Tensor:
         path = self.latents_root / latents_file
@@ -294,7 +325,10 @@ class DataLoader:
 
     def _collate_latent(self, batch: list[tuple[Any, ...]]) -> Batch:
         stitches, tokens, prompts, tails, target_frames = zip(*batch, strict=True)
-        num_prompt_frames = torch.tensor([max(1, p.shape[0]) for p in prompts], dtype=torch.long)
+        min_frames = 0 if self.voices else 1
+        num_prompt_frames = torch.tensor(
+            [max(min_frames, p.shape[0]) for p in prompts], dtype=torch.long
+        )
         return Batch(
             self._collate_stitch_audio(stitches),
             torch.tensor(target_frames, dtype=torch.long),
@@ -314,11 +348,13 @@ class DataLoader:
             d.get("words"),
             float(d.get("start", 0.0)),
             d.get("latents_file"),
+            d.get("voice"),
         )
 
     def _sample_or_none(self, entry: Entry) -> tuple[Any, ...] | None:
+        voice = self._voice_id(entry)  # outside the try: an unknown voice is a config error
         try:
-            return self._sample(entry)
+            return (*self._sample(entry), voice)
         except UnalignedEntry:
             raise
         except Exception as exc:  # noqa: BLE001 — skip unreadable samples, whatever the cause
@@ -386,12 +422,21 @@ class DataLoader:
         """Voice prompt + text tokens + target audio frames: what a row costs after padding."""
         if self.stitch_frames:  # (stitch wav, tokens, prompt latents, tail latents, target frames)
             return sample[2].shape[0] + len(sample[1]) + int(sample[4])
-        wav, tokens, _prompt, prompt_samples = sample
+        wav, tokens, _prompt, prompt_samples = sample[:4]
         return (prompt_samples + len(wav)) * self.frame_rate / self.sample_rate + len(tokens)
 
-    def _collate(self, batch: list[tuple[Any, ...]]) -> Batch:
+    def _collate(self, samples: list[tuple[Any, ...]]) -> Batch:
+        """Samples end with their built-in voice id (-1 without `voices`)."""
+        batch = [s[:-1] for s in samples]
+        voice_ids = torch.tensor([s[-1] for s in samples]) if self.voices else None
         if self.stitch_frames:
-            return self._collate_latent(batch)
+            collated = self._collate_latent(batch)
+        else:
+            collated = self._collate_audio(batch)
+        collated.voice_ids = voice_ids
+        return collated
+
+    def _collate_audio(self, batch: list[tuple[Any, ...]]) -> Batch:
         wavs, tokens, prompts, prompt_lens = zip(*batch, strict=True)
         max_len = max(len(w) for w in wavs)
         audio = torch.zeros(len(wavs), 1, max_len)
@@ -399,12 +444,14 @@ class DataLoader:
         for b, w in enumerate(wavs):
             audio[b, 0, : len(w)] = torch.from_numpy(w)
             frames[b] = max(1, int(len(w) * self.frame_rate / self.sample_rate))
-        max_prompt = max(len(p) for p in prompts)
+        # At least one codec frame, so empty prompts (built-in voices) still encode.
+        min_frames = 0 if self.voices else 1
+        max_prompt = max(self.frame_size, *(len(p) for p in prompts))
         voice = torch.zeros(len(prompts), 1, max_prompt)
         for b, pr in enumerate(prompts):
             voice[b, 0, : len(pr)] = torch.from_numpy(pr)
         num_voice_prompt_frames = torch.tensor(
-            [max(1, int(n * self.frame_rate / self.sample_rate)) for n in prompt_lens],
+            [max(min_frames, int(n * self.frame_rate / self.sample_rate)) for n in prompt_lens],
             dtype=torch.long,
         )
         return Batch(audio, frames, list(tokens), voice, num_voice_prompt_frames)

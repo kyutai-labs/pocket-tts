@@ -169,6 +169,11 @@ def build_models(args: TrainArgs) -> tuple[TrainableTTS, MimiModel, Config]:
             flow.num_time_conds,
         )
 
+    if flow_lm.voice_table is not None:
+        # Starts as no voice at all, so a warm start is unchanged; released weights have no
+        # voice table, and keep this init (see the warm start below).
+        nn.init.zeros_(flow_lm.voice_table.embed.weight)
+
     mimi = build_mimi(config.mimi)
     state = None
     head_state: dict[str, torch.Tensor] = {}
@@ -205,11 +210,13 @@ def build_models(args: TrainArgs) -> tuple[TrainableTTS, MimiModel, Config]:
             dropped = [k for k in flow_state if k.startswith("conditioner.embed.")]
             logger.info("starting the text embedding from scratch: %s", dropped)
             flow_state = {k: v for k, v in flow_state.items() if k not in dropped}
+        if flow_lm.voice_table is not None and "voice_table.embed.weight" not in flow_state:
+            dropped.append("voice_table.embed.weight")
         if flow.num_time_conds != 2:
             flow_state = {k: v for k, v in flow_state.items() if not k.startswith("flow_net.")}
             missing, unexpected = flow_lm.load_state_dict(flow_state, strict=False)
             assert not unexpected, unexpected
-            assert all(k.startswith("flow_net.") for k in missing), missing
+            assert all(k.startswith("flow_net.") or k in dropped for k in missing), missing
             logger.info(
                 "warm-started backbone; flow_net freshly initialized (objective %s)", args.flow.type
             )

@@ -69,6 +69,7 @@ def tiny_model(
     num_kv_heads: int | None = None,
     rank: int | None = None,
     hidden: int = 64,
+    num_voices: int = 0,
 ) -> TrainableTTS:
     torch.manual_seed(0)
     flow = build_flow(flow_type)
@@ -91,6 +92,7 @@ def tiny_model(
         ldim=LDIM,
         insert_bos_before_voice=True,
         z_dim=z_dim,
+        num_voices=num_voices,
     )
     flow_lm.speaker_proj_weight = torch.nn.Parameter(torch.randn(dim, LDIM) * 0.1)
     args = TrainArgs()
@@ -213,6 +215,44 @@ def test_distill_into_a_narrower_student(z_dim: int | None):
     grads = {k: p.grad for k, p in model.flow_lm.named_parameters()}
     assert grads["transformer.layers.0.linear1.weight"] is not None
     assert (model.flow_lm.out_eos.weight.grad is not None) == (z_dim is None)
+
+
+def test_voice_table_training_and_generation():
+    """The voice table is added to every audio frame: a zero one changes nothing, the row
+    of the batch's voice gets a gradient, and generation follows the chosen voice."""
+    model, plain = tiny_model("lsd", num_voices=2), tiny_model("lsd")
+    for m in (model, plain):
+        m.args.voice_dropout = m.args.text_dropout = 0.0
+    table = model.flow_lm.voice_table
+    assert table is not None
+    plain.load_state_dict({k: v for k, v in model.state_dict().items() if "voice_table" not in k})
+    voice_ids = torch.tensor([1, 1, 1])
+    losses = []
+    for module, kw in ((plain, {}), (model, {"voice_ids": voice_ids})):
+        torch.manual_seed(0)
+        nn.init.zeros_(table.embed.weight)
+        losses.append(module(*make_batch(), **kw)[0])
+    torch.testing.assert_close(losses[0], losses[1])
+    losses[1].backward()
+    assert table.embed.weight.grad is not None
+    assert table.embed.weight.grad[1].abs().sum() > 0 and not table.embed.weight.grad[0].any()
+
+    nn.init.normal_(table.embed.weight)
+    for p in model.flow_lm.flow_net.parameters():  # a head that reads its conditioning
+        nn.init.normal_(p, std=0.1)
+    outs = []
+    for voice in (0, 1):
+        torch.manual_seed(0)
+        outs.append(
+            model.generate(
+                [torch.randint(0, 10, (5,))],
+                [torch.zeros(0, LDIM)],
+                max_frames=3,
+                eos_threshold=1e9,
+                voice_ids=[voice],
+            )[0]
+        )
+    assert outs[0].shape == (3, LDIM) and not torch.allclose(outs[0], outs[1])
 
 
 @pytest.mark.parametrize(

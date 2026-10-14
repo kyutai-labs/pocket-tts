@@ -16,12 +16,13 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from pocket_tts.models.flow_lm import FlowLMModel
+from pocket_tts.models.flow_lm import FlowLMModel, drifting_decode, lsd_decode, ot_decode
+from pocket_tts.modules.mlp import SimpleMLPAdaLN
 from pocket_tts.modules.stateful_module import ModelState, increment_steps, init_states
 
 from ..args import TrainArgs
 from .conditioner import build_sequences_with_conditions
-from .samplers import FlowType
+from .samplers import Drifting, FlowType
 from .utils import set_state_padding, stamp_state_names
 
 
@@ -29,6 +30,8 @@ class TrainableTTS(nn.Module):
     # Frozen teacher for distillation runs, kept out of the submodule registry
     # (see build_models); None otherwise.
     distill_teacher: FlowLMModel | None
+    # Frozen sampler head for head distillation (see build_models); None otherwise.
+    head_teacher: SimpleMLPAdaLN | None
 
     def __init__(self, flow_lm: FlowLMModel, flow: FlowType, args: TrainArgs):
         super().__init__()
@@ -36,6 +39,7 @@ class TrainableTTS(nn.Module):
         self.flow = flow
         self.args = args
         self.__dict__["distill_teacher"] = None  # set by build_models; not a submodule
+        self.__dict__["head_teacher"] = None
         stamp_state_names(self.flow_lm)
 
     @property
@@ -84,6 +88,11 @@ class TrainableTTS(nn.Module):
                 out = module.z_proj(out)
             idx = prefix_lengths[:, None] + torch.arange(T, device=out.device)[None, :]
             return out.gather(1, idx[:, :, None].expand(-1, -1, out.shape[-1]))
+
+        if self.head_teacher is not None:
+            with torch.no_grad():
+                z = backbone_z(fl, cfg_dropout=False)
+            return self._head_distill(z[mask])
 
         z = backbone_z(fl, cfg_dropout=self.training)  # [B, T, dim]
 
@@ -151,6 +160,40 @@ class TrainableTTS(nn.Module):
         # outputs give the compiled backward immutable ZeroTensor grads.
         metrics = {k: v.detach() if torch.is_tensor(v) else v for k, v in metrics.items()}
         metrics.update(flow_loss=flow_loss.detach(), eos_loss=eos_loss.detach(), loss=loss.detach())
+        return loss, metrics
+
+    def _head_distill(self, z: torch.Tensor) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        """The new head (flow_lm.flow_net) learns the frozen head's samples for the backbone
+        outputs `z` [N, dim] of the valid frames."""
+        fl, args = self.flow_lm, self.args
+        teacher = self.head_teacher
+        assert teacher is not None
+        teacher = teacher.to(z.device)  # outside the module tree, so not moved with the model
+        decode = {0: drifting_decode, 1: ot_decode, 2: lsd_decode}[teacher.num_time_conds]
+        std = args.head_distill_temp**0.5
+        drifting = args.head_distill_loss == "drifting"
+        assert not drifting or isinstance(self.flow, Drifting), (
+            "head_distill_loss drifting needs flow.type drifting"
+        )
+        k = args.head_distill_samples if drifting else 1
+        with torch.no_grad():
+            noise = std * torch.randn(k, z.shape[0], fl.ldim, device=z.device, dtype=z.dtype)
+            z_k = z.expand(k, -1, -1).reshape(-1, z.shape[-1])
+            target = decode(partial(teacher, z_k), noise.reshape(-1, fl.ldim))
+            target = target.reshape(k, z.shape[0], -1).transpose(0, 1)  # [N, k, D]
+        if drifting:
+            with torch.autocast(device_type=z.device.type, enabled=False):
+                loss, metrics, _ = self.flow.loss(
+                    partial(fl.flow_net, z.float()), noise[0].float(), target.float()
+                )
+            loss = loss.mean()
+        else:
+            # The one-step map on the same noise draw.
+            sample = self.flow.decode(partial(fl.flow_net, z), noise[0], 1)
+            loss = (sample - target[:, 0]).square().mean()
+            metrics = {}
+        metrics = {k: v.detach() if torch.is_tensor(v) else v for k, v in metrics.items()}
+        metrics.update(head_loss=loss.detach(), loss=loss.detach())
         return loss, metrics
 
     @torch.no_grad()

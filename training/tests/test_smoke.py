@@ -5,6 +5,7 @@ import json
 import random
 import subprocess
 import sys
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -29,6 +30,7 @@ from pocket_tts.modules.transformer import StreamingTransformer
 from training.args import TrainArgs
 from training.checkpointing import EMA
 from training.dataloader import DataLoader, Entry
+from training.modules.builders import head_from_state
 from training.modules.model import TrainableTTS
 from training.modules.samplers import build_flow
 from training.modules.utils import dit_init, stamp_state_names
@@ -211,6 +213,38 @@ def test_distill_into_a_narrower_student(z_dim: int | None):
     grads = {k: p.grad for k, p in model.flow_lm.named_parameters()}
     assert grads["transformer.layers.0.linear1.weight"] is not None
     assert (model.flow_lm.out_eos.weight.grad is not None) == (z_dim is None)
+
+
+@pytest.mark.parametrize(
+    "flow_type,loss_name", [("lsd", "mse"), ("drifting", "mse"), ("drifting", "drifting")]
+)
+def test_head_distillation_trains_only_the_new_head(flow_type: str, loss_name: str):
+    """A smaller head learns a frozen bigger one's samples, with either objective whatever the
+    head type; the backbone gets no gradient."""
+    model = tiny_model(flow_type)
+    model.args.head_distill_loss = loss_name
+    model.args.head_distill_samples = 3
+    frozen = SimpleMLPAdaLN(LDIM, 32, LDIM, DIM, 3, num_time_conds=2)
+    model.__dict__["head_teacher"] = head_from_state(frozen.state_dict())
+    model.flow_lm.requires_grad_(False)
+    model.flow_lm.flow_net.requires_grad_(True)
+    model.train()
+    loss, metrics = model(*make_batch())
+    assert loss.isfinite() and "head_loss" in metrics
+    loss.backward()
+    assert all(p.grad is not None for p in model.flow_lm.flow_net.parameters())
+    assert model.flow_lm.input_linear.weight.grad is None
+
+
+def test_drifting_single_target_sample_is_unchanged():
+    """[N, 1, D] targets give the same loss as [N, D] ones."""
+    flow, head = build_flow("drifting"), SimpleMLPAdaLN(LDIM, 16, LDIM, DIM, 1, 0)
+    z, x_1 = torch.randn(5, DIM), torch.randn(5, LDIM)
+    losses = []
+    for target in (x_1, x_1[:, None]):
+        torch.manual_seed(0)
+        losses.append(flow.loss(partial(head, z), torch.randn(5, LDIM), target)[0])
+    torch.testing.assert_close(losses[0], losses[1], rtol=0, atol=0)
 
 
 @pytest.mark.parametrize("num_time_conds", [0, 1, 2])

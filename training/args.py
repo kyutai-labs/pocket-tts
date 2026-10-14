@@ -176,9 +176,26 @@ class TrainArgs:
     # teacher's bottom+top layers; the per-frame heads still come from the teacher. A
     # wider source is narrowed like the teacher (shrink_checkpoint.shrink_width).
     student_init_from: str = ""
-    # Seed from student_init_from's EMA shadow instead of its raw weights (raw weights when
-    # the checkpoint carries no EMA).
+    # Seed from student_init_from's (and head_init_from's) EMA shadow instead of its raw
+    # weights (raw weights when the checkpoint carries no EMA).
     init_from_use_ema: bool = True
+
+    # Head distillation: train a new sampler head (flow_net, shaped by the config's flow_lm.flow,
+    # any flow.type) against a frozen one, on the frozen backbone's outputs; nothing else
+    # trains. The backbone and the frozen head come from head_distill_from (a training
+    # checkpoint or a model.safetensors), or from the config's weights when it is empty; the
+    # frozen head's shape and type (0, 1 or 2 time conditions) are read from its weights.
+    # head_distill_loss picks the objective, whatever the head types: "mse" regresses the new
+    # head's one-step output on the frozen head's for the same noise; "drifting" (needs
+    # flow.type drifting) attracts the new head to head_distill_samples draws of the frozen
+    # head per position. Noise is drawn at temperature head_distill_temp.
+    head_distill: bool = False
+    head_distill_from: str = ""
+    head_distill_loss: str = "mse"
+    head_distill_samples: int = 1
+    head_distill_temp: float = 1.0
+    # Start the new head from this checkpoint's flow_net (same shape) instead of a fresh one.
+    head_init_from: str = ""
     # Which teacher layers seed the student backbone: "spaced" (evenly across
     # the depth) or "first" (the bottom N). No evidence either way -- "first"
     # keeps the early feature extractors contiguous.
@@ -200,6 +217,12 @@ class TrainArgs:
             raise ValueError(
                 "distillation needs a teacher: set distill_teacher_config, or "
                 "start_from_pretrained: true to distil a frozen copy of the model itself"
+            )
+        if self.head_distill and self.distill_cfg_coef > 0:
+            raise ValueError("head_distill and distill_cfg_coef are separate runs: set one")
+        if self.head_distill_loss not in ("mse", "drifting"):
+            raise ValueError(
+                f"head_distill_loss must be mse or drifting, not {self.head_distill_loss}"
             )
         if self.distill_teacher_config and not self.distill_teacher_weights:
             raise ValueError("distill_teacher_config is set but distill_teacher_weights is not")

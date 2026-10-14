@@ -22,7 +22,7 @@ from pocket_tts.utils.utils import download_if_necessary
 from ..args import TrainArgs
 from ..scripts.shrink_checkpoint import shrink, shrink_width
 from .model import TrainableTTS
-from .samplers import build_flow
+from .samplers import Drifting, build_flow
 from .utils import disable_grad, dit_init, gaussian_init, stamp_state_names
 
 logger = logging.getLogger(__name__)
@@ -171,6 +171,7 @@ def build_models(args: TrainArgs) -> tuple[TrainableTTS, MimiModel, Config]:
 
     mimi = build_mimi(config.mimi)
     state = None
+    head_state: dict[str, torch.Tensor] = {}
     if config.weights_path is not None:
         weights_file = download_if_necessary(str(config.weights_path))
         state = safetensors.torch.load_file(weights_file)
@@ -181,7 +182,21 @@ def build_models(args: TrainArgs) -> tuple[TrainableTTS, MimiModel, Config]:
             "model_config must define weights_path (used at least for the Mimi codec weights)."
         )
 
-    if args.start_from_pretrained:
+    if args.head_distill:
+        source = args.head_distill_from or str(config.weights_path)
+        flow_state = _load_flow_lm_state(source, args.init_from_use_ema)
+        head_state = {
+            k.removeprefix("flow_net."): v
+            for k, v in flow_state.items()
+            if k.startswith("flow_net.")
+        }
+        backbone = {k: v for k, v in flow_state.items() if not k.startswith("flow_net.")}
+        missing, unexpected = flow_lm.load_state_dict(backbone, strict=False)
+        assert not unexpected, unexpected
+        assert all(k.startswith("flow_net.") for k in missing), missing
+        dit_init(flow_lm.flow_net)
+        logger.info(f"head distillation: backbone and frozen head from {source}")
+    elif args.start_from_pretrained:
         flow_state = {
             k.removeprefix("flow_lm."): v for k, v in state.items() if k.startswith("flow_lm.")
         }
@@ -217,4 +232,41 @@ def build_models(args: TrainArgs) -> tuple[TrainableTTS, MimiModel, Config]:
     model = TrainableTTS(flow_lm, flow, args)
     if args.distill_cfg_coef > 0:
         attach_distillation(model, flow_lm, args)
+    if args.head_distill:
+        attach_head_distillation(model, head_state, args)
     return model, mimi, config
+
+
+def head_from_state(state: dict[str, torch.Tensor]) -> SimpleMLPAdaLN:
+    """A sampler head built to the shape of its weights (flow_net.* without the prefix)."""
+    channels, cond_dim = state["cond_embed.weight"].shape
+    latent_dim = state["input_proj.weight"].shape[1]
+    depth = len({k.split(".")[1] for k in state if k.startswith("res_blocks.")})
+    time_conds = len({k.split(".")[1] for k in state if k.startswith("time_embed.")})
+    head = SimpleMLPAdaLN(latent_dim, channels, latent_dim, cond_dim, depth, time_conds)
+    head.load_state_dict(state, strict=True)
+    return head
+
+
+def attach_head_distillation(
+    model: TrainableTTS, head_state: dict[str, torch.Tensor], args: TrainArgs
+):
+    """Give `model` the frozen head to learn from, and freeze everything but the new head
+    (and the objective's own parameters, e.g. a learned drifting temperature)."""
+    teacher = head_from_state(head_state).eval()
+    disable_grad(teacher)
+    # Kept out of the submodule registry, like the distillation teacher.
+    model.__dict__["head_teacher"] = teacher
+    disable_grad(model.flow_lm)
+    model.flow_lm.flow_net.requires_grad_(True)
+    if not isinstance(model.flow, Drifting):
+        disable_grad(model.flow)  # only the drifting loss runs the objective's own parameters
+    if args.head_init_from:
+        state = _load_flow_lm_state(args.head_init_from, args.init_from_use_ema)
+        model.flow_lm.flow_net.load_state_dict(
+            {k.removeprefix("flow_net."): v for k, v in state.items() if k.startswith("flow_net.")}
+        )
+        logger.info(f"new head initialized from {args.head_init_from}")
+    n_new = sum(p.numel() for p in model.flow_lm.flow_net.parameters())
+    n_frozen = sum(p.numel() for p in teacher.parameters())
+    logger.info(f"head distillation: {n_new / 1e6:.2f}M params <- {n_frozen / 1e6:.2f}M frozen")

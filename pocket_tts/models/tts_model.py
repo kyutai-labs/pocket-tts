@@ -22,7 +22,6 @@ from typing_extensions import Self
 from pocket_tts.data.audio import audio_read
 from pocket_tts.data.audio_utils import convert_audio, end_on_pause
 from pocket_tts.default_parameters import (
-    DEFAULT_EOS_THRESHOLD,
     DEFAULT_LANGUAGE,
     DEFAULT_NOISE_CLAMP,
     DEFAULT_SAMPLER_DECODE_STEPS,
@@ -299,7 +298,7 @@ class TTSModel(nn.Module):
         temp: float | None = None,
         sampler_decode_steps: int = DEFAULT_SAMPLER_DECODE_STEPS,
         noise_clamp: float | None = DEFAULT_NOISE_CLAMP,
-        eos_threshold: float = DEFAULT_EOS_THRESHOLD,
+        eos_threshold: float | None = None,
         quantize: bool = False,
         checkpoint: str | Path | None = None,
         lsd_decode_steps: int | None = None,
@@ -326,7 +325,8 @@ class TTSModel(nn.Module):
             noise_clamp: Maximum value for noise sampling. If None, no clamping
                 is applied. Helps prevent extreme values in generation.
             eos_threshold: Threshold for end-of-sequence detection. Higher values
-                make the model more likely to continue generating.
+                make the model more likely to continue generating. If None, defaults to
+                the model's value from its config file (``default_eos_threshold``, -4.0).
             checkpoint: Optional training checkpoint (.pt) to load instead of the
                 config's safetensors weights, so any step of a run can be played
                 without exporting first. EMA weights are used when the checkpoint
@@ -379,6 +379,8 @@ class TTSModel(nn.Module):
         model_config = load_config(config_path)
         if temp is None:
             temp = model_config.default_temperature
+        if eos_threshold is None:
+            eos_threshold = model_config.default_eos_threshold
         logger.info(f"Loading model from config at {config_path}...")
 
         origin = Path(config_path)

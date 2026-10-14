@@ -17,7 +17,6 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 
 from pocket_tts.data.audio import stream_audio_chunks
 from pocket_tts.default_parameters import (
-    DEFAULT_EOS_THRESHOLD,
     DEFAULT_FRAMES_AFTER_EOS,
     DEFAULT_NOISE_CLAMP,
     DEFAULT_SAMPLER_DECODE_STEPS,
@@ -324,7 +323,10 @@ def generate(
     noise_clamp: Annotated[
         float | None, typer.Option(help="Noise clamp value")
     ] = DEFAULT_NOISE_CLAMP,
-    eos_threshold: Annotated[float, typer.Option(help="EOS threshold")] = DEFAULT_EOS_THRESHOLD,
+    eos_threshold: Annotated[
+        float | None,
+        typer.Option(help="EOS threshold. Defaults to the model's value from its config (-4.0)."),
+    ] = None,
     frames_after_eos: Annotated[
         int | None, typer.Option(help="Number of frames to generate after EOS")
     ] = DEFAULT_FRAMES_AFTER_EOS,

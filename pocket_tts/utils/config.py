@@ -6,6 +6,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict
 
 from pocket_tts.utils.utils import download_if_necessary
+from pocket_tts.default_parameters import DEFAULT_EOS_THRESHOLD
 
 CONFIGS_DIR = Path(__file__).parent.parent / "config"
 
@@ -153,6 +154,9 @@ class Config(StrictModel):
     # 0.3 beats 0.7 on WER and UTMOS for every shipped model (human evals agreed for English, #223);
     # a config sets its own value only if it was tuned elsewhere.
     default_temperature: float = 0.3
+    # EOS threshold used when the caller does not pass one (generation stops once the EOS logit
+    # exceeds it); a config sets its own value if its model was evaluated with another one.
+    default_eos_threshold: float = DEFAULT_EOS_THRESHOLD
 
 
 def load_config(yaml_path: str | Path) -> Config:

@@ -5,8 +5,8 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict
 
-from pocket_tts.utils.utils import download_if_necessary
 from pocket_tts.default_parameters import DEFAULT_EOS_THRESHOLD
+from pocket_tts.utils.utils import download_if_necessary
 
 CONFIGS_DIR = Path(__file__).parent.parent / "config"
 

@@ -20,7 +20,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import training.dataloader.audio as td_audio
 from pocket_tts.models.flow_lm import FlowLMModel
+from pocket_tts.modules.attention import StreamingMultiheadAttention
 from pocket_tts.modules.mlp import SimpleMLPAdaLN
+from pocket_tts.modules.rope import RotaryEmbedding
 from pocket_tts.modules.stateful_module import init_states
 from pocket_tts.modules.text_conditioner import LUTConditioner
 from pocket_tts.modules.transformer import StreamingTransformer
@@ -30,7 +32,13 @@ from training.dataloader import DataLoader, Entry
 from training.modules.model import TrainableTTS
 from training.modules.samplers import build_flow
 from training.modules.utils import dit_init, stamp_state_names
-from training.scripts.shrink_checkpoint import select_layers, shrink
+from training.scripts.shrink_checkpoint import (
+    low_rank_text_table,
+    narrow_attention,
+    select_layers,
+    shrink,
+    shrink_width,
+)
 from training.train_utils import build_optimizer
 
 LDIM, DIM = 8, 32
@@ -217,6 +225,47 @@ def test_shrink_checkpoint():
     # Layer n of the student must be teacher layer kept[n].
     for new, old in enumerate(kept):
         assert out[f"flow_lm.transformer.layers.{new}.norm1.weight"][0].item() == float(old)
+
+
+def test_shrink_width_seeds_a_narrower_model():
+    """Every backbone tensor of a narrower, grouped-attention, low-rank model is seeded."""
+    big = tiny_model("lsd", dim=48, num_heads=6, hidden=96).flow_lm
+    small = tiny_model("lsd", num_heads=4, attn_dim=32, num_kv_heads=2, rank=8, hidden=64)
+    seeded = shrink_width(big.state_dict(), small.flow_lm.state_dict(), head_dim=8)
+    missing = set(small.flow_lm.state_dict()) - set(seeded)
+    assert not missing, missing
+    small.flow_lm.load_state_dict(seeded)
+    loss, _ = small(*make_batch())
+    assert loss.isfinite()
+
+
+def test_narrow_attention_is_exact_for_duplicated_kv_heads():
+    """Grouping kv heads that are already equal within each group changes nothing."""
+    rope = RotaryEmbedding()
+    full = StreamingMultiheadAttention(32, 4, rope)
+    k = full.in_proj.weight.data[32:].view(2, 4, 8, 32)  # [k | v] x 4 heads
+    k[:, 1], k[:, 3] = k[:, 0], k[:, 2]
+    grouped = StreamingMultiheadAttention(32, 4, rope, num_kv_heads=2)
+
+    def as_layer(attn: nn.Module) -> dict[str, torch.Tensor]:
+        state = {f"transformer.layers.0.self_attn.{k}": v for k, v in attn.state_dict().items()}
+        return {"transformer.layers.0.norm1.weight": torch.ones(32), **state}
+
+    seeded = narrow_attention(as_layer(full), as_layer(grouped), head_dim=8)
+    grouped.load_state_dict({k.split("self_attn.")[1]: v for k, v in seeded.items()})
+    x = torch.randn(1, 5, 32)
+    torch.testing.assert_close(grouped(x, None), full(x, None))
+
+
+def test_low_rank_text_table_at_full_rank_is_exact():
+    table = {"conditioner.embed.weight": torch.randn(11, 6)}
+    dst = {
+        "conditioner.embed.weight": torch.empty(11, 6),
+        "conditioner.proj.weight": torch.empty(6, 6),
+    }
+    seeded = low_rank_text_table(table, dst)
+    product = seeded["conditioner.embed.weight"] @ seeded["conditioner.proj.weight"].T
+    torch.testing.assert_close(product, table["conditioner.embed.weight"], atol=1e-5, rtol=1e-5)
 
 
 def test_generate_ragged_matches_batch_of_one():

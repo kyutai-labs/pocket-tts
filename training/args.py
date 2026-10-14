@@ -176,8 +176,9 @@ class TrainArgs:
     # teacher's bottom+top layers; the per-frame heads still come from the teacher. A
     # wider source is narrowed like the teacher (shrink_checkpoint.shrink_width).
     student_init_from: str = ""
-    # Seed from student_init_from's EMA shadow instead of its raw weights.
-    init_from_use_ema: bool = False
+    # Seed from student_init_from's EMA shadow instead of its raw weights (raw weights when
+    # the checkpoint carries no EMA).
+    init_from_use_ema: bool = True
     # Which teacher layers seed the student backbone: "spaced" (evenly across
     # the depth) or "first" (the bottom N). No evidence either way -- "first"
     # keeps the early feature extractors contiguous.

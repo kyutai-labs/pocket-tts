@@ -117,8 +117,9 @@ def attach_distillation(model: TrainableTTS, flow_lm: FlowLMModel, args: TrainAr
     disable_grad(flow_lm.flow_net)
     disable_grad(flow_lm.out_eos)
     if flow_lm.out_eos.in_features != teacher.out_eos.in_features:
-        # The z spaces differ, so the loss is on the heads' inputs (see TrainableTTS):
-        # the layers that read z adapt to the student's.
+        # The heads read a different width in the student than in the teacher: different
+        # z_dim, or no z bottleneck and a narrower d_model. The loss is then on the heads'
+        # inputs (see TrainableTTS), and the layers that read z adapt to the student's.
         flow_lm.flow_net.cond_embed.requires_grad_(True)
         flow_lm.out_eos.requires_grad_(True)
     # The flow objective (e.g. LSD's w_s_t weighting net) never runs in

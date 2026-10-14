@@ -20,7 +20,7 @@ from pocket_tts.utils.config import Config, load_config
 from pocket_tts.utils.utils import download_if_necessary
 
 from ..args import TrainArgs
-from ..scripts.shrink_checkpoint import shrink
+from ..scripts.shrink_checkpoint import shrink, shrink_width
 from .model import TrainableTTS
 from .samplers import build_flow
 from .utils import disable_grad, dit_init, gaussian_init, stamp_state_names
@@ -84,25 +84,17 @@ def attach_distillation(model: TrainableTTS, flow_lm: FlowLMModel, args: TrainAr
         teacher = teacher.eval()
         # Seed the student from the teacher: non-backbone tensors verbatim,
         # backbone from the teacher's bottom+top layers — far faster to
-        # converge than a random init.
+        # converge than a random init. A narrower student gets the teacher's
+        # strongest channels, heads and FFN units.
         seeded, kept = shrink(teacher.state_dict(), len(flow_lm.transformer.layers))
         student_state = flow_lm.state_dict()
-        copied = {
-            k: v
-            for k, v in seeded.items()
-            if k in student_state and student_state[k].shape == v.shape
-        }
+        transformer = load_model_config(args.model_config, args.model_overrides).flow_lm.transformer
+        head_dim = (transformer.attn_dim or transformer.d_model) // transformer.num_heads
+        copied = shrink_width(seeded, student_state, head_dim)
         if args.student_init_from:
-            src = _load_flow_lm_state(args.student_init_from, use_ema=False)
-            copied.update(
-                {
-                    k: v
-                    for k, v in src.items()
-                    if not k.startswith(("flow_net.", "out_eos."))
-                    and k in student_state
-                    and student_state[k].shape == v.shape
-                }
-            )
+            src = _load_flow_lm_state(args.student_init_from, args.init_from_use_ema)
+            src = {k: v for k, v in src.items() if not k.startswith(("flow_net.", "out_eos."))}
+            copied.update(shrink_width(src, student_state, head_dim))
             logger.info(f"student backbone seeded from {args.student_init_from}")
         flow_lm.load_state_dict(copied, strict=False)
         logger.info(
@@ -124,6 +116,11 @@ def attach_distillation(model: TrainableTTS, flow_lm: FlowLMModel, args: TrainAr
     # the teacher's weights so single-pass generation stays calibrated.
     disable_grad(flow_lm.flow_net)
     disable_grad(flow_lm.out_eos)
+    if flow_lm.out_eos.in_features != teacher.out_eos.in_features:
+        # The z spaces differ, so the loss is on the heads' inputs (see TrainableTTS):
+        # the layers that read z adapt to the student's.
+        flow_lm.flow_net.cond_embed.requires_grad_(True)
+        flow_lm.out_eos.requires_grad_(True)
     # The flow objective (e.g. LSD's w_s_t weighting net) never runs in
     # distill mode; freeze its params so DDP with
     # find_unused_parameters=False sees no grad-less trainables.

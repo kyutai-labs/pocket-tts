@@ -160,7 +160,11 @@ class TrainArgs:
     # Depth distillation: point these at a bigger trained model and the student
     # (built from `model_config`, typically fewer layers) learns to reproduce its
     # backbone activations. Leave empty to distill a frozen copy of the student's
-    # own architecture (guidance baking only).
+    # own architecture (guidance baking only). A narrower student (d_model, attention,
+    # FFN, text table) is seeded from the teacher by shrink_checkpoint.shrink_width; when
+    # its z width differs from the teacher's, the loss is taken where the backbone meets the
+    # heads instead (the sampler head's conditioning embedding and the EOS logit), and those
+    # two input layers train with the backbone.
     distill_teacher_config: str = ""
     distill_teacher_overrides: dict[str, tp.Any] = field(default_factory=dict)
     distill_teacher_weights: str = ""
@@ -169,8 +173,11 @@ class TrainArgs:
     distill_teacher_use_ema: bool = True
     # Warm-start the student's backbone and conditioning from these weights (a training
     # checkpoint, or a released model.safetensors, local or hf://) instead of the
-    # teacher's bottom+top layers; the per-frame heads still come from the teacher.
+    # teacher's bottom+top layers; the per-frame heads still come from the teacher. A
+    # wider source is narrowed like the teacher (shrink_checkpoint.shrink_width).
     student_init_from: str = ""
+    # Seed from student_init_from's EMA shadow instead of its raw weights.
+    init_from_use_ema: bool = False
     # Which teacher layers seed the student backbone: "spaced" (evenly across
     # the depth) or "first" (the bottom N). No evidence either way -- "first"
     # keeps the early feature extractors contiguous.

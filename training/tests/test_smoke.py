@@ -35,6 +35,7 @@ from training.modules.utils import dit_init, stamp_state_names
 from training.scripts.shrink_checkpoint import (
     low_rank_text_table,
     narrow_attention,
+    pca_channels,
     select_layers,
     shrink,
     shrink_width,
@@ -255,6 +256,23 @@ def test_narrow_attention_is_exact_for_duplicated_kv_heads():
     grouped.load_state_dict({k.split("self_attn.")[1]: v for k, v in seeded.items()})
     x = torch.randn(1, 5, 32)
     torch.testing.assert_close(grouped(x, None), full(x, None))
+
+
+@pytest.mark.parametrize("z_dim", [None, 8])
+def test_pca_channels_at_full_width_is_exact(z_dim: int | None):
+    """Rotating the residual stream without cutting it leaves the model's function unchanged."""
+    model = tiny_model("lsd", z_dim=z_dim).eval()
+    state = model.flow_lm.state_dict()
+    norms = [f"transformer.layers.{i}.norm{j}" for i in range(2) for j in (1, 2)] + ["out_norm"]
+    a = torch.randn(len(norms), DIM, DIM, dtype=torch.float64)
+    cov = {n: a[i] @ a[i].T for i, n in enumerate(norms)}
+    rotated = copy.deepcopy(model)
+    rotated.flow_lm.load_state_dict({**state, **pca_channels(state, DIM, cov)})
+    losses = []
+    for module in (model, rotated):
+        torch.manual_seed(0)
+        losses.append(module(*make_batch())[0])
+    torch.testing.assert_close(losses[1], losses[0])
 
 
 def test_low_rank_text_table_at_full_rank_is_exact():

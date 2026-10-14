@@ -11,8 +11,10 @@ far faster than a random backbone -- or to get a standalone shallow checkpoint.
 Width: with --config (a pocket-tts model config, edited by --override) the flow LM
 is seeded for that architecture instead, see shrink_width: its depth, a narrower
 d_model, fewer or grouped attention heads (attn_dim, num_kv_heads), a narrower FFN
-and a low-rank text table. Tensors that cannot be seeded (e.g. a sampler head of
-another size) are left out and listed.
+and a low-rank text table. With --cov (from training.scripts.residual_cov), d_model
+is cut along the principal components of the residual stream instead (pca_channels).
+Tensors that cannot be seeded (e.g. a sampler head of another size) are left out and
+listed.
 
     python -m training.scripts.shrink_checkpoint runs/teacher/checkpoint_00200000.pt \
         --config pocket_tts/config/english.yaml \
@@ -149,6 +151,75 @@ def slice_channels(src: Tensors, d_student: int) -> Tensors:
     return {k: src[k].index_select(axis, keep) for k, axis in residual_axes(src).items()}
 
 
+def pca_channels(src: Tensors, d_student: int, cov: Tensors) -> Tensors:
+    """Narrower d_model along the principal components of the residual stream (as in
+    SliceGPT) instead of a subset of its channels.
+
+    `cov` holds, per backbone LayerNorm ("transformer.layers.<i>.norm1", ..., "out_norm"),
+    the second moment of its normalized input (training/scripts/residual_cov.py). The
+    stream is only read through LayerNorms, so its mean direction is invisible: writers
+    are centred, then mapped by M^T, with M (d, d_student) orthonormal, spanning the top
+    d_student - 1 components plus the mean direction, which lands on the student's own
+    mean direction. Norm gains are folded into the linears that read them (the student's
+    gains are 1, rescaled for the variance the cut keeps) and each norm's bias is refit
+    by least squares on its readers.
+    """
+    f64 = torch.float64
+    d = src["out_norm.weight"].shape[0]
+    sigma = sum(c.to(f64) for c in cov.values()) / len(cov)
+    center = torch.eye(d, dtype=f64) - 1.0 / d
+    evals, evecs = torch.linalg.eigh(center @ sigma @ center)
+    top = evecs[:, evals.argsort(descending=True)[: d_student - 1]]
+    basis = torch.cat([torch.full((d, 1), d**-0.5, dtype=f64), top], dim=1)
+    # Householder reflection taking e_1 to the student's mean direction.
+    w = torch.zeros(d_student, dtype=f64)
+    w[0] = 1.0
+    w = w - d_student**-0.5
+    reflect = torch.eye(d_student, dtype=f64) - 2 * torch.outer(w, w) / w.dot(w)
+    M = basis @ reflect  # (d, d_student)
+    to_student = M.T @ center  # applied to everything written into the stream
+
+    axes = residual_axes(src)
+    out: Tensors = {}
+
+    def put(key: str, value: torch.Tensor):
+        out[key] = value.to(src[key].dtype)
+
+    norms = [f"{layer}.{n}" for layer in layer_prefixes(src) for n in ("norm1", "norm2")]
+    norms.append("out_norm")
+    readers = {
+        f"{layer}.norm1": [f"{layer}.self_attn.in_proj.weight"] for layer in layer_prefixes(src)
+    }
+    readers.update({f"{layer}.norm2": [f"{layer}.linear1.weight"] for layer in layer_prefixes(src)})
+    readers["out_norm"] = [
+        k for k in ("z_proj.weight", "out_eos.weight", "flow_net.cond_embed.weight") if k in axes
+    ]
+    norm_keys = {f"{n}.{p}" for n in norms for p in ("weight", "bias")}
+    read_keys = {k for ks in readers.values() for k in ks}
+    for key, axis in axes.items():
+        if key in norm_keys or key in read_keys:
+            continue
+        value = src[key].to(f64)
+        # Writers: rows of a linear (axis 0), or the last axis of an embedding-like tensor.
+        put(key, to_student @ value if axis == 0 else value @ to_student.T)
+
+    for norm in norms:
+        gain, bias = src[f"{norm}.weight"].to(f64), src[f"{norm}.bias"].to(f64)
+        c = cov[norm].to(f64)
+        kept = torch.trace(M.T @ c @ M) / torch.trace(c)  # share of the variance the cut keeps
+        scale = (d * kept / d_student) ** 0.5
+        weights, targets = [], []
+        for key in readers[norm]:
+            reader = src[key].to(f64)
+            weights.append((reader * gain) @ M * scale)
+            targets.append(reader @ bias)
+            put(key, weights[-1])
+        fit = torch.linalg.lstsq(torch.cat(weights), torch.cat(targets)[:, None]).solution
+        put(f"{norm}.weight", torch.ones(d_student, dtype=f64))
+        put(f"{norm}.bias", fit[:, 0])
+    return out
+
+
 def prune_ffn(src: Tensors, dst: Tensors) -> Tensors:
     """Narrower FFN: keep the hidden units with the largest ||linear1 row|| * ||linear2 col||."""
     out: Tensors = {}
@@ -177,17 +248,21 @@ def low_rank_text_table(src: Tensors, dst: Tensors) -> Tensors:
     }
 
 
-def shrink_width(src: Tensors, dst: Tensors, head_dim: int) -> Tensors:
+def shrink_width(src: Tensors, dst: Tensors, head_dim: int, cov: Tensors | None = None) -> Tensors:
     """Seed the flow LM state `dst` (only its shapes are read) from `src` of the same depth.
 
     Attention heads are narrowed first (narrow_attention), then the residual stream
-    (slice_channels), the FFN (prune_ffn) and the text table (low_rank_text_table).
-    Returns the tensors that end up with `dst`'s shapes.
+    (slice_channels, or pca_channels given the residual covariance `cov`), the FFN
+    (prune_ffn) and the text table (low_rank_text_table). Returns the tensors that end
+    up with `dst`'s shapes.
     """
     state = {**src, **narrow_attention(src, dst, head_dim)}
     d_dst = dst["out_norm.weight"].shape[0]
     if state["out_norm.weight"].shape[0] != d_dst:
-        state.update(slice_channels(state, d_dst))
+        if cov is None:
+            state.update(slice_channels(state, d_dst))
+        else:
+            state.update(pca_channels(state, d_dst, cov))
     state.update(prune_ffn(state, dst))
     state.update(low_rank_text_table(state, dst))
     return {k: v for k, v in state.items() if k in dst and dst[k].shape == v.shape}
@@ -221,6 +296,11 @@ def main():
     parser.add_argument(
         "--ema", action="store_true", help="with --config: seed from the EMA weights"
     )
+    parser.add_argument(
+        "--cov",
+        help="with --config: residual covariance (training.scripts.residual_cov) to cut "
+        "d_model along its principal components",
+    )
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
     if (args.layers is None) == (args.config is None):
@@ -241,7 +321,8 @@ def main():
         dst, head_dim = flow_lm_shapes(args.config, overrides)
         src = {k.removeprefix("flow_lm."): v for k, v in model.items() if k.startswith("flow_lm.")}
         src, keep = shrink(src, len(layer_prefixes(dst)))
-        seeded = shrink_width(src, dst, head_dim)
+        cov = torch.load(args.cov, weights_only=True)["cov"] if args.cov else None
+        seeded = shrink_width(src, dst, head_dim, cov)
         shrunk = {k: v for k, v in model.items() if not k.startswith("flow_lm.")}
         shrunk.update({f"flow_lm.{k}": v for k, v in seeded.items()})
         ema = None

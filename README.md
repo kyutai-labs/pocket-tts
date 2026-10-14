@@ -395,6 +395,17 @@ uvx pocket-tts generate \
 ```
 </details>
 
+<details>
+<summary><a href="https://huggingface.co/takuma104/pocket-tts-ja">Pocket TTS Japanese (日本語)</a> by <a href="https://huggingface.co/takuma104">@takuma104</a>, 6 layers</summary>
+
+```bash
+uvx pocket-tts generate \
+  --config hf://takuma104/pocket-tts-ja/japanese.yaml@562a82cba331499b75a050b7e200f4ee3241b9e9 \
+  --voice hf://takuma104/pocket-tts-ja/voices/female_03.wav@119685fd7a51356429c6d25e37d570b423c17663 \
+  --text "こんにちは。今日はいい天気ですね。"
+```
+</details>
+
 Want your model here? Head to the [training Readme](https://github.com/kyutai-labs/pocket-tts/blob/main/training/README.md) to get started!
 
 ## Projects using Pocket TTS

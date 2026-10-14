@@ -193,12 +193,11 @@ def test_cfg_distill():
     assert backbone_grads and torch.isfinite(torch.cat([g.flatten() for g in backbone_grads])).all()
 
 
-@pytest.mark.parametrize("z_dim", [8, None])
-def test_distill_into_a_narrower_student(z_dim: int | None):
-    """A narrower student seeded from the teacher: with a shared z width the loss is on z
-    and the heads stay frozen; without one it is on the heads' inputs, which train."""
-    teacher = tiny_model("lsd", dim=48, num_heads=6, hidden=96, z_dim=z_dim).flow_lm.eval()
-    model = tiny_model("lsd", num_heads=4, z_dim=z_dim)
+def test_distill_into_a_narrower_student():
+    """A narrower student seeded from the teacher, sharing its z width: the loss is on z,
+    the heads stay frozen and the backbone learns."""
+    teacher = tiny_model("lsd", dim=48, num_heads=6, hidden=96, z_dim=8).flow_lm.eval()
+    model = tiny_model("lsd", num_heads=4, z_dim=8)
     model.args.distill_cfg_coef = 1.0
     model.args.text_dropout = model.args.voice_dropout = 0.0
     seeded = shrink_width(teacher.state_dict(), model.flow_lm.state_dict(), head_dim=8)
@@ -206,15 +205,14 @@ def test_distill_into_a_narrower_student(z_dim: int | None):
     teacher.requires_grad_(False)
     model.__dict__["distill_teacher"] = teacher
     model.flow_lm.flow_net.requires_grad_(False)
-    model.flow_lm.out_eos.requires_grad_(z_dim is None)
-    model.flow_lm.flow_net.cond_embed.requires_grad_(z_dim is None)
+    model.flow_lm.out_eos.requires_grad_(False)
     model.train()
     loss, metrics = model(*make_batch())
-    assert loss.isfinite() and ("eos_mse" in metrics) == (z_dim is None)
+    assert loss.isfinite() and "distill_mse" in metrics
     loss.backward()
     grads = {k: p.grad for k, p in model.flow_lm.named_parameters()}
     assert grads["transformer.layers.0.linear1.weight"] is not None
-    assert (model.flow_lm.out_eos.weight.grad is not None) == (z_dim is None)
+    assert model.flow_lm.out_eos.weight.grad is None
 
 
 def test_voice_table_training_and_generation():

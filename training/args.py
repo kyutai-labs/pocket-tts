@@ -161,10 +161,8 @@ class TrainArgs:
     # (built from `model_config`, typically fewer layers) learns to reproduce its
     # backbone activations. Leave empty to distill a frozen copy of the student's
     # own architecture (guidance baking only). A narrower student (d_model, attention,
-    # FFN, text table) is seeded from the teacher by shrink_checkpoint.shrink_width; when
-    # its z width differs from the teacher's, the loss is taken where the backbone meets the
-    # heads instead (the sampler head's conditioning embedding and the EOS logit), and those
-    # two input layers train with the backbone.
+    # FFN, text table) is seeded from the teacher by shrink_checkpoint.shrink_width; it must
+    # share the teacher's z width (flow_lm.z_dim), so the frozen heads read the same space.
     distill_teacher_config: str = ""
     distill_teacher_overrides: dict[str, tp.Any] = field(default_factory=dict)
     distill_teacher_weights: str = ""

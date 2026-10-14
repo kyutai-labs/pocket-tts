@@ -113,22 +113,8 @@ class TrainableTTS(nn.Module):
             def mse(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
                 return ((x - y).square().mean(dim=-1) * shifted_mask).sum() / denom
 
-            if z.shape[-1] == z_t.shape[-1]:
-                loss = mse(z, z_t)
-                return loss, {"distill_mse": loss.detach(), "loss": loss.detach()}
-            # A student with another z width: match the teacher where the backbone meets the
-            # heads, the sampler head's conditioning embedding and the EOS logit.
-            with torch.no_grad():
-                cond_t = teacher.flow_net.cond_embed(z_t)
-                eos_t = teacher.out_eos(z_t)
-            cond_mse = mse(fl.flow_net.cond_embed(z), cond_t)
-            eos_mse = mse(fl.out_eos(z), eos_t)
-            loss = cond_mse + self.args.eos_loss_weight * eos_mse
-            return loss, {
-                "distill_mse": cond_mse.detach(),
-                "eos_mse": eos_mse.detach(),
-                "loss": loss.detach(),
-            }
+            loss = mse(z, z_t)
+            return loss, {"distill_mse": loss.detach(), "loss": loss.detach()}
 
         # EOS loss: 1 on the first invalid position, computed over valid
         # positions plus that first invalid one (mask shifted right).

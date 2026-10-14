@@ -80,4 +80,4 @@ pocket-tts serve --config "C://pocket-tts/my_config.yaml"
 
 Once the server is running, navigate to `http://localhost:8000` to access the web interface.
 
-For more advanced usage, see the [Python API documentation](python-api.md) for direct integration with the TTS model.
+For more advanced usage, see the [Python API documentation](../API%20Reference/python-api.md) for direct integration with the TTS model.

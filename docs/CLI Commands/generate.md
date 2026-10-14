@@ -99,4 +99,4 @@ The generate command always outputs WAV files in the following format:
 - **Bit Depth**: 16-bit PCM
 - **Format**: Standard WAV file
 
-For more advanced usage, see the [Python API documentation](python-api.md) or consider using the [serve command](serve.md) for web-based generation and quick iteration.
+For more advanced usage, see the [Python API documentation](../API%20Reference/python-api.md) or consider using the [serve command](serve.md) for web-based generation and quick iteration.

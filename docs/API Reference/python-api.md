@@ -260,4 +260,4 @@ scipy.io.wavfile.write("batch_output.wav", model.sample_rate, full_audio.numpy()
 ### Streaming to File
 You can refer to our CLI implementation which can stream audio to a wav file.
 
-For more information about the command-line interface, see the [Generate Documentation](generate.md) or [Serve Documentation](serve.md).
+For more information about the command-line interface, see the [Generate Documentation](../CLI%20Commands/generate.md) or [Serve Documentation](../CLI%20Commands/serve.md).

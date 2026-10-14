@@ -45,8 +45,8 @@ def load_model_config(path: str, overrides: dict[str, tp.Any]) -> Config:
             if key not in node:
                 raise KeyError(f"{path} has no section {key!r} (from override {dotted!r})")
             node = node[key]
-        if leaf not in node:
-            raise KeyError(f"{path} has no field {dotted!r} to override")
+        # A field the yaml leaves at its default (e.g. flow_lm.z_dim) can be set too: the
+        # config model still rejects names it does not define.
         node[leaf] = value
     return Config(**raw)
 
@@ -166,7 +166,7 @@ def build_models(args: TrainArgs) -> tuple[TrainableTTS, MimiModel, Config]:
             latent_dim,
             config.flow_lm.flow.dim,
             latent_dim,
-            d_model,
+            config.flow_lm.z_dim or d_model,  # the head reads the backbone output z
             config.flow_lm.flow.depth,
             flow.num_time_conds,
         )

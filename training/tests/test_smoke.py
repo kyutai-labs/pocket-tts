@@ -31,6 +31,7 @@ from training.modules.model import TrainableTTS
 from training.modules.samplers import build_flow
 from training.modules.utils import dit_init, stamp_state_names
 from training.scripts.shrink_checkpoint import select_layers, shrink
+from training.train_utils import build_optimizer
 
 LDIM, DIM = 8, 32
 
@@ -38,33 +39,49 @@ LDIM, DIM = 8, 32
 class DummyConditioner(LUTConditioner):
     """LUTConditioner without the sentencepiece download (tests only)."""
 
-    def __init__(self, n_bins: int, dim: int):
+    def __init__(self, n_bins: int, dim: int, rank: int | None = None):
         nn.Module.__init__(self)
         self.dim = dim
         self.output_dim = dim
-        self.embed = nn.Embedding(n_bins + 1, dim)
-
-    def forward(self, tokens: torch.Tensor) -> torch.Tensor:
-        return self.embed(tokens)
+        self.embed = nn.Embedding(n_bins + 1, rank or dim)
+        self.proj = None if rank is None else nn.Linear(rank, dim, bias=False)
 
 
-def tiny_model(flow_type: str, context: int | None = None) -> TrainableTTS:
+def tiny_model(
+    flow_type: str,
+    context: int | None = None,
+    dim: int = DIM,
+    num_layers: int = 2,
+    num_heads: int = 2,
+    z_dim: int | None = None,
+    attn_dim: int | None = None,
+    num_kv_heads: int | None = None,
+    rank: int | None = None,
+    hidden: int = 64,
+) -> TrainableTTS:
     torch.manual_seed(0)
     flow = build_flow(flow_type)
     transformer = StreamingTransformer(
-        d_model=DIM, num_heads=2, num_layers=2, dim_feedforward=64, context=context
+        d_model=dim,
+        num_heads=num_heads,
+        num_layers=num_layers,
+        dim_feedforward=hidden,
+        context=context,
+        attn_dim=attn_dim,
+        num_kv_heads=num_kv_heads,
     )
-    head = SimpleMLPAdaLN(LDIM, 16, LDIM, DIM, 2, flow.num_time_conds)
+    head = SimpleMLPAdaLN(LDIM, 16, LDIM, z_dim or dim, 2, flow.num_time_conds)
     dit_init(head)
     flow_lm = FlowLMModel(
-        conditioner=DummyConditioner(11, DIM),
+        conditioner=DummyConditioner(11, dim, rank),
         flow_net=head,
         transformer=transformer,
-        dim=DIM,
+        dim=dim,
         ldim=LDIM,
         insert_bos_before_voice=True,
+        z_dim=z_dim,
     )
-    flow_lm.speaker_proj_weight = torch.nn.Parameter(torch.randn(DIM, LDIM) * 0.1)
+    flow_lm.speaker_proj_weight = torch.nn.Parameter(torch.randn(dim, LDIM) * 0.1)
     args = TrainArgs()
     args.flow.type = flow_type
     args.flow_batch_multiplier = 2
@@ -92,6 +109,32 @@ def test_train_step(flow_type: str):
     assert grads, "no gradients"
     assert torch.isfinite(torch.cat([g.flatten() for g in grads])).all()
     assert "flow_loss" in metrics and "eos_loss" in metrics
+
+
+SMALL_OPTIONS = {"z_dim": 8, "attn_dim": 16, "num_kv_heads": 1, "rank": 4}
+
+
+@pytest.mark.parametrize("flow_type", ["lsd", "drifting"])
+def test_train_step_and_generate_with_small_model_options(flow_type: str):
+    """z bottleneck, narrower attention with grouped kv heads and a low-rank text table."""
+    model = tiny_model(flow_type, **SMALL_OPTIONS)
+    model.train()
+    loss, _ = model(*make_batch())
+    loss.backward()
+    assert loss.isfinite()
+    assert model.flow_lm.z_proj is not None and model.flow_lm.z_proj.weight.grad is not None
+    latents = model.generate(
+        [torch.randint(0, 10, (5,))], [torch.randn(4, LDIM)], max_frames=3, eos_threshold=1e9
+    )
+    assert latents[0].shape == (3, LDIM)
+
+
+def test_muon_splits_narrow_grouped_attention():
+    model = tiny_model("lsd", **SMALL_OPTIONS)
+    model.args.optim.type = "muon"
+    optimizer = build_optimizer(model, model.args, torch.device("cpu"), rank=0)
+    sizes = [g["split_sizes"] for g in optimizer.param_groups if g.get("split_sizes")]
+    assert [16, 8, 8] in sizes, sizes
 
 
 @pytest.mark.parametrize("flow_type,cfg", [("lsd", 1.0), ("flow_matching", 1.0), ("drifting", 1.0)])

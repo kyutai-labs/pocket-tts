@@ -80,6 +80,8 @@ class TrainableTTS(nn.Module):
                 force_null=force_null,
             )
             out = module.out_norm(module.transformer(x, model_state=None))
+            if module.z_proj is not None:
+                out = module.z_proj(out)
             idx = prefix_lengths[:, None] + torch.arange(T, device=out.device)[None, :]
             return out.gather(1, idx[:, :, None].expand(-1, -1, out.shape[-1]))
 
@@ -191,6 +193,8 @@ class TrainableTTS(nn.Module):
                 if first_step:
                     inp = torch.cat([prefixes[i], inp], dim=1)
                 out = fl.out_norm(fl.transformer(inp, st))
+                if fl.z_proj is not None:
+                    out = fl.z_proj(out)
                 increment_steps(fl, st, increment=inp.shape[1])
                 zs.append(out[:, -1].float())
             first_step = False

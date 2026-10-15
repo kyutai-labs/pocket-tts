@@ -54,6 +54,36 @@ class TrainableTTS(nn.Module):
             fl.emb_mean.mul_(gamma).add_(sel.mean(dim=0), alpha=1 - gamma)
             fl.emb_std.mul_(gamma).add_(sel.std(dim=0), alpha=1 - gamma)
 
+    def backbone_z(
+        self,
+        module: FlowLMModel,
+        normalized_latents: torch.Tensor,  # [B, T, C]
+        text_tokens: list[torch.Tensor],
+        voice_latents: torch.Tensor,
+        num_voice_prompt_frames: torch.Tensor | None,
+        voice_ids: torch.Tensor | None,
+        cfg_dropout: bool,
+        force_null: bool = False,
+    ) -> torch.Tensor:
+        """Teacher-forced backbone output [B, T, dim]: z[:, t] conditions the heads for frame t."""
+        x, prefix_lengths = build_sequences_with_conditions(
+            self.args,
+            normalized_latents,
+            text_tokens,
+            voice_latents,
+            cfg_dropout=cfg_dropout,
+            num_voice_prompt_frames=num_voice_prompt_frames,
+            fl=module,
+            force_null=force_null,
+            voice_ids=voice_ids,
+        )
+        out = module.out_norm(module.transformer(x, model_state=None))
+        if module.z_proj is not None:
+            out = module.z_proj(out)
+        T = normalized_latents.shape[1]
+        idx = prefix_lengths[:, None] + torch.arange(T, device=out.device)[None, :]
+        return out.gather(1, idx[:, :, None].expand(-1, -1, out.shape[-1]))
+
     def forward(
         self,
         latents: torch.Tensor,  # [B, T, C] raw codec latents
@@ -66,7 +96,7 @@ class TrainableTTS(nn.Module):
         voice_ids: torch.Tensor | None = None,  # [B] built-in voices, with a voice table
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         fl = self.flow_lm
-        _, T, C = latents.shape
+        C = latents.shape[-1]
         if update_stats and self.training:
             self._update_latent_stats(latents, mask)
         normalized_latents = (latents - fl.emb_mean) / fl.emb_std
@@ -74,22 +104,16 @@ class TrainableTTS(nn.Module):
         def backbone_z(
             module: FlowLMModel, cfg_dropout: bool, force_null: bool = False
         ) -> torch.Tensor:
-            x, prefix_lengths = build_sequences_with_conditions(
-                self.args,
+            return self.backbone_z(
+                module,
                 normalized_latents,
                 text_tokens,
                 voice_latents,
-                cfg_dropout=cfg_dropout,
-                num_voice_prompt_frames=num_voice_prompt_frames,
-                fl=module,
-                force_null=force_null,
-                voice_ids=voice_ids,
+                num_voice_prompt_frames,
+                voice_ids,
+                cfg_dropout,
+                force_null,
             )
-            out = module.out_norm(module.transformer(x, model_state=None))
-            if module.z_proj is not None:
-                out = module.z_proj(out)
-            idx = prefix_lengths[:, None] + torch.arange(T, device=out.device)[None, :]
-            return out.gather(1, idx[:, :, None].expand(-1, -1, out.shape[-1]))
 
         if self.head_teacher is not None:
             with torch.no_grad():
@@ -196,6 +220,7 @@ class TrainableTTS(nn.Module):
         eos_threshold: float = -1.0,
         eos_countdown: int = 1,
         voice_ids: list[int] | None = None,
+        noises: list[torch.Tensor] | None = None,  # if given, collects each step's [B, C] noise
     ) -> list[torch.Tensor]:
         """Sample a batch of utterances with arbitrary prefix lengths.
 
@@ -266,6 +291,8 @@ class TrainableTTS(nn.Module):
         for t in range(max_frames):
             z = run(x_lat)
             noise = temp**0.5 * torch.randn(B, self.ldim, device=device, dtype=z.dtype)
+            if noises is not None:
+                noises.append(noise)
             latent = self.flow.decode(partial(fl.flow_net, z), noise, n_steps)
             fired = (fl.out_eos(z).squeeze(-1) > eos_threshold) & (countdown < 0)
             countdown = torch.where(fired, torch.full_like(countdown, eos_countdown), countdown)

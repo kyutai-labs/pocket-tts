@@ -30,6 +30,7 @@ from training.args import TrainArgs, dump_args, load_args, save_args
 from training.checkpointing import EMA, latest_checkpoint, load_checkpoint, save_checkpoint
 from training.dataloader import DataLoader, SubprocessDataLoader, encode_batch
 from training.distributed import (
+    average_grads,
     avg_across_ranks,
     get_rank,
     get_world_size,
@@ -39,6 +40,7 @@ from training.distributed import (
 )
 from training.modules.builders import build_models, load_model_config
 from training.modules.model import TrainableTTS
+from training.refl import Rewards, refl_loss
 from training.train_utils import (
     ProgressLog,
     _compile_models,
@@ -143,7 +145,11 @@ def setup(config_path: str) -> Run:
     )
 
     wrapped: nn.Module = model
-    if is_torchrun():
+    if is_torchrun() and args.refl.enabled:
+        # REFL averages its gradients itself; the ranks start from rank 0's weights, as under DDP.
+        for t in model.state_dict().values():
+            torch.distributed.broadcast(t, 0)
+    elif is_torchrun():
         wrapped = DDP(model, device_ids=[device.index], find_unused_parameters=not args.compile)
     if args.compile:
         _compile_models(model, mimi)
@@ -198,6 +204,7 @@ def main(config_path: str):
     autocast = torch.autocast(
         device_type=device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"
     )
+    refl_rewards = Rewards(args.refl, device, mimi) if args.refl.enabled else None
     model.train()
     # scancel sends SIGTERM 30s (KillWait) before SIGKILL; finish the step and
     # checkpoint inside that window so a cancelled job resumes losslessly.
@@ -236,6 +243,21 @@ def main(config_path: str):
                     num_voice_prompt_frames=num_voice_prompt_frames,
                     voice_ids=batch.voice_ids,
                 )
+            if refl_rewards is not None:
+                reward_loss, refl_stats = refl_loss(
+                    model,
+                    sentence_piece.decode,
+                    batch.text_tokens,
+                    voice_prompt_latents,
+                    num_voice_prompt_frames,
+                    batch.voice_ids,
+                    mask,
+                    refl_rewards,
+                    args.refl,
+                )
+                metrics.update(refl_stats)
+                if reward_loss is not None:
+                    loss = loss + reward_loss
             # Under DDP, allreduce only on the last micro-batch.
             last_micro = micro == args.grad_accum_steps - 1
             scaled = loss / args.grad_accum_steps
@@ -244,6 +266,8 @@ def main(config_path: str):
                     scaled.backward()
             else:
                 scaled.backward()
+        if refl_rewards is not None and run.world_size > 1:
+            average_grads([p for p in model.parameters() if p.requires_grad])
         grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), args.optim.max_norm)
         if not torch.isfinite(grad_norm):
             # Stop before the NaN reaches the weights: the run would otherwise

@@ -7,6 +7,8 @@ import subprocess
 import sys
 from functools import partial
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -21,19 +23,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import training.dataloader.audio as td_audio
 from pocket_tts.models.flow_lm import FlowLMModel
+from pocket_tts.models.mimi import build_mimi
 from pocket_tts.modules.attention import StreamingMultiheadAttention
 from pocket_tts.modules.mlp import SimpleMLPAdaLN
 from pocket_tts.modules.rope import RotaryEmbedding
 from pocket_tts.modules.stateful_module import init_states
 from pocket_tts.modules.text_conditioner import LUTConditioner
 from pocket_tts.modules.transformer import StreamingTransformer
-from training.args import TrainArgs
+from pocket_tts.utils.config import CONFIGS_DIR, load_config
+from training.args import ReflArgs, TrainArgs
 from training.checkpointing import EMA
 from training.dataloader import DataLoader, Entry
 from training.modules.builders import head_from_state
 from training.modules.model import TrainableTTS
 from training.modules.samplers import build_flow
 from training.modules.utils import dit_init, stamp_state_names
+from training.refl import Rewards, refl_loss
 from training.scripts.shrink_checkpoint import (
     low_rank_text_table,
     narrow_attention,
@@ -594,3 +599,85 @@ def test_train_tokenizer_matches_the_released_spec(tmp_path: Path):
     assert trainer[43][0] == 3  # pad_id
     assert normalizer.get(4, [1])[0] == 0  # remove_extra_whitespaces off
     assert not normalizer.get(2, [b""])[0]  # identity: no precompiled charsmap
+
+
+class StubUTMOS(nn.Module):
+    def forward(
+        self, wav: torch.Tensor, domains: torch.Tensor, judge_id: torch.Tensor
+    ) -> torch.Tensor:
+        return wav.abs().mean()[None]
+
+
+class StubCTC(nn.Module):
+    """Character logits from 320-sample windows, over a blank and "|'A..Z"."""
+
+    def __init__(self):
+        super().__init__()
+        self.proj = nn.Linear(320, 29)
+
+    def forward(self, x: torch.Tensor) -> SimpleNamespace:
+        return SimpleNamespace(logits=self.proj(x.unfold(-1, 320, 320)))
+
+
+def test_refl_step(monkeypatch: pytest.MonkeyPatch):
+    """One REFL step through a tiny Mimi decoder with stub scorers: the head re-applied on the
+    rollout's noise reproduces the rollout, and the rewards reach the backbone."""
+    model = tiny_model("lsd")
+    for p in model.flow_lm.flow_net.parameters():  # a head that reads its conditioning
+        nn.init.normal_(p, std=0.1)
+    config = load_config(CONFIGS_DIR / "english.yaml").mimi
+    small = config.model_copy(
+        update={
+            "outer_dim": 64,
+            "quantizer": config.quantizer.model_copy(
+                update={"dimension": LDIM, "output_dimension": 64}
+            ),
+            "decoder_seanet": config.seanet.model_copy(
+                update={"dimension": 64, "n_filters": 8, "kernel_size": 3}
+            ),
+            "decoder_transformer": config.transformer.model_copy(
+                update={
+                    "d_model": 64,
+                    "num_heads": 4,
+                    "num_layers": 1,
+                    "dim_feedforward": 128,
+                    "input_dimension": 64,
+                    "output_dimensions": (64,),
+                }
+            ),
+        }
+    )
+    rewards: Any = Rewards.__new__(Rewards)
+    rewards.mimi = build_mimi(small).eval().requires_grad_(False)
+    stamp_state_names(rewards.mimi)
+    rewards.resample = lambda w: w
+    rewards.utmos, rewards.ctc = StubUTMOS(), StubCTC()
+    rewards.vocab = {c: i + 1 for i, c in enumerate("|'ABCDEFGHIJKLMNOPQRSTUVWXYZ")}
+    rewards.blank = 0
+    ra = ReflArgs(enabled=True, rows=2, max_sec=2.0, utmos_weight=1.0, ctc_weight=1.0)
+    # Rollouts of 10 frames, ending before max_sec as if they had emitted EOS.
+    generate = model.generate
+    monkeypatch.setattr(
+        model,
+        "generate",
+        lambda *a, **kw: generate(*a, **{**kw, "max_frames": 10, "eos_threshold": 1e9}),
+    )
+    _, mask, text, voice = make_batch()
+    model.train()
+    loss, stats = refl_loss(
+        model,
+        lambda tokens: " ".join("ABCDEFGHIJ"[t] for t in tokens),
+        text,
+        voice,
+        torch.tensor([5, 3, 0]),
+        None,
+        mask,
+        rewards,
+        ra,
+    )
+    assert loss is not None and loss.isfinite()
+    assert stats["refl_rows"] == 2 and stats["refl_ok"] == 1
+    assert stats["refl_parity"] < 1e-4
+    loss.backward()
+    grad = dict(model.flow_lm.named_parameters())["transformer.layers.0.linear1.weight"].grad
+    assert grad is not None and grad.abs().sum() > 0

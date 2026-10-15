@@ -82,10 +82,36 @@ class OptimArgs:
 
 
 @dataclass
+class ReflArgs:
+    """Reward fine-tuning (training/refl.py). Each step rolls out up to `rows` rows of the batch
+    without gradients, re-runs the backbone teacher-forced on the rollout with gradients,
+    re-applies the sampler head on the rollout's own noise, decodes with the frozen Mimi decoder
+    and backpropagates the rewards. The batch's usual loss (the distillation loss in a
+    distillation run) stays on as the anchor on the real rows. Needs the `utmos-pytorch`,
+    `transformers` and `torchaudio` packages (the dev dependency group)."""
+
+    enabled: bool = False
+    rows: int = 4  # rolled-out rows per GPU; only rows whose text the CTC model can score
+    temp: float = 0.3
+    max_sec: float = 20.0  # rollouts that emit no EOS by then get no reward
+    utmos_weight: float = 0.0  # loss -= utmos_weight * mean UTMOS
+    ctc_weight: float = 0.0  # loss += ctc_weight * mean per-character CTC loss of the text
+    ctc_model: str = "facebook/wav2vec2-large-960h-lv60-self"  # a character-level wav2vec2 CTC
+    # A pocket-tts model config whose Mimi decodes the rollouts for the rewards instead of
+    # model_config's (e.g. one with its own decoder dims and mimi.weights_path). It must read
+    # the same latents; only the audio the rewards score changes.
+    reward_decoder: str = ""
+    # Random leading trim (samples) before scoring, so that a perturbation tuned to one
+    # alignment of the scorers does not pay.
+    max_shift: int = 480
+
+
+@dataclass
 class TrainArgs:
     data: DataArgs = field(default_factory=DataArgs)
     flow: FlowArgs = field(default_factory=FlowArgs)
     optim: OptimArgs = field(default_factory=OptimArgs)
+    refl: ReflArgs = field(default_factory=ReflArgs)
 
     # A pocket-tts model config (e.g. pocket_tts/config/english.yaml or a local
     # variant). Defines the FlowLM/Mimi architecture, the tokenizer, and the
@@ -224,10 +250,14 @@ class TrainArgs:
             )
         if self.distill_teacher_config and not self.distill_teacher_weights:
             raise ValueError("distill_teacher_config is set but distill_teacher_weights is not")
+        if self.refl.enabled and self.head_distill:
+            raise ValueError("refl and head_distill are separate runs: set one")
+        if self.refl.enabled and not (self.refl.utmos_weight > 0 or self.refl.ctc_weight > 0):
+            raise ValueError("refl.enabled needs refl.utmos_weight or refl.ctc_weight > 0")
 
 
 def _from_dict(cls: type[T], data: dict[str, Any]) -> T:
-    sub = {"data": DataArgs, "flow": FlowArgs, "optim": OptimArgs}
+    sub = {"data": DataArgs, "flow": FlowArgs, "optim": OptimArgs, "refl": ReflArgs}
     kwargs = {}
     fields = {f.name: f for f in dataclasses.fields(cls)}
     for key, value in data.items():

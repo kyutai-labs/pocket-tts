@@ -407,7 +407,7 @@ uvx pocket-tts generate \
 </details>
 
 <details>
-<summary><a href="https://huggingface.co/hustfyb/PocketTTS-ZH-6L">Pocket TTS Chinese (中文)</a> by <a href="[https://huggingface.co/takuma104](https://huggingface.co/hustfyb/)">@hustfyb</a>, 6 layers</summary>
+<summary><a href="https://huggingface.co/hustfyb/PocketTTS-ZH-6L">Pocket TTS Chinese (中文)</a> by <a href="https://huggingface.co/hustfyb/">@hustfyb</a>, 6 layers</summary>
 
 ```bash
 pip install pocket-tts soundfile wetext

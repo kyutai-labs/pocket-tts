@@ -86,7 +86,6 @@ for each voice.
 * [peter_yearsley](https://huggingface.co/kyutai/tts-voices/blob/main/voice-zero/peter_yearsley.wav) (en)
 * [stuart_bell](https://huggingface.co/kyutai/tts-voices/blob/main/voice-zero/stuart_bell.wav) (en)
 * [vera](https://huggingface.co/kyutai/tts-voices/blob/main/vctk/p229_023_enhanced.wav) (en)
-* [chinese](https://huggingface.co/hustfyb/PocketTTS-ZH-6L)(zh_cn)
 
 The `--voice` argument can also take a plain wav file as input for voice cloning.
 You can use your own or check out our [voice repository](https://huggingface.co/kyutai/tts-voices).
@@ -404,6 +403,16 @@ uvx pocket-tts generate \
   --config hf://takuma104/pocket-tts-ja/japanese.yaml@562a82cba331499b75a050b7e200f4ee3241b9e9 \
   --voice hf://takuma104/pocket-tts-ja/voices/female_03.wav@119685fd7a51356429c6d25e37d570b423c17663 \
   --text "こんにちは。今日はいい天気ですね。"
+```
+</details>
+
+<details>
+<summary><a href="https://huggingface.co/hustfyb/PocketTTS-ZH-6L">Pocket TTS Chinese (中文)</a> by <a href="[https://huggingface.co/takuma104](https://huggingface.co/hustfyb/)">@hustfyb</a>, 6 layers</summary>
+
+```bash
+pip install pocket-tts soundfile wetext
+cd <本目录>
+python demo.py --prompt your_voice.wav --text "您的订单编号是20260918123456，退款368.5元预计三个工作日内到账。" --out out.wav
 ```
 </details>
 

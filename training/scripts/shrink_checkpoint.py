@@ -236,11 +236,17 @@ def prune_ffn(src: Tensors, dst: Tensors) -> Tensors:
 
 def low_rank_text_table(src: Tensors, dst: Tensors) -> Tensors:
     """A low-rank text table from a full one: its best rank-r approximation (SVD),
-    E ~= (U_r S_r) @ Vh_r, as conditioner.embed (U_r S_r) and conditioner.proj (Vh_r^T)."""
-    if "conditioner.proj.weight" not in dst or "conditioner.proj.weight" in src:
+    E ~= (U_r S_r) @ Vh_r, as conditioner.embed (U_r S_r) and conditioner.proj (Vh_r^T).
+    A source table that is already low-rank is re-cut from E = embed @ proj^T when the
+    rank changes (otherwise the smaller table would be left at its random init)."""
+    if "conditioner.proj.weight" not in dst:
         return {}
     full = src["conditioner.embed.weight"]
     rank = dst["conditioner.embed.weight"].shape[1]
+    if "conditioner.proj.weight" in src:
+        if rank == full.shape[1]:
+            return {}
+        full = full.float() @ src["conditioner.proj.weight"].float().T
     u, s, vh = torch.linalg.svd(full.float(), full_matrices=False)
     return {
         "conditioner.embed.weight": (u[:, :rank] * s[:rank]).to(full.dtype),

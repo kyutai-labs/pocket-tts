@@ -61,7 +61,7 @@ class MimiModel(nn.Module):
                 int(downsample_stride), dimension=dimension, out_dimension=inner_dim
             )
             self.upsample = ConvTrUpsample1d(
-                int(downsample_stride), dimension=dimension, in_dimension=outer_dim
+                int(downsample_stride), dimension=decoder.dimension, in_dimension=outer_dim
             )
 
     @property
@@ -133,7 +133,7 @@ def build_mimi(config: MimiConfig) -> MimiModel:
 
     mimi_config = config.model_dump()
     encoder = SEANetEncoder(**mimi_config["seanet"])
-    decoder = SEANetDecoder(**mimi_config["seanet"])
+    decoder = SEANetDecoder(**(mimi_config["decoder_seanet"] or mimi_config["seanet"]))
     return MimiModel(
         encoder,
         decoder,
@@ -145,5 +145,7 @@ def build_mimi(config: MimiConfig) -> MimiModel:
         inner_dim=mimi_config["inner_dim"],
         outer_dim=mimi_config["outer_dim"],
         encoder_transformer=transformer.ProjectedTransformer(**mimi_config["transformer"]),
-        decoder_transformer=transformer.ProjectedTransformer(**mimi_config["transformer"]),
+        decoder_transformer=transformer.ProjectedTransformer(
+            **(mimi_config["decoder_transformer"] or mimi_config["transformer"])
+        ),
     )

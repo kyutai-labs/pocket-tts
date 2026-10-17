@@ -9,7 +9,7 @@ from torch import nn
 from training.args import OptimArgs, TrainArgs
 from training.checkpointing import EMA
 from training.modules.samplers import LSD, Drifting
-from training.scripts.shrink_checkpoint import select_layers, shrink
+from training.scripts.shrink_checkpoint import low_rank_text_table, select_layers, shrink
 from training.train_utils import lr_at
 
 
@@ -65,6 +65,20 @@ class TestSelectLayers:
         # renumbering must preserve which teacher layer each slot came from
         assert out["transformer.layers.3.w"].item() == 21.0
         assert "out_eos.weight" in out, "non-backbone tensors are copied unchanged"
+
+    def test_low_rank_table_recuts_an_already_low_rank_table(self):
+        torch.manual_seed(0)
+        embed, proj = torch.randn(50, 8), torch.randn(16, 8)  # rank-8 table for d_model 16
+        dst = {
+            "conditioner.embed.weight": torch.zeros(50, 4),
+            "conditioner.proj.weight": torch.zeros(16, 4),
+        }
+        out = low_rank_text_table(
+            {"conditioner.embed.weight": embed, "conditioner.proj.weight": proj}, dst
+        )
+        e4 = out["conditioner.embed.weight"] @ out["conditioner.proj.weight"].T
+        u, s, vh = torch.linalg.svd(embed @ proj.T, full_matrices=False)
+        assert torch.allclose(e4, (u[:, :4] * s[:4]) @ vh[:4], atol=1e-4)
 
 
 class TestEMA:

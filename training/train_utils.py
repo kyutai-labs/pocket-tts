@@ -133,8 +133,10 @@ def write_samples(
     step: int,
     voice_latents: torch.Tensor,
     device: torch.device,
+    voice_id: int | None = None,
 ):
-    """Synthesize the configured sentences from the live (raw) weights."""
+    """Synthesize the configured sentences from the live (raw) weights, with the voice
+    prompt `voice_latents` and, for a model with built-in voices, voice `voice_id`."""
     out_dir = run_dir / "samples"
     out_dir.mkdir(exist_ok=True)
     model.eval()
@@ -145,6 +147,7 @@ def write_samples(
             [voice_latents] * len(tokens),
             temp=args.sample_temp,
             cfg_coef=args.sample_cfg_coef,
+            voice_ids=None if voice_id is None else [voice_id] * len(tokens),
         )
         ratio = round(mimi.encoder_frame_rate / mimi.frame_rate)
         for i, latents in enumerate(outs):
@@ -262,8 +265,8 @@ def build_optimizer(
         fused: dict[int, tuple[int, ...]] = {}
         for module in layer.modules():
             if isinstance(module, StreamingMultiheadAttention):
-                kv_dim = (module.in_proj.weight.size(0) - module.embed_dim) // 2
-                fused[id(module.in_proj.weight)] = (module.embed_dim, kv_dim, kv_dim)
+                kv_dim = (module.in_proj.weight.size(0) - module.attn_dim) // 2
+                fused[id(module.in_proj.weight)] = (module.attn_dim, kv_dim, kv_dim)
         for p in layer.parameters():
             add(p, fused.get(id(p), ()))
     if args.optim.muon_head:

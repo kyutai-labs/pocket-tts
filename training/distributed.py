@@ -65,3 +65,13 @@ def avg_across_ranks(value: float) -> float:
     t = torch.tensor(value, device="cuda")
     dist.all_reduce(t, op=dist.ReduceOp.AVG)
     return t.item()
+
+
+def average_grads(params: list[torch.nn.Parameter]):
+    """Mean of the gradients across ranks (missing gradients count as zeros), in one all_reduce."""
+    flat = torch.cat(
+        [(p.grad if p.grad is not None else torch.zeros_like(p)).flatten() for p in params]
+    )
+    dist.all_reduce(flat, op=dist.ReduceOp.AVG)
+    for p, g in zip(params, flat.split([p.numel() for p in params]), strict=True):
+        p.grad = g.view_as(p)

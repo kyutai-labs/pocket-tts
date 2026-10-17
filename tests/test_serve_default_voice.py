@@ -21,6 +21,7 @@ class FakeTTSModel:
 
     def __init__(self):
         self.config = SimpleNamespace(mimi=SimpleNamespace(sample_rate=24000))
+        self.voice_names: list[str] = []
         self.voices_requested: list[Path | str | torch.Tensor] = []
         self.states_used: list[dict[str, Any]] = []
 
@@ -73,6 +74,16 @@ def test_serve_falls_back_to_the_voice_of_the_language(monkeypatch: pytest.Monke
     assert result.exit_code == 0, result.output
     assert fake_model.voices_requested == ["estelle"]
     assert main.default_voice_state == {"voice": "estelle"}
+
+
+def test_serve_defaults_to_the_first_builtin_voice_of_the_model(monkeypatch: pytest.MonkeyPatch):
+    fake_model = make_serve_runnable(monkeypatch)
+    fake_model.voice_names = ["first", "second"]
+
+    result = runner.invoke(main.cli_app, ["serve", "--config", "model.yaml"])
+
+    assert result.exit_code == 0, result.output
+    assert fake_model.voices_requested == ["first"]
 
 
 def test_tts_endpoint_uses_the_default_voice_when_the_request_has_none(

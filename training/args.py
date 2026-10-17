@@ -82,10 +82,36 @@ class OptimArgs:
 
 
 @dataclass
+class ReflArgs:
+    """Reward fine-tuning (training/refl.py). Each step rolls out up to `rows` rows of the batch
+    without gradients, re-runs the backbone teacher-forced on the rollout with gradients,
+    re-applies the sampler head on the rollout's own noise, decodes with the frozen Mimi decoder
+    and backpropagates the rewards. The batch's usual loss (the distillation loss in a
+    distillation run) stays on as the anchor on the real rows. Needs the `utmos-pytorch`,
+    `transformers` and `torchaudio` packages (the dev dependency group)."""
+
+    enabled: bool = False
+    rows: int = 4  # rolled-out rows per GPU; only rows whose text the CTC model can score
+    temp: float = 0.3
+    max_sec: float = 20.0  # rollouts that emit no EOS by then get no reward
+    utmos_weight: float = 0.0  # loss -= utmos_weight * mean UTMOS
+    ctc_weight: float = 0.0  # loss += ctc_weight * mean per-character CTC loss of the text
+    ctc_model: str = "facebook/wav2vec2-large-960h-lv60-self"  # a character-level wav2vec2 CTC
+    # A pocket-tts model config whose Mimi decodes the rollouts for the rewards instead of
+    # model_config's (e.g. one with its own decoder dims and mimi.weights_path). It must read
+    # the same latents; only the audio the rewards score changes.
+    reward_decoder: str = ""
+    # Random leading trim (samples) before scoring, so that a perturbation tuned to one
+    # alignment of the scorers does not pay.
+    max_shift: int = 480
+
+
+@dataclass
 class TrainArgs:
     data: DataArgs = field(default_factory=DataArgs)
     flow: FlowArgs = field(default_factory=FlowArgs)
     optim: OptimArgs = field(default_factory=OptimArgs)
+    refl: ReflArgs = field(default_factory=ReflArgs)
 
     # A pocket-tts model config (e.g. pocket_tts/config/english.yaml or a local
     # variant). Defines the FlowLM/Mimi architecture, the tokenizer, and the
@@ -160,7 +186,9 @@ class TrainArgs:
     # Depth distillation: point these at a bigger trained model and the student
     # (built from `model_config`, typically fewer layers) learns to reproduce its
     # backbone activations. Leave empty to distill a frozen copy of the student's
-    # own architecture (guidance baking only).
+    # own architecture (guidance baking only). A narrower student (d_model, attention,
+    # FFN, text table) is seeded from the teacher by shrink_checkpoint.shrink_width; it must
+    # share the teacher's z width (flow_lm.z_dim), so the frozen heads read the same space.
     distill_teacher_config: str = ""
     distill_teacher_overrides: dict[str, tp.Any] = field(default_factory=dict)
     distill_teacher_weights: str = ""
@@ -169,8 +197,29 @@ class TrainArgs:
     distill_teacher_use_ema: bool = True
     # Warm-start the student's backbone and conditioning from these weights (a training
     # checkpoint, or a released model.safetensors, local or hf://) instead of the
-    # teacher's bottom+top layers; the per-frame heads still come from the teacher.
+    # teacher's bottom+top layers; the per-frame heads still come from the teacher. A
+    # wider source is narrowed like the teacher (shrink_checkpoint.shrink_width).
     student_init_from: str = ""
+    # Seed from student_init_from's (and head_init_from's) EMA shadow instead of its raw
+    # weights (raw weights when the checkpoint carries no EMA).
+    init_from_use_ema: bool = True
+
+    # Head distillation: train a new sampler head (flow_net, shaped by the config's flow_lm.flow,
+    # any flow.type) against a frozen one, on the frozen backbone's outputs; nothing else
+    # trains. The backbone and the frozen head come from head_distill_from (a training
+    # checkpoint or a model.safetensors), or from the config's weights when it is empty; the
+    # frozen head's shape and type (0, 1 or 2 time conditions) are read from its weights.
+    # head_distill_loss picks the objective, whatever the head types: "mse" regresses the new
+    # head's one-step output on the frozen head's for the same noise; "drifting" (needs
+    # flow.type drifting) attracts the new head to head_distill_samples draws of the frozen
+    # head per position. Noise is drawn at temperature head_distill_temp.
+    head_distill: bool = False
+    head_distill_from: str = ""
+    head_distill_loss: str = "mse"
+    head_distill_samples: int = 1
+    head_distill_temp: float = 1.0
+    # Start the new head from this checkpoint's flow_net (same shape) instead of a fresh one.
+    head_init_from: str = ""
     # Which teacher layers seed the student backbone: "spaced" (evenly across
     # the depth) or "first" (the bottom N). No evidence either way -- "first"
     # keeps the early feature extractors contiguous.
@@ -193,12 +242,22 @@ class TrainArgs:
                 "distillation needs a teacher: set distill_teacher_config, or "
                 "start_from_pretrained: true to distil a frozen copy of the model itself"
             )
+        if self.head_distill and self.distill_cfg_coef > 0:
+            raise ValueError("head_distill and distill_cfg_coef are separate runs: set one")
+        if self.head_distill_loss not in ("mse", "drifting"):
+            raise ValueError(
+                f"head_distill_loss must be mse or drifting, not {self.head_distill_loss}"
+            )
         if self.distill_teacher_config and not self.distill_teacher_weights:
             raise ValueError("distill_teacher_config is set but distill_teacher_weights is not")
+        if self.refl.enabled and self.head_distill:
+            raise ValueError("refl and head_distill are separate runs: set one")
+        if self.refl.enabled and not (self.refl.utmos_weight > 0 or self.refl.ctc_weight > 0):
+            raise ValueError("refl.enabled needs refl.utmos_weight or refl.ctc_weight > 0")
 
 
 def _from_dict(cls: type[T], data: dict[str, Any]) -> T:
-    sub = {"data": DataArgs, "flow": FlowArgs, "optim": OptimArgs}
+    sub = {"data": DataArgs, "flow": FlowArgs, "optim": OptimArgs, "refl": ReflArgs}
     kwargs = {}
     fields = {f.name: f for f in dataclasses.fields(cls)}
     for key, value in data.items():

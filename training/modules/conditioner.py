@@ -22,10 +22,12 @@ def build_sequences_with_conditions(
     fl: FlowLMModel,
     num_voice_prompt_frames: torch.Tensor | None = None,
     force_null: bool = False,
+    voice_ids: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Assemble per-sample [beginning_of_prefix, voice_conditioning,
     text_conditioning, beginning_of_sequence, target_audio] rows,
-    right-padded to equal length.
+    right-padded to equal length. With a voice table, the row's built-in voice
+    (`voice_ids`) is added to every audio frame; it is dropped with the voice prompt.
 
     Fully tensorized (no per-row python ints): scatter-placement from
     tensor offsets, so the whole forward stays traceable and returns
@@ -55,6 +57,10 @@ def build_sequences_with_conditions(
     # torch.rand is in [0, 1), so prob 1.0 keeps every row and 0.0 keeps none.
     keep_voice_cpu = torch.rand(B) < keep_voice_prob
     keep_text_cpu = torch.rand(B) < keep_text_prob
+    if fl.voice_table is not None:
+        assert voice_ids is not None, "a model with built-in voices needs the batch's voice_ids"
+        voice = fl.voice_table.embed(voice_ids.to(device)) * keep_voice_cpu.to(device)[:, None]
+        audio_emb = audio_emb + voice[:, None].to(dtype)
 
     if num_voice_prompt_frames is not None:
         v_len_cpu = num_voice_prompt_frames.cpu().long().clamp(max=Tv) * keep_voice_cpu

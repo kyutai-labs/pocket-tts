@@ -7,7 +7,7 @@ from torch import nn
 from typing_extensions import Self
 
 from pocket_tts.modules.mlp import SimpleMLPAdaLN
-from pocket_tts.modules.stateful_module import ModelState
+from pocket_tts.modules.stateful_module import ModelState, StatefulModule
 from pocket_tts.modules.text_conditioner import LUTConditioner
 from pocket_tts.modules.transformer import StreamingTransformer
 from pocket_tts.utils.config import FlowLMConfig
@@ -59,6 +59,25 @@ def ot_decode(v_t: FlowNet, x_0: torch.Tensor, num_steps: int = 16) -> torch.Ten
     return current
 
 
+class VoiceTable(StatefulModule):
+    """One embedding per built-in voice, added to every audio frame the flow LM reads.
+
+    The selected voice is part of the streaming state, so a voice state carries it. A fresh
+    state selects none (a zero embedding).
+    """
+
+    def __init__(self, num_voices: int, dim: int, dtype: torch.dtype | None = None):
+        super().__init__()
+        self.embed = nn.Embedding(num_voices, dim, dtype=dtype)
+
+    def init_state(self, batch_size: int, sequence_length: int) -> dict[str, torch.Tensor]:
+        weight = self.embed.weight
+        return {"embedding": weight.new_zeros(batch_size, 1, weight.shape[1])}
+
+    def select(self, model_state: ModelState, index: int):
+        self.get_state(model_state)["embedding"][:] = self.embed.weight[index].detach()
+
+
 class FlowLMModel(nn.Module):
     """Transformer-based flow language model on multiple streams of latents.
 
@@ -95,6 +114,8 @@ class FlowLMModel(nn.Module):
         dtype: torch.dtype | None = None,
         insert_bos_before_voice: bool = False,
         flow_type: str = "lsd",
+        z_dim: int | None = None,
+        num_voices: int = 0,
     ):
         super().__init__()
         self.flow_type = flow_type
@@ -117,7 +138,9 @@ class FlowLMModel(nn.Module):
         self.input_linear = nn.Linear(self.ldim, dim, bias=False, dtype=dtype)
         self.transformer = transformer
         self.out_norm = nn.LayerNorm(dim, eps=1e-5)
-        self.out_eos = nn.Linear(dim, 1, dtype=dtype)
+        self.z_proj = None if z_dim is None else nn.Linear(dim, z_dim, bias=False, dtype=dtype)
+        self.out_eos = nn.Linear(z_dim or dim, 1, dtype=dtype)
+        self.voice_table = VoiceTable(num_voices, dim, dtype) if num_voices else None
 
     @property
     def device(self) -> str:
@@ -189,6 +212,8 @@ class FlowLMModel(nn.Module):
         # print("text_embeddings shape:", text_embeddings.shape)
         # if text_embeddings.numel() != 0:
         #     torch.save(text_embeddings, "debug_flow_lm_text_embeddings.pt")
+        if self.voice_table is not None and input_.shape[1] > 0:
+            input_ = input_ + self.voice_table.get_state(model_state)["embedding"]
         input_ = torch.cat([text_embeddings, input_], dim=1)
         # transformer_out = self.transformer(input_, model_state=model_state)
         transformer_out = self.transformer(input_, model_state)
@@ -196,6 +221,8 @@ class FlowLMModel(nn.Module):
             transformer_out = self.out_norm(transformer_out)
         # remove the prefix from the model outputs (condition is prepended)
         transformer_out = transformer_out[:, -sequence.shape[1] :]
+        if self.z_proj is not None:
+            transformer_out = self.z_proj(transformer_out)
         return transformer_out
 
     def _sample_next_latent(
@@ -236,7 +263,7 @@ class FlowLMModel(nn.Module):
         cls, config: FlowLMConfig, latent_dim: int, insert_bos_before_voice: bool
     ) -> Self:
         d_model = config.transformer.d_model
-        flow_mlp = SimpleMLPAdaLN.from_pydantic_config(config, latent_dim, d_model)
+        flow_mlp = SimpleMLPAdaLN.from_pydantic_config(config, latent_dim, config.z_dim or d_model)
 
         conditioner = LUTConditioner(
             n_bins=config.lookup_table.n_bins,
@@ -244,6 +271,7 @@ class FlowLMModel(nn.Module):
             dim=config.lookup_table.dim,
             output_dim=d_model,
             tokenizer=config.lookup_table.tokenizer,
+            rank=config.lookup_table.rank,
         )
 
         transformer = StreamingTransformer.from_pydantic_config(config.transformer)
@@ -257,4 +285,6 @@ class FlowLMModel(nn.Module):
             dtype=getattr(torch, config.dtype),
             insert_bos_before_voice=insert_bos_before_voice,
             flow_type=config.flow.type,
+            z_dim=config.z_dim,
+            num_voices=len(config.voices),
         )

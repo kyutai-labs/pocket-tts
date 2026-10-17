@@ -22,7 +22,6 @@ from typing_extensions import Self
 from pocket_tts.data.audio import audio_read
 from pocket_tts.data.audio_utils import convert_audio, end_on_pause
 from pocket_tts.default_parameters import (
-    DEFAULT_EOS_THRESHOLD,
     DEFAULT_LANGUAGE,
     DEFAULT_NOISE_CLAMP,
     DEFAULT_SAMPLER_DECODE_STEPS,
@@ -129,6 +128,11 @@ class TTSModel(nn.Module):
     @property
     def sample_rate(self) -> int:
         return self.config.mimi.sample_rate
+
+    @property
+    def voice_names(self) -> list[str]:
+        """The model's built-in voices, the first being its default; usually none."""
+        return self.config.flow_lm.voices
 
     @classmethod
     def _from_pydantic_config(
@@ -244,9 +248,10 @@ class TTSModel(nn.Module):
         # Load mimi weights from the config safetensors file with complete mapping for strict loading
 
         if config.mimi.weights_path is not None:
-            if config.flow_lm.weights_path is None:
+            if config.flow_lm.weights_path is None and config.weights_path is None:
                 raise ValueError(
-                    "If you specify mimi.weights_path you should specify flow_lm.weights_path"
+                    "If you specify mimi.weights_path you should specify flow_lm.weights_path "
+                    "or weights_path"
                 )
             logger.info(f"Loading Mimi weights from {config.mimi.weights_path}")
             mimi_state = get_mimi_state_dict(download_if_necessary(config.mimi.weights_path))
@@ -265,6 +270,10 @@ class TTSModel(nn.Module):
                 weights_file = download_if_necessary(config.weights_path_without_voice_cloning)
 
             state_dict = safetensors.torch.load_file(weights_file)
+            if config.mimi.weights_path is not None:
+                # mimi.weights_path, loaded above, replaces the Mimi weights of the bundle.
+                state_dict = {k: v for k, v in state_dict.items() if not k.startswith("mimi.")}
+                state_dict.update({f"mimi.{k}": v for k, v in tts_model.mimi.state_dict().items()})
             tts_model.load_state_dict(state_dict, strict=True)
 
         if config.flow_lm.weights_path is None and config.weights_path is None:
@@ -289,7 +298,7 @@ class TTSModel(nn.Module):
         temp: float | None = None,
         sampler_decode_steps: int = DEFAULT_SAMPLER_DECODE_STEPS,
         noise_clamp: float | None = DEFAULT_NOISE_CLAMP,
-        eos_threshold: float = DEFAULT_EOS_THRESHOLD,
+        eos_threshold: float | None = None,
         quantize: bool = False,
         checkpoint: str | Path | None = None,
         lsd_decode_steps: int | None = None,
@@ -316,7 +325,8 @@ class TTSModel(nn.Module):
             noise_clamp: Maximum value for noise sampling. If None, no clamping
                 is applied. Helps prevent extreme values in generation.
             eos_threshold: Threshold for end-of-sequence detection. Higher values
-                make the model more likely to continue generating.
+                make the model more likely to continue generating. If None, defaults to
+                the model's value from its config file (``default_eos_threshold``, -4.0).
             checkpoint: Optional training checkpoint (.pt) to load instead of the
                 config's safetensors weights, so any step of a run can be played
                 without exporting first. EMA weights are used when the checkpoint
@@ -369,6 +379,8 @@ class TTSModel(nn.Module):
         model_config = load_config(config_path)
         if temp is None:
             temp = model_config.default_temperature
+        if eos_threshold is None:
+            eos_threshold = model_config.default_eos_threshold
         logger.info(f"Loading model from config at {config_path}...")
 
         origin = Path(config_path)
@@ -469,7 +481,7 @@ class TTSModel(nn.Module):
         for module_name, module_state in model_state.items():
             if "cache" in module_state:
                 cache = module_state["cache"]
-                # KV cache has shape [2, batch_size, current_length, num_heads, dim_per_head]
+                # KV cache has shape [2, batch_size, current_length, num_kv_heads, dim_per_head]
                 current_length = cache.shape[2]
                 if current_length < sequence_length:
                     # Create expanded cache filled with NaN for unused positions
@@ -934,6 +946,7 @@ class TTSModel(nn.Module):
                 - Path: Local file path to audio file (or .safetensors)
                 - str: URL to download audio file (or .safetensors) from
                 - torch.Tensor: Pre-loaded audio tensor with shape [channels, samples]
+                - str: one of the model's built-in `voice_names`, which needs no audio
             truncate: Whether to truncate long audio prompts to 30 seconds.
                 Helps prevent memory issues with very long inputs. Defaults to False.
 
@@ -976,6 +989,10 @@ class TTSModel(nn.Module):
             - Processing time is logged for performance monitoring
             - The state preserves speaker characteristics for voice cloning
         """
+        if isinstance(audio_conditioning, str) and audio_conditioning in self.voice_names:
+            empty = torch.empty((1, 0, self.flow_lm.dim), device=self.device)
+            return self._prompt_state(empty, voice=audio_conditioning)
+
         if isinstance(audio_conditioning, (str, Path)) and _is_safetensors_source(
             audio_conditioning
         ):
@@ -1031,11 +1048,17 @@ class TTSModel(nn.Module):
         audio_conditioning = end_on_pause(audio_conditioning, self.config.mimi.sample_rate)
         with display_execution_time("Encoding audio prompt"):
             prompt = self._encode_audio(audio_conditioning.unsqueeze(0).to(self.device))
+        return self._prompt_state(prompt)
 
+    def _prompt_state(self, prompt: torch.Tensor, voice: str | None = None) -> ModelState:
+        """The state after reading `prompt` ([1, T, dim]), with built-in `voice` selected."""
         if self.flow_lm.insert_bos_before_voice:
             prompt = torch.cat([self.flow_lm.bos_before_voice, prompt], dim=1)
 
         model_state = init_states(self.flow_lm, batch_size=1, sequence_length=prompt.shape[1])
+        if voice is not None:
+            assert self.flow_lm.voice_table is not None
+            self.flow_lm.voice_table.select(model_state, self.voice_names.index(voice))
 
         with display_execution_time("Prompting audio"):
             self._run_flow_lm_and_increment_step(model_state=model_state, audio_conditioning=prompt)

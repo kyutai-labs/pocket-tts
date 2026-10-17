@@ -17,7 +17,6 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 
 from pocket_tts.data.audio import stream_audio_chunks
 from pocket_tts.default_parameters import (
-    DEFAULT_EOS_THRESHOLD,
     DEFAULT_FRAMES_AFTER_EOS,
     DEFAULT_NOISE_CLAMP,
     DEFAULT_SAMPLER_DECODE_STEPS,
@@ -171,6 +170,7 @@ def text_to_speech(
             or voice_url.startswith("https://")
             or voice_url.startswith("hf://")
             or voice_url in _ORIGINS_OF_PREDEFINED_VOICES
+            or voice_url in _loaded_model().voice_names
         ):
             raise HTTPException(
                 status_code=400, detail="voice_url must start with http://, https://, or hf://"
@@ -234,7 +234,8 @@ def serve(
         typer.Option(
             help="Voice used by requests that don't ask for one: a built-in voice name, "
             "a local path to an audio file or to a .safetensors voice, an https:// URL, "
-            "or an hf:// path. Defaults to the built-in voice of the language.",
+            "or an hf:// path. Defaults to the built-in voice of the language, or the "
+            "first voice of a model with built-in voices.",
             show_default=False,
         ),
     ] = None,
@@ -246,7 +247,9 @@ def serve(
 
     global tts_model, default_voice_state
     tts_model = TTSModel.load_model(language=language, config=config, quantize=quantize)
-    if default_voice is None:
+    if default_voice is None and tts_model.voice_names:
+        default_voice = tts_model.voice_names[0]
+    elif default_voice is None:
         default_voice = get_default_voice_for_language(language, config)
     # Resolved before serving: a voice that cannot be loaded fails at startup instead of on
     # the first request, which would otherwise pay for the encoding of the audio file.
@@ -272,7 +275,8 @@ def generate(
                 "'giovanni' for italian, 'lola' for spanish, 'juergen' for german, "
                 "'rafael' for portuguese, 'estelle' for french, 'alba' otherwise. "
                 "With the config or checkpoint argument, defaults to alba's audio file, "
-                "which any model can clone."
+                "which any model can clone. A model with built-in voices also takes one of "
+                "their names, and defaults to the first."
             ),
             show_default=False,
         ),
@@ -319,7 +323,10 @@ def generate(
     noise_clamp: Annotated[
         float | None, typer.Option(help="Noise clamp value")
     ] = DEFAULT_NOISE_CLAMP,
-    eos_threshold: Annotated[float, typer.Option(help="EOS threshold")] = DEFAULT_EOS_THRESHOLD,
+    eos_threshold: Annotated[
+        float | None,
+        typer.Option(help="EOS threshold. Defaults to the model's value from its config (-4.0)."),
+    ] = None,
     frames_after_eos: Annotated[
         int | None, typer.Option(help="Number of frames to generate after EOS")
     ] = DEFAULT_FRAMES_AFTER_EOS,
@@ -361,7 +368,9 @@ def generate(
         )
         tts_model.to(device)
 
-        if voice is None:
+        if voice is None and tts_model.voice_names:
+            voice = tts_model.voice_names[0]
+        elif voice is None:
             voice = get_default_voice_for_language(language, config, checkpoint)
         model_state_for_voice = tts_model.get_state_for_audio_prompt(voice)
         # Stream audio generation directly to file or stdout

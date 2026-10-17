@@ -133,7 +133,13 @@ class StreamingMultiheadAttention(StatefulModule):
     """
 
     def __init__(
-        self, embed_dim: int, num_heads: int, rope: RotaryEmbedding, context: int | None = None
+        self,
+        embed_dim: int,
+        num_heads: int,
+        rope: RotaryEmbedding,
+        context: int | None = None,
+        attn_dim: int | None = None,
+        num_kv_heads: int | None = None,
     ):
         super().__init__()
 
@@ -141,16 +147,18 @@ class StreamingMultiheadAttention(StatefulModule):
         self.rope = rope
         self.num_heads = num_heads
         self.context = context
-        self.dim_per_head = embed_dim // num_heads
-        self._cache_backend = _LinearKVCacheBackend(self.num_heads, self.dim_per_head)
+        # Queries and the attention output are attn_dim wide (embed_dim by default). Keys and
+        # values have num_kv_heads heads (num_heads by default), each shared by
+        # num_heads // num_kv_heads query heads (grouped-query attention); the cache holds those.
+        self.attn_dim = attn_dim or embed_dim
+        self.num_kv_heads = num_kv_heads or num_heads
+        assert self.attn_dim % num_heads == 0 and num_heads % self.num_kv_heads == 0
+        self.dim_per_head = self.attn_dim // num_heads
+        self._cache_backend = _LinearKVCacheBackend(self.num_kv_heads, self.dim_per_head)
 
-        out_dim = embed_dim
-        num_kv = num_heads
-        kv_dim = (embed_dim // num_heads) * num_kv
-        out_dim += 2 * kv_dim
-        mult = 1
-        self.in_proj = nn.Linear(embed_dim, mult * out_dim, bias=False)
-        self.out_proj = nn.Linear(embed_dim, mult * embed_dim, bias=False)
+        kv_dim = self.dim_per_head * self.num_kv_heads
+        self.in_proj = nn.Linear(embed_dim, self.attn_dim + 2 * kv_dim, bias=False)
+        self.out_proj = nn.Linear(self.attn_dim, embed_dim, bias=False)
 
     def init_state(self, batch_size: int, sequence_length: int) -> dict[str, torch.Tensor]:
         weight = self.in_proj.weight
@@ -176,16 +184,20 @@ class StreamingMultiheadAttention(StatefulModule):
         state = None if model_state is None else self.get_state(model_state)
 
         projected = self.in_proj(query)
-        # Reshape from (b, t, p*h*d) to (b, t, p, h, d) where p=3, h=num_heads
+        # Split (b, t, q + 2 * kv) into q (b, t, h, d) and k, v (b, t, h_kv, d)
         b, t, _ = projected.shape
         d = self.dim_per_head
-        packed = projected.view(b, t, 3, self.num_heads, d)
-        q, k, v = torch.unbind(packed, dim=2)
+        q = projected[..., : self.attn_dim].view(b, t, self.num_heads, d)
+        kv = projected[..., self.attn_dim :].view(b, t, 2, self.num_kv_heads, d)
+        k, v = torch.unbind(kv, dim=2)
         rope_offset = self._cache_backend.rope_offset(state, b, q.device)
         q, k = self.rope(q, k, offset=rope_offset)
         q = q.transpose(1, 2)
 
         k_attn, v_attn, pos_k, offset = self._cache_backend.append_and_get(k, v, state)
+        if self.num_kv_heads != self.num_heads:
+            k_attn = k_attn.repeat_interleave(self.num_heads // self.num_kv_heads, dim=1)
+            v_attn = v_attn.repeat_interleave(self.num_heads // self.num_kv_heads, dim=1)
         if attn_mask is not None:
             pass  # precomputed by the caller (stateless path)
         elif state is None:

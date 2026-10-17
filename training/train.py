@@ -30,6 +30,7 @@ from training.args import TrainArgs, dump_args, load_args, save_args
 from training.checkpointing import EMA, latest_checkpoint, load_checkpoint, save_checkpoint
 from training.dataloader import DataLoader, SubprocessDataLoader, encode_batch
 from training.distributed import (
+    average_grads,
     avg_across_ranks,
     get_rank,
     get_world_size,
@@ -37,8 +38,9 @@ from training.distributed import (
     is_torchrun,
     shutdown_distributed,
 )
-from training.modules.builders import build_models
+from training.modules.builders import build_models, load_model_config
 from training.modules.model import TrainableTTS
+from training.refl import Rewards, refl_loss
 from training.train_utils import (
     ProgressLog,
     _compile_models,
@@ -143,7 +145,11 @@ def setup(config_path: str) -> Run:
     )
 
     wrapped: nn.Module = model
-    if is_torchrun():
+    if is_torchrun() and args.refl.enabled:
+        # REFL averages its gradients itself; the ranks start from rank 0's weights, as under DDP.
+        for t in model.state_dict().values():
+            torch.distributed.broadcast(t, 0)
+    elif is_torchrun():
         wrapped = DDP(model, device_ids=[device.index], find_unused_parameters=not args.compile)
     if args.compile:
         _compile_models(model, mimi)
@@ -191,12 +197,14 @@ def main(config_path: str):
         num_bucket_batches=args.data.num_bucket_batches,
         prompt_trim_max_sec=args.data.prompt_trim_max_sec,
         final_punct_dropout=args.data.final_punct_dropout,
+        voices=builtin_voices(args),
     )
     train_loader = iter(train_data)
 
     autocast = torch.autocast(
         device_type=device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"
     )
+    refl_rewards = Rewards(args.refl, device, mimi) if args.refl.enabled else None
     model.train()
     # scancel sends SIGTERM 30s (KillWait) before SIGKILL; finish the step and
     # checkpoint inside that window so a cancelled job resumes losslessly.
@@ -213,6 +221,7 @@ def main(config_path: str):
     last_log = time.time()
     steps_since_log = 0
     sample_voice = None
+    sample_voice_id: int | None = None
     for step in range(start_step, args.max_steps):
         step_start = time.time()
         lr = lr_at(step, args)
@@ -232,7 +241,23 @@ def main(config_path: str):
                     voice_prompt_latents,
                     update_stats=step < args.stats_ema_steps,
                     num_voice_prompt_frames=num_voice_prompt_frames,
+                    voice_ids=batch.voice_ids,
                 )
+            if refl_rewards is not None:
+                reward_loss, refl_stats = refl_loss(
+                    model,
+                    sentence_piece.decode,
+                    batch.text_tokens,
+                    voice_prompt_latents,
+                    num_voice_prompt_frames,
+                    batch.voice_ids,
+                    mask,
+                    refl_rewards,
+                    args.refl,
+                )
+                metrics.update(refl_stats)
+                if reward_loss is not None:
+                    loss = loss + reward_loss
             # Under DDP, allreduce only on the last micro-batch.
             last_micro = micro == args.grad_accum_steps - 1
             scaled = loss / args.grad_accum_steps
@@ -241,6 +266,8 @@ def main(config_path: str):
                     scaled.backward()
             else:
                 scaled.backward()
+        if refl_rewards is not None and run.world_size > 1:
+            average_grads([p for p in model.parameters() if p.requires_grad])
         grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), args.optim.max_norm)
         if not torch.isfinite(grad_norm):
             # Stop before the NaN reaches the weights: the run would otherwise
@@ -287,13 +314,25 @@ def main(config_path: str):
         if sample_voice is None:
             n = int(num_voice_prompt_frames[0])
             sample_voice = voice_prompt_latents[0, :n].detach().clone()
+            if batch.voice_ids is not None:
+                sample_voice_id = int(batch.voice_ids[0])
         if (
             rank == 0
             and args.sample_sentences
             and args.sample_freq > 0
             and (step + 1) % args.sample_freq == 0
         ):
-            write_samples(model, mimi, tokenize, args, args.run_dir, step + 1, sample_voice, device)
+            write_samples(
+                model,
+                mimi,
+                tokenize,
+                args,
+                args.run_dir,
+                step + 1,
+                sample_voice,
+                device,
+                voice_id=sample_voice_id,
+            )
 
         if (step + 1) % args.valid_freq == 0 and args.data.valid_jsonl:
             valid_metrics = validate(model, mimi, args, device, rank, run.world_size, step + 1)
@@ -314,6 +353,11 @@ def main(config_path: str):
         logger.info("done")
     train_data.close()
     shutdown_distributed()
+
+
+def builtin_voices(args: TrainArgs) -> tuple[str, ...]:
+    """The model's built-in voices (flow_lm.voices): manifest entries then name theirs."""
+    return tuple(load_model_config(args.model_config, args.model_overrides).flow_lm.voices)
 
 
 @torch.no_grad()
@@ -341,6 +385,7 @@ def validate(
             world_size,
             seed=0,
             shuffle=False,
+            voices=builtin_voices(args),
         )
     )
     autocast = torch.autocast(
@@ -363,6 +408,7 @@ def validate(
                 batch.text_tokens,
                 voice_prompt_latents,
                 num_voice_prompt_frames=num_voice_prompt_frames,
+                voice_ids=batch.voice_ids,
             )
         for k, v in metrics.items():
             if v.numel() == 1:

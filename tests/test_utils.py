@@ -33,3 +33,27 @@ def test_shipped_configs_sample_at_the_tuned_temperature(config_path: Path):
     from pocket_tts.utils.config import load_config
 
     assert load_config(config_path).default_temperature == 0.3
+
+
+def test_eos_threshold_defaults_to_the_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """load_model takes the EOS threshold from the config unless the caller passes one."""
+    import yaml
+
+    from pocket_tts import TTSModel
+    from pocket_tts.default_parameters import DEFAULT_EOS_THRESHOLD
+
+    config = Path(__file__).parent.parent / "pocket_tts" / "config" / "english.yaml"
+    custom = tmp_path / "custom.yaml"
+    custom.write_text(
+        yaml.safe_dump({**yaml.safe_load(config.read_text()), "default_eos_threshold": -1.0})
+    )
+    seen = []
+    monkeypatch.setattr(
+        TTSModel,
+        "_from_pydantic_config_with_weights",
+        classmethod(lambda cls, cfg, temp, steps, clamp, eos, origin: seen.append(eos)),
+    )
+    TTSModel.load_model(config=config)
+    TTSModel.load_model(config=custom)
+    TTSModel.load_model(config=custom, eos_threshold=-2.0)
+    assert seen == [DEFAULT_EOS_THRESHOLD, -1.0, -2.0]

@@ -26,6 +26,7 @@ from pocket_tts.default_parameters import (
     get_default_voice_for_language,
 )
 from pocket_tts.models.model_state import export_model_state
+from pocket_tts.models.pronunciation import load_pronunciations
 from pocket_tts.models.tts_model import TTSModel
 from pocket_tts.modules.stateful_module import ModelState
 from pocket_tts.utils.logging_utils import enable_logging
@@ -333,6 +334,13 @@ def generate(
     quantize: Annotated[
         bool, typer.Option(help="Apply int8 quantization to reduce memory usage")
     ] = False,
+    pronunciations: Annotated[
+        str | None,
+        typer.Option(
+            help="Path to a JSON file mapping words to respellings, "
+            'e.g. {"live": "lyve"}, to fix mispronounced words'
+        ),
+    ] = None,
 ):
     """Generate speech using Kyutai Pocket TTS."""
     if lsd_decode_steps is not None:
@@ -349,6 +357,8 @@ def generate(
         if not text.strip():
             logger.error("No input received from stdin.")
             raise typer.Exit(code=1)
+        # Load the lexicon before the model so that a bad file fails fast.
+        lexicon = load_pronunciations(pronunciations) if pronunciations else None
         tts_model = TTSModel.load_model(
             language=language,
             config=config,
@@ -370,6 +380,7 @@ def generate(
             text_to_generate=text,
             frames_after_eos=frames_after_eos,
             max_tokens=max_tokens,
+            pronunciations=lexicon,
         )
 
         stream_audio_chunks(output_path, audio_chunks, tts_model.config.mimi.sample_rate)

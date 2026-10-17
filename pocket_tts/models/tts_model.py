@@ -31,6 +31,7 @@ from pocket_tts.default_parameters import (
 from pocket_tts.models.flow_lm import FlowLMModel
 from pocket_tts.models.mimi import build_mimi
 from pocket_tts.models.model_state import _import_model_state, _is_safetensors_source
+from pocket_tts.models.pronunciation import apply_pronunciations
 from pocket_tts.models.text_chunking import prepare_text_prompt, split_into_best_sentences
 from pocket_tts.modules.stateful_module import (
     ModelState,
@@ -579,6 +580,7 @@ class TTSModel(nn.Module):
         max_tokens: int = MAX_TOKEN_PER_CHUNK,
         frames_after_eos: int | None = None,
         copy_state: bool = True,
+        pronunciations: dict[str, str] | None = None,
     ) -> torch.Tensor:
         """Generate complete audio tensor from text input.
 
@@ -602,6 +604,11 @@ class TTSModel(nn.Module):
             copy_state: Whether to create a deep copy of the model state before
                 generation. If True, preserves the original state for reuse.
                 If False, modifies the input state in-place. Defaults to True.
+            pronunciations: Optional lexicon mapping words to respellings, applied
+                before the text is tokenized, e.g. ``{"live": "lyve"}``. Matching is
+                case-insensitive and on whole words; entries may contain several words.
+                The model reads graphemes, not phonemes, so values are spellings that
+                the model pronounces as intended.
 
         Returns:
             torch.Tensor: Generated audio tensor with shape [channels, samples]
@@ -635,6 +642,7 @@ class TTSModel(nn.Module):
             frames_after_eos=frames_after_eos,
             copy_state=copy_state,
             max_tokens=max_tokens,
+            pronunciations=pronunciations,
         ):
             audio_chunks.append(chunk)
         return torch.cat(audio_chunks, dim=0)
@@ -648,6 +656,7 @@ class TTSModel(nn.Module):
         frames_after_eos: int | None = None,
         copy_state: bool = True,
         stop: threading.Event | None = None,
+        pronunciations: dict[str, str] | None = None,
     ) -> Iterator[torch.Tensor]:
         """Generate audio streaming chunks from text input.
 
@@ -673,6 +682,11 @@ class TTSModel(nn.Module):
             stop: Optional event for cancelling the generation, for instance
                 when the user interrupts the playback. Once set, no new frames
                 are generated and the stream ends early.
+            pronunciations: Optional lexicon mapping words to respellings, applied
+                before the text is tokenized, e.g. ``{"live": "lyve"}``. Matching is
+                case-insensitive and on whole words; entries may contain several words.
+                The model reads graphemes, not phonemes, so values are spellings that
+                the model pronounces as intended.
 
         Yields:
             torch.Tensor: Audio chunks with shape [samples] at the model's
@@ -711,6 +725,7 @@ class TTSModel(nn.Module):
         # by using teacher forcing, but it would be a bit slower.
         # TODO: add the teacher forcing method for long texts where we use the audio of one chunk
         # as conditioning for the next chunk.
+        text_to_generate = apply_pronunciations(text_to_generate, pronunciations)
         chunks = split_into_best_sentences(
             self.flow_lm.conditioner.tokenizer,
             text_to_generate,

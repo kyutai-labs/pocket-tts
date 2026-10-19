@@ -61,7 +61,6 @@ class TrainableTTS(nn.Module):
         text_tokens: list[torch.Tensor],
         voice_latents: torch.Tensor,
         num_voice_prompt_frames: torch.Tensor | None,
-        voice_ids: torch.Tensor | None,
         cfg_dropout: bool,
         force_null: bool = False,
     ) -> torch.Tensor:
@@ -75,7 +74,6 @@ class TrainableTTS(nn.Module):
             num_voice_prompt_frames=num_voice_prompt_frames,
             fl=module,
             force_null=force_null,
-            voice_ids=voice_ids,
         )
         out = module.out_norm(module.transformer(x, model_state=None))
         if module.z_proj is not None:
@@ -93,7 +91,6 @@ class TrainableTTS(nn.Module):
         update_stats: bool = False,
         num_voice_prompt_frames: torch.Tensor
         | None = None,  # [B] valid voice frames (rest is padding)
-        voice_ids: torch.Tensor | None = None,  # [B] built-in voices, with a voice table
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         fl = self.flow_lm
         C = latents.shape[-1]
@@ -101,13 +98,7 @@ class TrainableTTS(nn.Module):
             self._update_latent_stats(latents, mask)
         normalized_latents = (latents - fl.emb_mean) / fl.emb_std
 
-        inputs = (
-            normalized_latents,
-            text_tokens,
-            voice_latents,
-            num_voice_prompt_frames,
-            voice_ids,
-        )
+        inputs = (normalized_latents, text_tokens, voice_latents, num_voice_prompt_frames)
 
         if self.head_teacher is not None:
             with torch.no_grad():
@@ -213,7 +204,6 @@ class TrainableTTS(nn.Module):
         cfg_coef: float = 1.0,
         eos_threshold: float = -1.0,
         eos_countdown: int = 1,
-        voice_ids: list[int] | None = None,
         noises: list[torch.Tensor] | None = None,  # if given, collects each step's [B, C] noise
     ) -> list[torch.Tensor]:
         """Sample a batch of utterances with arbitrary prefix lengths.
@@ -221,9 +211,6 @@ class TrainableTTS(nn.Module):
         Rows are right-aligned (padded on the left) so every row's first audio
         frame lands on the same step; the padding is masked out via the
         per-row `pad` entry in the streaming state.
-
-        With a voice table, `voice_ids` gives each row's built-in voice (usually with an
-        empty voice prompt); the CFG null branch gets none.
         """
         fl = self.flow_lm
         device = fl.bos_emb.device
@@ -257,17 +244,12 @@ class TrainableTTS(nn.Module):
             set_state_padding(st, pd)
             states.append(st)
         first_step = True  # the prefixes are fed along with the first latent
-        # Added to every audio frame of each branch: the rows' built-in voices, or nothing.
-        frame_terms: list[torch.Tensor | float] = [0.0] * len(prefixes)
-        if voice_ids is not None:
-            assert fl.voice_table is not None, "voice_ids given but the model has no voice table"
-            frame_terms[0] = fl.voice_table.embed(torch.tensor(voice_ids, device=device))[:, None]
 
         def run(x_lat: torch.Tensor) -> torch.Tensor:
             nonlocal first_step
             zs = []
             for i, st in enumerate(states):
-                inp = fl.input_linear(x_lat) + frame_terms[i]
+                inp = fl.input_linear(x_lat)
                 if first_step:
                     inp = torch.cat([prefixes[i], inp], dim=1)
                 out = fl.out_norm(fl.transformer(inp, st))

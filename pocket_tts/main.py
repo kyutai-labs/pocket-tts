@@ -170,7 +170,6 @@ def text_to_speech(
             or voice_url.startswith("https://")
             or voice_url.startswith("hf://")
             or voice_url in _ORIGINS_OF_PREDEFINED_VOICES
-            or voice_url in _loaded_model().voice_names
         ):
             raise HTTPException(
                 status_code=400, detail="voice_url must start with http://, https://, or hf://"
@@ -234,8 +233,7 @@ def serve(
         typer.Option(
             help="Voice used by requests that don't ask for one: a built-in voice name, "
             "a local path to an audio file or to a .safetensors voice, an https:// URL, "
-            "or an hf:// path. Defaults to the built-in voice of the language, or the "
-            "first voice of a model with built-in voices.",
+            "or an hf:// path. Defaults to the built-in voice of the language.",
             show_default=False,
         ),
     ] = None,
@@ -247,9 +245,7 @@ def serve(
 
     global tts_model, default_voice_state
     tts_model = TTSModel.load_model(language=language, config=config, quantize=quantize)
-    if default_voice is None and tts_model.voice_names:
-        default_voice = tts_model.voice_names[0]
-    elif default_voice is None:
+    if default_voice is None:
         default_voice = get_default_voice_for_language(language, config)
     # Resolved before serving: a voice that cannot be loaded fails at startup instead of on
     # the first request, which would otherwise pay for the encoding of the audio file.
@@ -275,8 +271,7 @@ def generate(
                 "'giovanni' for italian, 'lola' for spanish, 'juergen' for german, "
                 "'rafael' for portuguese, 'estelle' for french, 'alba' otherwise. "
                 "With the config or checkpoint argument, defaults to alba's audio file, "
-                "which any model can clone. A model with built-in voices also takes one of "
-                "their names, and defaults to the first."
+                "which any model can clone."
             ),
             show_default=False,
         ),
@@ -368,9 +363,7 @@ def generate(
         )
         tts_model.to(device)
 
-        if voice is None and tts_model.voice_names:
-            voice = tts_model.voice_names[0]
-        elif voice is None:
+        if voice is None:
             voice = get_default_voice_for_language(language, config, checkpoint)
         model_state_for_voice = tts_model.get_state_for_audio_prompt(voice)
         # Stream audio generation directly to file or stdout

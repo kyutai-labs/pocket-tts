@@ -67,9 +67,6 @@ class FlowLMConfig(StrictModel):
     lookup_table: LookupTable
     weights_path: str | None = None
     insert_bos_before_voice: bool = False
-    # Built-in voices: one learned embedding per name, added to every audio frame. A voice is
-    # selected by name, without an audio prompt (TTSModel.voice_names).
-    voices: list[str] = []
 
 
 # SEANet configuration

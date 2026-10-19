@@ -185,7 +185,7 @@ class SimpleMLPAdaLN(nn.Module):
             num_time_conds = 2
         elif config.type == "flow_matching":
             num_time_conds = 1
-        elif config.type == "drifting":
+        elif config.type in ("drifting", "pointwise"):
             num_time_conds = 0
         else:
             raise ValueError(f"Unknown flow type: {config.type}")

@@ -4,6 +4,7 @@ import pytest
 
 from pocket_tts.models.tts_model import prepare_text_prompt, split_into_best_sentences
 from pocket_tts.modules.text_conditioner import Tokenizer, get_default_tokenizer
+from pocket_tts.utils.config import CONFIGS_DIR, load_config
 
 
 @pytest.fixture(scope="session")
@@ -278,3 +279,23 @@ def test_replace_characters_rewrites_unseen_characters_before_capitalizing():
     # Empty by default: shipped configs that don't set it are unchanged.
     got, _ = prepare_text_prompt('"Yes," she said.', False, False)
     assert got == '"Yes," she said.'
+
+
+@pytest.mark.parametrize("language", ["german", "german_24l"])
+def test_german_dashes_become_commas(language: str):
+    """The German tokenizers have no en or em dash, so each one became three byte-fallback tokens
+    and generation often stopped right before it (#346). They are read as a comma instead."""
+    replace_characters = load_config(CONFIGS_DIR / f"{language}.yaml").replace_characters
+
+    got, _ = prepare_text_prompt(
+        "„Können Delfine denken?“ – „Das wage ich nicht.“ — Nun, vielleicht",
+        False,
+        True,
+        replace_characters=replace_characters,
+    )
+    assert got == "Können Delfine denken? Das wage ich nicht. Nun, vielleicht."
+
+    got, _ = prepare_text_prompt(
+        "Heute fährt Tom – nach Berlin", False, True, replace_characters=replace_characters
+    )
+    assert got == "Heute fährt Tom , nach Berlin."

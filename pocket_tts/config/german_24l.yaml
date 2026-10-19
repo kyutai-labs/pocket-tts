@@ -15,6 +15,9 @@ replace_characters:
   ')': ''
   '[': ''
   ']': ''
+  # Not in the tokenizer (byte fallback); left in, they cut the speech short (#346).
+  '–': ','
+  '—': ','
 
 flow_lm:
   insert_bos_before_voice: true

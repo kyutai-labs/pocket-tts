@@ -108,7 +108,7 @@ class StreamingTransformer(nn.Module):
 
     @classmethod
     def from_pydantic_config(cls, config: FlowLMTransformerConfig) -> Self:
-        dim_feedforward = int(config.d_model * config.hidden_scale)
+        dim_feedforward = config.dim_feedforward or int(config.d_model * config.hidden_scale)
         return cls(
             d_model=config.d_model,
             num_heads=config.num_heads,

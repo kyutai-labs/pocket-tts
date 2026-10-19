@@ -182,3 +182,27 @@ def test_mimi_decoder_with_its_own_dims(tmp_path: Path):
     path = tmp_path / "mimi.safetensors"
     safetensors.torch.save_file({f"mimi.{k}": v for k, v in mimi.state_dict().items()}, path)
     build_mimi(small).load_state_dict(get_mimi_state_dict(path), strict=True)
+
+
+def test_explicit_feed_forward_width():
+    flow_lm = build_flow_lm(**{"transformer.dim_feedforward": 48})
+    weights = flow_lm.state_dict()
+    assert weights["transformer.layers.0.linear1.weight"].shape == (48, 64)
+    assert weights["transformer.layers.0.linear2.weight"].shape == (64, 48)
+    default = build_flow_lm().state_dict()["transformer.layers.0.linear1.weight"]
+    assert default.shape == (64 * 4, 64)  # d_model * hidden_scale
+    assert sample_latents(flow_lm).isfinite().all()
+
+
+def test_pointwise_head_is_lsd_one_step_without_time_conditions():
+    pointwise = build_flow_lm(**{"flow.type": "pointwise"})
+    assert pointwise.flow_net.num_time_conds == 0
+    # The same head as an LSD head whose time embeddings are zero: one LSD step is then
+    # the noise plus the head's output for it.
+    lsd = build_flow_lm()
+    state = lsd.state_dict()
+    for k, v in state.items():
+        if k.startswith("flow_net.time_embed.") and not k.endswith("freqs"):
+            v.zero_()
+    lsd.load_state_dict({**state, **pointwise.state_dict()}, strict=True)
+    assert torch.equal(sample_latents(pointwise), sample_latents(lsd))

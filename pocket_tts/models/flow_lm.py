@@ -46,6 +46,11 @@ def drifting_decode(v_t: FlowNet, x_0: torch.Tensor, num_steps: int = 1) -> torc
     return v_t(x_0)
 
 
+def pointwise_decode(v_t: FlowNet, x_0: torch.Tensor, num_steps: int = 1) -> torch.Tensor:
+    """One-step head without time conditions, LSD-style: the noise plus the head's output."""
+    return x_0 + v_t(x_0)
+
+
 def ot_decode(v_t: FlowNet, x_0: torch.Tensor, num_steps: int = 16) -> torch.Tensor:
     """Euler integration of an optimal-transport conditional flow.
 
@@ -195,6 +200,8 @@ class FlowLMModel(nn.Module):
             decode = ot_decode
         elif self.flow_type == "drifting":
             decode = drifting_decode
+        elif self.flow_type == "pointwise":
+            decode = pointwise_decode
         else:
             raise ValueError(f"Unknown flow type: {self.flow_type}")
         return decode(conditioned_flow, noise, sampler_decode_steps), out_eos

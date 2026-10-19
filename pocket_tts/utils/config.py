@@ -20,8 +20,9 @@ class FlowConfig(StrictModel):
     dim: int
     depth: int
     # "lsd" (2 time conditions, 1-step decode), "flow_matching" (1 time
-    # condition, Euler integration; needs >= 16 decode steps) or "drifting"
-    # (no time condition, the head maps noise to a sample in one step).
+    # condition, Euler integration; needs >= 16 decode steps), "drifting"
+    # (no time condition, the head maps noise to a sample in one step) or "pointwise"
+    # (no time condition, one step: the noise plus the head's output, i.e. LSD's 0 -> 1 step).
     type: str = "lsd"
 
 
@@ -36,6 +37,8 @@ class FlowLMTransformerConfig(StrictModel):
     attn_dim: int | None = None
     # Key/value heads, each shared by num_heads // num_kv_heads query heads; num_heads when None.
     num_kv_heads: int | None = None
+    # Hidden width of the feed-forward layers; d_model * hidden_scale when None.
+    dim_feedforward: int | None = None
 
 
 class LookupTable(StrictModel):

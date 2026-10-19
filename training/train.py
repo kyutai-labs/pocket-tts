@@ -38,7 +38,7 @@ from training.distributed import (
     is_torchrun,
     shutdown_distributed,
 )
-from training.modules.builders import build_models, load_model_config
+from training.modules.builders import build_models
 from training.modules.model import TrainableTTS
 from training.refl import Rewards, refl_loss
 from training.train_utils import (
@@ -197,7 +197,6 @@ def main(config_path: str):
         num_bucket_batches=args.data.num_bucket_batches,
         prompt_trim_max_sec=args.data.prompt_trim_max_sec,
         final_punct_dropout=args.data.final_punct_dropout,
-        voices=builtin_voices(args),
     )
     train_loader = iter(train_data)
 
@@ -221,7 +220,6 @@ def main(config_path: str):
     last_log = time.time()
     steps_since_log = 0
     sample_voice = None
-    sample_voice_id: int | None = None
     for step in range(start_step, args.max_steps):
         step_start = time.time()
         lr = lr_at(step, args)
@@ -241,7 +239,6 @@ def main(config_path: str):
                     voice_prompt_latents,
                     update_stats=step < args.stats_ema_steps,
                     num_voice_prompt_frames=num_voice_prompt_frames,
-                    voice_ids=batch.voice_ids,
                 )
             if refl_rewards is not None:
                 reward_loss, refl_stats = refl_loss(
@@ -250,7 +247,6 @@ def main(config_path: str):
                     batch.text_tokens,
                     voice_prompt_latents,
                     num_voice_prompt_frames,
-                    batch.voice_ids,
                     mask,
                     refl_rewards,
                     args.refl,
@@ -314,25 +310,13 @@ def main(config_path: str):
         if sample_voice is None:
             n = int(num_voice_prompt_frames[0])
             sample_voice = voice_prompt_latents[0, :n].detach().clone()
-            if batch.voice_ids is not None:
-                sample_voice_id = int(batch.voice_ids[0])
         if (
             rank == 0
             and args.sample_sentences
             and args.sample_freq > 0
             and (step + 1) % args.sample_freq == 0
         ):
-            write_samples(
-                model,
-                mimi,
-                tokenize,
-                args,
-                args.run_dir,
-                step + 1,
-                sample_voice,
-                device,
-                voice_id=sample_voice_id,
-            )
+            write_samples(model, mimi, tokenize, args, args.run_dir, step + 1, sample_voice, device)
 
         if (step + 1) % args.valid_freq == 0 and args.data.valid_jsonl:
             valid_metrics = validate(model, mimi, args, device, rank, run.world_size, step + 1)
@@ -353,11 +337,6 @@ def main(config_path: str):
         logger.info("done")
     train_data.close()
     shutdown_distributed()
-
-
-def builtin_voices(args: TrainArgs) -> tuple[str, ...]:
-    """The model's built-in voices (flow_lm.voices): manifest entries then name theirs."""
-    return tuple(load_model_config(args.model_config, args.model_overrides).flow_lm.voices)
 
 
 @torch.no_grad()
@@ -385,7 +364,6 @@ def validate(
             world_size,
             seed=0,
             shuffle=False,
-            voices=builtin_voices(args),
         )
     )
     autocast = torch.autocast(
@@ -408,7 +386,6 @@ def validate(
                 batch.text_tokens,
                 voice_prompt_latents,
                 num_voice_prompt_frames=num_voice_prompt_frames,
-                voice_ids=batch.voice_ids,
             )
         for k, v in metrics.items():
             if v.numel() == 1:

@@ -104,7 +104,6 @@ def refl_loss(
     text_tokens: list[torch.Tensor],
     voice: torch.Tensor,  # [B, Tv, C] voice prompt latents
     num_voice_prompt_frames: torch.Tensor,  # [B]
-    voice_ids: torch.Tensor | None,  # [B] built-in voices, with a voice table
     mask: torch.Tensor,  # [B, T] the real rows' valid frames
     rewards: Rewards,
     ra: ReflArgs,
@@ -121,7 +120,6 @@ def refl_loss(
     R = len(rows)
     toks = [text_tokens[b] for b in rows]
     voice, nvf = voice[rows], num_voice_prompt_frames[rows]
-    vids = voice_ids[rows].to(device) if voice_ids is not None else None
     max_frames = int(ra.max_sec * mimi.frame_rate)
     noises: list[torch.Tensor] = []
     outs = model.generate(
@@ -129,7 +127,6 @@ def refl_loss(
         [voice[b, : int(nvf[b])] for b in range(R)],
         max_frames=max_frames,
         temp=ra.temp,
-        voice_ids=vids.tolist() if vids is not None else None,
         noises=noises,
     )
     lens = [o.shape[0] for o in outs]
@@ -146,7 +143,7 @@ def refl_loss(
     noise = torch.stack(noises[:T], dim=1)
     lens_t = torch.tensor(lens, device=device)
     valid = torch.arange(T, device=device)[None, :] < lens_t[:, None]
-    z = model.backbone_z(fl, norm, toks, voice, nvf, vids, cfg_dropout=False)
+    z = model.backbone_z(fl, norm, toks, voice, nvf, cfg_dropout=False)
     x = model.flow.decode(partial(fl.flow_net, z.float()), noise.float(), 1)
     stats["refl_parity"] = (x.detach() - norm)[valid].abs().max()  # ~0: x is the rollout
     # Frames past a row's end repeat its last frame; the decoder is causal, so they

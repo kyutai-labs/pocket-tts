@@ -129,11 +129,6 @@ class TTSModel(nn.Module):
     def sample_rate(self) -> int:
         return self.config.mimi.sample_rate
 
-    @property
-    def voice_names(self) -> list[str]:
-        """The model's built-in voices, the first being its default; usually none."""
-        return self.config.flow_lm.voices
-
     @classmethod
     def _from_pydantic_config(
         cls,
@@ -946,7 +941,6 @@ class TTSModel(nn.Module):
                 - Path: Local file path to audio file (or .safetensors)
                 - str: URL to download audio file (or .safetensors) from
                 - torch.Tensor: Pre-loaded audio tensor with shape [channels, samples]
-                - str: one of the model's built-in `voice_names`, which needs no audio
             truncate: Whether to truncate long audio prompts to 30 seconds.
                 Helps prevent memory issues with very long inputs. Defaults to False.
 
@@ -989,10 +983,6 @@ class TTSModel(nn.Module):
             - Processing time is logged for performance monitoring
             - The state preserves speaker characteristics for voice cloning
         """
-        if isinstance(audio_conditioning, str) and audio_conditioning in self.voice_names:
-            empty = torch.empty((1, 0, self.flow_lm.dim), device=self.device)
-            return self._prompt_state(empty, voice=audio_conditioning)
-
         if isinstance(audio_conditioning, (str, Path)) and _is_safetensors_source(
             audio_conditioning
         ):
@@ -1048,17 +1038,11 @@ class TTSModel(nn.Module):
         audio_conditioning = end_on_pause(audio_conditioning, self.config.mimi.sample_rate)
         with display_execution_time("Encoding audio prompt"):
             prompt = self._encode_audio(audio_conditioning.unsqueeze(0).to(self.device))
-        return self._prompt_state(prompt)
 
-    def _prompt_state(self, prompt: torch.Tensor, voice: str | None = None) -> ModelState:
-        """The state after reading `prompt` ([1, T, dim]), with built-in `voice` selected."""
         if self.flow_lm.insert_bos_before_voice:
             prompt = torch.cat([self.flow_lm.bos_before_voice, prompt], dim=1)
 
         model_state = init_states(self.flow_lm, batch_size=1, sequence_length=prompt.shape[1])
-        if voice is not None:
-            assert self.flow_lm.voice_table is not None
-            self.flow_lm.voice_table.select(model_state, self.voice_names.index(voice))
 
         with display_execution_time("Prompting audio"):
             self._run_flow_lm_and_increment_step(model_state=model_state, audio_conditioning=prompt)

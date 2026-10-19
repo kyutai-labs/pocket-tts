@@ -114,7 +114,6 @@ def residual_axes(state: Tensors) -> dict[str, int]:
         "bos_before_voice": 2,
         "speaker_proj_weight": 0,
         "input_linear.weight": 0,
-        "voice_table.embed.weight": 1,
         "conditioner.proj.weight": 0,  # low-rank text table
         # The full text table, unless the low-rank one's projection carries d_model.
         **({} if "conditioner.proj.weight" in state else {"conditioner.embed.weight": 1}),

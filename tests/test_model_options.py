@@ -8,7 +8,6 @@ import torch
 
 from pocket_tts.models.flow_lm import FlowLMModel
 from pocket_tts.models.mimi import build_mimi
-from pocket_tts.models.tts_model import TTSModel, stamp_state_names
 from pocket_tts.modules.attention import StreamingMultiheadAttention
 from pocket_tts.modules.rope import RotaryEmbedding
 from pocket_tts.modules.stateful_module import StatefulModule, increment_steps, init_states
@@ -45,15 +44,10 @@ def stamp(model: M) -> M:
 
 
 @torch.no_grad()
-def sample_latents(
-    flow_lm: FlowLMModel, num_frames: int = 3, voice: int | None = None
-) -> torch.Tensor:
+def sample_latents(flow_lm: FlowLMModel, num_frames: int = 3) -> torch.Tensor:
     """[num_frames, ldim] latents generated after a short text, streaming one frame at a time."""
     torch.manual_seed(1)
     state = init_states(flow_lm, batch_size=1, sequence_length=32)
-    if voice is not None:
-        assert flow_lm.voice_table is not None
-        flow_lm.voice_table.select(state, voice)
     text = flow_lm.conditioner(flow_lm.conditioner.prepare("Hello world."))
     latent = torch.full((1, 1, flow_lm.ldim), float("nan"))
     latents = []
@@ -116,38 +110,6 @@ def test_low_rank_text_table():
     expected = conditioner.embed.weight[tokens] @ conditioner.proj.weight.T
     torch.testing.assert_close(conditioner(tokens), expected)
     assert sample_latents(flow_lm).isfinite().all()
-
-
-def test_voice_table_adds_the_selected_voice_to_audio_frames():
-    flow_lm = build_flow_lm(voices=["first", "second"])
-    assert flow_lm.voice_table is not None
-    assert flow_lm.voice_table.embed.weight.shape == (2, 64)
-    first, second = sample_latents(flow_lm, voice=0), sample_latents(flow_lm, voice=1)
-    assert not torch.allclose(first, second)
-    # A zero embedding is no voice at all.
-    flow_lm.voice_table.embed.weight.data[0] = 0
-    without_table = build_flow_lm()
-    without_table.load_state_dict(
-        {k: v for k, v in flow_lm.state_dict().items() if not k.startswith("voice_table.")}
-    )
-    torch.testing.assert_close(sample_latents(flow_lm, voice=0), sample_latents(without_table))
-
-
-def test_builtin_voice_by_name():
-    config = load_config(CONFIGS_DIR / "english.yaml")
-    flow_lm = build_flow_lm(voices=["first", "second"])
-    config.flow_lm.voices = ["first", "second"]
-    tts_model = TTSModel(flow_lm, 0.3, 1, None, -4.0, config)
-    tts_model.mimi = build_mimi(config.mimi)
-    stamp_state_names(tts_model)
-    assert tts_model.voice_names == ["first", "second"]
-    state = tts_model.get_state_for_audio_prompt("second")
-    assert flow_lm.voice_table is not None
-    torch.testing.assert_close(
-        state["voice_table"]["embedding"][0, 0], flow_lm.voice_table.embed.weight[1]
-    )
-    # The prompt is just the BOS frame.
-    assert int(state["transformer.layers.0.self_attn"]["offset"]) == 1
 
 
 @torch.no_grad()

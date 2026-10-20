@@ -73,7 +73,7 @@ def _loaded_model() -> TTSModel:
 async def root() -> str:
     """Serve the frontend."""
     static_path = Path(__file__).parent / "static" / "index.html"
-    content = static_path.read_text()
+    content = static_path.read_text(encoding="utf-8")
     # Replace the placeholder with the actual default text prompt
     origin = str(_loaded_model().origin)
     print(origin)

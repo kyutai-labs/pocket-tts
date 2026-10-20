@@ -31,6 +31,12 @@ pub struct FlowLMTransformerConfig {
     pub d_model: usize,
     pub num_heads: usize,
     pub num_layers: usize,
+    #[serde(default)]
+    pub dim_feedforward: Option<usize>,
+    #[serde(default)]
+    pub attn_dim: Option<usize>,
+    #[serde(default)]
+    pub num_kv_heads: Option<usize>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -40,6 +46,8 @@ pub struct LookupTable {
     pub n_bins: usize,
     pub tokenizer: String,
     pub tokenizer_path: String,
+    #[serde(default)]
+    pub rank: Option<usize>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -55,6 +63,8 @@ pub struct FlowLMConfig {
     pub weights_path: Option<String>,
     #[serde(default)]
     pub insert_bos_before_voice: bool,
+    #[serde(default)]
+    pub z_dim: Option<usize>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -117,6 +127,10 @@ pub struct MimiConfig {
     pub inner_dim: Option<usize>,
     #[serde(default)]
     pub outer_dim: Option<usize>,
+    #[serde(default)]
+    pub decoder_seanet: Option<SEANetConfig>,
+    #[serde(default)]
+    pub decoder_transformer: Option<MimiTransformerConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -143,6 +157,10 @@ pub struct Config {
     pub model_recommended_frames_after_eos: Option<usize>,
     #[serde(default = "default_temperature")]
     pub default_temperature: f32,
+    /// Unused: only the small models set it, and they are rejected until xn-ptts supports them.
+    #[allow(dead_code)]
+    #[serde(default)]
+    pub default_eos_threshold: Option<f32>,
 }
 
 fn default_true() -> bool {
@@ -257,6 +275,24 @@ impl Config {
     /// The configuration is checked up front against what xn-ptts can run, so that a model it
     /// cannot represent fails with an explanation rather than a shape mismatch.
     fn validate(&self) -> Result<()> {
+        // TODO: upstream to xn-ptts (gradium-ai/xn-ptts#210), then translate these fields.
+        let flow_lm = &self.flow_lm;
+        let transformer = &flow_lm.transformer;
+        if flow_lm.flow.kind == "pointwise"
+            || flow_lm.z_dim.is_some()
+            || flow_lm.lookup_table.rank.is_some()
+            || transformer.dim_feedforward.is_some()
+            || transformer.attn_dim.is_some()
+            || transformer.num_kv_heads.is_some()
+            || self.mimi.decoder_seanet.is_some()
+            || self.mimi.decoder_transformer.is_some()
+        {
+            bail!(
+                "this model uses small-model options (pointwise head, z_dim, attn_dim, num_kv_heads, \
+                 a low-rank text table, an explicit feed-forward width or a separate Mimi decoder) \
+                 that the pinned xn-ptts does not support yet"
+            )
+        }
         self.flow_type()?;
         let mimi = &self.mimi;
         let dimension = mimi.seanet.dimension;
@@ -360,9 +396,24 @@ impl Config {
 mod tests {
     use super::*;
 
+    /// Embedded configs the pinned xn-ptts cannot run yet; they must fail with an explanation.
+    const SMALL_MODELS: [&str; 6] = [
+        "english_18m_2026-10",
+        "english_18m_refl_2026-10",
+        "english_7m_2026-10",
+        "english_7m_refl_2026-10",
+        "english_2m_2026-10",
+        "english_2m_refl_2026-10",
+    ];
+
     #[test]
     fn every_embedded_config_parses_and_translates() {
         for (name, yaml) in CONFIGS {
+            if SMALL_MODELS.contains(name) {
+                let err = Config::parse(yaml).expect_err(name).to_string();
+                assert!(err.contains("small-model options"), "{name}: {err}");
+                continue;
+            }
             let config = Config::parse(yaml).unwrap_or_else(|e| panic!("{name}: {e:#}"));
             config
                 .to_ptts(1, -4.0)

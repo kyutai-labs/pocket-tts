@@ -3,6 +3,11 @@ weights_path: hf://kyutai/pocket-tts/languages/english_2026-09_24l/model.safeten
 weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/english_2026-09_24l/model.safetensors@e7205b6ee50e654a5ea19f0e9df2b0813b05e921
 
 default_temperature: 0.3
+# Replace characters that are absent from the training data.
+replace_characters:
+  '–': ','
+  '—': ','
+
 flow_lm:
   insert_bos_before_voice: true
   dtype: float32

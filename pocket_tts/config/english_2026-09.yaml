@@ -8,6 +8,11 @@ weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning
 default_temperature: 0.3
 
 
+# Replace characters that are absent from the training data.
+replace_characters:
+  '–': ','
+  '—': ','
+
 flow_lm:
   insert_bos_before_voice: true
   dtype: float32

@@ -33,6 +33,35 @@ jobs:
     - name: Run ty
       run: uv run -p ${{ matrix.python-version }} ty check
 
+  rust:
+    runs-on: ubuntu-latest
+    needs: pre-commit
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+    - uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: rust
+    - name: Check formatting
+      run: cargo fmt --check
+    - name: Clippy
+      run: cargo clippy --release --locked --all-targets -- -D warnings
+    - name: Unit tests
+      run: cargo test --release --locked
+    - name: Generate speech
+      run: |
+        cargo run --release --locked -- generate --text "Hello world." --output-path hello.wav
+        echo "Hello world." | cargo run --release --locked -- generate --text - --output-path - --voice marius -q > stdout.wav
+        for f in hello.wav stdout.wav; do
+          size=$(stat -c %s "$f")
+          if [ "$size" -lt 50000 ]; then echo "::error::$f is only $size bytes"; exit 1; fi
+        done
+
   pytest:
     runs-on: ubuntu-latest
     needs: pre-commit

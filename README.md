@@ -110,6 +110,15 @@ You can check out the [serve documentation](https://kyutai-labs.github.io/pocket
 
 Processing an audio file (e.g., a .wav or .mp3) for voice cloning is relatively slow, but loading a safetensors file -- a voice embedding converted from an audio file -- is very fast. You can use the `export-voice` command to do this conversion. See the [export-voice documentation](https://kyutai-labs.github.io/pocket-tts/CLI%20Commands/export_voice/) for more details and examples.
 
+### Standalone binaries, without Python
+
+Each [release](https://github.com/kyutai-labs/pocket-tts/releases) comes with a `pocket-tts` binary for Linux and macOS (x86 and ARM) and Windows (x86), which needs neither Python nor PyTorch. It has the same commands and options as the Python CLI, reads the same configs (community models included), voices and exported voice files, and shares the Hugging Face cache with it:
+```bash
+tar xzf pocket-tts-*-x86_64-unknown-linux-gnu.tar.gz
+./pocket-tts-*/pocket-tts generate --text "Hello world." --voice marius
+```
+It is a Rust port built on [xn-ptts](https://github.com/gradium-ai/xn-ptts), whose sources are in [`rust/`](rust/). It runs on the CPU only, cannot load training checkpoints (`--checkpoint`), and its audio is not bit-identical to the Python package's, as the sampling noise differs.
+
 
 ## Using it as a Python library
 

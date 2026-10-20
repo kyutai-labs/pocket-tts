@@ -1,0 +1,115 @@
+name: Rust binaries
+
+# Builds the `pocket-tts` binary of `rust/` for Linux, macOS and Windows on x86 and ARM, and
+# attaches the archives to the GitHub release. Pull requests that touch it only build them.
+
+on:
+  release:
+    types: [published]
+  pull_request:
+    paths:
+      - 'rust/**'
+      - 'pocket_tts/config/**'
+      - 'pocket_tts/static/**'
+      - '.github/workflows/rust-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # x86 builds target x86-64-v3 (AVX2, FMA) through rust/.cargo/config.toml.
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-22.04
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-22.04-arm
+          - target: aarch64-apple-darwin
+            runner: macos-15
+            rustflags: '-C target-cpu=apple-m1'
+            features: accelerate
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+            features: accelerate
+          # RUSTFLAGS replaces the config's flags, hence the repeated target-cpu.
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2022
+            rustflags: '-C target-cpu=x86-64-v3 -C target-feature=+crt-static'
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
+    defaults:
+      run:
+        shell: bash
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+          key: ${{ matrix.target }}
+      - name: Build
+        env:
+          RUSTFLAGS_OVERRIDE: ${{ matrix.rustflags }}
+        run: |
+          if [ -n "$RUSTFLAGS_OVERRIDE" ]; then export RUSTFLAGS="$RUSTFLAGS_OVERRIDE"; fi
+          features=()
+          if [ -n "${{ matrix.features }}" ]; then features=(--features "${{ matrix.features }}"); fi
+          cargo build --release --locked --target ${{ matrix.target }} "${features[@]}"
+      - name: Package
+        id: package
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          name="pocket-tts-$version-${{ matrix.target }}"
+          mkdir -p "dist/$name"
+          binary="target/${{ matrix.target }}/release/pocket-tts"
+          if [ "$RUNNER_OS" = Windows ]; then binary="$binary.exe"; fi
+          cp "$binary" ../LICENSE "dist/$name/"
+          "dist/$name/$(basename "$binary")" --version
+          "dist/$name/$(basename "$binary")" generate --help > /dev/null
+          cd dist
+          if [ "$RUNNER_OS" = Windows ]; then
+            7z a "$name.zip" "$name" > /dev/null
+          else
+            tar czf "$name.tar.gz" "$name"
+          fi
+          rm -r "$name"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pocket-tts-${{ matrix.target }}
+          path: rust/dist/*
+          if-no-files-found: error
+
+  upload:
+    name: Attach to the release
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Upload the archives and their checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS
+          gh release upload "${{ github.event.release.tag_name }}" * --clobber

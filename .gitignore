@@ -69,6 +69,9 @@ dataset/*
 Cargo.toml
 Cargo.lock
 target/
+# ...except the Rust CLI, whose lockfile pins the shipped binaries' dependencies.
+!/rust/Cargo.toml
+!/rust/Cargo.lock
 
 # nfs files
 .nfs*

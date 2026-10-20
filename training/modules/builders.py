@@ -20,9 +20,9 @@ from pocket_tts.utils.config import Config, load_config
 from pocket_tts.utils.utils import download_if_necessary
 
 from ..args import TrainArgs
-from ..scripts.shrink_checkpoint import shrink
+from ..scripts.shrink_checkpoint import shrink, shrink_width
 from .model import TrainableTTS
-from .samplers import build_flow
+from .samplers import Drifting, build_flow
 from .utils import disable_grad, dit_init, gaussian_init, stamp_state_names
 
 logger = logging.getLogger(__name__)
@@ -45,8 +45,8 @@ def load_model_config(path: str, overrides: dict[str, tp.Any]) -> Config:
             if key not in node:
                 raise KeyError(f"{path} has no section {key!r} (from override {dotted!r})")
             node = node[key]
-        if leaf not in node:
-            raise KeyError(f"{path} has no field {dotted!r} to override")
+        # A field the yaml leaves at its default (e.g. flow_lm.z_dim) can be set too: the
+        # config model still rejects names it does not define.
         node[leaf] = value
     return Config(**raw)
 
@@ -84,25 +84,17 @@ def attach_distillation(model: TrainableTTS, flow_lm: FlowLMModel, args: TrainAr
         teacher = teacher.eval()
         # Seed the student from the teacher: non-backbone tensors verbatim,
         # backbone from the teacher's bottom+top layers — far faster to
-        # converge than a random init.
+        # converge than a random init. A narrower student gets the teacher's
+        # strongest channels, heads and FFN units.
         seeded, kept = shrink(teacher.state_dict(), len(flow_lm.transformer.layers))
         student_state = flow_lm.state_dict()
-        copied = {
-            k: v
-            for k, v in seeded.items()
-            if k in student_state and student_state[k].shape == v.shape
-        }
+        transformer = load_model_config(args.model_config, args.model_overrides).flow_lm.transformer
+        head_dim = (transformer.attn_dim or transformer.d_model) // transformer.num_heads
+        copied = shrink_width(seeded, student_state, head_dim)
         if args.student_init_from:
-            src = _load_flow_lm_state(args.student_init_from, use_ema=False)
-            copied.update(
-                {
-                    k: v
-                    for k, v in src.items()
-                    if not k.startswith(("flow_net.", "out_eos."))
-                    and k in student_state
-                    and student_state[k].shape == v.shape
-                }
-            )
+            src = _load_flow_lm_state(args.student_init_from, args.init_from_use_ema)
+            src = {k: v for k, v in src.items() if not k.startswith(("flow_net.", "out_eos."))}
+            copied.update(shrink_width(src, student_state, head_dim))
             logger.info(f"student backbone seeded from {args.student_init_from}")
         flow_lm.load_state_dict(copied, strict=False)
         logger.info(
@@ -124,6 +116,11 @@ def attach_distillation(model: TrainableTTS, flow_lm: FlowLMModel, args: TrainAr
     # the teacher's weights so single-pass generation stays calibrated.
     disable_grad(flow_lm.flow_net)
     disable_grad(flow_lm.out_eos)
+    if flow_lm.out_eos.in_features != teacher.out_eos.in_features:
+        raise ValueError(
+            "distillation needs the student's heads to read the teacher's width: give both the "
+            f"same z_dim (student {flow_lm.out_eos.in_features}, teacher {teacher.out_eos.in_features})"
+        )
     # The flow objective (e.g. LSD's w_s_t weighting net) never runs in
     # distill mode; freeze its params so DDP with
     # find_unused_parameters=False sees no grad-less trainables.
@@ -166,13 +163,14 @@ def build_models(args: TrainArgs) -> tuple[TrainableTTS, MimiModel, Config]:
             latent_dim,
             config.flow_lm.flow.dim,
             latent_dim,
-            d_model,
+            config.flow_lm.z_dim or d_model,  # the head reads the backbone output z
             config.flow_lm.flow.depth,
             flow.num_time_conds,
         )
 
     mimi = build_mimi(config.mimi)
     state = None
+    head_state: dict[str, torch.Tensor] = {}
     if config.weights_path is not None:
         weights_file = download_if_necessary(str(config.weights_path))
         state = safetensors.torch.load_file(weights_file)
@@ -183,7 +181,21 @@ def build_models(args: TrainArgs) -> tuple[TrainableTTS, MimiModel, Config]:
             "model_config must define weights_path (used at least for the Mimi codec weights)."
         )
 
-    if args.start_from_pretrained:
+    if args.head_distill:
+        source = args.head_distill_from or str(config.weights_path)
+        flow_state = _load_flow_lm_state(source, args.init_from_use_ema)
+        head_state = {
+            k.removeprefix("flow_net."): v
+            for k, v in flow_state.items()
+            if k.startswith("flow_net.")
+        }
+        backbone = {k: v for k, v in flow_state.items() if not k.startswith("flow_net.")}
+        missing, unexpected = flow_lm.load_state_dict(backbone, strict=False)
+        assert not unexpected, unexpected
+        assert all(k.startswith("flow_net.") for k in missing), missing
+        dit_init(flow_lm.flow_net)
+        logger.info(f"head distillation: backbone and frozen head from {source}")
+    elif args.start_from_pretrained:
         flow_state = {
             k.removeprefix("flow_lm."): v for k, v in state.items() if k.startswith("flow_lm.")
         }
@@ -219,4 +231,41 @@ def build_models(args: TrainArgs) -> tuple[TrainableTTS, MimiModel, Config]:
     model = TrainableTTS(flow_lm, flow, args)
     if args.distill_cfg_coef > 0:
         attach_distillation(model, flow_lm, args)
+    if args.head_distill:
+        attach_head_distillation(model, head_state, args)
     return model, mimi, config
+
+
+def head_from_state(state: dict[str, torch.Tensor]) -> SimpleMLPAdaLN:
+    """A sampler head built to the shape of its weights (flow_net.* without the prefix)."""
+    channels, cond_dim = state["cond_embed.weight"].shape
+    latent_dim = state["input_proj.weight"].shape[1]
+    depth = len({k.split(".")[1] for k in state if k.startswith("res_blocks.")})
+    time_conds = len({k.split(".")[1] for k in state if k.startswith("time_embed.")})
+    head = SimpleMLPAdaLN(latent_dim, channels, latent_dim, cond_dim, depth, time_conds)
+    head.load_state_dict(state, strict=True)
+    return head
+
+
+def attach_head_distillation(
+    model: TrainableTTS, head_state: dict[str, torch.Tensor], args: TrainArgs
+):
+    """Give `model` the frozen head to learn from, and freeze everything but the new head
+    (and the objective's own parameters, e.g. a learned drifting temperature)."""
+    teacher = head_from_state(head_state).eval()
+    disable_grad(teacher)
+    # Kept out of the submodule registry, like the distillation teacher.
+    model.__dict__["head_teacher"] = teacher
+    disable_grad(model.flow_lm)
+    model.flow_lm.flow_net.requires_grad_(True)
+    if not isinstance(model.flow, Drifting):
+        disable_grad(model.flow)  # only the drifting loss runs the objective's own parameters
+    if args.head_init_from:
+        state = _load_flow_lm_state(args.head_init_from, args.init_from_use_ema)
+        model.flow_lm.flow_net.load_state_dict(
+            {k.removeprefix("flow_net."): v for k, v in state.items() if k.startswith("flow_net.")}
+        )
+        logger.info(f"new head initialized from {args.head_init_from}")
+    n_new = sum(p.numel() for p in model.flow_lm.flow_net.parameters())
+    n_frozen = sum(p.numel() for p in teacher.parameters())
+    logger.info(f"head distillation: {n_new / 1e6:.2f}M params <- {n_frozen / 1e6:.2f}M frozen")

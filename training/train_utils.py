@@ -262,8 +262,8 @@ def build_optimizer(
         fused: dict[int, tuple[int, ...]] = {}
         for module in layer.modules():
             if isinstance(module, StreamingMultiheadAttention):
-                kv_dim = (module.in_proj.weight.size(0) - module.embed_dim) // 2
-                fused[id(module.in_proj.weight)] = (module.embed_dim, kv_dim, kv_dim)
+                kv_dim = (module.in_proj.weight.size(0) - module.attn_dim) // 2
+                fused[id(module.in_proj.weight)] = (module.attn_dim, kv_dim, kv_dim)
         for p in layer.parameters():
             add(p, fused.get(id(p), ()))
     if args.optim.muon_head:

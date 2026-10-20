@@ -119,7 +119,8 @@ class LUTConditioner(nn.Module):
         dim (int): Hidden dim of the model (text-encoder/LUT).
         output_dim (int): Output dim of the conditioner.
         tokenizer (str): Name of the tokenizer.
-        possible_values (list[str] or None): list of possible values for the tokenizer.
+        rank (int or None): If set, the table is low-rank: `rank`-wide embeddings followed by
+            a bias-free projection to `dim`.
     """
 
     def __init__(
@@ -129,15 +130,18 @@ class LUTConditioner(nn.Module):
         dim: int,
         output_dim: int,
         tokenizer: str = "sentencepiece",
+        rank: int | None = None,
     ):
         super().__init__()
         self.dim = dim
         self.output_dim = output_dim
         self.tokenizer = build_tokenizer(n_bins, tokenizer_path, tokenizer)
-        self.embed = nn.Embedding(n_bins + 1, self.dim)  # n_bins + 1 for padding.
+        self.embed = nn.Embedding(n_bins + 1, rank or self.dim)  # n_bins + 1 for padding.
+        self.proj = None if rank is None else nn.Linear(rank, self.dim, bias=False)
 
     def prepare(self, x: str) -> torch.Tensor:
         return self.tokenizer(x).to(self.embed.weight.device)
 
     def forward(self, tokens: torch.Tensor) -> torch.Tensor:
-        return self.embed(tokens)
+        x = self.embed(tokens)
+        return x if self.proj is None else self.proj(x)

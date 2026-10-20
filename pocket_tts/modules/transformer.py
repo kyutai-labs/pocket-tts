@@ -24,10 +24,17 @@ class StreamingTransformerLayer(nn.Module):
         context: int | None,
         rope: RotaryEmbedding,
         layer_scale: float | None = None,
+        attn_dim: int | None = None,
+        num_kv_heads: int | None = None,
     ):
         super().__init__()
         self.self_attn = StreamingMultiheadAttention(
-            rope=rope, embed_dim=d_model, num_heads=num_heads, context=context
+            rope=rope,
+            embed_dim=d_model,
+            num_heads=num_heads,
+            context=context,
+            attn_dim=attn_dim,
+            num_kv_heads=num_kv_heads,
         )
         self.norm1 = nn.LayerNorm(d_model, eps=1e-5)
         self.norm2 = nn.LayerNorm(d_model, eps=1e-5)
@@ -74,9 +81,11 @@ class StreamingTransformer(nn.Module):
         dim_feedforward: int = 2048,
         context: int | None = None,
         max_period: float = 10_000.0,
+        attn_dim: int | None = None,
+        num_kv_heads: int | None = None,
     ):
         super().__init__()
-        assert d_model % num_heads == 0
+        assert (attn_dim or d_model) % num_heads == 0
         self.max_period = max_period
         self.context = context
 
@@ -92,18 +101,22 @@ class StreamingTransformer(nn.Module):
                     context=context,
                     rope=self.rope,
                     layer_scale=layer_scale,
+                    attn_dim=attn_dim,
+                    num_kv_heads=num_kv_heads,
                 )
             )
 
     @classmethod
     def from_pydantic_config(cls, config: FlowLMTransformerConfig) -> Self:
-        dim_feedforward = int(config.d_model * config.hidden_scale)
+        dim_feedforward = config.dim_feedforward or int(config.d_model * config.hidden_scale)
         return cls(
             d_model=config.d_model,
             num_heads=config.num_heads,
             num_layers=config.num_layers,
             dim_feedforward=dim_feedforward,
             max_period=float(config.max_period),
+            attn_dim=config.attn_dim,
+            num_kv_heads=config.num_kv_heads,
         )
 
     def forward(self, x: torch.Tensor, model_state: ModelState | None) -> torch.Tensor:

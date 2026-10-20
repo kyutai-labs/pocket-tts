@@ -17,7 +17,6 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 
 from pocket_tts.data.audio import stream_audio_chunks
 from pocket_tts.default_parameters import (
-    DEFAULT_EOS_THRESHOLD,
     DEFAULT_FRAMES_AFTER_EOS,
     DEFAULT_NOISE_CLAMP,
     DEFAULT_SAMPLER_DECODE_STEPS,
@@ -217,7 +216,7 @@ def serve(
         str | None,
         typer.Option(
             help="Language for the TTS model. "
-            "'english_2026-01', 'english_2026-04', 'english_2026-09', 'english_2026-09_2', 'english_drifting_26-09', 'english', 'french', 'french_24l', 'german', 'german_24l', 'portuguese', 'portuguese_24l', 'italian', 'italian_24l', 'spanish', 'spanish_24l', 'dutch', 'dutch_24l'."
+            "'english_2026-01', 'english_2026-04', 'english_2026-09', 'english_2026-09_2', 'english_drifting_26-09', 'english_18m_2026-10', 'english_18m_refl_2026-10', 'english_7m_2026-10', 'english_7m_refl_2026-10', 'english_2m_2026-10', 'english_2m_refl_2026-10', 'english', 'french', 'french_24l', 'german', 'german_24l', 'portuguese', 'portuguese_24l', 'italian', 'italian_24l', 'spanish', 'spanish_24l', 'dutch', 'dutch_24l'."
             " Incompatible with the config argument. Default is 'english', which is the same model as 'english_2026-09_2'.",
             show_default=False,
         ),
@@ -283,7 +282,7 @@ def generate(
         typer.Option(
             help=(
                 "Language for the TTS model. "
-                "'english_2026-01', 'english_2026-04', 'english_2026-09', 'english_2026-09_2', 'english_drifting_26-09', 'english', 'french', 'french_24l', 'german', 'german_24l', 'portuguese', 'portuguese_24l', 'italian', 'italian_24l', 'spanish', 'spanish_24l', 'dutch', 'dutch_24l'."
+                "'english_2026-01', 'english_2026-04', 'english_2026-09', 'english_2026-09_2', 'english_drifting_26-09', 'english_18m_2026-10', 'english_18m_refl_2026-10', 'english_7m_2026-10', 'english_7m_refl_2026-10', 'english_2m_2026-10', 'english_2m_refl_2026-10', 'english', 'french', 'french_24l', 'german', 'german_24l', 'portuguese', 'portuguese_24l', 'italian', 'italian_24l', 'spanish', 'spanish_24l', 'dutch', 'dutch_24l'."
                 " Incompatible with the config argument. Default is 'english', which is the same model as 'english_2026-09_2'. "
                 "The '24l' variants are bigger models, "
                 "not distilled yet and here only as preview. They're not the final "
@@ -319,7 +318,10 @@ def generate(
     noise_clamp: Annotated[
         float | None, typer.Option(help="Noise clamp value")
     ] = DEFAULT_NOISE_CLAMP,
-    eos_threshold: Annotated[float, typer.Option(help="EOS threshold")] = DEFAULT_EOS_THRESHOLD,
+    eos_threshold: Annotated[
+        float | None,
+        typer.Option(help="EOS threshold. Defaults to the model's value from its config (-4.0)."),
+    ] = None,
     frames_after_eos: Annotated[
         int | None, typer.Option(help="Number of frames to generate after EOS")
     ] = DEFAULT_FRAMES_AFTER_EOS,
@@ -403,7 +405,7 @@ def export_voice(
         typer.Option(
             help=(
                 "Language for the TTS model. "
-                "'english_2026-01', 'english_2026-04', 'english_2026-09', 'english_2026-09_2', 'english_drifting_26-09', 'english', 'french', 'french_24l', 'german', 'german_24l', 'portuguese', 'portuguese_24l', 'italian', 'italian_24l', 'spanish', 'spanish_24l', 'dutch', 'dutch_24l'."
+                "'english_2026-01', 'english_2026-04', 'english_2026-09', 'english_2026-09_2', 'english_drifting_26-09', 'english_18m_2026-10', 'english_18m_refl_2026-10', 'english_7m_2026-10', 'english_7m_refl_2026-10', 'english_2m_2026-10', 'english_2m_refl_2026-10', 'english', 'french', 'french_24l', 'german', 'german_24l', 'portuguese', 'portuguese_24l', 'italian', 'italian_24l', 'spanish', 'spanish_24l', 'dutch', 'dutch_24l'."
                 " Incompatible with the config argument. Default is 'english', which is the same model as 'english_2026-09_2'. "
                 "The '24l' variants are bigger models, "
                 "not distilled yet and here only as preview."

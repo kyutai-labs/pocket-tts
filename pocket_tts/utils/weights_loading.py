@@ -33,6 +33,11 @@ def get_flow_lm_state_dict(path: Path) -> dict[str, torch.Tensor]:
 def get_mimi_state_dict(path: Path) -> dict[str, torch.Tensor]:
     state_dict: dict[str, torch.Tensor] = {}
     with safetensors.safe_open(path, framework="pt", device="cpu") as f:
+        if any(key.startswith("mimi.") for key in f.keys()):
+            # Already in this package's layout, e.g. the mimi.* tensors of a TTSModel.
+            return {
+                k.removeprefix("mimi."): f.get_tensor(k) for k in f.keys() if k.startswith("mimi.")
+            }
         for key in f.keys():
             if (
                 key.startswith("model.quantizer.vq.")

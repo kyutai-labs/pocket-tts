@@ -46,6 +46,11 @@ def drifting_decode(v_t: FlowNet, x_0: torch.Tensor, num_steps: int = 1) -> torc
     return v_t(x_0)
 
 
+def pointwise_decode(v_t: FlowNet, x_0: torch.Tensor, num_steps: int = 1) -> torch.Tensor:
+    """One-step head without time conditions, LSD-style: the noise plus the head's output."""
+    return x_0 + v_t(x_0)
+
+
 def ot_decode(v_t: FlowNet, x_0: torch.Tensor, num_steps: int = 16) -> torch.Tensor:
     """Euler integration of an optimal-transport conditional flow.
 
@@ -95,6 +100,7 @@ class FlowLMModel(nn.Module):
         dtype: torch.dtype | None = None,
         insert_bos_before_voice: bool = False,
         flow_type: str = "lsd",
+        z_dim: int | None = None,
     ):
         super().__init__()
         self.flow_type = flow_type
@@ -117,7 +123,8 @@ class FlowLMModel(nn.Module):
         self.input_linear = nn.Linear(self.ldim, dim, bias=False, dtype=dtype)
         self.transformer = transformer
         self.out_norm = nn.LayerNorm(dim, eps=1e-5)
-        self.out_eos = nn.Linear(dim, 1, dtype=dtype)
+        self.z_proj = None if z_dim is None else nn.Linear(dim, z_dim, bias=False, dtype=dtype)
+        self.out_eos = nn.Linear(z_dim or dim, 1, dtype=dtype)
 
     @property
     def device(self) -> str:
@@ -172,6 +179,8 @@ class FlowLMModel(nn.Module):
             decode = ot_decode
         elif self.flow_type == "drifting":
             decode = drifting_decode
+        elif self.flow_type == "pointwise":
+            decode = pointwise_decode
         else:
             raise ValueError(f"Unknown flow type: {self.flow_type}")
         return decode(conditioned_flow, noise, sampler_decode_steps), out_eos
@@ -196,6 +205,8 @@ class FlowLMModel(nn.Module):
             transformer_out = self.out_norm(transformer_out)
         # remove the prefix from the model outputs (condition is prepended)
         transformer_out = transformer_out[:, -sequence.shape[1] :]
+        if self.z_proj is not None:
+            transformer_out = self.z_proj(transformer_out)
         return transformer_out
 
     def _sample_next_latent(
@@ -236,7 +247,7 @@ class FlowLMModel(nn.Module):
         cls, config: FlowLMConfig, latent_dim: int, insert_bos_before_voice: bool
     ) -> Self:
         d_model = config.transformer.d_model
-        flow_mlp = SimpleMLPAdaLN.from_pydantic_config(config, latent_dim, d_model)
+        flow_mlp = SimpleMLPAdaLN.from_pydantic_config(config, latent_dim, config.z_dim or d_model)
 
         conditioner = LUTConditioner(
             n_bins=config.lookup_table.n_bins,
@@ -244,6 +255,7 @@ class FlowLMModel(nn.Module):
             dim=config.lookup_table.dim,
             output_dim=d_model,
             tokenizer=config.lookup_table.tokenizer,
+            rank=config.lookup_table.rank,
         )
 
         transformer = StreamingTransformer.from_pydantic_config(config.transformer)
@@ -257,4 +269,5 @@ class FlowLMModel(nn.Module):
             dtype=getattr(torch, config.dtype),
             insert_bos_before_voice=insert_bos_before_voice,
             flow_type=config.flow.type,
+            z_dim=config.z_dim,
         )

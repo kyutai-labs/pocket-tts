@@ -194,6 +194,9 @@ class Drifting(FlowType):
     learned by maximizing the data sample's share of the kernel mass; with 0 it
     stays fixed (at `temp`, or at the learned value when resuming a run that
     learned it).
+
+    The target may be several samples per position (e.g. draws from another head),
+    which attract together as one data cloud.
     """
 
     num_time_conds = 0
@@ -227,11 +230,13 @@ class Drifting(FlowType):
         y_neg: torch.Tensor,
         temp: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        logit = -dists / temp  # [N, num_neg, 1 + num_neg]: each generation vs data + generations
-        # Log-mass of the data sample relative to a flat kernel (0 = chance).
-        pos_log_mass = logit.log_softmax(dim=-1)[..., 0] + math.log(self.num_neg)
+        k = y_pos.shape[1]
+        logit = -dists / temp  # [N, num_neg, k + num_neg]: each generation vs data + generations
+        # Log-mass of the data samples relative to a flat kernel (0 = chance).
+        log_mass = logit.log_softmax(dim=-1)[..., :k].logsumexp(dim=-1)
+        pos_log_mass = log_mass + math.log(self.num_neg / k)
         A = (logit.softmax(dim=-1) * logit.softmax(dim=-2)).clamp(min=1e-6).sqrt().detach()
-        A_pos, A_neg = A[..., :1], A[..., 1:]
+        A_pos, A_neg = A[..., :k], A[..., k:]
         W_pos = A_pos * A_neg.sum(dim=-1, keepdim=True)
         W_neg = A_neg * A_pos.sum(dim=-1, keepdim=True)
         force = W_pos @ y_pos - W_neg @ y_neg
@@ -249,15 +254,17 @@ class Drifting(FlowType):
         e = torch.randn(self.num_neg, *x_0.shape, device=x_0.device, dtype=x_0.dtype)
         x = torch.vmap(v_t, out_dims=1)(e)  # [N, num_neg, D]
         y_neg = x.detach()
-        y_pos = x_1[:, None]  # [N, 1, D]
+        # x_1 is [N, D], or [N, k, D] for k samples of the target per position.
+        y_pos = x_1 if x_1.dim() == 3 else x_1[:, None]
+        k = y_pos.shape[1]
         with torch.no_grad():
             dists = torch.cat([cdist(y_neg, y_pos), cdist(y_neg, y_neg)], dim=-1)
-            n = self.num_neg + 1
+            n = self.num_neg + k
             scale = (dists * n / (n - 1)).mean(dim=(-1, -2), keepdim=True).clamp(min=self.min_scale)
             # A generation never attracts or repels itself.
             self_mask = torch.eye(self.num_neg, device=x.device) * 100.0
             dists = dists / scale + torch.cat(
-                [torch.zeros_like(dists[..., :1]), self_mask.expand_as(dists[..., 1:])], dim=-1
+                [torch.zeros_like(dists[..., :k]), self_mask.expand_as(dists[..., k:])], dim=-1
             )
             scale_input = scale / x.shape[-1] ** 0.5
         x, y_pos, y_neg = (z / scale_input for z in (x, y_pos, y_neg))

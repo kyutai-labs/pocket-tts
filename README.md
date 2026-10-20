@@ -396,6 +396,41 @@ uvx pocket-tts generate \
 ```
 </details>
 
+<details>
+<summary><a href="https://huggingface.co/takuma104/pocket-tts-ja">Pocket TTS Japanese (日本語)</a> by <a href="https://huggingface.co/takuma104">@takuma104</a>, 6 layers</summary>
+
+```bash
+uvx pocket-tts generate \
+  --config hf://takuma104/pocket-tts-ja/japanese.yaml@562a82cba331499b75a050b7e200f4ee3241b9e9 \
+  --voice hf://takuma104/pocket-tts-ja/voices/female_03.wav@119685fd7a51356429c6d25e37d570b423c17663 \
+  --text "こんにちは。今日はいい天気ですね。"
+```
+</details>
+
+<details>
+<summary><a href="https://huggingface.co/hustfyb/PocketTTS-ZH-6L">Pocket TTS Chinese (中文)</a> by <a href="https://huggingface.co/hustfyb/">@hustfyb</a>, 6 layers</summary>
+
+```bash
+pip install pocket-tts soundfile wetext
+cd <本目录>
+python demo.py --prompt your_voice.wav --text "您的订单编号是20260918123456，退款368.5元预计三个工作日内到账。" --out out.wav
+```
+</details>
+
+<details>
+<summary><a href="https://huggingface.co/Thanushttk/pocket-tts-multilingual">Pocket TTS Multilingual</a> by <a href="https://huggingface.co/Thanushttk">Thanush Thankachan</a>, 6 layers</summary>
+
+English, Hindi, Marathi, Kannada, Tamil, Malayalam, and Telugu, including code mixing. Use an Indian voice for a better Indian accent.
+
+```bash
+uvx pocket-tts generate \
+  --config hf://Thanushttk/pocket-tts-multilingual/config.yaml@80c7f2835138c62750d76a93d4333c5c5bb6a754 \
+  --voice my_voice.wav \
+  --text "Hello, नमस्ते, how are you?"
+```
+</details>
+
+
 Want your model here? Head to the [training Readme](https://github.com/kyutai-labs/pocket-tts/blob/main/training/README.md) to get started!
 
 ## Projects using Pocket TTS

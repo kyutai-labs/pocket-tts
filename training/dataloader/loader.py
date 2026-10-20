@@ -128,9 +128,12 @@ class DataLoader:
         """End of the last aligned word, i.e. where the speech actually stops.
 
         None when the entry carries no alignment, which is the documented
-        manifest format without `words`.
+        manifest format without `words`, or when its last word is unaligned:
+        aligners leave words such as "1943" without times, and trimming at the
+        word before would cut a sentence-final number out of the audio while
+        the transcript keeps it.
         """
-        if not entry.words:
+        if not entry.words or entry.words[-1].get("end") is None:
             return None
         ends = [w["end"] for w in entry.words if w.get("end") is not None]
         return max(ends) if ends else None

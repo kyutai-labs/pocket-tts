@@ -18,7 +18,6 @@ replace_characters:
   '[': ''
   ']': ''
   '–': ','
-  '—': ','
 
 flow_lm:
   insert_bos_before_voice: true

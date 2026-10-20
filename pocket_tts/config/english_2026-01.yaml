@@ -7,8 +7,8 @@ pad_with_spaces_for_short_inputs: true
 
 # Replace characters that are absent from the training data.
 replace_characters:
-  '–': ','
-  '—': ','
+  '’': "'"
+  '‘': "'"
 
 flow_lm:
   insert_bos_before_voice: false

@@ -155,10 +155,9 @@ def test_startup_check_rejects_manifests_too_small_for_the_loaders(tmp_path: Pat
 
 
 def test_unaligned_last_word_keeps_the_end_of_the_file():
-    words = [
-        {"word": "in", "start": 0.1, "end": 0.3},
-        {"word": "1943.", "start": None, "end": None},
-    ]
-    assert DataLoader._last_word_end(Entry("a.wav", 2.0, "in 1943.", words)) is None
-    words[-1] |= {"start": 0.4, "end": 1.2}
-    assert DataLoader._last_word_end(Entry("a.wav", 2.0, "in 1943.", words)) == 1.2
+    def entry(last_end: float | None) -> Entry:
+        words = [{"word": "in", "start": 0.1, "end": 0.3}, {"word": "1943.", "end": last_end}]
+        return Entry("a.wav", 2.0, "in 1943.", words)
+
+    assert DataLoader._last_word_end(entry(None)) is None
+    assert DataLoader._last_word_end(entry(1.2)) == 1.2

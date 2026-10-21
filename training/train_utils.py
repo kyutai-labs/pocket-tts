@@ -237,9 +237,18 @@ def ensure_train_latents(
 def build_optimizer(
     model: TrainableTTS, args: TrainArgs, device: torch.device, rank: int
 ) -> torch.optim.Optimizer:
+    # No decay on the text table: rows of tokens the data never contains get no gradient, so
+    # decay alone would shrink them to zero and the model could no longer say those words.
+    table = model.flow_lm.conditioner.embed.weight
     if args.optim.type == "adamw":
+        params = [p for p in model.parameters() if p.requires_grad and p is not table]
+        no_decay = [table] if table.requires_grad else []
         return torch.optim.AdamW(
-            model.parameters(),
+            [
+                g
+                for g in ({"params": params}, {"params": no_decay, "weight_decay": 0.0})
+                if g["params"]
+            ],
             lr=args.optim.lr,
             betas=args.optim.betas,
             eps=args.optim.eps,
@@ -273,7 +282,11 @@ def build_optimizer(
             else:
                 add(p)
     muon_params = {id(p) for ps in blocks.values() for p in ps}
-    rest = [p for p in model.parameters() if p.requires_grad and id(p) not in muon_params]
+    rest = [
+        p
+        for p in model.parameters()
+        if p.requires_grad and id(p) not in muon_params and p is not table
+    ]
     muon_scale = 1.0 if args.optim.muon_rms_match else args.optim.muon_lr / args.optim.lr
     # Decoupled decay multiplies by (1 - lr * wd) per step; at muon_lr the same wd would
     # decay muon_scale times faster, so rescale it to the AdamW per-step decay.
@@ -297,6 +310,15 @@ def build_optimizer(
             "betas": args.optim.betas,
             "eps": args.optim.eps,
             "weight_decay": args.optim.weight_decay,
+        }
+    )
+    groups.append(
+        {
+            "params": [table] if table.requires_grad else [],
+            "lr_scale": 1.0,
+            "betas": args.optim.betas,
+            "eps": args.optim.eps,
+            "weight_decay": 0.0,
         }
     )
     groups = [g for g in groups if g["params"]]

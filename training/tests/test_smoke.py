@@ -153,6 +153,22 @@ def test_muon_splits_narrow_grouped_attention():
     assert [16, 8, 8] in sizes, sizes
 
 
+@pytest.mark.parametrize("optim", ["adamw", "muon"])
+def test_text_table_rows_without_gradient_keep_their_norm(optim: str):
+    """A token absent from the data must not be decayed away (pocket-tts#390)."""
+    model = tiny_model("lsd", **SMALL_OPTIONS)
+    model.args.optim.type = optim
+    optimizer = build_optimizer(model, model.args, torch.device("cpu"), rank=0)
+    table = model.flow_lm.conditioner.embed.weight
+    unseen = table[-2].detach().clone()
+    for _ in range(3):
+        optimizer.zero_grad()
+        loss, _ = model(*make_batch())
+        loss.backward()
+        optimizer.step()
+    assert torch.equal(table[-2], unseen)
+
+
 @pytest.mark.parametrize("flow_type,cfg", [("lsd", 1.0), ("flow_matching", 1.0), ("drifting", 1.0)])
 def test_generate(flow_type: str, cfg: float):
     model = tiny_model(flow_type)

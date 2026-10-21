@@ -128,15 +128,16 @@ class DataLoader:
         """End of the last aligned word, i.e. where the speech actually stops.
 
         None when the entry carries no alignment, which is the documented
-        manifest format without `words`, or when its last word is unaligned:
-        aligners leave words such as "1943" without times, and trimming at the
-        word before would cut a sentence-final number out of the audio while
-        the transcript keeps it.
+        manifest format without `words`, or when its last spoken word is
+        unaligned: aligners leave words such as "1943" without times, and
+        trimming at the word before would cut a sentence-final number out of
+        the audio while the transcript keeps it. Trailing punctuation-only
+        words ("»", "?") are not spoken and are skipped.
         """
-        if not entry.words or entry.words[-1].get("end") is None:
+        spoken = [w for w in entry.words or [] if any(c.isalnum() for c in w["word"])]
+        if not spoken or spoken[-1].get("end") is None:
             return None
-        ends = [w["end"] for w in entry.words if w.get("end") is not None]
-        return max(ends) if ends else None
+        return max(w["end"] for w in spoken if w.get("end") is not None)
 
     def _choose_cut(self, entry: Entry) -> tuple[float, str] | None:
         """(cut in seconds, transcript of the words after it), None without alignment."""

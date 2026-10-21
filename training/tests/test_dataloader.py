@@ -161,3 +161,6 @@ def test_unaligned_last_word_keeps_the_end_of_the_file():
 
     assert DataLoader._last_word_end(entry(None)) is None
     assert DataLoader._last_word_end(entry(1.2)) == 1.2
+    quote = {"word": "»", "end": None}  # unaligned punctuation is not spoken
+    words = [{"word": "oui", "start": 0.1, "end": 0.3}, quote]
+    assert DataLoader._last_word_end(Entry("a.wav", 2.0, "oui »", words)) == 0.3

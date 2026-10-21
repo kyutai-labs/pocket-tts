@@ -1,7 +1,7 @@
 # English model with 1.9M parameters: a 0.9M flow LM and a 1.0M decoder.
 
-weights_path: hf://kyutai/pocket-tts/languages/english_2m_2026-10/model.safetensors@a72dba0d1a5f1387c104f9d3e17abb8ab60b4fae
-weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/english_2m_2026-10/model.safetensors@a3055dcb533cf2ec90458008a01e7cef550bae2a
+weights_path: hf://kyutai/pocket-tts/languages/english_2m_2026-10/model.safetensors@db04f0e653473e5c7333c69686ac92b7460b0c1d
+weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/english_2m_2026-10/model.safetensors@a7056f505a4a8ca72d8b5fb1440071d6f1a35739
 default_temperature: 0.3
 # Replace characters that are absent from the training data.
 replace_characters:

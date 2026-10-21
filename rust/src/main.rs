@@ -21,7 +21,7 @@ use model::{LoadOptions, TtsModel, VoiceState};
 use std::process::ExitCode;
 use std::sync::atomic::AtomicBool;
 
-const LANGUAGE_HELP: &str = "Language for the TTS model. 'english_2026-01', 'english_2026-04', 'english_2026-09', 'english_2026-09_2', 'english_drifting_26-09', 'english_18m_2026-10', 'english_18m_refl_2026-10', 'english_7m_2026-10', 'english_7m_refl_2026-10', 'english_2m_2026-10', 'english_2m_refl_2026-10', 'english', 'french', 'french_24l', 'german', 'german_24l', 'portuguese', 'portuguese_24l', 'italian', 'italian_24l', 'spanish', 'spanish_24l', 'dutch', 'dutch_24l'. Incompatible with the config argument. Default is 'english', which is the same model as 'english_2026-09_2'.";
+const LANGUAGE_HELP: &str = "Language for the TTS model. 'english_2026-01', 'english_2026-04', 'english_2026-09', 'english_2026-09_2', 'english_2026-10', 'english_drifting_26-09', 'english_18m_2026-10', 'english_18m_refl_2026-10', 'english_7m_2026-10', 'english_7m_refl_2026-10', 'english_2m_2026-10', 'english_2m_refl_2026-10', 'english', 'french', 'french_24l', 'german', 'german_24l', 'portuguese', 'portuguese_24l', 'italian', 'italian_24l', 'spanish', 'spanish_24l', 'dutch', 'dutch_24l'. Incompatible with the config argument. Default is 'english', which is the same model as 'english_2026-10'.";
 const CONFIG_HELP: &str = "Path to a model config .yaml file: a local path, an https:// URL, or an hf:// path. Incompatible with the language argument. If not provided, will use the default English model.";
 
 #[derive(Parser)]

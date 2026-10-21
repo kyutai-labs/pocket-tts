@@ -195,6 +195,36 @@ def test_sentence_period_after_decimal_still_splits(tokenizer: Tokenizer):
     assert "2. 0" not in chunks[0]
 
 
+def test_sentence_ending_in_number_before_number_still_splits(tokenizer: Tokenizer):
+    """A period followed by a space is a sentence end, even between two numbers."""
+    text = "I counted to 3. 14 people were there."
+    chunks = split_into_best_sentences(
+        tokenizer, text, 10, pad_with_spaces_for_short_inputs=False, remove_semicolons=False
+    )
+    assert chunks == ["I counted to 3.", "14 people were there."]
+
+
+def test_decimal_check_decodes_only_tokens_near_each_period(
+    tokenizer: Tokenizer, monkeypatch: pytest.MonkeyPatch
+):
+    """Checking each period for a decimal must not decode the whole text around it,
+    which made splitting quadratic in the text length."""
+    text = "Pi is 3.14 and the sky is blue. " * 200
+    decoded_lengths = []
+    decode = tokenizer.decode
+
+    def counting_decode(tokens: list[int]) -> str:
+        decoded_lengths.append(len(tokens))
+        return decode(tokens)
+
+    monkeypatch.setattr(tokenizer, "decode", counting_decode)
+    chunks = split_into_best_sentences(
+        tokenizer, text, 50, pad_with_spaces_for_short_inputs=False, remove_semicolons=False
+    )
+    assert "3.14" in chunks[0]
+    assert sum(decoded_lengths) < 3 * len(tokenizer(text)[0])
+
+
 def test_oversized_clause_without_commas_still_returns(tokenizer: Tokenizer):
     """A long clause with no split points should still be returned (not dropped)."""
     # 20 words with no punctuation at all - no way to split

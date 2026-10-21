@@ -82,15 +82,21 @@ def _ensure_terminal_punctuation(text: str) -> str:
 def _is_decimal_period_boundary(
     list_of_tokens: list[int], segment_start_idx: int, tokenizer: Tokenizer
 ) -> bool:
-    """Return True when segment_start_idx begins right after a decimal period."""
-    prefix = tokenizer.decode(list_of_tokens[:segment_start_idx])
-    suffix = tokenizer.decode(list_of_tokens[segment_start_idx:])
+    """Return True when segment_start_idx begins right after a decimal period, as in "3.14".
+
+    Only the tokens next to the boundary are decoded, so checking every sentence boundary
+    stays linear in the text length. Decoding the period together with the next token keeps
+    the space between them: in "I counted to 3. 14 people were there." the period ends a
+    sentence.
+    """
+    before = tokenizer.decode(list_of_tokens[max(0, segment_start_idx - 2) : segment_start_idx])
+    after = tokenizer.decode(list_of_tokens[segment_start_idx - 1 : segment_start_idx + 1])
     return (
-        len(prefix) >= 2
-        and prefix[-1] == "."
-        and prefix[-2].isdigit()
-        and bool(suffix)
-        and suffix[0].isdigit()
+        len(before) >= 2
+        and before[-1] == "."
+        and before[-2].isdigit()
+        and len(after) >= 2
+        and after[1].isdigit()
     )
 
 

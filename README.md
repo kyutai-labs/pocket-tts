@@ -15,13 +15,15 @@ Supports Python 3.10, 3.11, 3.12, 3.13 and 3.14. Requires PyTorch 2.5+. Does not
 [📚 Documentation](https://kyutai-labs.github.io/pocket-tts/)
 
 > [!NOTE]
+> **New (October 2026):** Small English models with 18.2M, 6.9M and 1.9M parameters (decoder included), up to 25x faster than real time on one CPU thread. Try them with `--language english_18m_2026-10`, `english_7m_2026-10` or `english_2m_2026-10`; see the [blog post](https://kyutai.org/blog/2026-10-20-pocket-tts-small) for how they were made.
+>
 > **New (August 2026):** We've released the training code! Check out [`training/`](https://github.com/kyutai-labs/pocket-tts/blob/main/training/README.md) to start training your own models.
 > Open a PR to add your model to the [Models trained by the community](#models-trained-by-the-community) section.
 
 
 ## Main takeaways
 * Runs on CPU
-* Small model size, 100M parameters
+* Small model size, 100M parameters, and English models down to 1.9M parameters
 * Audio streaming
 * Low latency, ~200ms to get the first audio chunk
 * Faster than real-time, ~6x real-time on a CPU of MacBook Air M4

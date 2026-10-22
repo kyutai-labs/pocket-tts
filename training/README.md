@@ -191,6 +191,45 @@ can expect:
 | 1 x H100 | 64 | 10.5 | 9.8 GiB | ~5.3 h |
 | 8 x H100 | 8 | 21.3 | 3.8 GiB | ~2.6 h |
 
+### Faster distillation from a teacher cache
+
+Most of a distillation step is the teacher: two forward passes of the deep model (with and
+without conditioning, for the guidance), plus the Mimi encoding of the batch. Since the teacher
+is frozen, its target can be computed once instead, and the student trained from that cache:
+
+```bash
+# Once, on any number of GPUs (one part per GPU; resumable, re-run a part to finish it):
+for h in 0 1 2 3; do
+    CUDA_VISIBLE_DEVICES=$h uv run python -m training.scripts.build_teacher_cache \
+        training/configs/depth_distill.yaml data/teacher_cache --rows 1000000 \
+        --part $h --parts 4 &
+done; wait
+# Then train with `distill_teacher_cache: data/teacher_cache` added to the same config.
+```
+
+The script draws the rows with the training loader and the config's data settings (crops,
+voice prompts, text augmentations) and stores each one with the teacher's guided target. The
+run then needs neither the teacher, nor the loader, nor Mimi: distilling the released 24-layer
+English teacher into 6 layers at batch size 64 on one H100 ran at 27.5 steps/s from a cache vs
+8.4 steps/s online (3.3x), with the same loss curve (distill_mse 0.0975 vs 0.0983 over steps
+600-800 of an 800-step run) and 7.4 vs 8.9 GiB peak memory. The cached targets match the online
+teacher's to a relative MSE of 2e-4 (they are stored in bf16).
+
+What to know before using it:
+- Disk: the target takes 2 bytes per frame per backbone channel, 2 KB per 80 ms frame for the
+  English models (d_model 1024): ~200 KB per HiFiTTS-2 row, ~200 GB per million rows. Size
+  `--rows` to what the run reads, `max_steps x batch_size x grad_accum_steps x GPUs`.
+- Building costs about the teacher's share of an online run (51k rows took 2 min on one H100
+  with 4 parts), so the cache pays off when several runs read it: a sweep over student settings,
+  replicates, restarts.
+- The cache fixes the data: which rows, their crops and prompts, and their order are drawn once at
+  build time, with `--seed`. A resumed run skips the rows it already used, and a run longer than
+  the cache starts over from its first row (training on the same crops again).
+- The cache is tied to the config it was built with: rebuild it after changing the teacher,
+  `distill_cfg_coef`, the data or its settings.
+- The run does no validation, which needs the teacher's targets; evaluate the checkpoints instead
+  (see [Evaluate](#evaluate)).
+
 ### Training format
 
 By default, the training saves:

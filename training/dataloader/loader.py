@@ -15,7 +15,7 @@ import threading
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import numpy as np
 import numpy.typing as npt
@@ -29,9 +29,12 @@ from .types import Batch, Entry
 logger = logging.getLogger(__name__)
 
 
-def _prefetch(iterator: Iterator[Batch], depth: int = 4) -> Iterator[Batch]:
+T = TypeVar("T")
+
+
+def _prefetch(iterator: Iterator[T], depth: int = 4) -> Iterator[T]:
     """Run the (synchronous, IO-bound) loader in a background thread."""
-    q: queue.Queue[Batch | BaseException | None] = queue.Queue(maxsize=depth)
+    q: queue.Queue[T | BaseException | None] = queue.Queue(maxsize=depth)
 
     def worker():
         try:

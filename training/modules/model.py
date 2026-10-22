@@ -91,6 +91,7 @@ class TrainableTTS(nn.Module):
         update_stats: bool = False,
         num_voice_prompt_frames: torch.Tensor
         | None = None,  # [B] valid voice frames (rest is padding)
+        z_target: torch.Tensor | None = None,  # [B, T, dim] cached teacher_z (teacher caches)
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         fl = self.flow_lm
         C = latents.shape[-1]
@@ -107,15 +108,10 @@ class TrainableTTS(nn.Module):
 
         z = self.backbone_z(fl, *inputs, cfg_dropout=self.training)  # [B, T, dim]
 
-        if self.distill_teacher is not None:
+        if self.distill_teacher is not None or z_target is not None:
             # Latent CFG distillation: the student's backbone regresses onto the
             # teacher's guidance-combined output; flow/EOS heads stay frozen.
-            teacher = self.distill_teacher.to(latents.device)
-            with torch.no_grad():
-                z_t = self.backbone_z(teacher, *inputs, cfg_dropout=False)
-                if self.args.distill_cfg_coef != 1.0:
-                    z_null = self.backbone_z(teacher, *inputs, cfg_dropout=False, force_null=True)
-                    z_t = z_null + self.args.distill_cfg_coef * (z_t - z_null)
+            z_t = self.teacher_z(*inputs) if z_target is None else z_target
             shifted_mask = torch.cat([mask[:, :1], mask[:, :-1]], dim=1)
             denom = shifted_mask.sum().clamp(min=1)
 
@@ -158,6 +154,25 @@ class TrainableTTS(nn.Module):
         metrics = {k: v.detach() if torch.is_tensor(v) else v for k, v in metrics.items()}
         metrics.update(flow_loss=flow_loss.detach(), eos_loss=eos_loss.detach(), loss=loss.detach())
         return loss, metrics
+
+    @torch.no_grad()
+    def teacher_z(
+        self,
+        normalized_latents: torch.Tensor,  # [B, T, C]
+        text_tokens: list[torch.Tensor],
+        voice_latents: torch.Tensor,
+        num_voice_prompt_frames: torch.Tensor | None,
+    ) -> torch.Tensor:
+        """The distillation target [B, T, dim]: the teacher's teacher-forced z, guidance-combined."""
+        teacher = self.distill_teacher
+        assert teacher is not None
+        teacher = teacher.to(normalized_latents.device)
+        inputs = (normalized_latents, text_tokens, voice_latents, num_voice_prompt_frames)
+        z_t = self.backbone_z(teacher, *inputs, cfg_dropout=False)
+        if self.args.distill_cfg_coef != 1.0:
+            z_null = self.backbone_z(teacher, *inputs, cfg_dropout=False, force_null=True)
+            z_t = z_null + self.args.distill_cfg_coef * (z_t - z_null)
+        return z_t
 
     def _head_distill(self, z: torch.Tensor) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         """The new head (flow_lm.flow_net) learns the frozen head's samples for the backbone

@@ -203,6 +203,13 @@ class TrainArgs:
     # Seed from student_init_from's (and head_init_from's) EMA shadow instead of its raw
     # weights (raw weights when the checkpoint carries no EMA).
     init_from_use_ema: bool = True
+    # A teacher cache (training/scripts/build_teacher_cache.py): rows of train_jsonl with the
+    # teacher's guided target stored next to them. Distillation then reads its rows and targets
+    # from the cache instead of the loader and never runs the teacher, ~3x faster per step.
+    # The cache fixes the rows, crops and their order (resuming skips the rows already used),
+    # and is re-read from the start when a run outlasts it. No validation runs (it would need
+    # the teacher).
+    distill_teacher_cache: str = ""
 
     # Head distillation: train a new sampler head (flow_net, shaped by the config's flow_lm.flow,
     # any flow.type) against a frozen one, on the frozen backbone's outputs; nothing else
@@ -242,6 +249,11 @@ class TrainArgs:
                 "distillation needs a teacher: set distill_teacher_config, or "
                 "start_from_pretrained: true to distil a frozen copy of the model itself"
             )
+        if self.distill_teacher_cache and not self.distill_cfg_coef > 0:
+            raise ValueError("distill_teacher_cache is for distillation runs: set distill_cfg_coef")
+        if self.distill_teacher_cache and self.stats_ema_steps:
+            # The cached targets were computed on latents normalized with fixed statistics.
+            raise ValueError("distill_teacher_cache needs stats_ema_steps: 0")
         if self.head_distill and self.distill_cfg_coef > 0:
             raise ValueError("head_distill and distill_cfg_coef are separate runs: set one")
         if self.head_distill_loss not in ("mse", "drifting"):

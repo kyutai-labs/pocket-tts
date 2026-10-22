@@ -110,8 +110,9 @@ def attach_distillation(model: TrainableTTS, flow_lm: FlowLMModel, args: TrainAr
     stamp_state_names(teacher)
     # nn.Module.__setattr__ would register an nn.Module value as a submodule,
     # pulling the (frozen) teacher into model.parameters()/state_dict() and
-    # DDP's broadcast; __dict__ keeps it reachable without that.
-    model.__dict__["distill_teacher"] = teacher
+    # DDP's broadcast; __dict__ keeps it reachable without that. A run on a teacher cache
+    # reads precomputed targets: the teacher only seeded the student and is dropped.
+    model.__dict__["distill_teacher"] = None if args.distill_teacher_cache else teacher
     # Only the backbone (and conditioning) learn; the per-frame heads keep
     # the teacher's weights so single-pass generation stays calibrated.
     disable_grad(flow_lm.flow_net)

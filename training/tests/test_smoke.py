@@ -34,6 +34,7 @@ from pocket_tts.utils.config import CONFIGS_DIR, load_config
 from training.args import ReflArgs, TrainArgs
 from training.checkpointing import EMA
 from training.dataloader import DataLoader, Entry
+from training.dataloader.teacher_cache import cached_batches, collate, teacher_rows
 from training.modules.builders import head_from_state
 from training.modules.model import TrainableTTS
 from training.modules.samplers import build_flow
@@ -232,6 +233,49 @@ def test_distill_into_a_narrower_student():
     grads = {k: p.grad for k, p in model.flow_lm.named_parameters()}
     assert grads["transformer.layers.0.linear1.weight"] is not None
     assert model.flow_lm.out_eos.weight.grad is None
+
+
+def test_teacher_cache_matches_the_online_teacher(tmp_path: Path):
+    """The loss on cached targets equals the loss with the online teacher on the same batch
+    (padding past each row's frames and voice prompt included), and a student without a
+    teacher trains from the cache files, resuming at the right row."""
+    model = tiny_model("lsd")
+    model.args.distill_cfg_coef = 3.0  # the target differs from the student
+    model.args.text_dropout = model.args.voice_dropout = 0.0
+    model.__dict__["distill_teacher"] = copy.deepcopy(model.flow_lm).requires_grad_(False)
+    model.flow_lm.flow_net.requires_grad_(False)
+    model.flow_lm.out_eos.requires_grad_(False)
+    latents, _, text, voice = make_batch()
+    mask = torch.arange(11)[None, :] < torch.tensor([10, 8, 6])[:, None]
+    voice_frames = torch.tensor([5, 3, 4])
+    online, _ = model(latents, mask, text, voice, num_voice_prompt_frames=voice_frames)
+
+    rows = teacher_rows(model, latents, mask, text, voice, voice_frames)
+    lat, mask2, text2, voice2, voice_frames2, z_target = collate(rows)
+    assert torch.equal(lat[:, :10], latents[:, :10] * mask[:, :10, None])
+    cached, _ = model(
+        lat, mask2, text2, voice2, num_voice_prompt_frames=voice_frames2, z_target=z_target
+    )
+    torch.testing.assert_close(cached, online, rtol=2e-3, atol=0)  # targets stored in bf16
+
+    torch.save(rows[:2], tmp_path / "000000.pt")  # the rows read: 0 1 | 1 2 | 0 1 | ...
+    torch.save(rows[1:], tmp_path / "000001.pt")
+    (tmp_path / "meta.json").write_text(json.dumps({"files": 2, "rows_per_file": 2}))
+    model.__dict__["distill_teacher"] = None
+    optimizer = build_optimizer(model, model.args, torch.device("cpu"), rank=0)
+    weight = model.flow_lm.transformer.get_parameter("layers.0.linear1.weight")
+    before = weight.detach().clone()
+    loader = cached_batches(tmp_path, 3, rank=0, world_size=1)
+    lat, mask2, text2, voice2, voice_frames2, z_target = next(loader)
+    assert voice2.shape[1] == 5 and voice_frames2.tolist() == [5, 3, 3]
+    loss, _ = model(
+        lat, mask2, text2, voice2, num_voice_prompt_frames=voice_frames2, z_target=z_target
+    )
+    loss.backward()
+    optimizer.step()
+    assert loss.isfinite() and not torch.equal(weight, before)
+    resumed = next(cached_batches(tmp_path, 3, rank=0, world_size=1, skip_rows=3))
+    assert torch.equal(resumed[0], next(loader)[0])  # rows 2 0 1, wrapping into the second pass
 
 
 @pytest.mark.parametrize(

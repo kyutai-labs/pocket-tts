@@ -29,6 +29,7 @@ This will generate a WAV file `./tts_output.wav` with the default text and voice
 - `--noise-clamp NOISE_CLAMP`: Noise clamp value (default: None)
 - `--eos-threshold EOS_THRESHOLD`: EOS threshold (default: -4.0)
 - `--frames-after-eos FRAMES_AFTER_EOS`: Number of frames to generate after EOS (default: None, auto-calculated based on the text length). Each frame is 80ms.
+- `--pronunciations PRONUNCIATIONS_PATH`: Path to a JSON file mapping words to respellings, e.g. `{"live": "lyve"}`, to fix mispronounced words. Matching is case-insensitive and on whole words. See [Fixing pronunciations](../API%20Reference/python-api.md#fixing-pronunciations).
 
 ### Performance Options
 
@@ -75,6 +76,13 @@ pocket-tts generate --temperature 1.0
 
 # Adjust EOS threshold, smaller means finishing earlier.
 pocket-tts generate --eos-threshold -3.0
+```
+
+### Fixing Pronunciations
+
+```bash
+# lexicon.json: {"live": "lyve", "Kyutai": "Kyoo-tie"}
+pocket-tts generate --text "Kyutai's stream is live." --pronunciations lexicon.json
 ```
 
 ### Custom Model Config

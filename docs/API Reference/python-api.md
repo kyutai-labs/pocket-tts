@@ -125,7 +125,7 @@ voice_state = model.get_state_for_audio_prompt(
 )
 ```
 
-##### `generate_audio(model_state, text_to_generate, frames_after_eos=None, copy_state=True)`
+##### `generate_audio(model_state, text_to_generate, frames_after_eos=None, copy_state=True, pronunciations=None)`
 
 Generate complete audio tensor from text input.
 
@@ -134,6 +134,7 @@ Generate complete audio tensor from text input.
 - `text_to_generate` (str): Text to convert to speech
 - `frames_after_eos` (int | None): Frames to generate after EOS detection (default: None)
 - `copy_state` (bool): Whether to copy the state (default: True)
+- `pronunciations` (dict[str, str] | None): Lexicon mapping words to respellings, applied before tokenization (default: None). See [Fixing pronunciations](#fixing-pronunciations).
 
 **Returns:**
 - `torch.Tensor`: Audio 1D tensor with shape [samples]
@@ -153,7 +154,7 @@ print(f"Generated audio shape: {audio.shape}")
 print(f"Audio duration: {audio.shape[-1] / model.sample_rate:.2f} seconds")
 ```
 
-##### `generate_audio_stream(model_state, text_to_generate, frames_after_eos=None, copy_state=True)`
+##### `generate_audio_stream(model_state, text_to_generate, frames_after_eos=None, copy_state=True, pronunciations=None)`
 
 Generate audio streaming chunks from text input.
 
@@ -228,6 +229,27 @@ voices = {
 casual_audio = model.generate_audio(voices["casual"], "Hey there!")
 funny_audio = model.generate_audio(voices["funny"], "Good morning.")
 ```
+
+### Fixing pronunciations
+
+The model reads text as spelled; it has no phoneme input. When a word is mispronounced
+(names, technical terms, loanwords, homographs such as "live"), you can respell it the way
+the model should read it and pass a lexicon to `generate_audio()` or `generate_audio_stream()`:
+
+```python
+from pocket_tts import TTSModel
+
+model = TTSModel.load_model()
+voice_state = model.get_state_for_audio_prompt("alba")
+
+pronunciations = {"live": "lyve", "Kyutai": "Kyoo-tie"}
+audio = model.generate_audio(voice_state, "Kyutai's stream is live.", pronunciations=pronunciations)
+```
+
+Matching is case-insensitive and on whole words, so `"live"` does not touch "delivered".
+Entries may span several words or contain punctuation (`"E-Mail"`, `"New York"`), and the
+longest entry wins when two overlap. Respellings are language-specific: for the German model,
+`{"Meeting": "Mieting"}` works where an English-style spelling would not.
 
 
 ### Batch Processing

@@ -56,7 +56,7 @@ def test_flag_on_continues_the_previous_chunk(model: TTSModel, monkeypatch: pyte
     calls: list[dict[str, Any]] = []
     original = model._generate_audio_stream_short_text
 
-    def record(**kwargs: Any):
+    def record(**kwargs: Any):  # noqa: ANN401 -- passthrough to the wrapped method
         call = {"kwargs": kwargs, "samples": 0}
         calls.append(call)
         for audio in original(**kwargs):

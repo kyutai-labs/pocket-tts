@@ -28,7 +28,8 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from pocket_tts.models.mimi import MimiModel
 from training.args import TrainArgs, dump_args, load_args, save_args
 from training.checkpointing import EMA, latest_checkpoint, load_checkpoint, save_checkpoint
-from training.dataloader import DataLoader, SubprocessDataLoader, encode_batch
+from training.dataloader import DataLoader, SubprocessDataLoader, _prefetch, encode_batch
+from training.dataloader.teacher_cache import cached_batches
 from training.distributed import (
     average_grads,
     avg_across_ranks,
@@ -112,7 +113,8 @@ def setup(config_path: str) -> Run:
             "Validation must encode audio directly so its metrics stay exact and "
             "comparable; point valid_jsonl at the original manifest."
         )
-    check_manifest_sizes(args, world_size)
+    if not args.distill_teacher_cache:
+        check_manifest_sizes(args, world_size)
     if rank == 0:
         save_args(args, run_dir / "args.yaml")
 
@@ -123,7 +125,8 @@ def setup(config_path: str) -> Run:
                 p.requires_grad_(False)
     model.to(device)
     mimi.to(device)
-    ensure_train_latents(args, mimi, device, rank, world_size)
+    if not args.distill_teacher_cache:
+        ensure_train_latents(args, mimi, device, rank, world_size)
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     if rank == 0:
         logger.info(f"flow_lm + objective: {n_params / 1e6:.1f}M trainable params")
@@ -178,27 +181,37 @@ def main(config_path: str):
 
     sentence_piece = model.flow_lm.conditioner.tokenizer
     tokenize = sentence_piece.encode
-    train_data = SubprocessDataLoader(
-        args.data.train_jsonl,
-        sentence_piece,
-        args.batch_size,
-        mimi.sample_rate,
-        mimi.frame_rate,
-        args.data.max_duration_sec,
-        args.data.max_voice_prompt_sec,
-        rank,
-        run.world_size,
-        # Fold the resume step into the seed: the loader keeps no state
-        # across restarts, so a fixed seed would replay the same
-        # permutation from the top and bias coverage toward its head.
-        seed=args.seed + start_step,
-        shuffle=args.data.shuffle,
-        num_procs=args.data.loader_procs,
-        num_bucket_batches=args.data.num_bucket_batches,
-        prompt_trim_max_sec=args.data.prompt_trim_max_sec,
-        final_punct_dropout=args.data.final_punct_dropout,
-    )
-    train_loader = iter(train_data)
+    cache = train_data = None
+    if args.distill_teacher_cache:
+        # Rows and targets from the cache: no loader, no Mimi encoding, no teacher.
+        skip = start_step * args.grad_accum_steps * args.batch_size
+        cache = _prefetch(
+            cached_batches(
+                args.distill_teacher_cache, args.batch_size, rank, run.world_size, skip, device
+            )
+        )
+    else:
+        train_data = SubprocessDataLoader(
+            args.data.train_jsonl,
+            sentence_piece,
+            args.batch_size,
+            mimi.sample_rate,
+            mimi.frame_rate,
+            args.data.max_duration_sec,
+            args.data.max_voice_prompt_sec,
+            rank,
+            run.world_size,
+            # Fold the resume step into the seed: the loader keeps no state
+            # across restarts, so a fixed seed would replay the same
+            # permutation from the top and bias coverage toward its head.
+            seed=args.seed + start_step,
+            shuffle=args.data.shuffle,
+            num_procs=args.data.loader_procs,
+            num_bucket_batches=args.data.num_bucket_batches,
+            prompt_trim_max_sec=args.data.prompt_trim_max_sec,
+            final_punct_dropout=args.data.final_punct_dropout,
+        )
+        train_loader = iter(train_data)
 
     autocast = torch.autocast(
         device_type=device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"
@@ -227,24 +240,36 @@ def main(config_path: str):
             group["lr"] = lr * group.get("lr_scale", 1.0)
         optimizer.zero_grad()
         for micro in range(args.grad_accum_steps):
-            batch = next(train_loader)
-            latents, mask, voice_prompt_latents, num_voice_prompt_frames = encode_batch(
-                mimi, batch, device
-            )
+            if cache is not None:
+                (
+                    latents,
+                    mask,
+                    text_tokens,
+                    voice_prompt_latents,
+                    num_voice_prompt_frames,
+                    z_target,
+                ) = next(cache)
+            else:
+                batch = next(train_loader)
+                latents, mask, voice_prompt_latents, num_voice_prompt_frames = encode_batch(
+                    mimi, batch, device
+                )
+                text_tokens, z_target = batch.text_tokens, None
             with autocast:
                 loss, metrics = run.wrapped(
                     latents,
                     mask,
-                    batch.text_tokens,
+                    text_tokens,
                     voice_prompt_latents,
                     update_stats=step < args.stats_ema_steps,
                     num_voice_prompt_frames=num_voice_prompt_frames,
+                    z_target=z_target,
                 )
             if refl_rewards is not None:
                 reward_loss, refl_stats = refl_loss(
                     model,
                     sentence_piece.decode,
-                    batch.text_tokens,
+                    text_tokens,
                     voice_prompt_latents,
                     num_voice_prompt_frames,
                     mask,
@@ -285,7 +310,8 @@ def main(config_path: str):
                     args.run_dir, step + 1, model, optimizer, ema, args.num_ckpt_keep, mimi
                 )
                 progress.log("checkpoint", step + 1)
-            train_data.close()
+            if train_data is not None:
+                train_data.close()
             shutdown_distributed()
             return
 
@@ -318,7 +344,9 @@ def main(config_path: str):
         ):
             write_samples(model, mimi, tokenize, args, args.run_dir, step + 1, sample_voice, device)
 
-        if (step + 1) % args.valid_freq == 0 and args.data.valid_jsonl:
+        # A teacher-cache run has no teacher to compute the validation targets with.
+        valid = args.data.valid_jsonl and not args.distill_teacher_cache
+        if valid and (step + 1) % args.valid_freq == 0:
             valid_metrics = validate(model, mimi, args, device, rank, run.world_size, step + 1)
             progress.log("valid", step + 1, valid_metrics)
             model.train()
@@ -335,7 +363,8 @@ def main(config_path: str):
         if device.type == "cuda":
             logger.info(f"peak GPU memory {torch.cuda.max_memory_allocated() / 2**30:.1f} GiB")
         logger.info("done")
-    train_data.close()
+    if train_data is not None:
+        train_data.close()
     shutdown_distributed()
 
 

@@ -125,15 +125,17 @@ voice_state = model.get_state_for_audio_prompt(
 )
 ```
 
-##### `generate_audio(model_state, text_to_generate, frames_after_eos=None, copy_state=True)`
+##### `generate_audio(model_state, text_to_generate, max_tokens=None, frames_after_eos=None, copy_state=True, teacher_force_previous_chunk=False)`
 
 Generate complete audio tensor from text input.
 
 **Parameters:**
 - `model_state` (dict): Model state from `get_state_for_audio_prompt()`
 - `text_to_generate` (str): Text to convert to speech
+- `max_tokens` (int | None): Long texts are generated in chunks of at most this many tokens (default: None, which means 50, or 25 with `teacher_force_previous_chunk`)
 - `frames_after_eos` (int | None): Frames to generate after EOS detection (default: None)
 - `copy_state` (bool): Whether to copy the state (default: True)
+- `teacher_force_previous_chunk` (bool): Generate each chunk after the first as the continuation of the previous one: the text of both chunks is given and the previous chunk's generated audio latents are teacher-forced before the new frames are generated. By default every chunk starts afresh from the voice prompt. Slightly slower (one prefill of the previous chunk per chunk). Forces `copy_state=True` (default: False)
 
 **Returns:**
 - `torch.Tensor`: Audio 1D tensor with shape [samples]
@@ -153,7 +155,7 @@ print(f"Generated audio shape: {audio.shape}")
 print(f"Audio duration: {audio.shape[-1] / model.sample_rate:.2f} seconds")
 ```
 
-##### `generate_audio_stream(model_state, text_to_generate, frames_after_eos=None, copy_state=True)`
+##### `generate_audio_stream(model_state, text_to_generate, max_tokens=None, frames_after_eos=None, copy_state=True, stop=None, teacher_force_previous_chunk=False)`
 
 Generate audio streaming chunks from text input.
 

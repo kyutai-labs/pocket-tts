@@ -21,6 +21,7 @@ from pocket_tts.default_parameters import (
     DEFAULT_NOISE_CLAMP,
     DEFAULT_SAMPLER_DECODE_STEPS,
     MAX_TOKEN_PER_CHUNK,
+    MAX_TOKEN_PER_CHUNK_TEACHER_FORCED,
     get_default_text_for_language,
     get_default_voice_for_language,
 )
@@ -330,8 +331,19 @@ def generate(
     ] = "./tts_output.wav",
     device: Annotated[str, typer.Option(help="Device to use")] = "cpu",
     max_tokens: Annotated[
-        int, typer.Option(help="Maximum number of tokens per chunk.")
-    ] = MAX_TOKEN_PER_CHUNK,
+        int | None,
+        typer.Option(
+            help=f"Maximum number of tokens per chunk. Defaults to {MAX_TOKEN_PER_CHUNK}, "
+            f"or {MAX_TOKEN_PER_CHUNK_TEACHER_FORCED} with --teacher-force-previous-chunk."
+        ),
+    ] = None,
+    teacher_force_previous_chunk: Annotated[
+        bool,
+        typer.Option(
+            help="Generate each chunk of a long text as the continuation of the previous one "
+            "(its audio teacher-forced) instead of starting afresh from the voice prompt."
+        ),
+    ] = False,
     quantize: Annotated[
         bool, typer.Option(help="Apply int8 quantization to reduce memory usage")
     ] = False,
@@ -372,6 +384,7 @@ def generate(
             text_to_generate=text,
             frames_after_eos=frames_after_eos,
             max_tokens=max_tokens,
+            teacher_force_previous_chunk=teacher_force_previous_chunk,
         )
 
         stream_audio_chunks(output_path, audio_chunks, tts_model.config.mimi.sample_rate)

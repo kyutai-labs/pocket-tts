@@ -8,6 +8,8 @@ DEFAULT_EOS_THRESHOLD = -4.0
 DEFAULT_FRAMES_AFTER_EOS = None
 # TODO: make this dynamic since english_2026-04 supports bigger chunks
 MAX_TOKEN_PER_CHUNK = 50
+# With teacher_force_previous_chunk, the text of two chunks is fed at once.
+MAX_TOKEN_PER_CHUNK_TEACHER_FORCED = 25
 
 DEFAULT_TEXT_FOR_LANGUAGE = {
     "english": (

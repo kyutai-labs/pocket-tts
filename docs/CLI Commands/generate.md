@@ -29,6 +29,8 @@ This will generate a WAV file `./tts_output.wav` with the default text and voice
 - `--noise-clamp NOISE_CLAMP`: Noise clamp value (default: None)
 - `--eos-threshold EOS_THRESHOLD`: EOS threshold (default: -4.0)
 - `--frames-after-eos FRAMES_AFTER_EOS`: Number of frames to generate after EOS (default: None, auto-calculated based on the text length). Each frame is 80ms.
+- `--max-tokens MAX_TOKENS`: Long texts are generated in chunks of at most this many tokens (default: 50, or 25 with `--teacher-force-previous-chunk`)
+- `--teacher-force-previous-chunk`: Generate each chunk of a long text as the continuation of the previous one (the previous chunk's audio latents are teacher-forced, with the text of both chunks) instead of starting afresh from the voice prompt (default: False). Slightly slower.
 
 ### Performance Options
 

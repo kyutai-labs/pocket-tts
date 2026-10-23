@@ -1,23 +1,31 @@
 [package]
 name = "pocket-tts-engine"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Pocket TTS on ONNX Runtime: text preparation, chunking and synthesis"
+description = "Pocket TTS on upstream's Rust implementation: text preparation, chunking and synthesis"
 
 [dependencies]
-ndarray = "0.17"
-ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "preload-dylibs"] }
-safetensors = "0.8"
-sentencepiece-rs = "=0.2.2"
+# The model: the same xn-ptts fork and commit as upstream's rust/Cargo.toml, which
+# .github/fork/check-ported.sh holds this to. Without "hf": this crate brings its
+# own tokenizer (src/tokenizer.rs).
+ptts = { git = "https://github.com/gabrieldemarmiesse/xn-ptts", rev = "7efa26973f81bba42cf2ace8da2c1eb9b605d54d", default-features = false }
+# Must be the version ptts uses; its tensors cross the boundary.
+xn = "0.2.11"
+
+# What upstream's rust/src modules, compiled in from there, use.
+anyhow = "1"
+half = "2"
+log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+serde_yaml = "0.9"
 
-# The desk downloads ONNX Runtime at build time and copies it beside the
-# binary. Android cannot: the app ships Microsoft's `onnxruntime-android`
-# library and the JNI crate opens it by path, which is `load-dynamic`.
-[features]
-default = ["download-binaries"]
-download-binaries = ["ort/download-binaries", "ort/copy-dylibs", "ort/tls-rustls"]
-load-dynamic = ["ort/load-dynamic"]
+rand = { version = "0.9", default-features = false, features = ["std", "std_rng", "os_rng"] }
+rand_distr = "0.5"
+safetensors = "0.8"
+# Pure Rust, so the engine cross-compiles for Android without CMake; checked
+# against Google's SentencePiece by tools/tokdiff.
+sentencepiece-rs = "=0.2.2"
+tokenizers = { version = "0.23.1", default-features = false, features = ["fancy-regex"] }

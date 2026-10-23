@@ -15,7 +15,7 @@
 
     <string name="download_model">Download voice model</string>
     <string name="model_ready">Voice model installed</string>
-    <string name="model_missing">The voice model has not been downloaded yet. It is a 98 MB download and unpacks to about 200 MB.</string>
+    <string name="model_missing">The voice model has not been downloaded yet. It is a %1$d MB download.</string>
     <string name="downloading">Downloading… %1$d%%</string>
     <string name="downloading_unknown">Downloading…</string>
     <string name="preparing">Preparing…</string>

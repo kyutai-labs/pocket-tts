@@ -8,38 +8,49 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use pocket_tts_engine::text::{self, Chunking};
-use pocket_tts_engine::{Cancel, ChunkStats, EndReason, Engine};
+use pocket_tts_engine::{Cancel, ChunkStats, EndReason, Engine, LoadOptions};
+
+/// The desk's default: the largest model, which a desktop runs well faster
+/// than real time.
+const DEFAULT_MODEL: &str = "english_2026-10";
 
 const USAGE: &str = "\
 usage: pocket-speak [options] < text
-       pocket-speak install [--model-dir DIR] [--voice NAME ...] [--all-voices]
+       pocket-speak install [--model NAME] [--model-dir DIR] [--voice NAME ...]
+       pocket-speak models
 
 Reads text on stdin and plays it. With --out, writes a WAV instead.
+`install` fetches a model and its voices (all of them unless --voice is
+given); `models` lists the models on offer.
 
   --out PATH          write a 16-bit 24 kHz WAV instead of playing
   --play              play as well, when --out is given
-  --model-dir DIR     model directory (default: $POCKET_TTS_MODEL_DIR, else the cache)
-  --voice NAME|PATH   voice embedding (default: alba)
+  --model NAME        model (default: english_2026-10)
+  --model-dir DIR     its directory (default: $POCKET_TTS_MODEL_DIR, else the cache)
+  --voice NAME|PATH   voice (default: alba)
   --chunking MODE     sentence | packed | packed-raw (default: packed)
   --plain             do not strip Markdown
   --seed N            reproducible sampling
-  --threads N         ONNX Runtime intra-op threads (default: 2)
+  --threads N         threads for the model (default: 2)
+  --float             float weights, not int8
   --stats             one JSON line per chunk on stderr
 ";
 
 struct Options {
     out: Option<PathBuf>,
     play: bool,
-    model_dir: PathBuf,
+    model: String,
+    model_dir: Option<PathBuf>,
     voice: String,
     chunking: Chunking,
     plain: bool,
     seed: Option<u64>,
     threads: usize,
+    quantize: bool,
     stats: bool,
 }
 
-fn default_model_dir() -> PathBuf {
+fn default_model_dir(model: &str) -> PathBuf {
     if let Some(dir) = std::env::var_os("POCKET_TTS_MODEL_DIR") {
         return PathBuf::from(dir);
     }
@@ -52,19 +63,21 @@ fn default_model_dir() -> PathBuf {
     };
     base.unwrap_or_else(|| PathBuf::from("."))
         .join("pocket-tts-rs")
-        .join("english_2026-04")
+        .join(model)
 }
 
 fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
     let mut options = Options {
         out: None,
         play: false,
-        model_dir: default_model_dir(),
+        model: DEFAULT_MODEL.to_string(),
+        model_dir: None,
         voice: "alba".to_string(),
         chunking: Chunking::PACKED_DEFAULT,
         plain: false,
         seed: None,
         threads: 2,
+        quantize: true,
         stats: false,
     };
     let mut args = args.peekable();
@@ -73,7 +86,8 @@ fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
         match arg.as_str() {
             "--out" => options.out = Some(PathBuf::from(value("--out")?)),
             "--play" => options.play = true,
-            "--model-dir" => options.model_dir = PathBuf::from(value("--model-dir")?),
+            "--model" => options.model = value("--model")?,
+            "--model-dir" => options.model_dir = Some(PathBuf::from(value("--model-dir")?)),
             "--voice" => options.voice = value("--voice")?,
             "--chunking" => {
                 options.chunking = match value("--chunking")?.as_str() {
@@ -100,6 +114,7 @@ fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
                     .parse()
                     .map_err(|e| format!("--threads: {e}"))?
             }
+            "--float" => options.quantize = false,
             "--stats" => options.stats = true,
             "-h" | "--help" => return Err(String::new()),
             other => return Err(format!("unknown argument {other:?}")),
@@ -108,29 +123,33 @@ fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
     Ok(options)
 }
 
-fn install_args(args: Vec<String>) -> Result<(PathBuf, Vec<String>), String> {
-    let mut dir = default_model_dir();
+struct InstallArgs {
+    model: String,
+    dir: PathBuf,
+    voices: Vec<String>,
+}
+
+fn install_args(args: Vec<String>) -> Result<InstallArgs, String> {
+    let mut model = DEFAULT_MODEL.to_string();
+    let mut dir = None;
     let mut voices = Vec::new();
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
         match arg.as_str() {
+            "--model" => model = args.next().ok_or("--model needs a value")?,
             "--model-dir" => {
-                dir = PathBuf::from(args.next().ok_or("--model-dir needs a value")?);
+                dir = Some(PathBuf::from(
+                    args.next().ok_or("--model-dir needs a value")?,
+                ));
             }
             "--voice" => voices.push(args.next().ok_or("--voice needs a value")?),
-            "--all-voices" => {
-                voices = install::VOICE_FILES
-                    .iter()
-                    .map(|(name, _)| name.to_string())
-                    .collect();
-            }
+            // All voices is the default now; accepted so old scripts still run.
+            "--all-voices" => {}
             other => return Err(format!("unknown install argument {other:?}")),
         }
     }
-    if voices.is_empty() {
-        voices.push("alba".to_string());
-    }
-    Ok((dir, voices))
+    let dir = dir.unwrap_or_else(|| default_model_dir(&model));
+    Ok(InstallArgs { model, dir, voices })
 }
 
 fn main() -> ExitCode {
@@ -138,9 +157,12 @@ fn main() -> ExitCode {
     let result = if args.first().map(String::as_str) == Some("install") {
         args.remove(0);
         match install_args(args) {
-            Ok((dir, voices)) => install::install(&dir, &voices),
+            Ok(install) => install::install(&install.model, &install.dir, &install.voices),
             Err(message) => return usage_error(&message),
         }
+    } else if args.first().map(String::as_str) == Some("models") {
+        println!("{}", install::list());
+        Ok(())
     } else {
         match parse(args.into_iter()) {
             Ok(options) => run(options),
@@ -179,17 +201,42 @@ fn run(options: Options) -> Result<(), String> {
         return Err("nothing to say".to_string());
     }
 
-    let mut engine =
-        Engine::load(&options.model_dir, options.threads).map_err(|e| e.to_string())?;
+    let model_dir = options
+        .model_dir
+        .clone()
+        .unwrap_or_else(|| default_model_dir(&options.model));
+    if pocket_tts_engine::models::find(&options.model).is_none() {
+        return Err(install::unknown_model(&options.model));
+    }
+    let load = LoadOptions {
+        threads: options.threads,
+        quantize: options.quantize,
+    };
+    let mut engine = Engine::load_with(&model_dir, &options.model, load).map_err(|e| {
+        format!(
+            "{e}\n(run `pocket-speak install --model {}` first)",
+            options.model
+        )
+    })?;
     if let Some(seed) = options.seed {
         engine.set_seed(seed);
+    }
+    if options.stats {
+        let weights = if engine.is_quantized() {
+            "int8"
+        } else {
+            "float"
+        };
+        eprintln!(
+            "{{\"model\":\"{}\",\"weights\":\"{weights}\",\"threads\":{}}}",
+            options.model, options.threads
+        );
     }
     let voice_path =
         if options.voice.contains(['/', '\\']) || options.voice.ends_with(".safetensors") {
             PathBuf::from(&options.voice)
         } else {
-            options
-                .model_dir
+            model_dir
                 .join("embeddings")
                 .join(format!("{}.safetensors", options.voice))
         };

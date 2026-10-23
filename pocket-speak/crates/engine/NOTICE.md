@@ -1,45 +1,26 @@
 # Notices
 
-## speech-kit-obsidian-plugin
+## Upstream
 
-`src/model.rs` is ported from `native/src/adapters/pocket_tts.rs` in
-[speech-kit-obsidian-plugin](https://github.com/brittain9/speech-kit-obsidian-plugin),
-used under the MIT License:
+`src/synth.rs` is ported from `rust/src/model.rs` and `rust/src/rng.rs` of
+[kyutai-labs/pocket-tts](https://github.com/kyutai-labs/pocket-tts), this
+repository's upstream, and `src/lib.rs` compiles in four more of its files
+unchanged. The model itself is
+[xn-ptts](https://github.com/gradium-ai/xn-ptts), through the same fork and
+commit upstream uses. Both are under the MIT License (xn-ptts: MIT or
+Apache-2.0); see this repository's `LICENSE`.
 
-```
-MIT License
-
-Copyright (c) 2026 Alexander Brittain
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-`src/text.rs`'s trailing-short-sentence join follows this repository's
+`src/text.rs`'s chunking follows speech-kit's sentence-per-generation strategy
+([speech-kit-obsidian-plugin](https://github.com/brittain9/speech-kit-obsidian-plugin),
+MIT), and its trailing-short-sentence join follows this repository's
 `android/app/src/main/java/org/pockettts/android/speech/TextChunker.kt`.
 
 ## Models
 
-The engine runs models it does not ship. `pocket-speak install` fetches them:
-
-- ONNX export: [KevinAHM/pocket-tts-onnx](https://huggingface.co/KevinAHM/pocket-tts-onnx),
-  `onnx/english_2026-04`, CC-BY-4.0.
-- Voice embeddings: [kyutai/pocket-tts-without-voice-cloning](https://huggingface.co/kyutai/pocket-tts-without-voice-cloning),
-  `languages/english_2026-04/embeddings`, CC-BY-4.0.
+The engine runs models it does not ship. The app and `pocket-speak install`
+fetch the files `pocket-speak/models.json` pins, from
+[kyutai/pocket-tts-without-voice-cloning](https://huggingface.co/kyutai/pocket-tts-without-voice-cloning):
+the weights, tokenizers and precomputed voice states of each offered model,
+CC-BY-4.0.
 
 Pocket TTS is by [Kyutai](https://kyutai.org).

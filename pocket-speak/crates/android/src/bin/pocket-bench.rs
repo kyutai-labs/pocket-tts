@@ -1,7 +1,10 @@
 //! Runs the engine on a phone from `adb shell`, without the app, so its speed
 //! on the phone's CPU and its output can be measured on their own.
 //!
-//! usage: pocket-bench ORT_LIB MODEL_DIR VOICE.safetensors OUT_DIR SEED THREADS < lines
+//! usage: pocket-bench MODEL MODEL_DIR VOICE.safetensors OUT_DIR SEED THREADS < lines
+//!
+//! MODEL is a name from `pocket-speak/models.json`, MODEL_DIR holds its files.
+//! Also runs on desktop Linux, which is how CI measures it on arm64.
 //!
 //! Each stdin line is one chunk, with `\n` standing for a newline inside it.
 //! Writes OUT_DIR/NNN.wav per line and one JSON line of stats per chunk.
@@ -14,14 +17,19 @@ use pocket_tts_engine::{Cancel, Engine};
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 7 {
-        eprintln!("usage: pocket-bench ORT_LIB MODEL_DIR VOICE OUT_DIR SEED THREADS < lines");
+        eprintln!("usage: pocket-bench MODEL MODEL_DIR VOICE OUT_DIR SEED THREADS < lines");
         std::process::exit(2);
     }
-    ort::init_from(&args[1]).expect("ONNX Runtime").commit();
     let started = std::time::Instant::now();
-    let mut engine = Engine::load(Path::new(&args[2]), args[6].parse().unwrap()).expect("model");
+    let mut engine =
+        Engine::load(Path::new(&args[2]), &args[1], args[6].parse().unwrap()).expect("model");
     let voice = engine.load_voice(Path::new(&args[3])).expect("voice");
-    println!("{{\"load_ms\":{}}}", started.elapsed().as_millis());
+    println!(
+        "{{\"model\":\"{}\",\"int8\":{},\"load_ms\":{}}}",
+        args[1],
+        engine.is_quantized(),
+        started.elapsed().as_millis()
+    );
     let out = Path::new(&args[4]);
     std::fs::create_dir_all(out).unwrap();
     let seed: u64 = args[5].parse().unwrap();

@@ -9,6 +9,17 @@ class Settings(context: Context) {
     private val prefs = context.applicationContext
         .getSharedPreferences("pocket-tts", Context.MODE_PRIVATE)
 
+    private val catalog = ModelCatalog.get(context)
+
+    /**
+     * The model reads are made with, by name in [ModelCatalog]. A name that is
+     * no longer offered reads as the default, so an update that drops a model
+     * falls back rather than failing every read.
+     */
+    var modelName: String
+        get() = prefs.getString(KEY_MODEL, null)?.takeIf { catalog.byName(it) != null } ?: DEFAULT_MODEL
+        set(value) = prefs.edit { putString(KEY_MODEL, value) }
+
     var voiceId: String
         get() = prefs.getString(KEY_VOICE, VoiceCatalog.DEFAULT_VOICE_ID)
             ?: VoiceCatalog.DEFAULT_VOICE_ID
@@ -21,7 +32,8 @@ class Settings(context: Context) {
 
     /**
      * Pocket TTS is tuned for two cores and scales poorly past that, but
-     * thread-limited phones sometimes do better with more.
+     * thread-limited phones sometimes do better with more. Read when the
+     * engine first loads: a change takes effect when the app next starts.
      */
     var numThreads: Int
         get() = prefs.getInt(KEY_THREADS, DEFAULT_THREADS).coerceIn(1, 8)
@@ -149,6 +161,14 @@ class Settings(context: Context) {
     fun voice(): VoiceCatalog.Voice = VoiceCatalog.byId(voiceId) ?: VoiceCatalog.default()
 
     companion object {
+        /**
+         * The largest model, Kyutai's default: the best reading, and on the
+         * engine this app now runs, faster on the same phone than the smaller
+         * ONNX model it replaces. The small models are offered for phones
+         * where it is not fast enough, and to save space.
+         */
+        const val DEFAULT_MODEL = "english_2026-10"
+
         const val MIN_SPEED = 0.5f
         const val MAX_SPEED = 2.0f
         private const val DEFAULT_THREADS = 2
@@ -200,6 +220,7 @@ class Settings(context: Context) {
         const val DEFAULT_GLASS_DIM = 0f
         const val DEFAULT_GLASS_CORNER_DP = 10f
 
+        private const val KEY_MODEL = "model"
         private const val KEY_VOICE = "voice"
         private const val KEY_SPEED = "speed"
         private const val KEY_THREADS = "threads"

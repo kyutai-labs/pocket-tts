@@ -11,13 +11,12 @@
 //! cancelled before its synthesis starts stops that synthesis at the first
 //! frame, and cannot stop someone else's.
 //!
-//! ONNX Runtime is Microsoft's `onnxruntime-android` library, packaged by the
-//! app and opened here by name (ort's `load-dynamic`), once per process.
+//! The engine is pure Rust (upstream's xn-ptts), so this library is the whole
+//! of the app's native code.
 //!
 //! A panic never crosses into the JVM: each entry point that can fail catches
 //! it and throws `IllegalStateException` instead, so a Rust panic in the
-//! engine costs a failed read rather than the process. A fault inside ONNX
-//! Runtime's native code is not a panic and is not caught. A panic inside
+//! engine costs a failed read rather than the process. A panic inside
 //! `synthesize` poisons the engine's mutex; [`lock`] takes the engine anyway,
 //! because `Engine::synthesize` keeps no per-chunk state on the engine (its
 //! doc says so), and refusing every later read would silence TalkBack until
@@ -25,25 +24,12 @@
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
-use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use jni::JNIEnv;
 use jni::objects::{JClass, JFloatArray, JObject, JString, JValue};
 use jni::sys::{jfloat, jint, jlong, jstring};
 use pocket_tts_engine::{Cancel, Engine, Voice};
-
-static RUNTIME: OnceLock<Result<(), String>> = OnceLock::new();
-
-fn init_runtime(path: &str) -> Result<(), String> {
-    RUNTIME
-        .get_or_init(|| {
-            ort::init_from(path)
-                .map_err(|e| format!("ONNX Runtime at {path}: {e}"))?
-                .commit();
-            Ok(())
-        })
-        .clone()
-}
 
 /// Runs `body`, turning an error or a panic into a Java exception and
 /// `fallback`.
@@ -89,22 +75,21 @@ fn lock<'a>(raw: jlong) -> MutexGuard<'a, Engine> {
     engine.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// Loads the model in `model_dir`, opening ONNX Runtime from `ort_library`
-/// first if this process has not.
+/// Loads model `model_name` from the files in `model_dir`. The thread count
+/// of the first load in the process holds for its life.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_pockettts_android_engine_NativeEngine_nativeLoad(
     mut env: JNIEnv,
     _class: JClass,
     model_dir: JString,
+    model_name: JString,
     threads: jint,
-    ort_library: JString,
 ) -> jlong {
     guarded(&mut env, 0, |env| {
-        let ort_library = string(env, &ort_library)?;
-        init_runtime(&ort_library)?;
         let dir = string(env, &model_dir)?;
-        let engine =
-            Engine::load(Path::new(&dir), threads.max(1) as usize).map_err(|e| e.to_string())?;
+        let name = string(env, &model_name)?;
+        let engine = Engine::load(Path::new(&dir), &name, threads.max(1) as usize)
+            .map_err(|e| e.to_string())?;
         Ok(Box::into_raw(Box::new(Mutex::new(engine))) as jlong)
     })
 }

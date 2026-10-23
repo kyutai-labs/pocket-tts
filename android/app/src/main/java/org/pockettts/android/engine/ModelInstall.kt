@@ -27,9 +27,10 @@ import kotlinx.coroutines.sync.withLock
  * downloaded" and invited a second tap - and the partial file was deleted on
  * the way out, so the second tap started from zero.
  *
- * So: one shared attempt, owned by the process. Everybody who asks joins the
- * one in flight rather than starting another, and a screen that goes away
- * leaves it running.
+ * So: one shared attempt per model, owned by the process. Everybody who asks
+ * for a model joins the attempt in flight for it rather than starting
+ * another, and a screen that goes away leaves it running. [state] follows the
+ * latest attempt, which is the one the screen started.
  */
 object ModelInstall {
 
@@ -46,38 +47,45 @@ object ModelInstall {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lock = Mutex()
-    private var attempt: Deferred<ModelManager.ModelFiles>? = null
+    /** By model name; guarded by [lock]. */
+    private val attempts = HashMap<String, Deferred<ModelManager.ModelFiles>>()
 
     private val _state = MutableStateFlow<State>(State.Idle)
     val state: StateFlow<State> = _state.asStateFlow()
 
-    val isRunning: Boolean get() = attempt?.isActive == true
+    val isRunning: Boolean get() = synchronized(attempts) { attempts.values.any { it.isActive } }
 
     /**
      * Installs the model if it is not already there, joining an attempt that is
      * already under way.
      *
      * Cancelling the caller does not cancel the download: it is shared, and one
-     * screen navigating away is not a decision to abandon 125 MB that other
+     * screen navigating away is not a decision to abandon 219 MB that other
      * callers may still be waiting on.
      */
-    suspend fun ensure(context: Context): ModelManager.ModelFiles {
+    suspend fun ensure(
+        context: Context,
+        modelName: String = Settings(context).modelName,
+    ): ModelManager.ModelFiles {
         val app = context.applicationContext
-        ModelManager(app).resolveModelOrNull()?.let {
+        ModelManager(app, modelName).resolveModelOrNull()?.let {
             _state.value = State.Installed
             return it
         }
 
         val shared = lock.withLock {
-            attempt?.takeIf { it.isActive } ?: scope.async { install(app) }.also { attempt = it }
+            synchronized(attempts) {
+                attempts[modelName]?.takeIf { it.isActive }
+                    ?: scope.async { install(app, modelName) }.also { attempts[modelName] = it }
+            }
         }
         return shared.await()
     }
 
-    private suspend fun install(context: Context): ModelManager.ModelFiles {
+    private suspend fun install(context: Context, modelName: String): ModelManager.ModelFiles {
         _state.value = State.Working(0f)
         return try {
-            installer.install(context) { fraction -> _state.value = State.Working(fraction) }
+            installer.install(context, modelName) { fraction -> _state.value = State.Working(fraction) }
                 .also { _state.value = State.Installed }
         } catch (error: Throwable) {
             _state.value = State.Failed(error.message ?: error.javaClass.simpleName)
@@ -89,12 +97,13 @@ object ModelInstall {
     internal fun interface Installer {
         suspend fun install(
             context: Context,
+            modelName: String,
             progress: ModelManager.ProgressListener?,
         ): ModelManager.ModelFiles
     }
 
-    internal var installer = Installer { context, progress ->
-        val manager = ModelManager(context)
+    internal var installer = Installer { context, modelName, progress ->
+        val manager = ModelManager(context, modelName)
         manager.ensureModel(progress).also {
             // A model with no voice cannot speak, and the first read may come
             // with no network; fetch the selected voice's embedding now.
@@ -104,8 +113,10 @@ object ModelInstall {
     }
 
     internal fun resetForTesting() {
-        attempt = null
+        synchronized(attempts) { attempts.clear() }
         _state.value = State.Idle
-        installer = Installer { context, progress -> ModelManager(context).ensureModel(progress) }
+        installer = Installer { context, modelName, progress ->
+            ModelManager(context, modelName).ensureModel(progress)
+        }
     }
 }

@@ -1,0 +1,7 @@
+# xn picks its SIMD kernels at compile time, as upstream's rust/.cargo/config.toml
+# says: desktop x86 builds target x86-64-v3 (AVX2, FMA: Intel Haswell and AMD Zen
+# onwards), measured 3-4x faster than the x86-64 baseline. Not Android's x86_64
+# ABI: the emulator has AVX2, but not every x86 Android device does, and there a
+# v3 build dies on its first instruction. aarch64 always has NEON.
+[target.'cfg(all(target_arch = "x86_64", not(target_os = "android")))']
+rustflags = ["-C", "target-cpu=x86-64-v3"]

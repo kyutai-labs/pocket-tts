@@ -210,8 +210,13 @@ class MainActivity : AppCompatActivity() {
         binding.codeBlocksSwitch.isChecked = settings.speakCodeBlocks
         binding.steadyVoiceSwitch.isChecked = settings.steadyVoice
 
-        val installed = ModelManager(this).isModelInstalled
-        binding.modelStatus.setText(if (installed) R.string.model_ready else R.string.model_missing)
+        val manager = ModelManager(this)
+        val installed = manager.isModelInstalled
+        binding.modelStatus.text = if (installed) {
+            getString(R.string.model_ready)
+        } else {
+            getString(R.string.model_missing, (manager.model.downloadBytes / 1_000_000).toInt())
+        }
         val busy = ModelInstall.isRunning
         binding.downloadButton.isEnabled = !installed && !busy
         binding.installButton.isEnabled = !installed && !busy

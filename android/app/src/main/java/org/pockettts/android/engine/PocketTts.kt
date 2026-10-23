@@ -17,9 +17,10 @@ import java.util.concurrent.ConcurrentHashMap
  * Owns the one loaded copy of the model.
  *
  * The engine is pocket-speak's, the Rust crate the desk CLI runs, over JNI
- * ([NativeEngine]). It replaced sherpa-onnx on 2026-10-03, after the same
- * text through both scored 3.5% and 53% word error on TalkBack's
- * announcements and 1.5% and 3.4% on prose (`android/docs/engine-swap.md`).
+ * ([NativeEngine]): upstream's own Rust implementation of the model since
+ * 2026-10, and before that an ONNX export run on ONNX Runtime, which replaced
+ * sherpa-onnx on 2026-10-03 (`android/docs/engine-swap.md`,
+ * `android/docs/pure-rust-engine.md`).
  *
  * Loading takes about half a second on a Galaxy S25 (0.43-0.67 s measured)
  * and a few hundred megabytes of RAM, so the engine
@@ -33,17 +34,37 @@ class PocketTts private constructor(
     private val modelManager: ModelManager,
 ) {
 
+    /** The [ModelCatalog] model this instance reads with. */
+    val modelName: String get() = modelManager.modelName
+
     val sampleRate: Int = engine.sampleRate
 
     private val synthesisLock = Mutex()
 
-    /** A voice embedding, loaded into the engine once and reused. */
-    class LoadedVoice internal constructor(val id: String, internal val handle: Long) {
+    /**
+     * Set once [retire] has freed the engine, under both [synthesisLock] and
+     * the voice cache's monitor: every native call takes one of them and
+     * checks this first, so none can reach a freed engine.
+     */
+    @Volatile
+    private var closed = false
+
+    /** A voice embedding, loaded into one engine once and reused there. */
+    class LoadedVoice internal constructor(
+        val id: String,
+        internal val handle: Long,
+        /** The [PocketTts] it was loaded into: a voice is one model's state. */
+        internal val owner: PocketTts,
+    ) {
         override fun equals(other: Any?): Boolean =
-            this === other || (other is LoadedVoice && id == other.id)
+            this === other || (other is LoadedVoice && id == other.id && owner === other.owner)
 
         override fun hashCode(): Int = id.hashCode()
     }
+
+    /** A read that outlived its model: another one was chosen meanwhile. */
+    class ModelChangedException(model: String) :
+        IllegalStateException("The voice model changed from $model; start the read again")
 
     // Written from Dispatchers.IO by both the reader and the system engine, so
     // not a plain map.
@@ -53,9 +74,24 @@ class PocketTts private constructor(
         voiceCache[voice.id]?.let { return@withContext it }
         val file = modelManager.ensureEmbedding(voice)
         synchronized(voiceCache) {
-            voiceCache[voice.id] ?: LoadedVoice(voice.id, engine.loadVoice(file.absolutePath))
+            if (closed) throw ModelChangedException(modelName)
+            voiceCache[voice.id] ?: LoadedVoice(voice.id, engine.loadVoice(file.absolutePath), this@PocketTts)
                 .also { voiceCache[voice.id] = it }
         }
+    }
+
+    /**
+     * Frees the engine and its voices, after any synthesis in progress. Calls
+     * made on this instance afterwards throw [ModelChangedException].
+     */
+    private suspend fun retire() = synthesisLock.withLock {
+        synchronized(voiceCache) {
+            closed = true
+            voiceCache.values.forEach { engine.freeVoice(it.handle) }
+            voiceCache.clear()
+            engine.close()
+        }
+        Log.i(TAG, "Freed $modelName")
     }
 
     /**
@@ -98,6 +134,7 @@ class PocketTts private constructor(
         cancel: NativeEngine.CancelToken? = null,
         onAudio: (FloatArray) -> Boolean,
     ): Boolean = synthesisLock.withLock {
+        if (closed || voice.owner !== this) throw ModelChangedException(modelName)
         withContext(Dispatchers.Default) {
             var completed = true
             val stretch = Stretch.forSpeed(speed, sampleRate)
@@ -173,16 +210,27 @@ class PocketTts private constructor(
         private val loadLock = Mutex()
 
         /**
-         * Returns the shared engine, loading it if necessary. Suspends for as
-         * long as the model takes to download on first run.
+         * Returns the shared engine for the selected model, loading it if
+         * necessary. Suspends for as long as the model takes to download on
+         * first run. When another model has been selected since, the engine
+         * for the old one is freed once its synthesis in progress is done.
          */
         suspend fun get(
             context: Context,
             progress: ModelManager.ProgressListener? = null,
         ): PocketTts {
-            instance?.let { return it }
+            val wanted = Settings(context).modelName
+            instance?.takeIf { it.modelName == wanted }?.let { return it }
             return loadLock.withLock {
-                instance ?: create(context.applicationContext, progress).also { instance = it }
+                instance?.takeIf { it.modelName == wanted } ?: run {
+                    // Freed before the next is loaded: two models at once may
+                    // not fit in a phone's memory.
+                    instance?.let { old ->
+                        instance = null
+                        old.retire()
+                    }
+                    create(context.applicationContext, wanted, progress).also { instance = it }
+                }
             }
         }
 
@@ -191,23 +239,24 @@ class PocketTts private constructor(
 
         private suspend fun create(
             context: Context,
+            modelName: String,
             progress: ModelManager.ProgressListener?,
         ): PocketTts = withContext(Dispatchers.IO) {
-            val manager = ModelManager(context)
             // Through the shared installer rather than straight to the manager,
             // so a read that arrives while the download button's transfer is
             // running joins it instead of starting a second one over the same
             // files.
-            val files = ModelInstall.ensure(context)
+            val files = ModelInstall.ensure(context, modelName)
+            val manager = ModelManager(context, files.modelName)
             val settings = Settings(context)
 
             Log.i(TAG, "Loading pocket-speak's engine from ${files.dir}")
             // Timed because the process is killed while cached routinely, and
             // this is paid again on the next read.
             val startedAt = System.currentTimeMillis()
-            val engine = NativeEngine.load(files.dir.absolutePath, settings.numThreads)
+            val engine = NativeEngine.load(files.dir.absolutePath, files.modelName, settings.numThreads)
             Metrics.modelLoadMillis = System.currentTimeMillis() - startedAt
-            manager.removeRetiredModel()
+            manager.removeRetiredModels()
             PocketTts(engine, manager)
         }
     }

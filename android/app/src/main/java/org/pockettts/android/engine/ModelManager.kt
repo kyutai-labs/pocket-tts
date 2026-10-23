@@ -13,16 +13,24 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Fetches the Pocket TTS weights and voice prompts onto the device.
+ * Fetches a model's weights and voices onto the device.
  *
- * The model is pocket-speak's bundle - the same pinned files the desk CLI
- * installs, 125 MB of int8 ONNX graphs, a tokenizer and a `bundle.json` - so
- * it is fetched on first run and kept in app storage, each file checked
- * against its sha256 before it is kept. A voice is a precomputed embedding of
- * about 6 MB, fetched the first time it is used; the reference wav beside it
+ * What a model needs is [ModelCatalog]: Kyutai's safetensors weights, a
+ * tokenizer and a precomputed state per voice, pinned to a commit and a
+ * sha256. The weights are fetched once, on first run or when the model is
+ * chosen, and kept in app storage, each file checked against its sha256
+ * before it is kept. A voice is fetched the first time it is used: 0.5 MB
+ * for the smallest model, 7 MB for the largest. The reference wav beside it
  * is only the preview the picker plays.
+ *
+ * Every model lives under [MODELS_DIR], which the backup rules exclude as a
+ * whole: a model added later can never be backed up by accident.
  */
-class ModelManager(private val context: Context) {
+class ModelManager(
+    private val context: Context,
+    /** The model this manager installs and finds; the selected one by default. */
+    val modelName: String = Settings(context).modelName,
+) {
 
     /** Progress of a download, 0..1, or -1 when the total size is unknown. */
     fun interface ProgressListener {
@@ -30,7 +38,7 @@ class ModelManager(private val context: Context) {
     }
 
     private val root: File get() = File(context.filesDir, "pocket-tts")
-    val modelDir: File get() = File(root, MODEL_NAME)
+    val modelDir: File get() = File(File(root, MODELS_DIR), modelName)
     private val voiceDir: File get() = File(root, "voices")
     private val embeddingDir: File get() = File(modelDir, "embeddings")
 
@@ -45,13 +53,18 @@ class ModelManager(private val context: Context) {
      */
     private val importedDir: File get() = File(voiceDir, "imported")
 
+    /** This manager's model, as the catalog pins it. */
+    val model: ModelCatalog.Model
+        get() = ModelCatalog.get(context).byName(modelName)
+            ?: throw IllegalStateException("No model named $modelName in ${ModelCatalog.ASSET}")
+
     val isModelInstalled: Boolean get() = resolveModelOrNull() != null
 
-    /** The directory holding [MODEL_FILES], once every one of them is present. */
-    data class ModelFiles(val dir: File)
+    /** The directory holding the model's files, once every one of them is present. */
+    data class ModelFiles(val dir: File, val modelName: String)
 
     fun resolveModelOrNull(): ModelFiles? =
-        ModelFiles(modelDir).takeIf { MODEL_FILES.all { (name, _) -> File(modelDir, name).isFile } }
+        ModelFiles(modelDir, modelName).takeIf { model.files.all { File(modelDir, it.name).isFile } }
 
     /**
      * Downloads the model files that are missing. Safe to call when installed.
@@ -66,26 +79,42 @@ class ModelManager(private val context: Context) {
         withContext(Dispatchers.IO) {
             resolveModelOrNull()?.let { return@withContext it }
             modelDir.mkdirs()
-            val missing = MODEL_FILES.filter { (name, _) -> !File(modelDir, name).isFile }
-            missing.forEachIndexed { index, (name, sha) ->
-                val share = 1f / missing.size
-                fetchVerified(URL("$BUNDLE_URL/$name"), File(modelDir, name), sha) { fraction ->
-                    progress?.onProgress(if (fraction < 0) -1f else (index + fraction) * share)
+            val missing = model.files.filter { !File(modelDir, it.name).isFile }
+            // Progress by bytes: the weights are a thousand times the tokenizer.
+            val total = missing.sumOf { it.bytes }.coerceAtLeast(1).toFloat()
+            var done = 0L
+            for (file in missing) {
+                fetchVerified(URL(file.url), File(modelDir, file.name), file.sha256) { fraction ->
+                    progress?.onProgress(if (fraction < 0) -1f else (done + fraction * file.bytes) / total)
                 }
+                done += file.bytes
             }
             resolveModelOrNull() ?: throw IOException("Model files missing from $modelDir after download")
         }
 
+    /** Every model on the device, by name: installed or partly downloaded. */
+    fun modelsOnDevice(): List<String> =
+        File(root, MODELS_DIR).listFiles()?.filter { it.isDirectory }?.map { it.name }?.sorted() ?: emptyList()
+
+    /** Deletes [name]'s files, voices included. They can be fetched again. */
+    fun deleteModel(name: String): Boolean = File(File(root, MODELS_DIR), name).deleteRecursively()
+
     /**
-     * Deletes sherpa-onnx's model, about 200 MB unpacked, once this engine has
-     * loaded from its own files. An upgraded install otherwise carries both.
+     * Deletes the models earlier engines read, once this one has loaded from
+     * its own files. An upgraded install otherwise carries both:
+     * sherpa-onnx's bundle (until 2026-10-03, about 200 MB) and the ONNX
+     * export the previous pocket-speak engine read (until 2026-10, 125 MB).
      */
-    fun removeRetiredModel() {
-        listOf(
-            File(root, RETIRED_MODEL_NAME),
+    fun removeRetiredModels() {
+        val onnx = File(root, RETIRED_ONNX_MODEL)
+        listOfNotNull(
+            File(root, RETIRED_SHERPA_MODEL),
             // An interrupted download and unpack of it, up to 98 MB.
-            File(root, "$RETIRED_MODEL_NAME.tar.bz2.part"),
-            File(root, "$RETIRED_MODEL_NAME.staging"),
+            File(root, "$RETIRED_SHERPA_MODEL.tar.bz2.part"),
+            File(root, "$RETIRED_SHERPA_MODEL.staging"),
+            // Only ever the ONNX bundle, which had a bundle.json, never
+            // anything else that came to be stored at that path.
+            onnx.takeIf { File(it, "bundle.json").exists() || File(it, "bundle.json.part").exists() },
         ).filter { it.exists() }.forEach {
             if (it.deleteRecursively()) Log.i(TAG, "Removed the retired model's $it")
         }
@@ -127,27 +156,32 @@ class ModelManager(private val context: Context) {
         voice: VoiceCatalog.Voice,
         progress: ProgressListener? = null,
     ): File = withContext(Dispatchers.IO) {
+        // A voice is this model's state after that voice's prompt, so each
+        // model has its own file per voice, pinned on its own.
+        val pinned = model.voices[voice.id]
+            ?: throw IOException("$modelName has no voice ${voice.id}")
+        val key = "$modelName/${voice.id}"
         // One download per voice at a time: the reader and the system engine
         // can both ask for an uncached voice at once, and two writers on one
         // `.part` produce a file that is neither.
-        embeddingLocks.computeIfAbsent(voice.id) { Mutex() }.withLock {
+        embeddingLocks.computeIfAbsent(key) { Mutex() }.withLock {
             embeddingDir.mkdirs()
-            val target = File(embeddingDir, "${voice.id}.safetensors")
+            val target = File(embeddingDir, pinned.name)
             // A file on disk is checked once per process before it is
             // trusted. "Any file in the right place counts as cached" is the
-            // mistake ensureVoice's doc below records; 6 MB hashes in tens of
+            // mistake ensureVoice's doc below records; 7 MB hashes in tens of
             // milliseconds.
             if (target.isFile) {
-                if (voice.id in verifiedEmbeddings) return@withLock target
-                if (sha256Of(target) == voice.embeddingSha256) {
-                    verifiedEmbeddings += voice.id
+                if (key in verifiedEmbeddings) return@withLock target
+                if (sha256Of(target) == pinned.sha256) {
+                    verifiedEmbeddings += key
                     return@withLock target
                 }
-                Log.w(TAG, "Embedding for ${voice.id} does not match its pin; fetching it again")
+                Log.w(TAG, "Embedding for $key does not match its pin; fetching it again")
                 target.delete()
             }
-            fetchVerified(URL("$EMBEDDINGS_URL/${voice.id}.safetensors"), target, voice.embeddingSha256, progress)
-            verifiedEmbeddings += voice.id
+            fetchVerified(URL(pinned.url), target, pinned.sha256, progress)
+            verifiedEmbeddings += key
             target
         }
     }
@@ -281,7 +315,7 @@ class ModelManager(private val context: Context) {
     /**
      * Fetches [url] into [target], continuing an earlier attempt if there is one.
      *
-     * The bundle is 125 MB. Without a `Range` request a drop at 120 MB throws
+     * The largest model is 219 MB. Without a `Range` request a drop at 120 MB throws
      * away 120 MB, and on a connection that drops regularly the download never
      * completes at all - each attempt simply gets a different distance through
      * the same first stretch.
@@ -357,31 +391,17 @@ class ModelManager(private val context: Context) {
     companion object {
         private const val TAG = "ModelManager"
 
-        /**
-         * pocket-speak's model: Kevin AHM's ONNX export of Kyutai's
-         * `english_2026-04`, pinned to a commit, with the sha256s the desk
-         * CLI's `install.rs` uses (which are speech-kit's catalog pins).
-         */
-        const val MODEL_NAME = "english_2026-04"
+        /** Where every model lives, by name, under `pocket-tts/`. */
+        const val MODELS_DIR = "models"
 
         /** The sherpa-onnx bundle this app read from until 2026-10-03. */
-        private const val RETIRED_MODEL_NAME = "sherpa-onnx-pocket-tts-int8-2026-01-26"
-        const val BUNDLE_URL =
-            "https://huggingface.co/KevinAHM/pocket-tts-onnx/resolve/58a6d00cf13d239b6748cb0769f35c580a8f606c/onnx/english_2026-04"
-        const val EMBEDDINGS_URL =
-            "https://huggingface.co/kyutai/pocket-tts-without-voice-cloning/resolve/e041936c75475d350b405bc870bcf7c22da4e9e6/languages/english_2026-04/embeddings"
+        private const val RETIRED_SHERPA_MODEL = "sherpa-onnx-pocket-tts-int8-2026-01-26"
 
-        /** Per voice, so concurrent ModelManager instances share them. */
+        /** The ONNX export the previous engine read, until 2026-10. */
+        private const val RETIRED_ONNX_MODEL = "english_2026-04"
+
+        /** Per model and voice, so concurrent ModelManager instances share them. */
         private val embeddingLocks = java.util.concurrent.ConcurrentHashMap<String, Mutex>()
         private val verifiedEmbeddings: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
-
-        val MODEL_FILES: List<Pair<String, String>> = listOf(
-            "bundle.json" to "bab643150f437f37df080a710520ff39ed9ebd9a339f8ebdc739f7eddfc28b3f",
-            "tokenizer.model" to "d461765ae179566678c93091c5fa6f2984c31bbe990bf1aa62d92c64d91bc3f6",
-            "text_conditioner.onnx" to "4ecee995fb69f85c7a7493d11f7b5ee15d9950facc7ab3f5c9c49ef1e03847bb",
-            "flow_lm_main_int8.onnx" to "f9bd8106b79a0192c1c43399ab938fb24900a95c1c599870d75a884e99000116",
-            "flow_lm_flow_int8.onnx" to "3dd781ee5abee9e195320bf0106bebd6372a852b3b36352524ee78b40554635d",
-            "mimi_decoder_int8.onnx" to "3630450a3297a101792a6ac66619ebc70ab916b265e6220c2afaef8b1673f925",
-        )
     }
 }

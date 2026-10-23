@@ -42,7 +42,7 @@ done | awk -F"'" '
 missing=()
 for want in \
     "onAudio ([F)Z" \
-    "nativeLoad (Ljava/lang/String;ILjava/lang/String;)J" \
+    "nativeLoad (Ljava/lang/String;Ljava/lang/String;I)J" \
     nativeFree nativeSampleRate nativeLoadVoice nativeFreeVoice \
     nativeNewCancel nativeCancel nativeFreeCancel nativeSynthesize; do
     case "$want" in

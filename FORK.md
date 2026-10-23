@@ -33,6 +33,18 @@ from a fork path rather than editing it. If an upstream file truly must change, 
 in [.github/fork/upstream-edits](.github/fork/upstream-edits) with the reason; expect
 it to conflict whenever upstream edits that file.
 
+## The engine builds on upstream's Rust code
+
+The engine in `pocket-speak/crates/engine` compiles in four of upstream's
+`rust/src` files unchanged, and embeds `pocket_tts/config`. A merge of upstream
+updates the engine's config parsing, text preparation and weight loading, and
+runs the Android workflow, whose engine job includes upstream's own tests of
+those files. Two more it ports rather than compiles in, listed in
+`.github/fork/ported`: **Fork checks** fails the PR that merges a change to
+either, with the command to review it, and fails too if the engine's xn-ptts
+pin no longer matches upstream's. `android/docs/pure-rust-engine.md` has the
+details.
+
 ## Merging upstream
 
 The **Upstream watch** workflow runs every Monday. When upstream has commits the fork
@@ -47,7 +59,7 @@ To merge:
 git switch -c upstream-sync origin/main
 git fetch https://github.com/kyutai-labs/pocket-tts main
 git merge --no-ff FETCH_HEAD
-.github/fork/check-boundary.sh
+.github/fork/check-boundary.sh && .github/fork/check-ported.sh
 git push -u origin upstream-sync   # then open a PR
 ```
 

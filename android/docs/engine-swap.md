@@ -1,5 +1,8 @@
 # The app runs pocket-speak's engine now (2026-10-03)
 
+> Superseded in 2026-10 by upstream's pure-Rust engine: see
+> `pure-rust-engine.md`. Kept as the record of the ONNX engine it describes.
+
 sherpa-onnx is gone from the app. `PocketTts` drives the Rust engine the desk
 CLI runs (`pocket-speak/crates/engine`), over JNI (`pocket-speak/crates/android`), on
 Microsoft's `onnxruntime-android` 1.24.2. `owning-the-pipeline.md` argued for

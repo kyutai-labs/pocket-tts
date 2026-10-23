@@ -37,8 +37,11 @@ object ModelInstall {
     sealed interface State {
         data object Idle : State
 
-        /** [fraction] is 0..1, or -1 when the size is not known. */
-        data class Working(val fraction: Float) : State
+        /**
+         * [fraction] is 0..1, or -1 when the size is not known; [model] is the
+         * model being installed, so a list of them can show which.
+         */
+        data class Working(val fraction: Float, val model: String = "") : State
 
         data object Installed : State
 
@@ -83,13 +86,30 @@ object ModelInstall {
     }
 
     private suspend fun install(context: Context, modelName: String): ModelManager.ModelFiles {
-        _state.value = State.Working(0f)
+        _state.value = State.Working(0f, modelName)
         return try {
-            installer.install(context, modelName) { fraction -> _state.value = State.Working(fraction) }
+            installer.install(context, modelName) { fraction ->
+                _state.value = State.Working(fraction, modelName)
+            }
                 .also { _state.value = State.Installed }
         } catch (error: Throwable) {
             _state.value = State.Failed(error.message ?: error.javaClass.simpleName)
             throw error
+        }
+    }
+
+    /** The model being installed, if any. */
+    val installing: String? get() = (_state.value as? State.Working)?.model?.takeIf { isRunning }
+
+    /**
+     * Installs [modelName] and then makes it the one reads use, in the
+     * process's scope rather than the caller's: leaving the screen that asked
+     * must not leave the model downloaded but never chosen.
+     */
+    fun installAndSelect(context: Context, modelName: String) {
+        val app = context.applicationContext
+        scope.async {
+            runCatching { ensure(app, modelName) }.onSuccess { Settings(app).modelName = modelName }
         }
     }
 

@@ -189,6 +189,32 @@ class ActivityLaunchTest {
     }
 
     @Test
+    fun `model picker lists every model, each a radio button to TalkBack`() {
+        Settings(ApplicationProvider.getApplicationContext()).modelName = "english_7m_2026-10"
+        Robolectric.buildActivity(ModelPickerActivity::class.java).setup().use { controller ->
+            val activity = controller.get()
+            layOut(activity)
+            val list = activity.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.modelList)
+            val catalog = org.pockettts.android.engine.ModelCatalog.get(activity)
+            // The explanation, then one row per model.
+            assertEquals(catalog.models.size + 1, list.adapter?.itemCount)
+            val rows = (0 until list.childCount).map { list.getChildAt(it) }
+                .mapNotNull { it.findViewById<View>(R.id.row) }
+            assertEquals(catalog.models.size, rows.size)
+            for ((row, model) in rows.zip(catalog.models)) {
+                val info = android.view.accessibility.AccessibilityNodeInfo.obtain()
+                row.onInitializeAccessibilityNodeInfo(info)
+                assertEquals(android.widget.RadioButton::class.java.name, info.className)
+                assertTrue(info.isCheckable)
+                assertEquals(model.name == "english_7m_2026-10", info.isChecked)
+                val description = row.contentDescription.toString()
+                assertTrue(description, description.startsWith(ModelNames.title(activity, model.name)))
+                assertTrue(description, description.contains("MB"))
+            }
+        }
+    }
+
+    @Test
     fun `scratchpad reaches resumed state`() {
         Robolectric.buildActivity(ScratchpadActivity::class.java).setup().use { controller ->
             layOut(controller.get())

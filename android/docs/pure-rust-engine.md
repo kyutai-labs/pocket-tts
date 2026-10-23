@@ -57,9 +57,29 @@ v3 setting is for desktop x86 only, not Android's `x86_64` ABI, where a device
 without AVX2 would die on the first instruction. Phones are arm64, where NEON is
 always on.
 
-Not yet established: speed on a phone. The `models-arm64` job in the Android
-workflow measures every model on GitHub's arm64 runners on each run, and
-`pocket-bench` runs on a phone over `adb` as before (`engine-swap.md`).
+On arm64 (GitHub's arm64 runner, `models-arm64` job, 2026-10-23):
+
+| model | weights | threads | load | first audio | speed |
+|---|---|---|---|---|---|
+| `english_2026-10` | int8 | 1 | 217 ms | 386 ms | 4.8x |
+| `english_2026-10` | int8 | 2 | 219 ms | 204 ms | 6.6x |
+| `english_2026-10` | int8 | 4 | 219 ms | 113 ms | 6.7x |
+| `english_18m_2026-10` | int8 | 2 | 40 ms | 43 ms | 14.5x |
+| `english_7m_2026-10` | int8 | 2 | 16 ms | 21 ms | 13.0x |
+| `english_2m_2026-10` | float | 2 | 7 ms | 6 ms | 32.4x |
+
+The job reruns on every change to the engine, with 1, 2 and 4 threads for
+each model, in its run summary.
+
+**The default model** is the best-quality one that reads at least 3x real
+time on that runner with the app's 2 threads: `english_2026-10`, at 6.6x.
+A phone's big cores are in the same class as that runner's; its little ones
+are several times slower, which is what the smaller models are offered for.
+The app's model screen shows the speed the last read was composed at on the
+phone itself, and suggests a smaller model below 1.5x.
+
+Not yet established: speed on a phone. `pocket-bench` runs on one over `adb`
+as before (`engine-swap.md`).
 
 ## How it is built
 

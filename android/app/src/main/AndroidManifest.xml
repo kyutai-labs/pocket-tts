@@ -82,6 +82,11 @@
             android:exported="false"
             android:label="@string/voices" />
 
+        <activity
+            android:name=".ui.ModelPickerActivity"
+            android:exported="false"
+            android:label="@string/models" />
+
         <!--
             Registering as a system TTS engine means every app that already knows how
             to read text aloud - Select to Speak, Chrome's read aloud, ebook readers -

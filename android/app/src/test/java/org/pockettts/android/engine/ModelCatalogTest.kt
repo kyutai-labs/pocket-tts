@@ -52,6 +52,13 @@ class ModelCatalogTest {
     }
 
     @Test
+    fun `every model on offer has a name a person would choose by`() {
+        // A model without one still shows, under its config name; this says
+        // when the catalog gains a model the picker has no words for.
+        assertEquals(catalog.models.map { it.name }.toSet(), org.pockettts.android.ui.ModelNames.known)
+    }
+
+    @Test
     fun `an unknown stored model reads as the default`() {
         val settings = Settings(context)
         settings.modelName = "a-model-a-later-build-dropped"

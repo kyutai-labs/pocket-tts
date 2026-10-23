@@ -25,6 +25,9 @@ class ModelCatalog private constructor(val models: List<Model>) {
     ) {
         /** What installing it downloads, voices aside (each is 0.5-7 MB). */
         val downloadBytes: Long get() = files.sumOf { it.bytes }
+
+        /** [downloadBytes] in whole megabytes, rounded, as the app shows it. */
+        val downloadMegabytes: Int get() = ((downloadBytes + 500_000) / 1_000_000).toInt()
     }
 
     fun byName(name: String): Model? = models.firstOrNull { it.name == name }

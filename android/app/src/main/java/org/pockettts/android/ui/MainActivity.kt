@@ -68,12 +68,16 @@ class MainActivity : AppCompatActivity() {
         // Both hidden rather than left doing nothing.
         binding.stepsSlider.visibility = android.view.View.GONE
         binding.stepsLabel.visibility = android.view.View.GONE
+        binding.stepsExplained.visibility = android.view.View.GONE
         binding.installButton.visibility = android.view.View.GONE
         binding.installButton.setOnClickListener {
             // Any type: the bundle arrives as a .tar.bz2 that most file
             // providers report as application/octet-stream, or as nothing at
             // all, and filtering on that hides the file the user came to pick.
             pickModel.launch(arrayOf("*/*"))
+        }
+        binding.chooseModelButton.setOnClickListener {
+            startActivity(Intent(this, ModelPickerActivity::class.java))
         }
         binding.chooseVoiceButton.setOnClickListener {
             startActivity(Intent(this, VoicePickerActivity::class.java))
@@ -212,10 +216,10 @@ class MainActivity : AppCompatActivity() {
 
         val manager = ModelManager(this)
         val installed = manager.isModelInstalled
-        binding.modelStatus.text = if (installed) {
+        binding.modelStatus.text = modelLine(manager) + "\n" + if (installed) {
             getString(R.string.model_ready)
         } else {
-            getString(R.string.model_missing, (manager.model.downloadBytes / 1_000_000).toInt())
+            getString(R.string.model_missing, manager.model.downloadMegabytes)
         }
         val busy = ModelInstall.isRunning
         binding.downloadButton.isEnabled = !installed && !busy
@@ -318,19 +322,25 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     binding.downloadProgress.isIndeterminate = false
                     binding.downloadProgress.progress = (state.fraction * 100).toInt()
-                    binding.modelStatus.text =
-                        getString(R.string.downloading, (state.fraction * 100).toInt())
+                    // In steps of 10%: the text is a live region, and TalkBack
+                    // would otherwise read out every percent.
+                    val step = (state.fraction * 10).toInt() * 10
+                    binding.modelStatus.text = getString(R.string.downloading, step)
                 }
             }
 
             is ModelInstall.State.Failed ->
                 binding.modelStatus.text = getString(R.string.error_generic, state.message)
 
-            ModelInstall.State.Installed -> binding.modelStatus.setText(R.string.model_ready)
+            ModelInstall.State.Installed -> refresh()
 
             ModelInstall.State.Idle -> refresh()
         }
     }
+
+    /** "Voice model: Best quality", for the model reads are made with. */
+    private fun modelLine(manager: ModelManager): String =
+        getString(R.string.model_in_use, ModelNames.title(this, manager.modelName))
 
     private companion object {
         /** Enough of the report to recognise the failure without a wall of text. */

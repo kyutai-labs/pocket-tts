@@ -57,6 +57,17 @@ class ModelInstallTest {
     fun tearDown() = ModelInstall.resetForTesting()
 
     @Test
+    fun `a model downloaded from the picker is used once it is in`() = runBlocking {
+        val settings = Settings(context)
+        settings.modelName = "english_2026-10"
+        ModelInstall.installAndSelect(context, "english_2m_2026-10")
+        // Not before: reads would wait on a download nobody may finish.
+        assertEquals("english_2026-10", settings.modelName)
+        withTimeout(5_000) { while (settings.modelName != "english_2m_2026-10") delay(10) }
+        assertEquals(1, downloads.get())
+    }
+
+    @Test
     fun `two models never share one download`() = runBlocking {
         // A read for one model joining the download of another would load the
         // wrong files, or wait on a download it did not need.

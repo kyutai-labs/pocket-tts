@@ -85,6 +85,9 @@ object Reader {
          * nothing to find.
          */
         Agent("agent"),
+
+        /** "Hear the current model", on the model picker. */
+        ModelPicker("model-picker"),
     }
 
     sealed interface State {

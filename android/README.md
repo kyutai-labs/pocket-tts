@@ -184,7 +184,8 @@ a working install working.
 ## First run
 
 The model is not in the APK. On first launch the app downloads the selected
-model - Kyutai's `english_2026-10` unless another is chosen, 219 MB, each file
+model - Kyutai's `english_2026-10` unless another is chosen in **Choose
+model**, 219 MB, each file
 checked against the sha256 `pocket-speak/models.json` pins - into app storage.
 Each voice is a state precomputed for that model, 0.5 to 7 MB, fetched the first
 time that voice is used. An upgraded install deletes the models earlier engines
@@ -217,6 +218,12 @@ other apps ─────▶ PocketTtsService ───┘      ▼
                                                           xn-ptts + upstream's rust/src
 ```
 
+- `ui/ModelPickerActivity` chooses the model: Best quality (`english_2026-10`,
+  219 MB), Balanced (18m, 112 MB), Small (7m, 67 MB) or Smallest (2m, 47 MB).
+  Downloads ask first, with the size and a warning on a metered connection,
+  and the model is put to use when its download is done, even if the screen
+  has gone. Each row reads to TalkBack as a radio button with its state and
+  what a double tap will do; deleting is a separate button.
 - `speech/MarkdownSpeech` turns Markdown into speakable prose. A table is read
   as a screen reader reads one: announced ("Table, 2 rows."), then row by row
   under its column names; past four columns it is announced with its column

@@ -1,0 +1,11 @@
+# Paths the fork owns. Upstream (kyutai-labs/pocket-tts) never touches these, so
+# merging upstream cannot conflict on them. Everything else is upstream's and
+# stays byte-identical to it; check-boundary.sh enforces that. One git pathspec
+# per line; blank lines and # comments are ignored.
+android/
+pocket-speak/
+FORK.md
+.github/fork/
+.github/workflows/android.yml
+.github/workflows/fork-checks.yml
+.github/workflows/fork-upstream-watch.yml

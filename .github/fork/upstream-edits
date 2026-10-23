@@ -1,0 +1,4 @@
+# Upstream-owned files the fork changes on purpose, one path per line, each
+# with a comment saying why. Every entry is a conflict waiting for the next
+# upstream change to that file, so the list should stay empty: prefer a file
+# under a fork-owned path that builds on upstream's.

@@ -1,0 +1,19 @@
+name: Fork checks
+
+# Checks that keep merging kyutai-labs/pocket-tts cheap. See FORK.md.
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  boundary:
+    name: Upstream files unchanged
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        # The check diffs against the merge base with upstream, which can be
+        # any distance back.
+        fetch-depth: 0
+    - run: .github/fork/check-boundary.sh

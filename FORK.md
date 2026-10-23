@@ -70,7 +70,8 @@ from, and the next merge then conflicts on every file upstream has changed since
 ## Releases
 
 Each push to `main` that touches the app or the engine builds the APK and publishes it as
-a release tagged `android-<run>-<commit>`, marked latest. Releases made by that workflow
+a release tagged `android-<run>-<commit>`, marked latest; the ten newest are kept and
+older `android-*` releases are deleted with their tags. Releases made by that workflow
 do not trigger other workflows. A release made by hand would also start upstream's
 release workflows (PyPI publish, docs, Rust binaries), which fail or do nothing useful in
 this fork.

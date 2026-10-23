@@ -207,3 +207,18 @@ jobs:
           --title "Android $TAG" \
           --notes "Release APK built from $GITHUB_SHA by run $GITHUB_RUN_ID." \
           --latest
+
+    # One release per build of main adds up. The newest ten are kept, which is
+    # far more than anyone rolls back through; older android-* releases go,
+    # with their tags. Nothing else is touched: only tags this step made.
+    - name: Keep the ten newest APK releases
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh release list --limit 200 --json tagName,createdAt \
+          --jq '[.[] | select(.tagName | startswith("android-"))] | sort_by(.createdAt) | reverse | .[10:] | .[].tagName' |
+        while read -r tag; do
+          echo "deleting $tag"
+          gh release delete "$tag" --cleanup-tag --yes
+        done

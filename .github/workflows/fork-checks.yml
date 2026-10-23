@@ -17,3 +17,10 @@ jobs:
         # any distance back.
         fetch-depth: 0
     - run: .github/fork/check-boundary.sh
+
+  ported:
+    name: Engine follows upstream's model code
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - run: .github/fork/check-ported.sh

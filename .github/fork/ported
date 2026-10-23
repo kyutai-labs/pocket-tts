@@ -1,0 +1,6 @@
+# Upstream files the fork ports rather than compiles in, and the version
+# (git blob) each port follows. check-ported.sh fails when the upstream file in
+# the tree differs: a merge brought a change to review and, if it matters, to
+# port. Then record the new blob here. Format: <upstream path> <blob> <fork file>
+rust/src/model.rs 995930ba00ac0db164eb88835965aefb7dd33cf4 pocket-speak/crates/engine/src/synth.rs
+rust/src/rng.rs 43c43f1f8f81ae4257ebd2cdc242adbf8195ba1d pocket-speak/crates/engine/src/synth.rs

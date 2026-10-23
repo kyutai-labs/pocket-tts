@@ -35,6 +35,14 @@ else
     # shellcheck disable=SC2016
     printf '%s\n' "$conflicts" | sed 's/.*/- `&`/'
 fi
+if ! engine=$("$FORK_DIR/check-ported.sh" --upstream); then
+    echo
+    echo "The engine will need attention once merged (Fork checks will say so too):"
+    echo
+    echo '```'
+    echo "$engine"
+    echo '```'
+fi
 echo
 echo "To merge, on a branch, then open a PR and merge it with a merge commit (not squash):"
 echo

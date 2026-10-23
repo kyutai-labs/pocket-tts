@@ -7,17 +7,17 @@ https://github.com/LTH14/mar/blob/fe470ac24afbee924668d8c5c83e9fec60af3a73/model
 import math
 
 import torch
-import torch.nn as nn
+from torch import nn
 from typing_extensions import Self
 
 from pocket_tts.utils.config import FlowLMConfig
 
 
-def modulate(x, shift, scale):
+def modulate(x: torch.Tensor, shift: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
     return x * (1 + scale) + shift
 
 
-def _rms_norm(x: torch.Tensor, alpha: torch.Tensor, eps: float):
+def _rms_norm(x: torch.Tensor, alpha: torch.Tensor, eps: float) -> torch.Tensor:
     assert x.dim() >= alpha.dim()
     x_dtype = x.dtype
     var = eps + x.var(dim=-1, keepdim=True)
@@ -32,21 +32,21 @@ class RMSNorm(nn.Module):
         alpha_shape = (dim,)
         self.alpha = nn.Parameter(torch.full(alpha_shape, 1.0, requires_grad=True))
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return _rms_norm(x, self.alpha, self.eps)
 
 
 class LayerNorm(nn.Module):
     """Reimplementation of LayerNorm because the default one doesn't support jvp."""
 
-    def __init__(self, channels, eps=1e-6, elementwise_affine=True):
+    def __init__(self, channels: int, eps: float = 1e-6, elementwise_affine: bool = True):
         super().__init__()
         self.eps = eps
         if elementwise_affine:
             self.weight = nn.Parameter(torch.ones(channels))
             self.bias = nn.Parameter(torch.zeros(channels))
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         mean = x.mean(dim=-1, keepdim=True)
         var = x.var(dim=-1, unbiased=False, keepdim=True)
         x = (x - mean) / torch.sqrt(var + self.eps)
@@ -57,6 +57,8 @@ class LayerNorm(nn.Module):
 
 class TimestepEmbedder(nn.Module):
     """Embeds scalar timesteps into vector representations."""
+
+    freqs: torch.Tensor
 
     def __init__(
         self, hidden_size: int, frequency_embedding_size: int = 256, max_period: int = 10000
@@ -75,7 +77,7 @@ class TimestepEmbedder(nn.Module):
             "freqs", torch.exp(-math.log(max_period) * torch.arange(start=0, end=half) / half)
         )
 
-    def forward(self, t):
+    def forward(self, t: torch.Tensor) -> torch.Tensor:
         args = t * self.freqs.to(t.dtype)
         embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
         assert not (self.frequency_embedding_size % 2)
@@ -89,7 +91,7 @@ class ResBlock(nn.Module):
     :param channels: the number of input channels.
     """
 
-    def __init__(self, channels):
+    def __init__(self, channels: int):
         super().__init__()
         self.channels = channels
 
@@ -104,7 +106,7 @@ class ResBlock(nn.Module):
             nn.SiLU(), nn.Linear(channels, 3 * channels, bias=True)
         )
 
-    def forward(self, x, y):
+    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(y).chunk(3, dim=-1)
         h = modulate(self.in_ln(x), shift_mlp, scale_mlp)
         h = self.mlp(h)
@@ -116,7 +118,7 @@ class FinalLayer(nn.Module):
     The final layer adopted from DiT.
     """
 
-    def __init__(self, model_channels, out_channels):
+    def __init__(self, model_channels: int, out_channels: int):
         super().__init__()
         self.norm_final = LayerNorm(model_channels, elementwise_affine=False, eps=1e-6)
         self.linear = nn.Linear(model_channels, out_channels, bias=True)
@@ -124,7 +126,7 @@ class FinalLayer(nn.Module):
             nn.SiLU(), nn.Linear(model_channels, 2 * model_channels, bias=True)
         )
 
-    def forward(self, x, c):
+    def forward(self, x: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
         shift, scale = self.adaLN_modulation(c).chunk(2, dim=-1)
         x = modulate(self.norm_final(x), shift, scale)
         x = self.linear(x)
@@ -144,12 +146,12 @@ class SimpleMLPAdaLN(nn.Module):
 
     def __init__(
         self,
-        in_channels,
-        model_channels,
-        out_channels,
-        cond_channels,
-        num_res_blocks,
-        num_time_conds=1,
+        in_channels: int,
+        model_channels: int,
+        out_channels: int,
+        cond_channels: int,
+        num_res_blocks: int,
+        num_time_conds: int = 1,
     ):
         super().__init__()
 
@@ -159,7 +161,6 @@ class SimpleMLPAdaLN(nn.Module):
         self.num_res_blocks = num_res_blocks
         self.num_time_conds = num_time_conds
 
-        assert num_time_conds != 1
         self.time_embed = nn.ModuleList(
             [TimestepEmbedder(model_channels) for _ in range(num_time_conds)]
         )
@@ -180,34 +181,35 @@ class SimpleMLPAdaLN(nn.Module):
 
         flow_dim = config.dim
         flow_depth = config.depth
-        num_time_conds = 2
-        return SimpleMLPAdaLN(
+        if config.type == "lsd":
+            num_time_conds = 2
+        elif config.type == "flow_matching":
+            num_time_conds = 1
+        elif config.type in ("drifting", "pointwise"):
+            num_time_conds = 0
+        else:
+            raise ValueError(f"Unknown flow type: {config.type}")
+        return cls(
             latent_dim, flow_dim, latent_dim, cond_dim, flow_depth, num_time_conds=num_time_conds
         )
 
-    def forward(
-        self, c: torch.Tensor, s: torch.Tensor, t: torch.Tensor, x: torch.Tensor
-    ) -> torch.Tensor:
+    def forward(self, c: torch.Tensor, *args: torch.Tensor) -> torch.Tensor:
         """
         Apply the model to an input batch.
         :param c: conditioning from AR transformer.
-        :param s: start time tensor.
-        :param t: target time tensor.
-        :param x: an [N x C] Tensor of inputs.
+        :param args: `num_time_conds` time tensors, then an [N x C] Tensor of
+            inputs. The released models use two (start and target time); other
+            training objectives use one or none.
         :return: an [N x C] Tensor of outputs.
         """
-        # Combine time conditions
-        ts = [s, t]
-        x = self.input_proj(x)
+        ts, x = args[:-1], args[-1]
         assert len(ts) == self.num_time_conds, (
             f"Expected {self.num_time_conds} time conditions, got {len(ts)}"
         )
-        assert self.num_time_conds != 1
-        t_combined = (
-            sum(self.time_embed[i](ts[i]) for i in range(self.num_time_conds)) / self.num_time_conds
-        )
-        c = self.cond_embed(c)
-        y = t_combined + c
+        x = self.input_proj(x)
+        y = self.cond_embed(c)
+        if self.num_time_conds:
+            y = y + sum(emb(t) for emb, t in zip(self.time_embed, ts)) / self.num_time_conds
 
         for block in self.res_blocks:
             x = block(x, y)

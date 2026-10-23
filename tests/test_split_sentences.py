@@ -2,16 +2,16 @@
 
 import pytest
 
-from pocket_tts.conditioners.text import get_default_tokenizer
-from pocket_tts.models.tts_model import split_into_best_sentences
+from pocket_tts.models.tts_model import prepare_text_prompt, split_into_best_sentences
+from pocket_tts.modules.text_conditioner import Tokenizer, get_default_tokenizer
 
 
 @pytest.fixture(scope="session")
-def tokenizer():
+def tokenizer() -> Tokenizer:
     return get_default_tokenizer()
 
 
-def test_short_text_single_chunk(tokenizer):
+def test_short_text_single_chunk(tokenizer: Tokenizer):
     """Short text should produce a single chunk."""
     chunks = split_into_best_sentences(
         tokenizer,
@@ -23,7 +23,7 @@ def test_short_text_single_chunk(tokenizer):
     assert len(chunks) == 1
 
 
-def test_multiple_sentences_split(tokenizer):
+def test_multiple_sentences_split(tokenizer: Tokenizer):
     """Multiple sentences should be split when they exceed max_tokens."""
     text = "First sentence here. Second sentence here. Third sentence here. Fourth sentence here."
     chunks = split_into_best_sentences(
@@ -32,7 +32,7 @@ def test_multiple_sentences_split(tokenizer):
     assert len(chunks) > 1
 
 
-def test_long_sentence_with_commas_is_split(tokenizer):
+def test_long_sentence_with_commas_is_split(tokenizer: Tokenizer):
     """A long sentence with only commas (no periods) should be split on commas."""
     # This is the core bug from issue #38 - the Tale of Two Cities example
     text = (
@@ -53,7 +53,7 @@ def test_long_sentence_with_commas_is_split(tokenizer):
         assert phrase in rejoined, f"'{phrase}' should be preserved after splitting"
 
 
-def test_long_sentence_with_commas_respects_max_tokens(tokenizer):
+def test_long_sentence_with_commas_respects_max_tokens(tokenizer: Tokenizer):
     """Each chunk from comma splitting should respect max_tokens (when possible)."""
     text = (
         "It was the best of times, it was the worst of times, "
@@ -65,14 +65,14 @@ def test_long_sentence_with_commas_respects_max_tokens(tokenizer):
         tokenizer, text, max_tokens, pad_with_spaces_for_short_inputs=False, remove_semicolons=False
     )
     for chunk in chunks:
-        token_count = len(tokenizer(chunk.strip()).tokens[0].tolist())
+        token_count = len(tokenizer(chunk.strip())[0].tolist())
         # Allow some tolerance since comma clauses may vary in size
         assert token_count <= max_tokens * 2, (
             f"Chunk '{chunk[:50]}...' has {token_count} tokens, expected ~{max_tokens}"
         )
 
 
-def test_mixed_sentences_and_commas(tokenizer):
+def test_mixed_sentences_and_commas(tokenizer: Tokenizer):
     """Text with both sentence boundaries and long comma-separated clauses."""
     text = (
         "Short sentence. "
@@ -87,7 +87,7 @@ def test_mixed_sentences_and_commas(tokenizer):
     assert len(chunks) >= 3
 
 
-def test_no_commas_no_periods_stays_single_chunk(tokenizer):
+def test_no_commas_no_periods_stays_single_chunk(tokenizer: Tokenizer):
     """Text with no splitting characters stays as a single chunk."""
     text = "one two three four five six seven eight nine ten eleven twelve"
     chunks = split_into_best_sentences(
@@ -97,7 +97,7 @@ def test_no_commas_no_periods_stays_single_chunk(tokenizer):
     assert len(chunks) == 1
 
 
-def test_semicolons_and_colons_also_split(tokenizer):
+def test_semicolons_and_colons_also_split(tokenizer: Tokenizer):
     """Semicolons and colons should also serve as fallback split points."""
     text = (
         "First clause here; second clause here; third clause here; "
@@ -109,7 +109,7 @@ def test_semicolons_and_colons_also_split(tokenizer):
     assert len(chunks) > 1
 
 
-def test_short_sentence_not_affected_by_comma_splitting(tokenizer):
+def test_short_sentence_not_affected_by_comma_splitting(tokenizer: Tokenizer):
     """Sentences under max_tokens should not be affected by comma logic."""
     text = "Hello, world."
     chunks = split_into_best_sentences(
@@ -120,7 +120,7 @@ def test_short_sentence_not_affected_by_comma_splitting(tokenizer):
     assert "world" in chunks[0].lower()
 
 
-def test_empty_string_raises(tokenizer):
+def test_empty_string_raises(tokenizer: Tokenizer):
     """Empty input should raise ValueError from prepare_text_prompt."""
     with pytest.raises(ValueError, match="empty"):
         split_into_best_sentences(
@@ -128,7 +128,104 @@ def test_empty_string_raises(tokenizer):
         )
 
 
-def test_oversized_clause_without_commas_still_returns(tokenizer):
+def test_terminal_punctuation_can_be_disabled_for_punctuation_free_training():
+    text, _ = prepare_text_prompt(
+        "नमस्ते आज आपका दिन कैसा रहा",
+        pad_with_spaces_for_short_inputs=False,
+        remove_semicolons=False,
+        append_terminal_punctuation=False,
+    )
+    assert text == "नमस्ते आज आपका दिन कैसा रहा"
+
+
+def test_decimals_are_not_split_on_period(tokenizer: Tokenizer):
+    """Decimal periods must not be treated as sentence boundaries (issue #162)."""
+    text = (
+        "The average human body temperature is 98.6°F, which is a common decimal used in medicine."
+    )
+    chunks = split_into_best_sentences(
+        tokenizer, text, 50, pad_with_spaces_for_short_inputs=False, remove_semicolons=False
+    )
+    assert len(chunks) == 1
+    assert "98.6" in chunks[0]
+    assert "98. 6" not in chunks[0]
+
+
+def test_multiple_decimals_in_one_sentence(tokenizer: Tokenizer):
+    """Several decimals in one sentence should stay intact."""
+    text = "Pi is 3.14 and e is 2.718."
+    chunks = split_into_best_sentences(
+        tokenizer, text, 50, pad_with_spaces_for_short_inputs=False, remove_semicolons=False
+    )
+    assert len(chunks) == 1
+    assert "3.14" in chunks[0]
+    assert "2.718" in chunks[0]
+    assert "3. 14" not in chunks[0]
+    assert "2. 718" not in chunks[0]
+
+
+def test_decimal_followed_by_sentence_boundary(tokenizer: Tokenizer):
+    """Decimals should be preserved while real sentence boundaries still split."""
+    text = (
+        "The average human body temperature is 98.6°F, "
+        "which is a common decimal used in medicine. "
+        "Pi is 3.14 and e is 2.718."
+    )
+    chunks = split_into_best_sentences(
+        tokenizer, text, 20, pad_with_spaces_for_short_inputs=False, remove_semicolons=False
+    )
+    assert len(chunks) >= 2
+    rejoined = " ".join(chunks)
+    assert "98.6" in rejoined
+    assert "3.14" in rejoined
+    assert "2.718" in rejoined
+    assert "98. 6" not in rejoined
+    assert "3. 14" not in rejoined
+
+
+def test_sentence_period_after_decimal_still_splits(tokenizer: Tokenizer):
+    """A period ending a sentence after a decimal is still a boundary."""
+    text = "Version 2.0 is out. Pi is 3.14."
+    chunks = split_into_best_sentences(
+        tokenizer, text, 50, pad_with_spaces_for_short_inputs=False, remove_semicolons=False
+    )
+    assert len(chunks) == 1
+    assert "2.0" in chunks[0]
+    assert "3.14" in chunks[0]
+    assert "2. 0" not in chunks[0]
+
+
+def test_sentence_ending_in_number_before_number_still_splits(tokenizer: Tokenizer):
+    """A period followed by a space is a sentence end, even between two numbers."""
+    text = "I counted to 3. 14 people were there."
+    chunks = split_into_best_sentences(
+        tokenizer, text, 10, pad_with_spaces_for_short_inputs=False, remove_semicolons=False
+    )
+    assert chunks == ["I counted to 3.", "14 people were there."]
+
+
+def test_decimal_check_decodes_only_tokens_near_each_period(
+    tokenizer: Tokenizer, monkeypatch: pytest.MonkeyPatch
+):
+    """Checking each period for a decimal must not decode the whole text around it,
+    which made splitting quadratic in the text length."""
+    text = "Pi is 3.14 and the sky is blue. " * 200
+    decoded_lengths = []
+    decode = tokenizer.decode
+
+    def counting_decode(tokens: list[int]) -> str:
+        decoded_lengths.append(len(tokens))
+        return decode(tokens)
+
+    monkeypatch.setattr(tokenizer, "decode", counting_decode)
+    chunks = split_into_best_sentences(
+        tokenizer, text, 50, pad_with_spaces_for_short_inputs=False, remove_semicolons=False
+    )
+    assert "3.14" in chunks[0]
+    assert sum(decoded_lengths) < 3 * len(tokenizer(text)[0])
+
+
+def test_oversized_clause_without_commas_still_returns(tokenizer: Tokenizer):
     """A long clause with no split points should still be returned (not dropped)."""
     # 20 words with no punctuation at all - no way to split
     text = " ".join(f"word{i}" for i in range(20))
@@ -139,3 +236,75 @@ def test_oversized_clause_without_commas_still_returns(tokenizer):
     # prepare_text_prompt capitalizes the first char and adds a trailing period,
     # so compare case-insensitively and strip punctuation
     assert chunks[0].lower().rstrip(".") == text.lower()
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("hello world", "Hello world."),
+        ("it costs 42", "It costs 42."),
+        ("hello world!", "Hello world!"),
+        ("wait for it...", "Wait for it..."),
+        ("hello world,", "Hello world."),
+        ("hello world:", "Hello world."),
+        ("hello world -", "Hello world."),
+        ('he said "go home"', 'He said "go home".'),
+        ("she whispered 'run'", "She whispered 'run'."),
+        ('he said "go home."', 'He said "go home."'),
+        ('he said "go home,"', 'He said "go home."'),
+        ("is it (really)?", "Is it (really)?"),
+        ("see the note (below)", "See the note (below)."),
+        ("up by 50%", "Up by 50%."),
+    ],
+)
+def test_terminal_punctuation_is_added_when_missing(text: str, expected: str):
+    got, _ = prepare_text_prompt(
+        text, pad_with_spaces_for_short_inputs=False, remove_semicolons=False
+    )
+    assert got == expected
+
+
+def test_capitalization_can_be_switched_off():
+    """A model whose text is phonemes, not spelling, must not be capitalized.
+
+    Capitalizing rewrites the first sound of the first word. In a romanized
+    phoneme alphabet the capital is usually absent from the vocabulary, so the
+    opening word becomes the unknown token and is not spoken at all; and where a
+    capital *is* a phoneme it changes the sound silently rather than erroring.
+    Both were observed in a Persian model whose alphabet uses "S" for sh: "salAm"
+    was capitalized to "SalAm" and came out as /shalaam/.
+    """
+    on, _ = prepare_text_prompt("salAm hAle SomA", False, False)
+    assert on.startswith("SalAm")
+
+    off, _ = prepare_text_prompt("salAm hAle SomA", False, False, capitalize_first_letter=False)
+    assert off.startswith("salAm")
+
+    # The default is unchanged, so nothing moves for the shipped languages.
+    default, _ = prepare_text_prompt("hello there", False, False)
+    assert default == "Hello there."
+
+
+def test_replace_characters_rewrites_unseen_characters_before_capitalizing():
+    """Characters a model never saw in training are rewritten, and the text is re-tidied."""
+    drop = {c: "" for c in '"¡¿«»'}
+
+    got, _ = prepare_text_prompt(
+        '"¡Venid a mí, hombres!" Alzó la voz.', False, False, replace_characters=drop
+    )
+    assert got == "Venid a mí, hombres! Alzó la voz."
+
+    got, _ = prepare_text_prompt(
+        "il a dit « l’homme »", False, False, replace_characters={**drop, "’": "'"}
+    )
+    assert got == "Il a dit l'homme."
+
+    got, _ = prepare_text_prompt('"Vieni stasera?", chiese.', False, False, replace_characters=drop)
+    assert got == "Vieni stasera? chiese."
+
+    with pytest.raises(ValueError):
+        prepare_text_prompt('"  "', False, False, replace_characters=drop)
+
+    # Empty by default: shipped configs that don't set it are unchanged.
+    got, _ = prepare_text_prompt('"Yes," she said.', False, False)
+    assert got == '"Yes," she said.'

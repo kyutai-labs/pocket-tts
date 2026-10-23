@@ -1,22 +1,23 @@
 import logging
+from collections.abc import Callable
 from functools import partial
 
 import torch
-from beartype.typing import Callable
 from torch import nn
 from typing_extensions import Self
 
-from pocket_tts.conditioners.text import LUTConditioner
 from pocket_tts.modules.mlp import SimpleMLPAdaLN
+from pocket_tts.modules.stateful_module import ModelState
+from pocket_tts.modules.text_conditioner import LUTConditioner
 from pocket_tts.modules.transformer import StreamingTransformer
 from pocket_tts.utils.config import FlowLMConfig
 
 logger = logging.getLogger(__name__)
 
-FlowNet2 = Callable[[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]
+FlowNet = Callable[..., torch.Tensor]
 
 
-def lsd_decode(v_t: FlowNet2, x_0: torch.Tensor, num_steps: int = 1) -> torch.Tensor:
+def lsd_decode(v_t: FlowNet, x_0: torch.Tensor, num_steps: int = 1) -> torch.Tensor:
     """Rebuilds the data sample from starting point x_0.
 
     Lagrangian Self Distillation (https://arxiv.org/pdf/2505.18825)
@@ -36,7 +37,30 @@ def lsd_decode(v_t: FlowNet2, x_0: torch.Tensor, num_steps: int = 1) -> torch.Te
         flow_dir = v_t(
             s * torch.ones_like(x_0[..., :1]), t * torch.ones_like(x_0[..., :1]), current
         )
-        current += flow_dir / num_steps
+        current = current + flow_dir / num_steps
+    return current
+
+
+def drifting_decode(v_t: FlowNet, x_0: torch.Tensor, num_steps: int = 1) -> torch.Tensor:
+    """One-step head without time conditions: the sample is the head's output for the noise."""
+    return v_t(x_0)
+
+
+def pointwise_decode(v_t: FlowNet, x_0: torch.Tensor, num_steps: int = 1) -> torch.Tensor:
+    """One-step head without time conditions, LSD-style: the noise plus the head's output."""
+    return x_0 + v_t(x_0)
+
+
+def ot_decode(v_t: FlowNet, x_0: torch.Tensor, num_steps: int = 16) -> torch.Tensor:
+    """Euler integration of an optimal-transport conditional flow.
+
+    Optimal Transport conditional Flow Matching (https://arxiv.org/abs/2210.02747).
+    The head takes one time condition here, against LSD's two.
+    """
+    current = x_0
+    for i in range(num_steps):
+        t = i / num_steps
+        current = current + v_t(t * torch.ones_like(x_0[..., :1]), current) / num_steps
     return current
 
 
@@ -55,6 +79,15 @@ class FlowLMModel(nn.Module):
         **kwargs: Additional parameters for the transformer encoder.
     """
 
+    # Latent normalization buffers (register_buffer in __init__).
+    emb_std: torch.Tensor
+    emb_mean: torch.Tensor
+    # Voice-conditioning projection, created by whoever loads the weights
+    # (TTSModel, training.modules.builders) since it only exists with voice cloning.
+    speaker_proj_weight: nn.Parameter
+    # Only exists when insert_bos_before_voice is set.
+    bos_before_voice: nn.Parameter
+
     def __init__(
         self,
         conditioner: LUTConditioner,
@@ -64,10 +97,13 @@ class FlowLMModel(nn.Module):
         ldim: int = 64,
         stats_ema_decay: float = 0.999,
         text_padding_weight: float = 1.0,
-        dtype=None,
+        dtype: torch.dtype | None = None,
         insert_bos_before_voice: bool = False,
+        flow_type: str = "lsd",
+        z_dim: int | None = None,
     ):
         super().__init__()
+        self.flow_type = flow_type
         self.conditioner = conditioner
         self.ldim = ldim
         self.stats_ema_decay = stats_ema_decay
@@ -87,7 +123,8 @@ class FlowLMModel(nn.Module):
         self.input_linear = nn.Linear(self.ldim, dim, bias=False, dtype=dtype)
         self.transformer = transformer
         self.out_norm = nn.LayerNorm(dim, eps=1e-5)
-        self.out_eos = nn.Linear(dim, 1, dtype=dtype)
+        self.z_proj = None if z_dim is None else nn.Linear(dim, z_dim, bias=False, dtype=dtype)
+        self.out_eos = nn.Linear(z_dim or dim, 1, dtype=dtype)
 
     @property
     def device(self) -> str:
@@ -97,8 +134,8 @@ class FlowLMModel(nn.Module):
         self,
         sequence: torch.Tensor,
         text_embeddings: torch.Tensor,
-        model_state: dict,
-        lsd_decode_steps: int,
+        model_state: ModelState,
+        sampler_decode_steps: int,
         temp: float,
         noise_clamp: float | None,
         eos_threshold: float,
@@ -111,10 +148,10 @@ class FlowLMModel(nn.Module):
             sequence (torch.Tensor): Latents to model.
             text_embeddings (torch.Tensor): Pre-computed conditioning
                 tensor.
-            lsd_decode_steps (int): Number of steps to decode when generating audio.
+            sampler_decode_steps (int): Number of steps to decode when generating audio.
                 If zero, the model computes the loss.
         Returns:
-            (output, eos_output, metrics). If `lsd_decode_steps` is zero, `output` is the loss tensor of shape [B, S],
+            (output, eos_output, metrics). If `sampler_decode_steps` is zero, `output` is the loss tensor of shape [B, S],
             otherwise it is the reconstructed latent.
         """
         # NaN values signal a BOS position.
@@ -123,7 +160,7 @@ class FlowLMModel(nn.Module):
 
         transformer_out = self.backbone(input_, text_embeddings, sequence, model_state=model_state)
         transformer_out = transformer_out.to(torch.float32)
-        assert lsd_decode_steps > 0
+        assert sampler_decode_steps > 0
 
         transformer_out = transformer_out[:, -1]
         out_eos = self.out_eos(transformer_out) > eos_threshold
@@ -136,10 +173,24 @@ class FlowLMModel(nn.Module):
         else:
             torch.nn.init.trunc_normal_(noise, mean=0.0, std=std, a=-noise_clamp, b=noise_clamp)
         conditioned_flow = partial(self.flow_net, transformer_out)
-        return lsd_decode(conditioned_flow, noise, lsd_decode_steps), out_eos
+        if self.flow_type == "lsd":
+            decode = lsd_decode
+        elif self.flow_type == "flow_matching":
+            decode = ot_decode
+        elif self.flow_type == "drifting":
+            decode = drifting_decode
+        elif self.flow_type == "pointwise":
+            decode = pointwise_decode
+        else:
+            raise ValueError(f"Unknown flow type: {self.flow_type}")
+        return decode(conditioned_flow, noise, sampler_decode_steps), out_eos
 
     def backbone(
-        self, input_, text_embeddings: torch.Tensor, sequence, model_state: dict
+        self,
+        input_: torch.Tensor,
+        text_embeddings: torch.Tensor,
+        sequence: torch.Tensor,
+        model_state: ModelState,
     ) -> torch.Tensor:
         # Most of the time, one of those two tensors is empty, it allows us
         # to input text or audio embeddings into the model without adding an
@@ -154,14 +205,16 @@ class FlowLMModel(nn.Module):
             transformer_out = self.out_norm(transformer_out)
         # remove the prefix from the model outputs (condition is prepended)
         transformer_out = transformer_out[:, -sequence.shape[1] :]
+        if self.z_proj is not None:
+            transformer_out = self.z_proj(transformer_out)
         return transformer_out
 
     def _sample_next_latent(
         self,
         sequence: torch.Tensor,
         text_embeddings: torch.Tensor,
-        model_state: dict,
-        lsd_decode_steps: int,
+        model_state: ModelState,
+        sampler_decode_steps: int,
         temp: float,
         noise_clamp: float | None,
         eos_threshold: float,
@@ -180,7 +233,7 @@ class FlowLMModel(nn.Module):
         result = self(
             sequence=sequence,
             text_embeddings=text_embeddings,
-            lsd_decode_steps=lsd_decode_steps,
+            sampler_decode_steps=sampler_decode_steps,
             temp=temp,
             noise_clamp=noise_clamp,
             eos_threshold=eos_threshold,
@@ -194,13 +247,15 @@ class FlowLMModel(nn.Module):
         cls, config: FlowLMConfig, latent_dim: int, insert_bos_before_voice: bool
     ) -> Self:
         d_model = config.transformer.d_model
-        flow_mlp = SimpleMLPAdaLN.from_pydantic_config(config, latent_dim, d_model)
+        flow_mlp = SimpleMLPAdaLN.from_pydantic_config(config, latent_dim, config.z_dim or d_model)
 
         conditioner = LUTConditioner(
             n_bins=config.lookup_table.n_bins,
             tokenizer_path=str(config.lookup_table.tokenizer_path),
             dim=config.lookup_table.dim,
             output_dim=d_model,
+            tokenizer=config.lookup_table.tokenizer,
+            rank=config.lookup_table.rank,
         )
 
         transformer = StreamingTransformer.from_pydantic_config(config.transformer)
@@ -213,4 +268,6 @@ class FlowLMModel(nn.Module):
             ldim=latent_dim,
             dtype=getattr(torch, config.dtype),
             insert_bos_before_voice=insert_bos_before_voice,
+            flow_type=config.flow.type,
+            z_dim=config.z_dim,
         )

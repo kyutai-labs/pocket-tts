@@ -1,5 +1,10 @@
+from collections.abc import Sequence
+
 import numpy as np
+import torch
 import torch.nn as nn
+
+from pocket_tts.modules.stateful_module import ModelState
 
 from .conv import StreamingConv1d, StreamingConvTranspose1d
 
@@ -8,8 +13,8 @@ class SEANetResnetBlock(nn.Module):
     def __init__(
         self,
         dim: int,
-        kernel_sizes: list[int] = [3, 1],
-        dilations: list[int] = [1, 1],
+        kernel_sizes: Sequence[int] = (3, 1),
+        dilations: Sequence[int] = (1, 1),
         pad_mode: str = "reflect",
         compress: int = 2,
     ):
@@ -30,7 +35,7 @@ class SEANetResnetBlock(nn.Module):
             ]
         self.block = block
 
-    def forward(self, x, model_state: dict | None):
+    def forward(self, x: torch.Tensor, model_state: ModelState | None) -> torch.Tensor:
         v = x
         for layer in self.block:
             if isinstance(layer, StreamingConv1d):
@@ -48,7 +53,7 @@ class SEANetEncoder(nn.Module):
         dimension: int = 128,
         n_filters: int = 32,
         n_residual_layers: int = 3,
-        ratios: list[int] = [8, 5, 4, 2],
+        ratios: Sequence[int] = (8, 5, 4, 2),
         kernel_size: int = 7,
         last_kernel_size: int = 7,
         residual_kernel_size: int = 3,
@@ -104,7 +109,7 @@ class SEANetEncoder(nn.Module):
 
         self.model = model
 
-    def forward(self, x, model_state: dict | None):
+    def forward(self, x: torch.Tensor, model_state: ModelState | None) -> torch.Tensor:
         for layer in self.model:
             if isinstance(layer, (StreamingConv1d, SEANetResnetBlock)):
                 x = layer(x, model_state)
@@ -120,7 +125,7 @@ class SEANetDecoder(nn.Module):
         dimension: int = 128,
         n_filters: int = 32,
         n_residual_layers: int = 3,
-        ratios: list[int] = [8, 5, 4, 2],
+        ratios: Sequence[int] = (8, 5, 4, 2),
         kernel_size: int = 7,
         last_kernel_size: int = 7,
         residual_kernel_size: int = 3,
@@ -132,7 +137,7 @@ class SEANetDecoder(nn.Module):
         self.dimension = dimension
         self.channels = channels
         self.n_filters = n_filters
-        self.ratios = ratios
+        self.ratios = list(ratios)
         del ratios
         self.n_residual_layers = n_residual_layers
         self.hop_length = int(np.prod(self.ratios))
@@ -171,7 +176,7 @@ class SEANetDecoder(nn.Module):
         ]
         self.model = model
 
-    def forward(self, z, model_state: dict | None):
+    def forward(self, z: torch.Tensor, model_state: ModelState | None) -> torch.Tensor:
         for layer in self.model:
             if isinstance(layer, (StreamingConvTranspose1d, SEANetResnetBlock, StreamingConv1d)):
                 z = layer(z, model_state)

@@ -1,14 +1,15 @@
 import logging
+from collections.abc import Iterator
 from contextlib import contextmanager
 
 
 class PocketTTSFilter(logging.Filter):
-    def filter(self, record):
+    def filter(self, record: logging.LogRecord) -> bool:
         return record.name.startswith("pocket_tts")
 
 
 @contextmanager
-def enable_logging(library_name, level):
+def enable_logging(library_name: str, level: int | str) -> Iterator[logging.Logger]:
     # Get the specific logger and its parent
     logger = logging.getLogger(library_name)
     parent_logger = logging.getLogger("pocket_tts")

@@ -1,0 +1,53 @@
+[package]
+name = "pocket-tts"
+# Kept in step with the Python package in ../pyproject.toml.
+version = "3.3.0"
+edition = "2024"
+description = "Kyutai's pocket-sized text-to-speech, as a standalone binary with the CLI of the Python package"
+license = "MIT"
+repository = "https://github.com/kyutai-labs/pocket-tts"
+publish = false
+
+[[bin]]
+name = "pocket-tts"
+path = "src/main.rs"
+
+[features]
+default = []
+# Apple's Accelerate framework for the f32 matmuls, for macOS builds.
+accelerate = ["ptts/accelerate"]
+
+[dependencies]
+# The model itself: https://github.com/gradium-ai/xn-ptts, through a fork that adds what pocket-tts
+# models need on top of it (https://github.com/gabrieldemarmiesse/xn-ptts, branch
+# pocket-tts-small-models), pinned to a commit since its API is still moving between release
+# candidates.
+ptts = { git = "https://github.com/gabrieldemarmiesse/xn-ptts", rev = "7efa26973f81bba42cf2ace8da2c1eb9b605d54d", default-features = false, features = ["hf", "audio"] }
+# Must be the version ptts uses, its tensors cross the boundary.
+xn = "0.2.11"
+
+anyhow = "1"
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "multipart", "query", "json", "form"] }
+clap = { version = "4", features = ["derive", "env"] }
+half = "2"
+hf-hub = { version = "1.0", features = ["blocking"] }
+log = "0.4"
+rand = { version = "0.9", default-features = false, features = ["std", "std_rng", "os_rng"] }
+rand_distr = "0.5"
+reqwest = { version = "0.13", features = ["blocking"] }
+safetensors = "0.7"
+sentencepiece = { version = "0.14", features = ["static"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+sha2 = "0.10"
+symphonia = { version = "0.5.3", features = ["all"] }
+tempfile = "3"
+tokenizers = { version = "0.23.1", default-features = false, features = ["fancy-regex"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "sync", "net"] }
+tokio-stream = "0.1"
+tower-http = { version = "0.6", features = ["cors"] }
+
+[profile.release]
+codegen-units = 1
+lto = "thin"

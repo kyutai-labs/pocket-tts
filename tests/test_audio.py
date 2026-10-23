@@ -1,11 +1,12 @@
 import wave
+from pathlib import Path
 
 import torch
 
 from pocket_tts.data.audio import audio_read, stream_audio_chunks
 
 
-def test_stream_audio_chunks_patches_seekable_wav_header(tmp_path):
+def test_stream_audio_chunks_patches_seekable_wav_header(tmp_path: Path):
     output_file = tmp_path / "output.wav"
     samples = torch.zeros(24000)
 
@@ -16,7 +17,7 @@ def test_stream_audio_chunks_patches_seekable_wav_header(tmp_path):
         assert wav_file.getnframes() == 28800
 
 
-def test_audio_read_uses_soundfile_for_8_bit_wav(tmp_path):
+def test_audio_read_uses_soundfile_for_8_bit_wav(tmp_path: Path):
     output_file = tmp_path / "silence_u8.wav"
     with wave.open(str(output_file), "wb") as wav_file:
         wav_file.setnchannels(1)

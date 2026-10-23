@@ -1,0 +1,303 @@
+import dataclasses
+import typing as tp
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+import yaml
+
+if TYPE_CHECKING:
+    from _typeshed import DataclassInstance
+
+T = tp.TypeVar("T", bound="DataclassInstance")
+
+
+@dataclass
+class DataArgs:
+    train_jsonl: str = ""
+    valid_jsonl: str = ""
+    max_duration_sec: float = 30.0  # utterances are cropped to this length
+    # Voice prompt window: eligible cuts are word
+    # boundaries ending inside the first max_voice_prompt_sec seconds, drawn
+    # uniformly, and the prompt is the whole utterance start up to the cut --
+    # so prompts vary in length and the target keeps most of the utterance.
+    # <= 0 removes the window (any word boundary; full-prefix prompt).
+    max_voice_prompt_sec: float = 5.0
+    # Robustness augmentations, on by default at the values the released models used.
+    # prompt_trim_max_sec trims a uniform 0..N seconds off the end of every voice prompt
+    # (prompts cut mid-word at inference stay in distribution); final_punct_dropout drops
+    # the target text's final period with this probability (unpunctuated prompts stay in
+    # distribution). Set to 0 to disable.
+    prompt_trim_max_sec: float = 0.5
+    final_punct_dropout: float = 0.3
+    shuffle: bool = True
+    # Loader subprocesses per rank. Each one is GIL-bound at ~90 samples/s from
+    # network storage (extra IO threads do not help), and a rank consumes
+    # batch_size x steps/s: raise it if training waits on data (6 keeps a small
+    # model at 35 it/s x 16 fed). Each process reads its own shard of the manifest.
+    loader_procs: int = 3
+    # Batches are drawn from a pool of this many batches sorted by row length; 1 = plain shuffled batches.
+    # Every loader shard needs num_bucket_batches x batch_size entries before its first batch.
+    num_bucket_batches: int = 5
+    # Precompute Mimi latents for train_jsonl on first run and train from
+    # them (rank 0 encodes once; other ranks wait). False keeps the
+    # on-the-fly audio pipeline.
+    precompute: bool = True
+
+
+@dataclass
+class FlowArgs:
+    # "lsd" | "flow_matching", kwargs forwarded to the objective class.
+    type: str = "lsd"
+    kwargs: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class OptimArgs:
+    lr: float = 2e-4
+    weight_decay: float = 0.1
+    betas: tuple[float, float] = (0.9, 0.95)
+    eps: float = 1e-8
+    max_norm: float = 1.0
+    warmup_steps: int = 500
+    # "constant" or "cosine" (decay to lr * lr_min_ratio at max_steps). The best
+    # two-phase recipe: train constant past the quality flip, then resume with
+    # a cosine fine-tune.
+    schedule: str = "constant"
+    lr_min_ratio: float = 0.0
+    # "adamw", or "muon": Newton-Schulz orthogonalized momentum on the backbone's 2D
+    # weights (the fused q/k/v projection orthogonalized as three blocks), AdamW on
+    # everything else. muon_lr is the Muon step size; the AdamW groups keep `lr`, and
+    # the schedule applies to both. muon_head also puts the sampler head's 2D weights
+    # under Muon (useful for head-only fine-tunes).
+    type: str = "adamw"
+    muon_lr: float = 0.005
+    muon_momentum: float = 0.95
+    muon_head: bool = False
+    # Scale the orthogonal update by 0.2 * sqrt(max(rows, cols)) so its RMS matches AdamW's
+    # (Liu et al. 2025) instead of sqrt(max(1, rows / cols)); with it, muon_lr should equal lr.
+    muon_rms_match: bool = False
+    # Polar Express iterations; 6 reaches singular values within 1%, fewer is cheaper but looser.
+    muon_polar_steps: int = 6
+
+
+@dataclass
+class ReflArgs:
+    """Reward fine-tuning (training/refl.py). Each step rolls out up to `rows` rows of the batch
+    without gradients, re-runs the backbone teacher-forced on the rollout with gradients,
+    re-applies the sampler head on the rollout's own noise, decodes with the frozen Mimi decoder
+    and backpropagates the rewards. The batch's usual loss (the distillation loss in a
+    distillation run) stays on as the anchor on the real rows. Needs the `utmos-pytorch`,
+    `transformers` and `torchaudio` packages (the dev dependency group)."""
+
+    enabled: bool = False
+    rows: int = 4  # rolled-out rows per GPU; only rows whose text the CTC model can score
+    temp: float = 0.3
+    max_sec: float = 20.0  # rollouts that emit no EOS by then get no reward
+    utmos_weight: float = 0.0  # loss -= utmos_weight * mean UTMOS
+    ctc_weight: float = 0.0  # loss += ctc_weight * mean per-character CTC loss of the text
+    ctc_model: str = "facebook/wav2vec2-large-960h-lv60-self"  # a character-level wav2vec2 CTC
+    # A pocket-tts model config whose Mimi decodes the rollouts for the rewards instead of
+    # model_config's (e.g. one with its own decoder dims and mimi.weights_path). It must read
+    # the same latents; only the audio the rewards score changes.
+    reward_decoder: str = ""
+    # Random leading trim (samples) before scoring, so that a perturbation tuned to one
+    # alignment of the scorers does not pay.
+    max_shift: int = 480
+
+
+@dataclass
+class TrainArgs:
+    data: DataArgs = field(default_factory=DataArgs)
+    flow: FlowArgs = field(default_factory=FlowArgs)
+    optim: OptimArgs = field(default_factory=OptimArgs)
+    refl: ReflArgs = field(default_factory=ReflArgs)
+
+    # A pocket-tts model config (e.g. pocket_tts/config/english.yaml or a local
+    # variant). Defines the FlowLM/Mimi architecture, the tokenizer, and the
+    # weights used for Mimi (and for the FlowLM too when start_from_pretrained).
+    model_config: str = ""
+    # Dotted-path edits applied to model_config before it is validated, e.g.
+    # {"flow_lm.transformer.num_layers": 24} to train the 24-layer teacher from
+    # a released model's config. Avoids copying a whole config to change a
+    # field, and keeps the language choice in one place.
+    model_overrides: dict[str, tp.Any] = field(default_factory=dict)
+    # If true, warm-start the FlowLM from the config's weights_path (fine-tuning).
+    # If false, only Mimi/tokenizer weights are used and the FlowLM is
+    # re-initialized (training from scratch).
+    start_from_pretrained: bool = True
+    # Freeze the sampler head (flow_net) during a fine-tune so the latent geometry a
+    # distilled student was trained against is preserved.
+    freeze_head: bool = False
+    # Load the pretrained weights but start the text embedding from scratch.
+    # Needed when the tokenizer differs from the one the weights were trained
+    # with, e.g. when training for a new language.
+    reset_text_embedding: bool = False
+
+    run_dir: Path = Path("runs/debug")
+    batch_size: int = 8  # per GPU
+    # Micro-batches accumulated per optimizer step. The quality flip needs an
+    # effective batch (batch_size * grad_accum_steps * world_size) >= 64;
+    # small GPUs get there by accumulating instead of growing batch_size.
+    grad_accum_steps: int = 1
+    max_steps: int = 100_000
+    seed: int = 42
+
+    flow_batch_multiplier: int = 1  # extra flow-loss samples per backbone position
+    eos_loss_weight: float = 0.1
+    text_dropout: float = 0.2  # CFG dropout of the text prefix
+    voice_dropout: float = 0.2  # CFG dropout of the voice prefix
+    # Update the emb_mean/emb_std latent-normalization buffers by EMA for this
+    # many first steps (0 keeps whatever the loaded weights contain).
+    stats_ema_steps: int = 0
+    stats_ema_decay: float = 0.999
+
+    log_freq: int = 20
+    valid_freq: int = 2000
+    # torch.compile the backbone layers + flow head (and the distill teacher's
+    # backbone) in place. +24% throughput on one GPU, +7% steady-state under
+    # DDP (~9 min one-time warmup -- a wash on runs under ~2h).
+    compile: bool = True
+    num_valid_batches: int = 50
+    # Rank 0 synthesizes these sentences every sample_freq steps into
+    # run_dir/samples/ (raw weights, first batch's voice prompt) so a run can
+    # be judged by ear while it trains. Empty list disables.
+    sample_sentences: list[str] = field(
+        default_factory=lambda: [
+            "The quick brown fox jumps over the lazy dog.",
+            "Training is still running; this voice is a work in progress.",
+            "How much wood would a woodchuck chuck if a woodchuck could chuck wood?",
+        ]
+    )
+    sample_freq: int = 10000
+    sample_temp: float = 0.3
+    sample_cfg_coef: float = 1.0
+    ckpt_freq: int = 2000
+    num_ckpt_keep: int = 3
+    ema_decay: float = 0.999  # EMA of the FlowLM weights; 0 disables
+    # Latent CFG distillation: > 0 turns training into distilling a frozen copy
+    # of the pretrained model. The teacher's backbone output is computed twice
+    # (full conditioning and null conditioning) and combined with this guidance
+    # coefficient; the student's backbone regresses onto it, with the flow head
+    # and EOS head frozen. The result generates WITHOUT CFG (use --cfg 1) at the
+    # quality of guided sampling, i.e. one backbone pass per step instead of two.
+    # Requires start_from_pretrained: true.
+    distill_cfg_coef: float = 0.0
+    # Depth distillation: point these at a bigger trained model and the student
+    # (built from `model_config`, typically fewer layers) learns to reproduce its
+    # backbone activations. Leave empty to distill a frozen copy of the student's
+    # own architecture (guidance baking only). A narrower student (d_model, attention,
+    # FFN, text table) is seeded from the teacher by shrink_checkpoint.shrink_width; it must
+    # share the teacher's z width (flow_lm.z_dim), so the frozen heads read the same space.
+    distill_teacher_config: str = ""
+    distill_teacher_overrides: dict[str, tp.Any] = field(default_factory=dict)
+    distill_teacher_weights: str = ""
+    # Use the teacher checkpoint's EMA shadow as the regression target (falls
+    # back to raw weights when the checkpoint carries no EMA).
+    distill_teacher_use_ema: bool = True
+    # Warm-start the student's backbone and conditioning from these weights (a training
+    # checkpoint, or a released model.safetensors, local or hf://) instead of the
+    # teacher's bottom+top layers; the per-frame heads still come from the teacher. A
+    # wider source is narrowed like the teacher (shrink_checkpoint.shrink_width).
+    student_init_from: str = ""
+    # Seed from student_init_from's (and head_init_from's) EMA shadow instead of its raw
+    # weights (raw weights when the checkpoint carries no EMA).
+    init_from_use_ema: bool = True
+
+    # Head distillation: train a new sampler head (flow_net, shaped by the config's flow_lm.flow,
+    # any flow.type) against a frozen one, on the frozen backbone's outputs; nothing else
+    # trains. The backbone and the frozen head come from head_distill_from (a training
+    # checkpoint or a model.safetensors), or from the config's weights when it is empty; the
+    # frozen head's shape and type (0, 1 or 2 time conditions) are read from its weights.
+    # head_distill_loss picks the objective, whatever the head types: "mse" regresses the new
+    # head's one-step output on the frozen head's for the same noise; "drifting" (needs
+    # flow.type drifting) attracts the new head to head_distill_samples draws of the frozen
+    # head per position. Noise is drawn at temperature head_distill_temp.
+    head_distill: bool = False
+    head_distill_from: str = ""
+    head_distill_loss: str = "mse"
+    head_distill_samples: int = 1
+    head_distill_temp: float = 1.0
+    # Start the new head from this checkpoint's flow_net (same shape) instead of a fresh one.
+    head_init_from: str = ""
+    # Which teacher layers seed the student backbone: "spaced" (evenly across
+    # the depth) or "first" (the bottom N). No evidence either way -- "first"
+    # keeps the early feature extractors contiguous.
+
+    def __post_init__(self):
+        if self.grad_accum_steps < 1:
+            raise ValueError(f"grad_accum_steps must be >= 1, got {self.grad_accum_steps}")
+        if self.num_ckpt_keep < 1:
+            raise ValueError(
+                f"num_ckpt_keep must be >= 1, got {self.num_ckpt_keep} "
+                "(0 would keep every checkpoint, not none)"
+            )
+        for name in ("valid_freq", "ckpt_freq", "log_freq"):
+            if getattr(self, name) < 1:
+                raise ValueError(f"{name} must be >= 1, got {getattr(self, name)}")
+        if self.distill_cfg_coef > 0 and not (
+            self.start_from_pretrained or self.distill_teacher_config
+        ):
+            raise ValueError(
+                "distillation needs a teacher: set distill_teacher_config, or "
+                "start_from_pretrained: true to distil a frozen copy of the model itself"
+            )
+        if self.head_distill and self.distill_cfg_coef > 0:
+            raise ValueError("head_distill and distill_cfg_coef are separate runs: set one")
+        if self.head_distill_loss not in ("mse", "drifting"):
+            raise ValueError(
+                f"head_distill_loss must be mse or drifting, not {self.head_distill_loss}"
+            )
+        if self.distill_teacher_config and not self.distill_teacher_weights:
+            raise ValueError("distill_teacher_config is set but distill_teacher_weights is not")
+        if self.refl.enabled and self.head_distill:
+            raise ValueError("refl and head_distill are separate runs: set one")
+        if self.refl.enabled and not (self.refl.utmos_weight > 0 or self.refl.ctc_weight > 0):
+            raise ValueError("refl.enabled needs refl.utmos_weight or refl.ctc_weight > 0")
+
+
+def _from_dict(cls: type[T], data: dict[str, Any]) -> T:
+    sub = {"data": DataArgs, "flow": FlowArgs, "optim": OptimArgs, "refl": ReflArgs}
+    kwargs = {}
+    fields = {f.name: f for f in dataclasses.fields(cls)}
+    for key, value in data.items():
+        if key not in fields:
+            raise ValueError(f"Unknown config key {key!r} for {cls.__name__}")
+        if key in sub:
+            value = _from_dict(sub[key], value)
+        elif key == "betas":
+            value = tuple(float(v) for v in value)
+        elif fields[key].type is float:
+            value = float(value)  # yaml parses "1e-5" as a string
+        elif fields[key].type is int:
+            value = int(value)
+        elif fields[key].type is Path:
+            value = Path(value)
+        kwargs[key] = value
+    return cls(**kwargs)
+
+
+def load_args(path: str | Path) -> TrainArgs:
+    with open(path) as f:
+        raw = yaml.safe_load(f)
+    return _from_dict(TrainArgs, raw)
+
+
+def dump_args(args: TrainArgs) -> str:
+    """The resolved config (defaults included) as yaml."""
+
+    def plain(value: object) -> object:
+        if isinstance(value, Path):
+            return str(value)
+        if isinstance(value, dict):
+            return {k: plain(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [plain(v) for v in value]
+        return value
+
+    return yaml.safe_dump(plain(dataclasses.asdict(args)), sort_keys=False)
+
+
+def save_args(args: TrainArgs, path: str | Path):
+    with open(path, "w") as f:
+        f.write(dump_args(args))

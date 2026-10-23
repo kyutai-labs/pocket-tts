@@ -1,0 +1,37 @@
+# Finetune a released model on more data in the SAME language -- new voices, a
+# new domain. The tokenizer is the released one, so the text embedding carries
+# over; for a different language use finetune_language.yaml instead.
+model_config: pocket_tts/config/english_2026-04_24l.yaml
+start_from_pretrained: true
+
+data:
+  train_jsonl: data/train_aligned.jsonl
+  valid_jsonl: data/valid_aligned.jsonl
+  max_duration_sec: 30.0
+  max_voice_prompt_sec: 5.0
+
+flow:
+  type: lsd
+  kwargs: {}
+
+flow_batch_multiplier: 4
+eos_loss_weight: 0.1
+text_dropout: 0.2
+voice_dropout: 0.2
+
+optim:
+  lr: 2e-5  # a tenth of the scratch rate: the model already speaks this language
+  schedule: constant
+  warmup_steps: 1000
+
+run_dir: runs/finetune
+batch_size: 64
+grad_accum_steps: 1
+max_steps: 20000
+stats_ema_steps: 1000
+ema_decay: 0.999
+log_freq: 50
+valid_freq: 2500
+ckpt_freq: 2500
+num_ckpt_keep: 3
+sample_cfg_coef: 2.0

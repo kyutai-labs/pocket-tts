@@ -1,0 +1,128 @@
+"""Data loading: jsonl manifests of single utterances (moshi-finetune style).
+
+Each line is {"path": ..., "duration": ..., "transcript": ...}. One sample =
+one utterance (cropped to max_duration_sec) + its transcript tokens + a voice
+prompt (a random window elsewhere in the same file). Lines are sharded across
+ranks by line index.
+"""
+
+import logging
+import multiprocessing.queues
+import queue
+import signal
+from collections.abc import Iterator
+from typing import Any
+
+import torch.multiprocessing as torch_mp
+
+from pocket_tts.modules.text_conditioner import Tokenizer, encoder_from_serialized
+
+from .loader import DataLoader
+from .types import Batch
+
+logger = logging.getLogger(__name__)
+
+
+def _ignore_stop_signals():
+    """scancel and Slurm's pre-timeout warning signal the whole job, loader processes included.
+
+    The trainer turns SIGTERM/SIGUSR1 into "finish this step, checkpoint, exit", which needs the
+    batches in flight: a loader (or the torch_shm_manager it spawns, which inherits this
+    disposition) that dies on the signal crashes the trainer before it can save. The trainer
+    stops the loaders itself (SubprocessDataLoader.close).
+    """
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    signal.signal(signal.SIGUSR1, signal.SIG_IGN)
+
+
+def _feed_queue(
+    q: "multiprocessing.queues.Queue[Batch]",  # not subscriptable at runtime on 3.10
+    serialized_tokenizer: tuple[str, bytes],
+    loader_kwargs: dict[str, Any],
+):
+    _ignore_stop_signals()
+    torch_mp.set_sharing_strategy("file_system")
+    loader = DataLoader(tokenize=encoder_from_serialized(*serialized_tokenizer), **loader_kwargs)
+    for batch in loader:
+        q.put(batch)
+
+
+class SubprocessDataLoader:
+    def __init__(
+        self,
+        jsonl: str,
+        sentence_piece: Tokenizer,
+        batch_size: int,
+        sample_rate: int,
+        frame_rate: float,
+        max_duration_sec: float,
+        max_voice_prompt_sec: float,
+        rank: int,
+        world_size: int,
+        seed: int = 0,
+        shuffle: bool = True,
+        io_workers: int = 16,
+        num_procs: int = 6,
+        depth: int = 8,
+        num_bucket_batches: int = 1,
+        prompt_trim_max_sec: float = 0.0,
+        final_punct_dropout: float = 0.0,
+    ):
+        ctx = torch_mp.get_context("spawn")
+        self._queue = ctx.Queue(maxsize=depth)
+        self._procs = []
+        for i in range(num_procs):
+            loader_kwargs = {
+                "jsonl": jsonl,
+                "batch_size": batch_size,
+                "sample_rate": sample_rate,
+                "frame_rate": frame_rate,
+                "max_duration_sec": max_duration_sec,
+                "max_voice_prompt_sec": max_voice_prompt_sec,
+                "rank": rank * num_procs + i,
+                "world_size": world_size * num_procs,
+                "seed": seed + rank * num_procs + i,
+                "shuffle": shuffle,
+                "io_workers": io_workers,
+                "num_bucket_batches": num_bucket_batches,
+                "prompt_trim_max_sec": prompt_trim_max_sec,
+                "final_punct_dropout": final_punct_dropout,
+            }
+            proc = ctx.Process(
+                target=_feed_queue,
+                args=(self._queue, sentence_piece.serialize(), loader_kwargs),
+                daemon=True,
+                name=f"dataloader-{i}",
+            )
+            proc.start()
+            self._procs.append(proc)
+
+    def close(self):
+        """Stop the loader processes. They ignore SIGTERM, which multiprocessing's exit handler
+        relies on for daemon children, so they must be killed explicitly."""
+        for p in self._procs:
+            if p.is_alive():
+                p.kill()
+        for p in self._procs:
+            p.join(timeout=10)
+
+    def _check_procs(self):
+        dead = [p for p in self._procs if not p.is_alive()]
+        if dead:
+            raise RuntimeError(
+                f"dataloader subprocess(es) died (exit codes "
+                f"{[p.exitcode for p in dead]}), check their tracebacks above"
+            )
+
+    def __iter__(self) -> Iterator[Batch]:
+        batches = 0
+        while True:
+            try:
+                batch = self._queue.get(timeout=60)
+            except queue.Empty:
+                self._check_procs()
+                continue
+            batches += 1
+            if batches % 100 == 0:
+                self._check_procs()
+            yield batch

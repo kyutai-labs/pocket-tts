@@ -17,6 +17,19 @@ If you want to manually run the pre-commit hooks on all files, use:
 uvx pre-commit run --all-files
 ```
 
+## Type checking
+
+The code base is type-checked with [ty](https://docs.astral.sh/ty/), which CI runs
+alongside the tests:
+
+```bash
+uv run ty check
+```
+
+There is no runtime type checking: annotations are only verified statically, so keep
+them precise (generics need their type arguments, e.g. `dict[str, torch.Tensor]` rather
+than `dict`).
+
 ## Running tests
 
 ```bash
@@ -60,6 +73,17 @@ Note that two threads run in parallel in the current implementation:
 * One with the mimi vae decoder decoding the latents into audio.
 
 
+
+## Sharing your own models
+
+Contributions do not have to be code: if you train a Pocket TTS model — a new
+language, a new domain, your own data — we encourage you to share it. The
+[training README](training/README.md) covers the whole path, from preparing a
+dataset to training, and its
+[Distribution section](training/README.md#distribution) explains how to
+publish the result on Hugging Face so that anyone can use it with the official
+`pocket-tts` CLI. If you tell us about it, we are happy to link it from the
+README.
 
 ## About the overall process
 

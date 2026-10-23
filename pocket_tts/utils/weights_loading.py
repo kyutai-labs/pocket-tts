@@ -4,8 +4,8 @@ import safetensors
 import torch
 
 
-def get_flow_lm_state_dict(path: Path) -> dict:
-    state_dict = {}
+def get_flow_lm_state_dict(path: Path) -> dict[str, torch.Tensor]:
+    state_dict: dict[str, torch.Tensor] = {}
     with safetensors.safe_open(path, framework="pt", device="cpu") as f:
         for key in f.keys():
             if (
@@ -30,9 +30,14 @@ def get_flow_lm_state_dict(path: Path) -> dict:
     return state_dict
 
 
-def get_mimi_state_dict(path: Path) -> dict:
-    state_dict = {}
+def get_mimi_state_dict(path: Path) -> dict[str, torch.Tensor]:
+    state_dict: dict[str, torch.Tensor] = {}
     with safetensors.safe_open(path, framework="pt", device="cpu") as f:
+        if any(key.startswith("mimi.") for key in f.keys()):
+            # Already in this package's layout, e.g. the mimi.* tensors of a TTSModel.
+            return {
+                k.removeprefix("mimi."): f.get_tensor(k) for k in f.keys() if k.startswith("mimi.")
+            }
         for key in f.keys():
             if (
                 key.startswith("model.quantizer.vq.")
@@ -77,3 +82,30 @@ def get_mimi_state_dict(path: Path) -> dict:
                 .replace("in_proj_weight", "in_proj.weight")
             ] = f.get_tensor(key)
     return state_dict
+
+
+def get_training_checkpoint_state_dicts(
+    path: str | Path, use_ema: bool = True
+) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]]:
+    """(flow_lm, mimi) state dicts from a training checkpoint (.pt).
+
+    Training checkpoints hold the trainable model under "model" and, when the
+    run tracked one, its EMA shadow under "ema"; both are keyed with the
+    "flow_lm." / "mimi." prefixes of the training wrapper, which are otherwise
+    the module names this package uses. The shadow covers trained parameters
+    only, so it is overlaid on "model" rather than used on its own.
+    """
+    payload = torch.load(Path(path), map_location="cpu", weights_only=True)
+    state = payload.get("model")
+    if state is None:
+        raise ValueError(f"{path} holds no 'model' weights")
+    if use_ema and payload.get("ema"):
+        # The shadow only tracks parameters the run trained: a distilled student
+        # freezes its flow and EOS heads, so overlaying is the only way to get a
+        # complete model (taking the shadow alone silently drops the frozen ones).
+        state = {**state, **payload["ema"]}
+    flow_lm = {k.removeprefix("flow_lm."): v for k, v in state.items() if k.startswith("flow_lm.")}
+    mimi = {k.removeprefix("mimi."): v for k, v in state.items() if k.startswith("mimi.")}
+    if not flow_lm:
+        raise ValueError(f"no flow_lm.* weights in {path}")
+    return flow_lm, mimi

@@ -1,0 +1,225 @@
+"""Turning a text prompt into the chunks the model generates one at a time.
+
+The model is trained on single sentences, so long inputs are split on sentence
+boundaries and regrouped into chunks that fit `max_tokens`.
+"""
+
+import logging
+import re
+
+from pocket_tts.modules.text_conditioner import Tokenizer
+
+logger = logging.getLogger(__name__)
+
+
+def prepare_text_prompt(
+    text: str,
+    pad_with_spaces_for_short_inputs: bool,
+    remove_semicolons: bool,
+    append_terminal_punctuation: bool = True,
+    capitalize_first_letter: bool = True,
+    replace_characters: dict[str, str] | None = None,
+) -> tuple[str, int]:
+    text = text.strip()
+    if replace_characters:
+        text = " ".join(text.translate(str.maketrans(replace_characters)).split())
+        # Deleted quotes leave '"Hi?", she said' as 'Hi?, she said', which reads as a sentence end
+        # followed by a stray comma; keep the sentence mark only.
+        text = re.sub(r"([.!?\u2026])\s*[,;:]", r"\1", text)
+    if text == "":
+        raise ValueError("Text prompt cannot be empty")
+    text = text.replace("\n", " ").replace("\r", " ").replace("  ", " ")
+    if remove_semicolons:
+        text = text.replace(";", ",")
+    number_of_words = len(text.split())
+    if number_of_words <= 4:
+        frames_after_eos_guess = 3
+    else:
+        frames_after_eos_guess = 1
+
+    # Make sure it starts with an uppercase letter. Only meaningful for
+    # orthographies that have case; see Config.capitalize_first_letter.
+    if capitalize_first_letter and not text[0].isupper():
+        text = text[0].upper() + text[1:]
+
+    if append_terminal_punctuation:
+        text = _ensure_terminal_punctuation(text)
+
+    # The model does not perform well when there are very few tokens, so
+    # we can add empty spaces at the beginning to increase the token count.
+    if pad_with_spaces_for_short_inputs and len(text.split()) < 5:
+        text = " " * 8 + text
+
+    return text, frames_after_eos_guess
+
+
+_TERMINAL_PUNCTUATION = ".!?\u2026"
+_WEAK_PUNCTUATION = ",;:-\u2013\u2014"
+_CLOSERS = "\"'\u201d\u2019)]\u00bb"
+
+
+def _ensure_terminal_punctuation(text: str) -> str:
+    """Make sure the prompt ends with sentence-final punctuation.
+
+    The model is trained on sentences that end with a period, a question mark
+    or an exclamation mark. Without one, the last word is often mispronounced
+    or repeated. Text that already ends with one, possibly followed by closing
+    quotes or brackets, is left alone. A trailing comma, colon or dash is
+    replaced by a period. Anything else gets a period appended after the
+    closing quote or bracket: the sentence splitter only recognizes a bare
+    period token, and a quote left alone after a period would become a chunk
+    of its own.
+    """
+    core = text.rstrip(_CLOSERS + " ")
+    closers = text[len(core) :].strip()
+    if not core or core[-1] in _TERMINAL_PUNCTUATION:
+        return text
+    if core[-1] in _WEAK_PUNCTUATION:
+        return core.rstrip(_WEAK_PUNCTUATION + " ") + "." + closers
+    return text + "."
+
+
+def _is_decimal_period_boundary(
+    list_of_tokens: list[int], segment_start_idx: int, tokenizer: Tokenizer
+) -> bool:
+    """Return True when segment_start_idx begins right after a decimal period, as in "3.14".
+
+    Only the tokens next to the boundary are decoded, so checking every sentence boundary
+    stays linear in the text length. Decoding the period together with the next token keeps
+    the space between them: in "I counted to 3. 14 people were there." the period ends a
+    sentence.
+    """
+    before = tokenizer.decode(list_of_tokens[max(0, segment_start_idx - 2) : segment_start_idx])
+    after = tokenizer.decode(list_of_tokens[segment_start_idx - 1 : segment_start_idx + 1])
+    return (
+        len(before) >= 2
+        and before[-1] == "."
+        and before[-2].isdigit()
+        and len(after) >= 2
+        and after[1].isdigit()
+    )
+
+
+def _find_boundary_indices(
+    list_of_tokens: list[int],
+    boundary_tokens: list[int],
+    tokenizer: Tokenizer | None = None,
+    skip_decimal_periods: bool = False,
+) -> list[int]:
+    """Find token indices where text should be split based on boundary tokens.
+
+    Returns a list of boundary positions used to slice segments. Each consecutive
+    pair (indices[i], indices[i+1]) defines one segment. The first element is
+    always 0 and the last is always len(list_of_tokens).
+    """
+    boundary_set = set(boundary_tokens)
+    indices = [0]
+    previous_was_boundary = False
+    for idx, token in enumerate(list_of_tokens):
+        if token in boundary_set:
+            previous_was_boundary = True
+        else:
+            if previous_was_boundary:
+                if (
+                    skip_decimal_periods
+                    and tokenizer is not None
+                    and _is_decimal_period_boundary(list_of_tokens, idx, tokenizer)
+                ):
+                    previous_was_boundary = False
+                    continue
+                indices.append(idx)
+            previous_was_boundary = False
+    indices.append(len(list_of_tokens))
+    return indices
+
+
+def _segments_from_boundaries(
+    list_of_tokens: list[int], boundary_indices: list[int], tokenizer: Tokenizer
+) -> list[tuple[int, str]]:
+    """Decode token segments between boundary indices into (token_count, text) pairs."""
+    segments = []
+    for i in range(len(boundary_indices) - 1):
+        start = boundary_indices[i]
+        end = boundary_indices[i + 1]
+        text = tokenizer.decode(list_of_tokens[start:end])
+        segments.append((end - start, text))
+    return segments
+
+
+def split_into_best_sentences(
+    tokenizer: Tokenizer,
+    text_to_generate: str,
+    max_tokens: int,
+    pad_with_spaces_for_short_inputs: bool,
+    remove_semicolons: bool,
+    append_terminal_punctuation: bool = True,
+    capitalize_first_letter: bool = True,
+    replace_characters: dict[str, str] | None = None,
+) -> list[str]:
+    text_to_generate, _ = prepare_text_prompt(
+        text_to_generate,
+        pad_with_spaces_for_short_inputs,
+        remove_semicolons,
+        append_terminal_punctuation,
+        capitalize_first_letter,
+        replace_characters,
+    )
+    text_to_generate = text_to_generate.strip()
+    tokens = tokenizer(text_to_generate)
+    list_of_tokens = tokens[0].tolist()
+
+    _, *end_of_sentence_tokens = tokenizer(".!...?")[0].tolist()
+    sentence_boundaries = _find_boundary_indices(
+        list_of_tokens, end_of_sentence_tokens, tokenizer, skip_decimal_periods=True
+    )
+    nb_tokens_and_sentences = _segments_from_boundaries(
+        list_of_tokens, sentence_boundaries, tokenizer
+    )
+
+    # Sub-split oversized sentences on commas, semicolons, and colons to prevent skipped words
+    _, *fallback_tokens = tokenizer(",;:")[0].tolist()
+    refined_segments = []
+    for nb_tokens, text in nb_tokens_and_sentences:
+        if nb_tokens <= max_tokens:
+            refined_segments.append((nb_tokens, text))
+        else:
+            sub_tokens = tokenizer(text.strip())[0].tolist()
+            sub_boundaries = _find_boundary_indices(sub_tokens, fallback_tokens)
+            sub_segments = _segments_from_boundaries(sub_tokens, sub_boundaries, tokenizer)
+            if len(sub_segments) > 1:
+                refined_segments.extend(sub_segments)
+            else:
+                refined_segments.append((nb_tokens, text))
+
+    max_nb_tokens_in_a_chunk = max_tokens
+    chunks = []
+    current_chunk = ""
+    current_nb_of_tokens_in_chunk = 0
+    for nb_tokens, sentence in refined_segments:
+        if current_chunk == "":
+            current_chunk = sentence
+            current_nb_of_tokens_in_chunk = nb_tokens
+            continue
+
+        if current_nb_of_tokens_in_chunk + nb_tokens > max_nb_tokens_in_a_chunk:
+            chunks.append(current_chunk.strip())
+            current_chunk = sentence
+            current_nb_of_tokens_in_chunk = nb_tokens
+        else:
+            current_chunk += " " + sentence
+            current_nb_of_tokens_in_chunk += nb_tokens
+
+    if current_chunk != "":
+        chunks.append(current_chunk.strip())
+
+    for chunk in chunks:
+        chunk_tokens = tokenizer(chunk.strip())[0].tolist()
+        if len(chunk_tokens) > max_tokens:
+            logger.warning(
+                "Chunk has %d tokens (max %d), generation may skip words: '%.50s...'",
+                len(chunk_tokens),
+                max_tokens,
+                chunk,
+            )
+
+    return chunks

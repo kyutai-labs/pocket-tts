@@ -7,5 +7,5 @@ class LayerScale(nn.Module):
         super().__init__()
         self.scale = nn.Parameter(torch.full((channels,), init))
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.scale * x

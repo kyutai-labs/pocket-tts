@@ -85,7 +85,7 @@ echo "sdk.dir=$ANDROID_HOME" > local.properties
 ./gradlew :app:testDebugUnitTest
 ```
 
-The build compiles the engine from `../rust` first (`cargo ndk`, the
+The build compiles the engine from `../pocket-speak` first (`cargo ndk`, the
 `buildNative` task), so it needs rustup's `aarch64-linux-android`,
 `armv7-linux-androideabi` and `x86_64-linux-android` targets, `cargo-ndk` and
 the NDK. Pass `-PskipNative` to package the libraries already in
@@ -206,7 +206,7 @@ scratchpad ─────▶ ScratchpadActivity ─┼─▶ Reader ─▶ Stre
 other apps ─────▶ PocketTtsService ───┘      ▼
                   (system TTS engine)   MarkdownSpeech ─▶ TextChunker ─▶ PocketTts
                                                                             │
-                                                     NativeEngine (JNI) ─▶ rust/crates/engine
+                                                     NativeEngine (JNI) ─▶ pocket-speak/crates/engine
                                                                             │
                                                                   onnxruntime-android
 ```

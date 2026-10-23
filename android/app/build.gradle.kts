@@ -111,7 +111,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
 
     // ONNX Runtime for pocket-speak's engine, which opens libonnxruntime.so
-    // by name (rust/crates/android). 1.24.2 is the version the desk CLI runs,
+    // by name (pocket-speak/crates/android). 1.24.2 is the version the desk CLI runs,
     // which is the version its measurements were taken on. Its Java API comes
     // along and is unused.
     implementation(libs.onnxruntime.android)
@@ -123,12 +123,12 @@ dependencies {
     testImplementation(libs.androidx.test.junit)
 }
 
-// pocket-speak's engine, built from ../rust into src/main/jniLibs for every
+// pocket-speak's engine, built from ../pocket-speak into src/main/jniLibs for every
 // ABI above. Needs rustup's Android targets, cargo-ndk and the NDK; set
 // -PskipNative to package whatever is already there.
 val buildNative by tasks.registering(Exec::class) {
     val abis = listOf("arm64-v8a", "armeabi-v7a", "x86_64")
-    workingDir = rootProject.file("../rust")
+    workingDir = rootProject.file("../pocket-speak")
     commandLine(
         listOf("cargo", "ndk", "--platform", "26", "-o", file("src/main/jniLibs").absolutePath) +
             abis.flatMap { listOf("-t", it) } +

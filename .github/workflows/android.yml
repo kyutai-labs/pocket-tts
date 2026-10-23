@@ -3,9 +3,9 @@ name: Android
 on:
   push:
     branches: [ main ]
-    paths: [ 'android/**', 'rust/**', '.github/workflows/android.yml' ]
+    paths: [ 'android/**', 'pocket-speak/**', '.github/workflows/android.yml' ]
   pull_request:
-    paths: [ 'android/**', 'rust/**', '.github/workflows/android.yml' ]
+    paths: [ 'android/**', 'pocket-speak/**', '.github/workflows/android.yml' ]
 
 jobs:
   build:
@@ -30,7 +30,7 @@ jobs:
     - name: Set up Gradle
       uses: gradle/actions/setup-gradle@v4
     # The APK carries pocket-speak's engine, which Gradle's buildNative task
-    # compiles from ../rust with cargo-ndk. The runner image ships an NDK;
+    # compiles from ../pocket-speak with cargo-ndk. The runner image ships an NDK;
     # cargo-ndk finds it through ANDROID_NDK_HOME.
     - name: Set up Rust for Android
       run: |
@@ -38,7 +38,7 @@ jobs:
         echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
     - uses: Swatinem/rust-cache@v2
       with:
-        workspaces: rust
+        workspaces: pocket-speak
     - name: Install cargo-ndk
       run: cargo install --locked cargo-ndk
     # Gradle would run this itself before the first task below; doing it as

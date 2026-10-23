@@ -2,7 +2,7 @@
 #
 # Fails if a built APK is missing a method pocket-speak's engine finds by name.
 #
-# rust/crates/android resolves these from native code, so nothing in Kotlin
+# pocket-speak/crates/android resolves these from native code, so nothing in Kotlin
 # breaks when they disappear:
 #
 #   - NativeEngine's native methods, which the loader binds to the exported

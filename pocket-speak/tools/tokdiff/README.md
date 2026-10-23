@@ -7,7 +7,7 @@ as the first thing to settle, because a tokenizer that is subtly wrong does
 not fail: it mispronounces.
 
 ```
-rust/tools/tokdiff/run.sh /tmp/tokdiff docs android/docs README.md
+pocket-speak/tools/tokdiff/run.sh /tmp/tokdiff docs android/docs README.md
 ```
 
 It downloads `tokenizer.model` and `bundle.json` from a pinned Hugging Face

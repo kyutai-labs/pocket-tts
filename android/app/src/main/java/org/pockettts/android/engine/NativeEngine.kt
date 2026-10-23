@@ -3,7 +3,7 @@ package org.pockettts.android.engine
 /**
  * pocket-speak's engine, the Rust crate the desk CLI runs, over JNI.
  *
- * `rust/crates/android` builds `libpocket_tts_jni.so`; ONNX Runtime is
+ * `pocket-speak/crates/android` builds `libpocket_tts_jni.so`; ONNX Runtime is
  * Microsoft's `onnxruntime-android`, loaded first so the Rust side can open it
  * by name. One instance per process, never closed: [PocketTts] holds it for
  * the process's life. Synthesis is serialised by [PocketTts]; the native side

@@ -75,7 +75,7 @@ default output format is not float, 16- or 32-bit integer.
 ## Build
 
 ```
-cd rust
+cd pocket-speak
 cargo build --release -p pocket-speak
 ```
 

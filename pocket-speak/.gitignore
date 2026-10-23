@@ -1,0 +1,5 @@
+/target
+# The repository root ignores every Cargo.toml and Cargo.lock (upstream's rule,
+# for rust-analyzer's scratch files); this workspace's are real.
+!Cargo.toml
+!Cargo.lock

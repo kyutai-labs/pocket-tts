@@ -166,6 +166,14 @@
                 android:layout_marginTop="8dp"
                 android:text="@string/speak_code_blocks" />
 
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/speak_code_blocks_explained"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textColor="?attr/colorOnSurfaceVariant" />
+
             <com.google.android.material.materialswitch.MaterialSwitch
                 android:id="@+id/steadyVoiceSwitch"
                 android:layout_width="match_parent"

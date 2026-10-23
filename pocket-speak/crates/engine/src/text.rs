@@ -2,9 +2,10 @@
 //!
 //! Two decisions live here and both change how the result sounds:
 //!
-//! * [`speakable`] removes what should not be read aloud: fenced code, tables,
-//!   HTML, and Markdown syntax. It keeps link text and the words inside inline
-//!   code, because an agent's prose leans on them.
+//! * [`speakable`] removes what should not be read aloud: fenced code, HTML,
+//!   and Markdown syntax. It keeps link text and the words inside inline code,
+//!   because an agent's prose leans on them. Tables are announced, then read
+//!   row by row under their column names, or only announced past four columns.
 //! * [`chunk`] decides where one generation ends and the next begins. The model
 //!   decides for itself when it has finished speaking and gets it wrong at the
 //!   end of a generation that closes on very short sentences (measured in
@@ -64,8 +65,11 @@ pub fn speakable(markdown: &str) -> String {
         }
         current.clear();
     };
-    for raw in markdown.lines() {
-        let line = raw.trim();
+    let lines: Vec<&str> = markdown.lines().collect();
+    let mut index = 0;
+    while index < lines.len() {
+        let line = lines[index].trim();
+        index += 1;
         if let Some(marker) = &fence {
             if line.starts_with(marker.as_str()) {
                 fence = None;
@@ -79,6 +83,27 @@ pub fn speakable(markdown: &str) -> String {
         }
         if line.is_empty() {
             flush(&mut current, &mut paragraphs);
+            continue;
+        }
+        // A table: a header row, a delimiter row, then rows until one has no
+        // pipe. Read as the app reads it (`MarkdownSpeech.kt`, issue #10).
+        if line.contains('|')
+            && lines
+                .get(index)
+                .is_some_and(|next| is_table_delimiter(next))
+        {
+            flush(&mut current, &mut paragraphs);
+            let header = cells(line);
+            let mut rows = Vec::new();
+            index += 1;
+            while let Some(row) = lines.get(index).map(|row| row.trim()) {
+                if row.is_empty() || !row.contains('|') {
+                    break;
+                }
+                rows.push(cells(row));
+                index += 1;
+            }
+            paragraphs.extend(speak_table(&header, &rows));
             continue;
         }
         if line.starts_with('|') || is_rule(line) {
@@ -103,6 +128,99 @@ pub fn speakable(markdown: &str) -> String {
     }
     flush(&mut current, &mut paragraphs);
     paragraphs.join("\n\n")
+}
+
+/// The widest table read row by row, as in the app: each row is read with its
+/// column names, so four columns is already a long sentence.
+const MAX_READ_COLUMNS: usize = 4;
+
+/// `|---|:--:|`: every cell two or more dashes, optionally colon-aligned.
+fn is_table_delimiter(line: &str) -> bool {
+    let line = line.trim();
+    line.contains('|')
+        && line.contains("--")
+        && cells_raw(line).iter().all(|cell| {
+            let dashes = cell.trim_start_matches(':').trim_end_matches(':');
+            dashes.len() >= 2 && dashes.chars().all(|c| c == '-')
+        })
+}
+
+fn cells_raw(line: &str) -> Vec<&str> {
+    let row = line.trim();
+    let row = row.strip_prefix('|').unwrap_or(row);
+    let row = row.strip_suffix('|').unwrap_or(row);
+    row.split('|').map(str::trim).collect()
+}
+
+fn cells(line: &str) -> Vec<String> {
+    cells_raw(line)
+        .into_iter()
+        .map(|cell| inline(cell).trim().to_string())
+        .collect()
+}
+
+/// What a table says, as a screen reader would put it: how big it is, then
+/// each row as its first cell followed by each other cell under its column's
+/// name, "alpha: before, one; after, two." Wider than [`MAX_READ_COLUMNS`], it
+/// is announced with its column names and not read.
+fn speak_table(header: &[String], rows: &[Vec<String>]) -> Vec<String> {
+    let columns = rows
+        .iter()
+        .map(Vec::len)
+        .chain([header.len()])
+        .max()
+        .unwrap_or(0);
+    let count = if rows.len() == 1 {
+        "1 row".to_string()
+    } else {
+        format!("{} rows", rows.len())
+    };
+    let names: Vec<&str> = header
+        .iter()
+        .map(String::as_str)
+        .filter(|name| !name.is_empty())
+        .collect();
+    if columns > MAX_READ_COLUMNS {
+        let headed = if names.is_empty() {
+            String::new()
+        } else {
+            format!(", headed {}", spoken_list(&names))
+        };
+        return vec![format!(
+            "Table not read: {count}, {columns} columns{headed}."
+        )];
+    }
+    let mut spoken = vec![format!("Table, {count}.")];
+    for row in rows {
+        let label = row.first().map(String::as_str).unwrap_or("");
+        let pairs: Vec<String> = (1..columns)
+            .filter_map(|j| {
+                let value = row.get(j).map(String::as_str).unwrap_or("");
+                let name = header.get(j).map(String::as_str).unwrap_or("");
+                match (value.is_empty(), name.is_empty()) {
+                    (true, _) => None,
+                    (false, true) => Some(value.to_string()),
+                    (false, false) => Some(format!("{name}, {value}")),
+                }
+            })
+            .collect();
+        let text = match (label.is_empty(), pairs.is_empty()) {
+            (true, true) => continue,
+            (true, false) => pairs.join("; "),
+            (false, true) => label.to_string(),
+            (false, false) => format!("{label}: {}", pairs.join("; ")),
+        };
+        spoken.push(end_sentence(&text));
+    }
+    spoken
+}
+
+/// "a", "a and b", "a, b and c".
+fn spoken_list(items: &[&str]) -> String {
+    match items.split_last() {
+        Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
+        _ => items.join(""),
+    }
 }
 
 fn is_rule(line: &str) -> bool {
@@ -435,9 +553,49 @@ mod tests {
     }
 
     #[test]
-    fn fenced_code_and_tables_are_not_read() {
-        let markdown = "Here is the fix.\n\n```rust\nfn main() {}\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nIt builds.";
+    fn fenced_code_is_not_read() {
+        let markdown = "Here is the fix.\n\n```rust\nfn main() {}\n```\n\nIt builds.";
         assert_eq!(speakable(markdown), "Here is the fix.\n\nIt builds.");
+    }
+
+    /// The same outputs as the app's `MarkdownSpeechTest`, issue #10's tables
+    /// among them.
+    #[test]
+    fn tables_are_announced_then_read_under_their_column_names() {
+        let named = "| stage | before | after |\n|-------|--------|-------|\n| alpha | one | two |\n| bravo | three | four |";
+        let blank =
+            "| | before | after |\n|---|---|---|\n| alpha | one | two |\n| bravo | three | four |";
+        let expected = "Table, 2 rows.\n\nalpha: before, one; after, two.\n\nbravo: before, three; after, four.";
+        assert_eq!(speakable(named), expected);
+        assert_eq!(speakable(blank), expected);
+        assert_eq!(
+            speakable("key | value\n--- | ---\nmodel | 7m\n\nAfter."),
+            "Table, 1 row.\n\nmodel: value, 7m.\n\nAfter."
+        );
+        assert_eq!(
+            speakable(
+                "| name | role | note |\n|---|---|---|\n| Ada | | first |\n| | lead | |\n| | | |"
+            ),
+            "Table, 3 rows.\n\nAda: note, first.\n\nrole, lead."
+        );
+    }
+
+    #[test]
+    fn a_table_wider_than_four_columns_is_only_announced() {
+        let markdown =
+            "| a | b | c | d | e |\n|---|---|---|---|---|\n| 1 | 2 | 3 | 4 | 5 |\n\nAfter.";
+        assert_eq!(
+            speakable(markdown),
+            "Table not read: 1 row, 5 columns, headed a, b, c, d and e.\n\nAfter."
+        );
+    }
+
+    #[test]
+    fn a_heading_underline_does_not_make_a_table() {
+        assert!(!is_table_delimiter("---"));
+        assert!(is_table_delimiter("|---|:--:|"));
+        assert!(is_table_delimiter("--- | ---"));
+        assert!(!is_table_delimiter("| a | b |"));
     }
 
     #[test]

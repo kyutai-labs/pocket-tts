@@ -26,6 +26,8 @@
     <string name="tts_settings_hint">Select Pocket TTS as your preferred engine to use these voices in any app that reads text aloud.</string>
     <string name="speed">Speed: %1$.2fx</string>
     <string name="speak_code_blocks">Read code blocks aloud</string>
+    <!-- Issue #9: what the switch does not cover, decided on purpose. -->
+    <string name="speak_code_blocks_explained">Fenced blocks only. Code inside a sentence, such as a file path or a flag, is always read, as words.</string>
     <string name="treat_as_markdown">Strip Markdown from selected text</string>
     <string name="steady_voice">Keep one voice across sentences</string>
     <string name="steady_voice_explained">Every sentence draws the same speaker from the voice sample, instead of a new one each time. Turn this off to hear a passage read differently on each attempt.</string>

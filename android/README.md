@@ -217,7 +217,11 @@ other apps ─────▶ PocketTtsService ───┘      ▼
                                                           xn-ptts + upstream's rust/src
 ```
 
-- `speech/MarkdownSpeech` turns Markdown into speakable prose.
+- `speech/MarkdownSpeech` turns Markdown into speakable prose. A table is read
+  as a screen reader reads one: announced ("Table, 2 rows."), then row by row
+  under its column names; past four columns it is announced with its column
+  names and not read (#10). Inline code is always read, as words; the setting
+  covers fenced blocks only (#9).
 - `speech/TextChunker` cuts it at sentence boundaries so the first audio arrives
   quickly and stopping is responsive.
 - `engine/PocketTts` owns the single loaded model and serialises synthesis.

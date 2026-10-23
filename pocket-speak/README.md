@@ -12,8 +12,11 @@ pocket-speak install --model english_7m_2026-10 && pocket-speak --model english_
 ```
 
 It reads Markdown on stdin and drops what should not be spoken (fenced code,
-tables, HTML, Markdown syntax), keeping link text and the words in inline
-code. Bare URLs are read as their host.
+HTML, Markdown syntax), keeping link text and the words in inline code. Bare
+URLs are read as their host. A table is announced ("Table, 2 rows.") and read
+row by row under its column names ("alpha: before, one; after, two."); one
+wider than four columns is announced with its column names and not read. The
+app does the same.
 
 | option | |
 |---|---|

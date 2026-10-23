@@ -33,7 +33,7 @@ given); `models` lists the models on offer.
   --seed N            reproducible sampling
   --threads N         threads for the model (default: 2)
   --float             float weights, not int8
-  --stats             one JSON line per chunk on stderr
+  --stats             JSON on stderr: a line naming the model, then one per chunk
 ";
 
 struct Options {

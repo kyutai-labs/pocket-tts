@@ -66,7 +66,7 @@ sentences.update(
 )
 
 
-def prepare(text):
+def prepare(text: str) -> str | None:
     prepared = " ".join(text.split())
     if not prepared:
         return None

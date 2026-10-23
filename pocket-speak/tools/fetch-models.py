@@ -59,7 +59,9 @@ def main() -> None:
             fetch(file["url"], directory / file["name"], file["sha256"])
         for voice in args.voice or ["alba"]:
             pinned = model["voices"][voice]
-            fetch(pinned["url"], directory / "embeddings" / f"{voice}.safetensors", pinned["sha256"])
+            fetch(
+                pinned["url"], directory / "embeddings" / f"{voice}.safetensors", pinned["sha256"]
+            )
 
 
 if __name__ == "__main__":

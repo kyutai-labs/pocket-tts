@@ -19,8 +19,10 @@ import pathlib
 import re
 import subprocess
 import sys
+from typing import Any
 
-from faster_whisper import WhisperModel
+# Not a dependency of the package; see the usage above.
+from faster_whisper import WhisperModel  # ty: ignore[unresolved-import]
 
 NUMBERS = {
     "0": "zero",
@@ -36,12 +38,12 @@ NUMBERS = {
 }
 
 
-def words(text):
+def words(text: str) -> list[str]:
     tokens = re.findall(r"[a-z0-9']+", text.lower())
     return [NUMBERS.get(t, t) for t in tokens]
 
 
-def lcs(a, b):
+def lcs(a: list[str], b: list[str]) -> int:
     row = [0] * (len(b) + 1)
     for x in a:
         prev = 0
@@ -67,7 +69,7 @@ def main():
         for line in open(args.cases, encoding="utf-8")
         if line.strip() and not line.startswith("#")
     ]
-    rows = []
+    rows: list[dict[str, Any]] = []
     for name, text in cases:
         expected = words(text)
         for chunking in args.chunking.split(","):
@@ -91,8 +93,11 @@ def main():
                 )
                 if run.returncode != 0:
                     sys.exit(f"{name}: pocket-speak failed: {run.stderr}")
+                # Chunk lines only: --stats starts with a line naming the model.
                 stats = [
-                    json.loads(line) for line in run.stderr.splitlines() if line.startswith("{")
+                    json.loads(line)
+                    for line in run.stderr.splitlines()
+                    if line.startswith('{"chunk"')
                 ]
                 segments, _ = judge.transcribe(
                     str(wav), language="en", condition_on_previous_text=False

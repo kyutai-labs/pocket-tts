@@ -33,12 +33,7 @@ CONFIGS = ROOT / "pocket_tts" / "config"
 OUT = ROOT / "pocket-speak" / "models.json"
 
 # Largest first. The app lists them in this order.
-OFFERED = [
-    "english_2026-10",
-    "english_18m_2026-10",
-    "english_7m_2026-10",
-    "english_2m_2026-10",
-]
+OFFERED = ["english_2026-10", "english_18m_2026-10", "english_7m_2026-10", "english_2m_2026-10"]
 
 # The stock voices' precomputed states: the revision pocket_tts/utils/utils.py
 # pins in get_predefined_voice (upstream's rust/src/defaults.rs pins an older
@@ -50,7 +45,7 @@ VOICE_REVISION = "a7056f505a4a8ca72d8b5fb1440071d6f1a35739"
 def parse_hf(path: str) -> tuple[str, str, str]:
     """hf://owner/repo/some/file@rev -> (owner/repo, some/file, rev)."""
     assert path.startswith("hf://"), path
-    rest, _, revision = path[len("hf://"):].partition("@")
+    rest, _, revision = path[len("hf://") :].partition("@")
     owner, repo, file = rest.split("/", 2)
     if not revision:
         sys.exit(f"{path} is not pinned to a revision")

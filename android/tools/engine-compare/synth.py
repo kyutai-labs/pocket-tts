@@ -9,9 +9,11 @@ import json
 import os
 import pathlib
 import re
+from typing import Any
 
 import numpy as np
-import sherpa_onnx as so
+import numpy.typing as npt
+import sherpa_onnx as so  # ty: ignore[unresolved-import]
 import soundfile as sf
 from chunker import chunk
 from corpus import READALOUD, TALKBACK
@@ -27,7 +29,7 @@ Q = "" if FP32 else ".int8"
 SR = 24000
 
 
-def load_tts(threads):
+def load_tts(threads: int) -> so.OfflineTts:
     cfg = so.OfflineTtsConfig(
         model=so.OfflineTtsModelConfig(
             pocket=so.OfflineTtsPocketModelConfig(
@@ -47,7 +49,18 @@ def load_tts(threads):
     return so.OfflineTts(cfg)
 
 
-def gen(tts, text, voice, vsr, speed, steps, whole, temperature=0.3, seed=1, extra_more=None):
+def gen(
+    tts: so.OfflineTts,
+    text: str,
+    voice: npt.NDArray[Any],
+    vsr: int,
+    speed: float,
+    steps: int,
+    whole: bool,
+    temperature: float = 0.3,
+    seed: int = 1,
+    extra_more: dict[str, str] | None = None,
+) -> npt.NDArray[np.float32]:
     """One engine.synthesize() call. Audio is taken from the callback, as the app does
     (the returned GeneratedAudio, which has silence_scale applied, is discarded by the app)."""
     g = so.GenerationConfig()
@@ -63,7 +76,7 @@ def gen(tts, text, voice, vsr, speed, steps, whole, temperature=0.3, seed=1, ext
     g.extra = extra
     got = []
 
-    def cb(samples, progress):
+    def cb(samples: list[float], progress: float) -> int:
         got.append(np.array(samples, dtype=np.float32))
         return 1
 
@@ -74,7 +87,7 @@ def gen(tts, text, voice, vsr, speed, steps, whole, temperature=0.3, seed=1, ext
 SENT = re.compile(r"""(?<=[.!?…])["')\]]*\s+""")
 
 
-def prepare(t):
+def prepare(t: str) -> str:
     """pocket_tts/models/tts_model.py prepare_text_prompt, minus the space padding sherpa trims."""
     t = t.strip().replace("\n", " ").replace("\r", " ").replace("  ", " ")
     t = t[0].upper() + t[1:]
@@ -83,7 +96,7 @@ def prepare(t):
     return t
 
 
-def lines_as_sentences(t):
+def lines_as_sentences(t: str) -> str:
     out = []
     for line in [x.strip() for x in t.split("\n") if x.strip()]:
         line = line[0].upper() + line[1:]
@@ -95,7 +108,11 @@ def lines_as_sentences(t):
     return " ".join(out)
 
 
-def pieces_for(mode, text):
+# (text to the engine, pause after, whole flag[, extra generation options])
+Piece = tuple[str, float, bool] | tuple[str, float, bool, dict[str, str]]
+
+
+def pieces_for(mode: str, text: str) -> list[Piece]:
     """What one chunk becomes under each mode: list of (text_to_engine, pause_after, whole_flag)."""
     base, _, arg = mode.partition("@")
     if base == "whole":

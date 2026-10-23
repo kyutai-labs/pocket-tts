@@ -118,7 +118,8 @@ This is a pure Python package with Rust extensions in `training/rust_exts/audio_
   "Running on GPU" section for details.
 - **Torch Threads**: `torch.set_num_threads(1)` in `tts_model.py` for optimal CPU performance
 - **dtype**: Models use float32 by default (configurable in YAML)
-- **Beartype**: Runtime type checking is enabled via beartype claw in `__init__.py`
+- **Type checking**: `ty` checks the whole repo statically (`uv run ty check`, also run in CI).
+  There is no runtime type checking.
 
 ### Adding Features
 

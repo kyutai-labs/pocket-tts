@@ -1,0 +1,43 @@
+# Finetune a released model into a new language: on 976h of Czech this hit 12%
+# WER by 10k steps where a scratch run was still at 46%, and both settled around
+# 10-12%. Keep lr at 2e-4: the text embedding starts random, so the backbone has
+# to move with it.
+model_config: pocket_tts/config/english_2026-04_24l.yaml
+model_overrides:
+  # The sentencepiece model you fitted on your transcripts. n_bins already
+  # matches train_tokenizer.py's default vocab size, so it needs no override.
+  flow_lm.lookup_table.tokenizer_path: data/tokenizer.model
+start_from_pretrained: true
+reset_text_embedding: true  # the tokenizer below is not the one these weights were trained with
+
+data:
+  train_jsonl: data/train_aligned.jsonl
+  valid_jsonl: data/valid_aligned.jsonl
+  max_duration_sec: 30.0
+  max_voice_prompt_sec: 5.0
+
+flow:
+  type: lsd
+  kwargs: {}
+
+flow_batch_multiplier: 4
+eos_loss_weight: 0.1
+text_dropout: 0.2
+voice_dropout: 0.2
+
+optim:
+  lr: 2e-4
+  schedule: constant
+  warmup_steps: 1000
+
+run_dir: runs/finetune_language
+batch_size: 64
+grad_accum_steps: 1
+max_steps: 250000  # WER plateaus by ~15k; the rest is acoustic quality
+stats_ema_steps: 1000
+ema_decay: 0.999
+log_freq: 50
+valid_freq: 2500
+ckpt_freq: 2500
+num_ckpt_keep: 3
+sample_cfg_coef: 2.0

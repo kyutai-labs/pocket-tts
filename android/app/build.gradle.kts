@@ -15,8 +15,8 @@ android {
         versionName = "0.1.0"
 
         // Phones shipping today are all arm64; armeabi-v7a for older hardware,
-        // x86_64 for the emulator. Each ABI costs its own ONNX Runtime (18 to
-        // 31 MB), so the list is what the app is run on and nothing more.
+        // x86_64 for the emulator. Each ABI costs its own copy of the engine
+        // (about 8 MB), so the list is what the app is run on and nothing more.
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
@@ -110,12 +110,6 @@ dependencies {
     implementation(libs.material)
     implementation(libs.kotlinx.coroutines.android)
 
-    // ONNX Runtime for pocket-speak's engine, which opens libonnxruntime.so
-    // by name (rust/crates/android). 1.24.2 is the version the desk CLI runs,
-    // which is the version its measurements were taken on. Its Java API comes
-    // along and is unused.
-    implementation(libs.onnxruntime.android)
-
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.robolectric)
@@ -123,12 +117,12 @@ dependencies {
     testImplementation(libs.androidx.test.junit)
 }
 
-// pocket-speak's engine, built from ../rust into src/main/jniLibs for every
+// pocket-speak's engine, built from ../pocket-speak into src/main/jniLibs for every
 // ABI above. Needs rustup's Android targets, cargo-ndk and the NDK; set
 // -PskipNative to package whatever is already there.
 val buildNative by tasks.registering(Exec::class) {
     val abis = listOf("arm64-v8a", "armeabi-v7a", "x86_64")
-    workingDir = rootProject.file("../rust")
+    workingDir = rootProject.file("../pocket-speak")
     commandLine(
         listOf("cargo", "ndk", "--platform", "26", "-o", file("src/main/jniLibs").absolutePath) +
             abis.flatMap { listOf("-t", it) } +
@@ -137,3 +131,15 @@ val buildNative by tasks.registering(Exec::class) {
     onlyIf { !project.hasProperty("skipNative") }
 }
 tasks.named("preBuild") { dependsOn(buildNative) }
+
+// The models on offer and their pinned files: pocket-speak/models.json, which
+// the engine compiles in too, so the app downloads exactly what it loads. Read
+// at run time by ModelCatalog, and by the unit tests, which cannot load the
+// native library.
+val modelCatalogDir = layout.buildDirectory.dir("generated/modelCatalog")
+val copyModelCatalog by tasks.registering(Copy::class) {
+    from(rootProject.file("../pocket-speak/models.json"))
+    into(modelCatalogDir)
+}
+android.sourceSets["main"].assets.srcDir(modelCatalogDir)
+tasks.named("preBuild") { dependsOn(copyModelCatalog) }

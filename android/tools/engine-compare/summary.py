@@ -3,6 +3,7 @@
 import json
 import pathlib
 import sys
+from typing import Any
 
 import numpy as np
 
@@ -10,7 +11,7 @@ detail = "--detail" in sys.argv
 cells = [a for a in sys.argv[1:] if not a.startswith("--")]
 
 
-def agg(rows):
+def agg(rows: list[dict[str, Any]]) -> dict[str, float]:
     n = sum(r["n_exp"] for r in rows)
     errs = sum(r["sub"] + r["del"] + r["ins"] for r in rows)
     wps = sum(r["n_exp"] for r in rows) / sum(r["speech_s"] for r in rows)

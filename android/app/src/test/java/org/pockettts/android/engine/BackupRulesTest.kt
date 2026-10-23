@@ -12,8 +12,8 @@ import org.xmlpull.v1.XmlPullParser
 import org.pockettts.android.R
 
 /**
- * The backup rules name the model directory as a literal string, because XML
- * cannot reference a Kotlin constant.
+ * The backup rules name the models' directory as a literal string, because
+ * XML cannot reference a Kotlin constant.
  *
  * That makes them a silent trap. Rename the bundle and the exclusion stops
  * matching: nothing fails to compile, no test that exists elsewhere notices,
@@ -42,7 +42,7 @@ class BackupRulesTest {
         return paths
     }
 
-    private val expected = "pocket-tts/${ModelManager.MODEL_NAME}"
+    private val expected = "pocket-tts/${ModelManager.MODELS_DIR}"
 
     @Test
     fun `cloud backup excludes the model directory that actually exists`() {

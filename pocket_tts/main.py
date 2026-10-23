@@ -4,27 +4,29 @@ import os
 import sys
 import tempfile
 import threading
+from collections.abc import Generator
 from pathlib import Path
 from queue import Queue
+from typing import Annotated, BinaryIO, cast
 
 import typer
 import uvicorn
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
-from typing_extensions import Annotated
 
 from pocket_tts.data.audio import stream_audio_chunks
 from pocket_tts.default_parameters import (
-    DEFAULT_EOS_THRESHOLD,
     DEFAULT_FRAMES_AFTER_EOS,
-    DEFAULT_LSD_DECODE_STEPS,
     DEFAULT_NOISE_CLAMP,
+    DEFAULT_SAMPLER_DECODE_STEPS,
     MAX_TOKEN_PER_CHUNK,
     get_default_text_for_language,
     get_default_voice_for_language,
 )
-from pocket_tts.models.tts_model import TTSModel, export_model_state
+from pocket_tts.models.model_state import export_model_state
+from pocket_tts.models.tts_model import TTSModel
+from pocket_tts.modules.stateful_module import ModelState
 from pocket_tts.utils.logging_utils import enable_logging
 from pocket_tts.utils.utils import _ORIGINS_OF_PREDEFINED_VOICES
 
@@ -41,6 +43,9 @@ cli_app = typer.Typer(
 
 # Global model instance
 tts_model: TTSModel | None = None
+# State of the voice served when a request doesn't specify one. It is resolved once from the
+# `serve` options, so that requests never pay for the encoding of the default voice.
+default_voice_state: ModelState | None = None
 
 web_app = FastAPI(
     title="Kyutai Pocket TTS API", description="Text-to-Speech generation API", version="1.0.0"
@@ -58,32 +63,42 @@ web_app.add_middleware(
 )
 
 
+def _loaded_model() -> TTSModel:
+    if tts_model is None:
+        raise RuntimeError("no model loaded: `pocket-tts serve` loads it before serving requests")
+    return tts_model
+
+
 @web_app.get("/", response_class=HTMLResponse)
-async def root():
+async def root() -> str:
     """Serve the frontend."""
     static_path = Path(__file__).parent / "static" / "index.html"
-    content = static_path.read_text()
+    content = static_path.read_text(encoding="utf-8")
     # Replace the placeholder with the actual default text prompt
-    print(str(tts_model.origin))
-    content = content.replace(
-        "DEFAULT_TEXT_PROMPT", get_default_text_for_language(str(tts_model.origin))
-    )
+    origin = str(_loaded_model().origin)
+    print(origin)
+    content = content.replace("DEFAULT_TEXT_PROMPT", get_default_text_for_language(origin))
     return content
 
 
 @web_app.get("/health")
-async def health():
+async def health() -> dict[str, str]:
     return {"status": "healthy"}
 
 
-def write_to_queue(queue, text_to_generate, model_state):
+def write_to_queue(
+    queue: Queue[bytes | None],
+    text_to_generate: str,
+    model_state: ModelState,
+    stop: threading.Event,
+):
     """Allows writing to the StreamingResponse as if it were a file."""
 
     class FileLikeToQueue(io.IOBase):
-        def __init__(self, queue):
+        def __init__(self, queue: Queue[bytes | None]):
             self.queue = queue
 
-        def write(self, data):
+        def write(self, data: bytes):
             self.queue.put(data)
 
         def flush(self):
@@ -92,29 +107,40 @@ def write_to_queue(queue, text_to_generate, model_state):
         def close(self):
             self.queue.put(None)
 
-    audio_chunks = tts_model.generate_audio_stream(
-        model_state=model_state, text_to_generate=text_to_generate
+    model = _loaded_model()
+    audio_chunks = model.generate_audio_stream(
+        model_state=model_state, text_to_generate=text_to_generate, stop=stop
     )
-    stream_audio_chunks(FileLikeToQueue(queue), audio_chunks, tts_model.config.mimi.sample_rate)
+    # FileLikeToQueue only implements the write/close subset that StreamingWAVWriter uses.
+    stream_audio_chunks(
+        cast(BinaryIO, FileLikeToQueue(queue)), audio_chunks, model.config.mimi.sample_rate
+    )
 
 
-def generate_data_with_state(text_to_generate: str, model_state: dict):
-    queue = Queue()
+def generate_data_with_state(
+    text_to_generate: str, model_state: ModelState
+) -> Generator[bytes, None, None]:
+    queue: Queue[bytes | None] = Queue()
+    stop = threading.Event()
 
     # Run your function in a thread
-    thread = threading.Thread(target=write_to_queue, args=(queue, text_to_generate, model_state))
+    thread = threading.Thread(
+        target=write_to_queue, args=(queue, text_to_generate, model_state, stop)
+    )
     thread.start()
 
-    # Yield data as it becomes available
-    i = 0
-    while True:
-        data = queue.get()
-        if data is None:
-            break
-        i += 1
-        yield data
-
-    thread.join()
+    try:
+        # Yield data as it becomes available
+        while True:
+            data = queue.get()
+            if data is None:
+                break
+            yield data
+    finally:
+        # Also runs when the client disconnects: stop the generation instead of
+        # finishing it for nobody, and make sure the worker is done with the model.
+        stop.set()
+        thread.join()
 
 
 @web_app.post("/tts")
@@ -122,7 +148,7 @@ def text_to_speech(
     text: str = Form(...),
     voice_url: str | None = Form(None),
     voice_wav: UploadFile | None = File(None),
-):
+) -> StreamingResponse:
     """
     Generate speech from text using the pre-loaded voice prompt or a custom voice.
 
@@ -133,9 +159,6 @@ def text_to_speech(
     """
     if not text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
-
-    if voice_url is None and voice_wav is None:
-        voice_url = get_default_voice_for_language(str(tts_model.origin))
 
     if voice_url is not None and voice_wav is not None:
         raise HTTPException(status_code=400, detail="Cannot provide both voice_url and voice_wav")
@@ -151,7 +174,7 @@ def text_to_speech(
             raise HTTPException(
                 status_code=400, detail="voice_url must start with http://, https://, or hf://"
             )
-        model_state = tts_model._cached_get_state_for_audio_prompt(voice_url)
+        model_state = _loaded_model()._cached_get_state_for_audio_prompt(voice_url)
         logging.warning("Using voice from URL: %s", voice_url)
     elif voice_wav is not None:
         # Use uploaded voice file - preserve extension for format detection
@@ -164,11 +187,15 @@ def text_to_speech(
 
         # Close the file before reading it back (required on Windows)
         try:
-            model_state = tts_model.get_state_for_audio_prompt(Path(temp_file_path), truncate=True)
+            model_state = _loaded_model().get_state_for_audio_prompt(
+                Path(temp_file_path), truncate=True
+            )
         finally:
             os.unlink(temp_file_path)
+    elif default_voice_state is not None:
+        model_state = default_voice_state
     else:
-        raise HTTPException(status_code=500, detail="This should never happen.")
+        raise HTTPException(status_code=500, detail="The server has no default voice loaded.")
 
     return StreamingResponse(
         generate_data_with_state(text, model_state),
@@ -189,16 +216,25 @@ def serve(
         str | None,
         typer.Option(
             help="Language for the TTS model. "
-            "'english_2026-01', 'english_2026-04', 'english', 'french_24l', 'german_24l', 'portuguese', 'italian', 'spanish'."
-            " Incompatible with the config argument. Default is 'english', which is the same model as 'english_2026-04'.",
+            "'english_2026-01', 'english_2026-04', 'english_2026-09', 'english_2026-09_2', 'english_2026-10', 'english_drifting_26-09', 'english_18m_2026-10', 'english_18m_refl_2026-10', 'english_7m_2026-10', 'english_7m_refl_2026-10', 'english_2m_2026-10', 'english_2m_refl_2026-10', 'english', 'french', 'french_24l', 'german', 'german_24l', 'portuguese', 'portuguese_24l', 'italian', 'italian_24l', 'spanish', 'spanish_24l', 'dutch', 'dutch_24l'."
+            " Incompatible with the config argument. Default is 'english', which is the same model as 'english_2026-10'.",
             show_default=False,
         ),
     ] = None,
     config: Annotated[
         str | None,
         typer.Option(
-            help="Path to locally-saved model config .yaml file. "
+            help="Path to a model config .yaml file: a local path, an https:// URL, or an hf:// path. "
             "Incompatible with the language argument. If not provided, will use the default English model."
+        ),
+    ] = None,
+    default_voice: Annotated[
+        str | None,
+        typer.Option(
+            help="Voice used by requests that don't ask for one: a built-in voice name, "
+            "a local path to an audio file or to a .safetensors voice, an https:// URL, "
+            "or an hf:// path. Defaults to the built-in voice of the language.",
+            show_default=False,
         ),
     ] = None,
     quantize: Annotated[
@@ -207,8 +243,13 @@ def serve(
 ):
     """Start the FastAPI server."""
 
-    global tts_model
+    global tts_model, default_voice_state
     tts_model = TTSModel.load_model(language=language, config=config, quantize=quantize)
+    if default_voice is None:
+        default_voice = get_default_voice_for_language(language, config)
+    # Resolved before serving: a voice that cannot be loaded fails at startup instead of on
+    # the first request, which would otherwise pay for the encoding of the audio file.
+    default_voice_state = tts_model.get_state_for_audio_prompt(default_voice)
 
     uvicorn.run("pocket_tts.main:web_app", host=host, port=port, reload=reload)
 
@@ -220,7 +261,7 @@ def serve(
 
 @cli_app.command()
 def generate(
-    text: Annotated[str, typer.Option(help="Text to generate")] = None,
+    text: Annotated[str | None, typer.Option(help="Text to generate")] = None,
     voice: Annotated[
         str | None,
         typer.Option(
@@ -228,7 +269,9 @@ def generate(
                 "Path to audio conditioning file (voice to clone). "
                 "Defaults to a built-in voice chosen from the language: "
                 "'giovanni' for italian, 'lola' for spanish, 'juergen' for german, "
-                "'rafael' for portuguese, 'estelle' for french, 'alba' otherwise."
+                "'rafael' for portuguese, 'estelle' for french, 'alba' otherwise. "
+                "With the config or checkpoint argument, defaults to alba's audio file, "
+                "which any model can clone."
             ),
             show_default=False,
         ),
@@ -239,9 +282,8 @@ def generate(
         typer.Option(
             help=(
                 "Language for the TTS model. "
-                "'english_2026-01', 'english_2026-04', 'english', 'french_24l', 'spanish_24l',"
-                "'german_24l', 'portuguese_24l', 'italian_24l'."
-                " Incompatible with the config argument. Default is 'english', which is the same model as 'english_2026-04'. "
+                "'english_2026-01', 'english_2026-04', 'english_2026-09', 'english_2026-09_2', 'english_2026-10', 'english_drifting_26-09', 'english_18m_2026-10', 'english_18m_refl_2026-10', 'english_7m_2026-10', 'english_7m_refl_2026-10', 'english_2m_2026-10', 'english_2m_refl_2026-10', 'english', 'french', 'french_24l', 'german', 'german_24l', 'portuguese', 'portuguese_24l', 'italian', 'italian_24l', 'spanish', 'spanish_24l', 'dutch', 'dutch_24l'."
+                " Incompatible with the config argument. Default is 'english', which is the same model as 'english_2026-10'. "
                 "The '24l' variants are bigger models, "
                 "not distilled yet and here only as preview. They're not the final "
                 "models for those languages."
@@ -252,24 +294,36 @@ def generate(
     config: Annotated[
         str | None,
         typer.Option(
-            help="Path to locally-saved model config .yaml file. "
+            help="Path to a model config .yaml file: a local path, an https:// URL, or an hf:// path. "
             "Incompatible with the language argument. If not provided, will use the default English model."
         ),
     ] = None,
-    lsd_decode_steps: Annotated[
+    checkpoint: Annotated[
+        str | None,
+        typer.Option(help="Training checkpoint (.pt) to load instead of the config's weights"),
+    ] = None,
+    sampler_decode_steps: Annotated[
         int, typer.Option(help="Number of generation steps")
-    ] = DEFAULT_LSD_DECODE_STEPS,
+    ] = DEFAULT_SAMPLER_DECODE_STEPS,
+    lsd_decode_steps: Annotated[
+        int | None, typer.Option(hidden=True, help="Deprecated: use --sampler-decode-steps")
+    ] = None,
     temperature: Annotated[
         float | None,
         typer.Option(
             help="Temperature for generation. Defaults to the model's recommended "
-            "value from its config (0.3 for the English model, 0.7 otherwise)."
+            "value from its config (0.3)."
         ),
     ] = None,
-    noise_clamp: Annotated[float, typer.Option(help="Noise clamp value")] = DEFAULT_NOISE_CLAMP,
-    eos_threshold: Annotated[float, typer.Option(help="EOS threshold")] = DEFAULT_EOS_THRESHOLD,
+    noise_clamp: Annotated[
+        float | None, typer.Option(help="Noise clamp value")
+    ] = DEFAULT_NOISE_CLAMP,
+    eos_threshold: Annotated[
+        float | None,
+        typer.Option(help="EOS threshold. Defaults to the model's value from its config (-4.0)."),
+    ] = None,
     frames_after_eos: Annotated[
-        int, typer.Option(help="Number of frames to generate after EOS")
+        int | None, typer.Option(help="Number of frames to generate after EOS")
     ] = DEFAULT_FRAMES_AFTER_EOS,
     output_path: Annotated[
         str, typer.Option(help="Output path for generated audio")
@@ -283,6 +337,9 @@ def generate(
     ] = False,
 ):
     """Generate speech using Kyutai Pocket TTS."""
+    if lsd_decode_steps is not None:
+        logger.warning("--lsd-decode-steps is deprecated, use --sampler-decode-steps")
+        sampler_decode_steps = lsd_decode_steps
     log_level = logging.ERROR if quiet else logging.INFO
     with enable_logging("pocket_tts", log_level):
         if text is None:
@@ -298,15 +355,16 @@ def generate(
             language=language,
             config=config,
             temp=temperature,
-            lsd_decode_steps=lsd_decode_steps,
+            sampler_decode_steps=sampler_decode_steps,
             noise_clamp=noise_clamp,
             eos_threshold=eos_threshold,
             quantize=quantize,
+            checkpoint=checkpoint,
         )
         tts_model.to(device)
 
         if voice is None:
-            voice = get_default_voice_for_language(language)
+            voice = get_default_voice_for_language(language, config, checkpoint)
         model_state_for_voice = tts_model.get_state_for_audio_prompt(voice)
         # Stream audio generation directly to file or stdout
         audio_chunks = tts_model.generate_audio_stream(
@@ -347,9 +405,8 @@ def export_voice(
         typer.Option(
             help=(
                 "Language for the TTS model. "
-                "'english_2026-01', 'english_2026-04', 'english', 'french_24l', 'german_24l','spanish_24l',"
-                " 'portuguese_24l', 'italian_24l'."
-                " Incompatible with the config argument. Default is 'english', which is the same model as 'english_2026-04'. "
+                "'english_2026-01', 'english_2026-04', 'english_2026-09', 'english_2026-09_2', 'english_2026-10', 'english_drifting_26-09', 'english_18m_2026-10', 'english_18m_refl_2026-10', 'english_7m_2026-10', 'english_7m_refl_2026-10', 'english_2m_2026-10', 'english_2m_refl_2026-10', 'english', 'french', 'french_24l', 'german', 'german_24l', 'portuguese', 'portuguese_24l', 'italian', 'italian_24l', 'spanish', 'spanish_24l', 'dutch', 'dutch_24l'."
+                " Incompatible with the config argument. Default is 'english', which is the same model as 'english_2026-10'. "
                 "The '24l' variants are bigger models, "
                 "not distilled yet and here only as preview."
             ),
@@ -359,7 +416,7 @@ def export_voice(
     config: Annotated[
         str | None,
         typer.Option(
-            help="Path to locally-saved model config .yaml file. "
+            help="Path to a model config .yaml file: a local path, an https:// URL, or an hf:// path. "
             "Incompatible with the language argument. If not provided, will use the default English model."
         ),
     ] = None,

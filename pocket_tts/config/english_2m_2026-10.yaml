@@ -1,0 +1,96 @@
+# English model with 1.9M parameters: a 0.9M flow LM and a 1.0M decoder.
+
+weights_path: hf://kyutai/pocket-tts/languages/english_2m_2026-10/model.safetensors@db04f0e653473e5c7333c69686ac92b7460b0c1d
+weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/english_2m_2026-10/model.safetensors@a7056f505a4a8ca72d8b5fb1440071d6f1a35739
+default_temperature: 0.3
+# Replace characters that are absent from the training data.
+replace_characters:
+  '–': ','
+  '—': ','
+  '’': "'"
+  '‘': "'"
+
+flow_lm:
+  insert_bos_before_voice: true
+  dtype: float32
+  flow:
+    depth: 4
+    dim: 64
+    type: pointwise
+  transformer:
+    d_model: 112
+    hidden_scale: 1
+    max_period: 10000
+    num_heads: 3
+    num_layers: 8
+    dim_feedforward: 96
+    attn_dim: 192
+    num_kv_heads: 1
+  lookup_table:
+    dim: 112
+    n_bins: 4000
+    tokenizer: sentencepiece
+    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/languages/english_2m_2026-10/tokenizer.model@08ffc58775e62aad9409511b9591c9af626270f3
+    rank: 32
+  z_dim: 64
+mimi:
+  dtype: float32
+  sample_rate: 24000
+  inner_dim: 32
+  outer_dim: 128
+  channels: 1
+  frame_rate: 12.5
+  seanet:
+    dimension: 512
+    channels: 1
+    n_filters: 64
+    n_residual_layers: 1
+    ratios:
+    - 6
+    - 5
+    - 4
+    kernel_size: 7
+    residual_kernel_size: 3
+    last_kernel_size: 3
+    dilation_base: 2
+    pad_mode: constant
+    compress: 2
+  transformer:
+    d_model: 512
+    num_heads: 8
+    num_layers: 2
+    layer_scale: 0.01
+    context: 250
+    dim_feedforward: 2048
+    input_dimension: 512
+    output_dimensions:
+    - 512
+  quantizer:
+    dimension: 32
+    output_dimension: 128
+  decoder_seanet:
+    dimension: 128
+    channels: 1
+    n_filters: 24
+    n_residual_layers: 1
+    ratios:
+    - 6
+    - 5
+    - 4
+    kernel_size: 3
+    residual_kernel_size: 3
+    last_kernel_size: 3
+    dilation_base: 2
+    pad_mode: constant
+    compress: 2
+  decoder_transformer:
+    d_model: 128
+    num_heads: 4
+    num_layers: 4
+    layer_scale: 0.01
+    context: 50
+    dim_feedforward: 384
+    input_dimension: 128
+    output_dimensions:
+    - 128
+default_eos_threshold: -1.0

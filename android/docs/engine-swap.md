@@ -1,7 +1,10 @@
 # The app runs pocket-speak's engine now (2026-10-03)
 
+> Superseded in 2026-10 by upstream's pure-Rust engine: see
+> `pure-rust-engine.md`. Kept as the record of the ONNX engine it describes.
+
 sherpa-onnx is gone from the app. `PocketTts` drives the Rust engine the desk
-CLI runs (`rust/crates/engine`), over JNI (`rust/crates/android`), on
+CLI runs (`pocket-speak/crates/engine`), over JNI (`pocket-speak/crates/android`), on
 Microsoft's `onnxruntime-android` 1.24.2. `owning-the-pipeline.md` argued for
 one Rust core under every front end. This is that core under the Android app.
 
@@ -73,7 +76,7 @@ runs was "Flowline 1", from seed 5 on both machines (RAN, `judge.json`).
   an `IllegalStateException` rather than killing the process.
 - **Model.** pocket-speak's bundle: five files plus `bundle.json`, 125 MB,
   pinned to a Hugging Face commit and checked by sha256 before it is kept. These
-  are the pins in `rust/crates/cli/src/install.rs`. A voice is a precomputed
+  are the pins in `pocket-speak/crates/cli/src/install.rs`. A voice is a precomputed
   embedding, about 6 MB, fetched on first use and checked the same way. All 21
   stock voices have one. One download per voice runs at a time. A file
   already on disk is checked against its sha256 once per process before it is
@@ -103,7 +106,7 @@ runs was "Flowline 1", from seed 5 on both machines (RAN, `judge.json`).
 
 ## On the S25 (RAN, 2026-10-03)
 
-- **`pocket-bench`** is in `rust/crates/android/src/bin` and is run from
+- **`pocket-bench`** is in `pocket-speak/crates/android/src/bin` and is run from
   `adb shell` with two threads:
   - model load 0.43–0.67 s across five runs;
   - first audio 0.21–0.32 s per chunk;

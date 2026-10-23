@@ -10,7 +10,7 @@ import soundfile as sf
 from chunker import chunk
 from corpus import READALOUD, TALKBACK
 
-PS = str(pathlib.Path(__file__).resolve().parents[3] / "rust/target/release/pocket-speak")
+PS = str(pathlib.Path(__file__).resolve().parents[3] / "pocket-speak/target/release/pocket-speak")
 out = pathlib.Path(sys.argv[1])
 out.mkdir(parents=True, exist_ok=True)
 seed = int(sys.argv[2])

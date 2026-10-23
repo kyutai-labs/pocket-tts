@@ -1,6 +1,8 @@
+from pocket_tts.utils.utils import _ORIGINS_OF_PREDEFINED_VOICES
+
 DEFAULT_LANGUAGE = "english"
-DEFAULT_TEMPERATURE = 0.7
-DEFAULT_LSD_DECODE_STEPS = 1
+DEFAULT_TEMPERATURE = 0.3
+DEFAULT_SAMPLER_DECODE_STEPS = 1
 DEFAULT_NOISE_CLAMP = None
 DEFAULT_EOS_THRESHOLD = -4.0
 DEFAULT_FRAMES_AFTER_EOS = None
@@ -33,6 +35,11 @@ DEFAULT_TEXT_FOR_LANGUAGE = {
         "Sono abbastanza veloce da funzionare su piccole CPU. "
         "Spero che ti piacerò."
     ),
+    "dutch": (
+        "Hallo wereld. Ik ben Pocket TTS van Kyutai. "
+        "Ik ben snel genoeg om op kleine CPU's te draaien. "
+        "Ik hoop dat je me leuk vindt."
+    ),
     "spanish": (
         "Hola mundo. Soy el Pocket TTS de Kyutai. "
         "Soy lo suficientemente rápido para funcionar en pequeñas CPU. "
@@ -46,8 +53,13 @@ DEFAULT_VOICE_FOR_LANGUAGE = {
     "german": "juergen",
     "portuguese": "rafael",
     "french": "estelle",
+    "dutch": "daan",
 }
 DEFAULT_VOICE_FALLBACK = "alba"
+# Predefined voices are states precomputed with the released weights of a language model,
+# so neither a custom config nor a training checkpoint can use them. For those we default
+# to the audio file behind the fallback voice: any model can clone it.
+DEFAULT_VOICE_FOR_CUSTOM_MODEL = _ORIGINS_OF_PREDEFINED_VOICES[DEFAULT_VOICE_FALLBACK]
 
 
 def get_default_text_for_language(language: str | None) -> str:
@@ -57,7 +69,16 @@ def get_default_text_for_language(language: str | None) -> str:
     return DEFAULT_TEXT_FOR_LANGUAGE[DEFAULT_LANGUAGE]
 
 
-def get_default_voice_for_language(language: str | None) -> str:
+def get_default_voice_for_language(
+    language: str | None, config: str | None = None, checkpoint: str | None = None
+) -> str:
+    """The voice to use when the user didn't pick one.
+
+    `config` and `checkpoint` both mean custom weights, which cannot use the predefined
+    voices, hence the audio file instead of the voice name.
+    """
+    if config is not None or checkpoint is not None:
+        return DEFAULT_VOICE_FOR_CUSTOM_MODEL
     for key, voice in DEFAULT_VOICE_FOR_LANGUAGE.items():
         if language is not None and key in language:
             return voice

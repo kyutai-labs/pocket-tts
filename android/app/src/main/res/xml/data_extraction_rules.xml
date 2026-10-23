@@ -5,22 +5,24 @@
 <data-extraction-rules>
     <cloud-backup>
         <!--
-            The model is ~200 MB against a 25 MB quota, and it can be fetched
-            again. Everything else here is small and some of it cannot: a voice
+            A model is 47 to 219 MB against a 25 MB quota, and it can be
+            fetched again; every one lives under pocket-tts/models. Everything else here is small and some of it cannot: a voice
             the user recorded or imported exists nowhere but this directory, and
             uninstalling used to take it with no warning and no way back.
         -->
         <exclude domain="file" path="pocket-tts/sherpa-onnx-pocket-tts-int8-2026-01-26" />
+        <exclude domain="file" path="pocket-tts/models" />
         <exclude domain="file" path="pocket-tts/english_2026-04" />
     </cloud-backup>
 
     <device-transfer>
         <!--
-            Moving to a new phone has no size limit, but copying 200 MB of
+            Moving to a new phone has no size limit, but copying up to 219 MB of
             regenerable weights over the wire to save one download is a poor
             trade for the person waiting on the transfer.
         -->
         <exclude domain="file" path="pocket-tts/sherpa-onnx-pocket-tts-int8-2026-01-26" />
+        <exclude domain="file" path="pocket-tts/models" />
         <exclude domain="file" path="pocket-tts/english_2026-04" />
     </device-transfer>
 </data-extraction-rules>

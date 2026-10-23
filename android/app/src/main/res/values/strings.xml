@@ -15,7 +15,7 @@
 
     <string name="download_model">Download voice model</string>
     <string name="model_ready">Voice model installed</string>
-    <string name="model_missing">The voice model has not been downloaded yet. It is a 98 MB download and unpacks to about 200 MB.</string>
+    <string name="model_missing">Not downloaded yet: a %1$d MB download.</string>
     <string name="downloading">Downloading… %1$d%%</string>
     <string name="downloading_unknown">Downloading…</string>
     <string name="preparing">Preparing…</string>
@@ -26,6 +26,8 @@
     <string name="tts_settings_hint">Select Pocket TTS as your preferred engine to use these voices in any app that reads text aloud.</string>
     <string name="speed">Speed: %1$.2fx</string>
     <string name="speak_code_blocks">Read code blocks aloud</string>
+    <!-- Issue #9: what the switch does not cover, decided on purpose. -->
+    <string name="speak_code_blocks_explained">Fenced blocks only. Code inside a sentence, such as a file path or a flag, is always read, as words.</string>
     <string name="treat_as_markdown">Strip Markdown from selected text</string>
     <string name="steady_voice">Keep one voice across sentences</string>
     <string name="steady_voice_explained">Every sentence draws the same speaker from the voice sample, instead of a new one each time. Turn this off to hear a passage read differently on each attempt.</string>
@@ -56,7 +58,7 @@
 
     <string name="install_model">Install from a file</string>
     <string name="temperature">Voice variation: %1$.2f</string>
-    <string name="temperature_explained">How far each sentence\'s speaker may be drawn from the voice sample. Kyutai\'s own default for English is 0.30; this engine ships 0.70.</string>
+    <string name="temperature_explained">How far each sentence\'s speaker may be drawn from the voice sample. Kyutai\'s default, and this app\'s, is 0.30.</string>
     <string name="decode_steps">Decode steps: %1$d</string>
     <string name="decode_steps_explained">Passes per audio frame. Kyutai\'s own code uses 1; this engine defaults to 5. Fewer should be faster - listen for whether it is also worse.</string>
     <string name="timings">Timings</string>
@@ -96,4 +98,40 @@
     <string name="draw_not_laid_out">flat tint: not laid out yet</string>
     <string name="draw_capture_failed">flat tint: the capture failed</string>
     <string name="exit_title">Pocket TTS closed unexpectedly</string>
+
+    <!-- Voice models (Phase 4). Speeds are relative to the best-quality model,
+         measured on arm64: see android/docs/pure-rust-engine.md. -->
+    <string name="models">Voice model</string>
+    <string name="choose_model">Choose model</string>
+    <string name="model_in_use">Voice model: %1$s</string>
+    <string name="models_intro">Larger models sound more natural. Smaller ones start sooner, take less space, and keep up on older phones. Every voice works with every model.</string>
+    <string name="model_measured">On this phone the last read was composed at %1$.1fx real time.</string>
+    <string name="model_measured_slow">On this phone the last read was composed at %1$.1fx real time. A smaller model will keep up more easily.</string>
+    <string name="hear_model">Hear the current model</string>
+    <string name="model_sample_text">This is how the current model sounds. The build is green, and every test passes.</string>
+    <string name="model_best">Best quality</string>
+    <string name="model_best_detail">Kyutai\'s full English model. The most natural reading; fast on recent phones.</string>
+    <string name="model_balanced">Balanced</string>
+    <string name="model_balanced_detail">About twice as fast, and close to the best.</string>
+    <string name="model_small">Small</string>
+    <string name="model_small_detail">About twice as fast, and smaller than Balanced.</string>
+    <string name="model_smallest">Smallest</string>
+    <string name="model_smallest_detail">About five times as fast, for older phones. Less natural than the others.</string>
+    <string name="model_state_in_use">In use · %1$d MB</string>
+    <string name="model_state_downloaded">Downloaded · %1$d MB</string>
+    <string name="model_state_missing">Not downloaded · %1$d MB</string>
+    <string name="model_state_downloading">Downloading… %1$d%%</string>
+    <string name="model_state_downloading_unknown">Downloading…</string>
+    <string name="model_action_use">Use this model</string>
+    <string name="model_action_download">Download this model</string>
+    <string name="model_delete">Delete %1$s</string>
+    <string name="model_download_title">Download %1$s?</string>
+    <string name="model_download_body">%1$d MB. It will be used once it has downloaded.</string>
+    <string name="model_download_metered">%1$d MB, on a metered connection. It will be used once it has downloaded.</string>
+    <string name="model_delete_title">Delete %1$s?</string>
+    <string name="model_delete_body">Frees %1$d MB. It can be downloaded again.</string>
+    <string name="model_now_in_use">Now using %1$s</string>
+    <string name="download">Download</string>
+    <string name="delete">Delete</string>
+    <string name="cancel">Cancel</string>
 </resources>

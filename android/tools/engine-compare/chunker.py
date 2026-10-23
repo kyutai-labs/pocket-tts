@@ -14,11 +14,11 @@ TERMINAL_PUNCTUATION = re.compile(r"""[.!?…]+(?=["')\]]*$)""")
 WORD_CHARACTER = re.compile(r"[^\W_]", re.UNICODE)
 
 
-def word_count(s):
+def word_count(s: str) -> int:
     return sum(1 for w in re.split(r"\s+", s) if WORD_CHARACTER.search(w))
 
 
-def join_short_tail(text):
+def join_short_tail(text: str) -> str:
     starts = [0] + [m.end() for m in SENTENCE_END.finditer(text)]
     sentences = [
         text[f : (starts[i + 1] if i + 1 < len(starts) else len(text))]
@@ -41,7 +41,7 @@ def join_short_tail(text):
     return out
 
 
-def _last_boundary(window, pattern, minimum):
+def _last_boundary(window: str, pattern: re.Pattern[str], minimum: int) -> int | None:
     best = None
     for m in pattern.finditer(window):
         if m.end() >= minimum:
@@ -49,7 +49,7 @@ def _last_boundary(window, pattern, minimum):
     return best
 
 
-def _split_paragraph(p, target, mx):
+def _split_paragraph(p: str, target: int, mx: int) -> list[tuple[str, int]]:
     pieces, cursor = [], 0
     while cursor < len(p):
         if len(p) - cursor <= mx:
@@ -71,7 +71,7 @@ def _split_paragraph(p, target, mx):
     return [x for x in pieces if x[0]]
 
 
-def chunk(speakable, target=TARGET, mx=MAX):
+def chunk(speakable: str, target: int = TARGET, mx: int = MAX) -> list[tuple[str, str, float]]:
     """Returns [(text, speech, trailing_pause_seconds)]."""
     out = []
     paragraphs = re.split(r"\n\s*\n", speakable)

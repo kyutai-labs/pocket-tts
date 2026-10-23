@@ -231,6 +231,31 @@ object MarkdownSpeech {
             }
 
             if (line.contains('|')) {
+                // A table: a header row, then a delimiter row, then rows
+                // until one has no pipe. Read the way a screen reader does,
+                // not as a run of cells (issue #10).
+                val delimiter = lines.getOrNull(index + 1)
+                if (delimiter != null && TABLE_DELIMITER.matches(delimiter) && delimiter.contains('|')) {
+                    flushParagraph()
+                    val header = cellsOf(line, options)
+                    var end = index + 2
+                    val rows = mutableListOf<IndexedValue<List<String>>>()
+                    while (end < lines.size && lines[end].contains('|') && lines[end].isNotBlank()) {
+                        rows += IndexedValue(end, cellsOf(lines[end], options))
+                        end++
+                    }
+                    val headerTo = sourceEndOf(index + 1)
+                    val spoken = speakTable(header, rows.map { it.value })
+                    for ((text, rowLine) in spoken.zip(listOf(-1) + rows.map { it.index })) {
+                        when {
+                            text == null -> {}
+                            rowLine < 0 -> out.add(text, lineFrom, headerTo)
+                            else -> out.add(text, lineStarts[rowLine], sourceEndOf(rowLine))
+                        }
+                    }
+                    index = end
+                    continue
+                }
                 if (TABLE_DELIMITER.matches(line) && line.contains('-')) {
                     index++
                     continue
@@ -278,6 +303,63 @@ object MarkdownSpeech {
 
         return out.build()
     }
+
+    /**
+     * The widest table read row by row. Each row is read with its column
+     * names, so four columns is already a long sentence; wider ones become a
+     * stream of fragments with nothing to say where the listener is.
+     */
+    const val MAX_READ_COLUMNS = 4
+
+    private fun cellsOf(line: String, options: Options): List<String> {
+        var row = line.trim()
+        if (row.startsWith("|")) row = row.substring(1)
+        if (row.endsWith("|")) row = row.dropLast(1)
+        return row.split('|').map { inline(it.trim(), options).trim() }
+    }
+
+    /**
+     * What a table says, as a screen reader would put it: first how big it
+     * is, then each row as its first cell followed by each other cell under
+     * its column's name - "Alpha: before, one; after, two." A table wider than
+     * [MAX_READ_COLUMNS] is announced with its column names and not read.
+     *
+     * The first element is the announcement; when the rows are read, one
+     * follows per row, null for a row with nothing in it, so each stays
+     * aligned with its source line.
+     */
+    internal fun speakTable(header: List<String>, rows: List<List<String>>): List<String?> {
+        val columns = maxOf(header.size, rows.maxOfOrNull { it.size } ?: 0)
+        val count = if (rows.size == 1) "1 row" else "${rows.size} rows"
+        val names = header.filter { it.isNotBlank() }
+        if (columns > MAX_READ_COLUMNS) {
+            val headed = if (names.isEmpty()) "" else ", headed ${spokenList(names)}"
+            return listOf("Table not read: $count, $columns columns$headed.")
+        }
+        val spoken = rows.map { cells ->
+            val label = cells.getOrElse(0) { "" }
+            val pairs = (1 until columns).mapNotNull { j ->
+                val value = cells.getOrElse(j) { "" }
+                val name = header.getOrElse(j) { "" }
+                when {
+                    value.isBlank() -> null
+                    name.isBlank() -> value
+                    else -> "$name, $value"
+                }
+            }
+            when {
+                label.isBlank() && pairs.isEmpty() -> null
+                label.isBlank() -> pairs.joinToString("; ")
+                pairs.isEmpty() -> label
+                else -> "$label: ${pairs.joinToString("; ")}"
+            }?.ensureSentenceEnd()
+        }
+        return listOf("Table, $count.") + spoken
+    }
+
+    /** "a", "a and b", "a, b and c". */
+    private fun spokenList(items: List<String>): String =
+        if (items.size <= 1) items.joinToString() else items.dropLast(1).joinToString(", ") + " and " + items.last()
 
     /** Collects blocks with the source range each was made from. */
     private class Blocks {

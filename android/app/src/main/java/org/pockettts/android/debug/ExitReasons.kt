@@ -118,7 +118,7 @@ object ExitReasons {
     @RequiresApi(Build.VERSION_CODES.R)
     fun summarise(exit: ApplicationExitInfo): String = when (exit.reason) {
         ApplicationExitInfo.REASON_CRASH_NATIVE ->
-            "Native crash - the failure was inside ONNX Runtime or sherpa-onnx, not app code."
+            "Native crash - the failure was in the engine's native code (pocket-speak), not app code."
 
         ApplicationExitInfo.REASON_CRASH ->
             "Java crash - an uncaught exception."

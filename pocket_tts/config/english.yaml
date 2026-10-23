@@ -1,10 +1,15 @@
-# sig: a0ac5076.yaml
+# Default English model: identical weights to english_2026-10.yaml.
 
-weights_path: hf://kyutai/pocket-tts/languages/english/model.safetensors@39592ff23c9ef80098bb74895d104c26275fe2c9
-weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/english/model.safetensors@d29db7978e464fb90cb3359ee0c69a273b9142cc
+weights_path: hf://kyutai/pocket-tts/languages/english/model.safetensors@db04f0e653473e5c7333c69686ac92b7460b0c1d
+weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/english/model.safetensors@a7056f505a4a8ca72d8b5fb1440071d6f1a35739
 # Human evals preferred this model at 0.3 (equal WER/similarity/speech rate).
 default_temperature: 0.3
 
+
+# Replace characters that are absent from the training data.
+replace_characters:
+  '’': "'"
+  '‘': "'"
 
 flow_lm:
   insert_bos_before_voice: true
@@ -21,8 +26,8 @@ flow_lm:
   lookup_table:
     dim: 1024
     n_bins: 4000
-    tokenizer: sentencepiece
-    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/languages/english/tokenizer.model@d29db7978e464fb90cb3359ee0c69a273b9142cc
+    tokenizer: tokenizers
+    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/languages/english/tokenizer.json@00eac05ed3d16bdc3f6b5d598874019c34a89214
   #weights_path: final.safetensors
 
 mimi:

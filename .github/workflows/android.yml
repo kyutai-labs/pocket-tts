@@ -1,13 +1,74 @@
 name: Android
 
+# The engine compiles in upstream's rust/src and embeds pocket_tts/config, so
+# an upstream merge that changes either runs this too.
 on:
   push:
     branches: [ main ]
-    paths: [ 'android/**', 'rust/**', '.github/workflows/android.yml' ]
+    paths:
+      - 'android/**'
+      - 'pocket-speak/**'
+      - 'rust/src/**'
+      - 'rust/Cargo.toml'
+      - 'pocket_tts/config/**'
+      - '.github/workflows/android.yml'
   pull_request:
-    paths: [ 'android/**', 'rust/**', '.github/workflows/android.yml' ]
+    paths:
+      - 'android/**'
+      - 'pocket-speak/**'
+      - 'rust/src/**'
+      - 'rust/Cargo.toml'
+      - 'pocket_tts/config/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
 
 jobs:
+  # The engine and the desk CLI on their own: format, lints, and unit tests,
+  # upstream's own tests of the modules the engine compiles in among them.
+  engine:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: pocket-speak
+    # cpal, the desk CLI's audio output, links ALSA.
+    - run: sudo apt-get update -q && sudo apt-get install -y -q libasound2-dev
+    - name: Format
+      working-directory: pocket-speak
+      run: cargo fmt --all --check
+    - name: Lints
+      working-directory: pocket-speak
+      run: cargo clippy --workspace --all-targets -- -D warnings
+    - name: Tests
+      working-directory: pocket-speak
+      run: cargo test --workspace
+
+  # Every offered model on an arm64 CPU, the architecture of every phone this
+  # app is meant for: the engine's tests against each, then its speed, the
+  # numbers the default model is chosen from, as a table in the run's summary.
+  models-arm64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+    - uses: actions/checkout@v4
+    - uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: pocket-speak
+    - uses: actions/cache@v4
+      with:
+        path: ~/models
+        key: models-${{ hashFiles('pocket-speak/models.json') }}
+    - name: Fetch the models
+      run: python3 pocket-speak/tools/fetch-models.py ~/models
+    - name: Tests with the models
+      working-directory: pocket-speak
+      run: POCKET_TTS_TEST_MODELS="$HOME/models" cargo test --release -p pocket-tts-engine --test with_models
+    - name: Measure
+      run: |
+        lscpu | grep -E 'Model name|^CPU\(s\)' | sed 's/^/    /' >> "$GITHUB_STEP_SUMMARY"
+        echo >> "$GITHUB_STEP_SUMMARY"
+        pocket-speak/tools/bench/run.sh ~/models 1 2 4 | tee -a "$GITHUB_STEP_SUMMARY"
+
   build:
     runs-on: ubuntu-latest
     # Write access is for the release step below, which only runs on main.
@@ -30,7 +91,7 @@ jobs:
     - name: Set up Gradle
       uses: gradle/actions/setup-gradle@v4
     # The APK carries pocket-speak's engine, which Gradle's buildNative task
-    # compiles from ../rust with cargo-ndk. The runner image ships an NDK;
+    # compiles from ../pocket-speak with cargo-ndk: all of the app's native code. The runner image ships an NDK;
     # cargo-ndk finds it through ANDROID_NDK_HOME.
     - name: Set up Rust for Android
       run: |
@@ -38,7 +99,7 @@ jobs:
         echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
     - uses: Swatinem/rust-cache@v2
       with:
-        workspaces: rust
+        workspaces: pocket-speak
     - name: Install cargo-ndk
       run: cargo install --locked cargo-ndk
     # Gradle would run this itself before the first task below; doing it as
@@ -146,3 +207,18 @@ jobs:
           --title "Android $TAG" \
           --notes "Release APK built from $GITHUB_SHA by run $GITHUB_RUN_ID." \
           --latest
+
+    # One release per build of main adds up. The newest ten are kept, which is
+    # far more than anyone rolls back through; older android-* releases go,
+    # with their tags. Nothing else is touched: only tags this step made.
+    - name: Keep the ten newest APK releases
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh release list --limit 200 --json tagName,createdAt \
+          --jq '[.[] | select(.tagName | startswith("android-"))] | sort_by(.createdAt) | reverse | .[10:] | .[].tagName' |
+        while read -r tag; do
+          echo "deleting $tag"
+          gh release delete "$tag" --cleanup-tag --yes
+        done

@@ -1,0 +1,14 @@
+[workspace]
+resolver = "3"
+members = ["crates/engine", "crates/cli", "crates/android", "tools/tokdiff"]
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+publish = false
+
+# As upstream's rust/Cargo.toml. Panics must unwind (the default): the JNI crate
+# catches them so a bug costs a failed read rather than the app.
+[profile.release]
+codegen-units = 1
+lto = "thin"

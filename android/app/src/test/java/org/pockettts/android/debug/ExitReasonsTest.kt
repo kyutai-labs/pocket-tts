@@ -52,7 +52,7 @@ class ExitReasonsTest {
         val native = ExitReasons.reasonName(ApplicationExitInfo.REASON_CRASH_NATIVE)
         val java = ExitReasons.reasonName(ApplicationExitInfo.REASON_CRASH)
         // These two send us to completely different places; conflating them
-        // would send someone hunting Kotlin for a segfault in ONNX Runtime.
+        // would send someone hunting Kotlin for a segfault in the native engine.
         assertTrue(native != java)
         assertEquals("CRASH_NATIVE", native)
         assertEquals("CRASH", java)

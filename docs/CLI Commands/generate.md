@@ -17,15 +17,15 @@ This will generate a WAV file `./tts_output.wav` with the default text and voice
 ### Core Options
 
 - `--text TEXT`: Text to generate (default: "Hello world! I am Kyutai Pocket TTS. I'm fast enough to run on small CPUs. I hope you'll like me.")
-- `--voice VOICE`: Path to audio conditioning file (voice to clone). Defaults to a built-in voice chosen from the language: `giovanni` (it) for italian, `lola` (es) for spanish, `juergen` (de) for german, `rafael` (pt) for portuguese, `estelle` (fr) for french, `alba` (en) otherwise. Urls and local paths are supported.
+- `--voice VOICE`: Path to audio conditioning file (voice to clone). Defaults to a built-in voice chosen from the language: `giovanni` (it) for italian, `lola` (es) for spanish, `juergen` (de) for german, `rafael` (pt) for portuguese, `estelle` (fr) for french, `alba` (en) otherwise. With `--config` or `--checkpoint`, defaults to [alba's audio file](https://huggingface.co/kyutai/tts-voices/blob/main/alba-mackenna/casual.wav) instead of the voice name, since the pre-made voices only exist for the released language models. Urls and local paths are supported.
 - `--output-path OUTPUT_PATH`: Output path for generated audio (default: "./tts_output.wav")
-- `--language LANGUAGE`: Language for the TTS model, one of `'english_2026-01'`, `'english_2026-04'`, `'english'`, `'french_24l'`, `'german'`, `'german_24l'`, `'portuguese'`, `'portuguese_24l'`, `'italian'`, `'italian_24l'`, `'spanish'`, `'spanish_24l'` (default: `english`, which is the same model as `'english_2026-04'`). Incompatible with `--config`. The "24l" variants are bigger models, not distilled yet and here only as preview.
+- `--language LANGUAGE`: Language for the TTS model, one of `'english_2026-01'`, `'english_2026-04'`, `'english_2026-09'`, `'english_2026-09_2'`, `'english_2026-10'`, `'english_drifting_26-09'`, `'english_18m_2026-10'`, `'english_18m_refl_2026-10'`, `'english_7m_2026-10'`, `'english_7m_refl_2026-10'`, `'english_2m_2026-10'`, `'english_2m_refl_2026-10'`, `'english'`, `'french'`, `'french_24l'`, `'german'`, `'german_24l'`, `'portuguese'`, `'portuguese_24l'`, `'italian'`, `'italian_24l'`, `'spanish'`, `'spanish_24l'`, `'dutch'`, `'dutch_24l'` (default: `english`, which is the same model as `'english_2026-10'`). Incompatible with `--config`. The "24l" variants are bigger models, not distilled yet and here only as preview.
 
 ### Generation Parameters
 
-- `--config CONFIG_PATH`: Path to custom config.yaml (for loading local model files). Incompatible with `--language`.
-- `--lsd-decode-steps LSD_DECODE_STEPS`: Number of generation steps (default: 1)
-- `--temperature TEMPERATURE`: Temperature for generation (default: the model's recommended value from its config — 0.3 for the English model, 0.7 otherwise)
+- `--config CONFIG_PATH`: Path to a custom config.yaml — a local path, an `https://` URL, or an `hf://` path. Incompatible with `--language`.
+- `--sampler-decode-steps SAMPLER_DECODE_STEPS`: Number of generation steps (default: 1)
+- `--temperature TEMPERATURE`: Temperature for generation (default: 0.3)
 - `--noise-clamp NOISE_CLAMP`: Noise clamp value (default: None)
 - `--eos-threshold EOS_THRESHOLD`: EOS threshold (default: -4.0)
 - `--frames-after-eos FRAMES_AFTER_EOS`: Number of frames to generate after EOS (default: None, auto-calculated based on the text length). Each frame is 80ms.
@@ -68,7 +68,7 @@ pocket-tts generate --voice "./my_voice.safetensors"
 
 ```bash
 # Higher quality (more steps)
-pocket-tts generate --lsd-decode-steps 5 --temperature 0.5
+pocket-tts generate --sampler-decode-steps 5 --temperature 0.5
 
 # More expressive (higher temperature)
 pocket-tts generate --temperature 1.0
@@ -99,4 +99,4 @@ The generate command always outputs WAV files in the following format:
 - **Bit Depth**: 16-bit PCM
 - **Format**: Standard WAV file
 
-For more advanced usage, see the [Python API documentation](python-api.md) or consider using the [serve command](serve.md) for web-based generation and quick iteration.
+For more advanced usage, see the [Python API documentation](../API%20Reference/python-api.md) or consider using the [serve command](serve.md) for web-based generation and quick iteration.

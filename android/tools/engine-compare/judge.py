@@ -4,17 +4,19 @@ import json
 import pathlib
 import re
 import sys
+from typing import Any
 
 import jiwer
 import numpy as np
+import numpy.typing as npt
 import soundfile as sf
-from faster_whisper import WhisperModel
+from faster_whisper import WhisperModel  # ty: ignore[unresolved-import]
 
 ONES = "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen".split()
 TENS = "_ _ twenty thirty forty fifty sixty seventy eighty ninety".split()
 
 
-def num(n):
+def num(n: str | int) -> str:
     n = int(n)
     if n < 20:
         return ONES[n]
@@ -23,7 +25,7 @@ def num(n):
     return str(n)
 
 
-def words(text):
+def words(text: str) -> list[str]:
     text = text.lower().replace("-", " ")
     out = []
     for t in re.findall(r"[a-z0-9']+", text):
@@ -31,7 +33,7 @@ def words(text):
     return out
 
 
-def boundaries(text):
+def boundaries(text: str) -> list[bool]:
     """For each expected word, whether a sentence or line ends after it (. ! ? : ; or newline)."""
     flags = []
     toks = list(re.finditer(r"[A-Za-z0-9']+", text.replace("-", " ")))
@@ -44,7 +46,7 @@ def boundaries(text):
     return flags
 
 
-def longest_quiet(a, sr, t0, t1):
+def longest_quiet(a: npt.NDArray[Any], sr: int, t0: float, t1: float) -> float:
     seg = a[max(0, int(t0 * sr)) : int(t1 * sr)]
     frame = int(0.01 * sr)
     best = run = 0
@@ -57,7 +59,7 @@ def longest_quiet(a, sr, t0, t1):
     return best * 0.01
 
 
-def speech_span(path):
+def speech_span(path: str | pathlib.Path) -> tuple[float, float]:
     a, sr = sf.read(path, dtype="float32")
     if len(a) == 0:
         return 0.0, 0.0

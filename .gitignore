@@ -69,10 +69,9 @@ dataset/*
 Cargo.toml
 Cargo.lock
 target/
-# ...except the desk CLI's own workspace, which is real Rust code
-!rust/**/Cargo.toml
-!rust/Cargo.toml
-!rust/Cargo.lock
+# ...except the Rust CLI, whose lockfile pins the shipped binaries' dependencies.
+!/rust/Cargo.toml
+!/rust/Cargo.lock
 
 # nfs files
 .nfs*
@@ -94,12 +93,7 @@ voices
 
 italk.yaml
 
-# Android app
-android/.gradle/
-android/build/
-android/app/build/
-android/local.properties
-android/.idea/
-android/.kotlin/
-*.apk
-*.aab
+# training
+.venv-train/
+/data*/
+runs/

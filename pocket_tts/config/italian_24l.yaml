@@ -1,8 +1,20 @@
-# sig: 6ec79d0f
+weights_path: hf://kyutai/pocket-tts/languages/italian_24l/model.safetensors@3e82814a68665eec246ff649b14c71331f955c06
+weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/italian_24l/model.safetensors@1e08e6a23401048648a9fdcfde2f89348215c2a7
 
-weights_path: hf://kyutai/pocket-tts/languages/italian_24l/model.safetensors@39592ff23c9ef80098bb74895d104c26275fe2c9
-weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/italian_24l/model.safetensors@d29db7978e464fb90cb3359ee0c69a273b9142cc
-
+replace_characters:
+  '"': ''
+  '“': ''
+  '”': ''
+  '„': ''
+  '«': ''
+  '»': ''
+  '’': ''''
+  '‘': ''''
+  '(': ''
+  ')': ''
+  '[': ''
+  ']': ''
+  '–': ','
 
 flow_lm:
   insert_bos_before_voice: true
@@ -19,8 +31,8 @@ flow_lm:
   lookup_table:
     dim: 1024
     n_bins: 4000
-    tokenizer: sentencepiece
-    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/languages/italian_24l/tokenizer.model@d29db7978e464fb90cb3359ee0c69a273b9142cc
+    tokenizer: tokenizers
+    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/languages/italian_24l/tokenizer.json@4e1e0a3e611c51c0b4ed8174fc10f32a54644303
   #weights_path: partial.safetensors
 
 mimi:

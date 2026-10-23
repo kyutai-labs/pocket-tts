@@ -1,0 +1,57 @@
+name: Upstream watch
+
+# Weekly, says what merging kyutai-labs/pocket-tts main would do, in one issue
+# labelled upstream-sync that it opens, updates, and closes once the fork has
+# caught up. It never merges: the merge is a PR someone reviews, and Actions'
+# token may not push upstream's changes to its own workflow files anyway.
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: main
+        fetch-depth: 0
+    - name: Try the merge
+      id: status
+      run: |
+        set +e
+        .github/fork/upstream-status.sh > report.md
+        code=$?
+        set -e
+        case $code in
+          0) echo "state=current" >> "$GITHUB_OUTPUT" ;;
+          10) echo "state=clean" >> "$GITHUB_OUTPUT" ;;
+          11) echo "state=conflicts" >> "$GITHUB_OUTPUT" ;;
+          *) cat report.md; exit "$code" ;;
+        esac
+        cat report.md >> "$GITHUB_STEP_SUMMARY"
+    - name: Open, update or close the issue
+      env:
+        GH_TOKEN: ${{ github.token }}
+        STATE: ${{ steps.status.outputs.state }}
+      run: |
+        gh label create upstream-sync --color 0E8A16 \
+          --description "Upstream kyutai-labs/pocket-tts has commits to merge" 2>/dev/null || true
+        issue=$(gh issue list --label upstream-sync --state open --json number --jq '.[0].number // empty')
+        if [ "$STATE" = current ]; then
+          if [ -n "$issue" ]; then
+            gh issue close "$issue" --reason completed --comment "Merged: the fork has every upstream commit."
+          fi
+          exit 0
+        fi
+        if [ "$STATE" = clean ]; then title="Upstream has new commits (merges cleanly)"; else title="Upstream has new commits (conflicts)"; fi
+        if [ -n "$issue" ]; then
+          gh issue edit "$issue" --title "$title" --body-file report.md
+        else
+          gh issue create --label upstream-sync --title "$title" --body-file report.md
+        fi

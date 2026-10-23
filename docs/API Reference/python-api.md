@@ -37,15 +37,15 @@ The main class for text-to-speech generation.
 
 #### Class Methods
 
-##### `load_model(language=None, config=None, temp=None, lsd_decode_steps=1, noise_clamp=None, eos_threshold=-4.0, quantize=False)`
+##### `load_model(language=None, config=None, temp=None, sampler_decode_steps=1, noise_clamp=None, eos_threshold=-4.0, quantize=False)`
 
 Load and return a TTSModel instance with pre-trained weights.
 
 **Parameters:**
-- `language` (str | None): Name of built-in language config to load. Supported values: `"english_2026-01"`, `"english_2026-04"`, `"english"`, `"french_24l"`, `"german_24l"`, `"portuguese_24l"`, `"italian_24l"`, `"spanish_24l"`. If both `language` and `config` are omitted, defaults to `"english"`, which is the same model as `"english_2026-04"`. The "24l" variants are larger models that are not distilled yet and are here only as a preview.
+- `language` (str | None): Name of built-in language config to load. Supported values: `"english_2026-01"`, `"english_2026-04"`, `"english_2026-09"`, `"english_2026-09_2"`, `"english_2026-10"`, `"english_drifting_26-09"`, `"english_18m_2026-10"`, `"english_18m_refl_2026-10"`, `"english_7m_2026-10"`, `"english_7m_refl_2026-10"`, `"english_2m_2026-10"`, `"english_2m_refl_2026-10"`, `"english"`, `"french"`, `"french_24l"`, `"german"`, `"german_24l"`, `"portuguese"`, `"portuguese_24l"`, `"italian"`, `"italian_24l"`, `"spanish"`, `"spanish_24l"`, `"dutch"`, `"dutch_24l"`. If both `language` and `config` are omitted, defaults to `"english"`, which is the same model as `"english_2026-09_2"`. The "24l" variants are larger models that are not distilled yet and are here only as a preview.
 - `config` (str | None): Path to model config YAML file. Incompatible with `language`.
-- `temp` (float | None): Sampling temperature for generation. `None` uses the model's recommended default from its config file (`default_temperature`; 0.3 for the English model, 0.7 otherwise).
-- `lsd_decode_steps` (int): Number of generation steps (default: 1)
+- `temp` (float | None): Sampling temperature for generation. `None` uses the model's recommended default from its config file (`default_temperature`, 0.3).
+- `sampler_decode_steps` (int): Number of generation steps (default: 1)
 - `noise_clamp` (float | None): Maximum value for noise sampling (default: None)
 - `eos_threshold` (float): Threshold for end-of-sequence detection (default: -4.0)
 - `quantize` (bool): Enable int8 quantization when loading the model (default: `False`)
@@ -62,7 +62,7 @@ model = TTSModel.load_model()
 
 # Load with custom parameters
 model = TTSModel.load_model(
-    language="english_2026-01", temp=0.5, lsd_decode_steps=5, eos_threshold=-3.0
+    language="english_2026-01", temp=0.5, sampler_decode_steps=5, eos_threshold=-3.0
 )
 ```
 
@@ -157,7 +157,8 @@ print(f"Audio duration: {audio.shape[-1] / model.sample_rate:.2f} seconds")
 
 Generate audio streaming chunks from text input.
 
-**Parameters:** Same as `generate_audio()`
+**Parameters:** Same as `generate_audio()`, plus:
+- `stop` (threading.Event | None): Optional event for cancelling the generation. Once set, no new frames are generated and the stream ends early.
 
 **Yields:**
 - `torch.Tensor`: Audio chunks with shape [samples]
@@ -259,4 +260,4 @@ scipy.io.wavfile.write("batch_output.wav", model.sample_rate, full_audio.numpy()
 ### Streaming to File
 You can refer to our CLI implementation which can stream audio to a wav file.
 
-For more information about the command-line interface, see the [Generate Documentation](generate.md) or [Serve Documentation](serve.md).
+For more information about the command-line interface, see the [Generate Documentation](../CLI%20Commands/generate.md) or [Serve Documentation](../CLI%20Commands/serve.md).

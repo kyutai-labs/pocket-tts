@@ -1,0 +1,4 @@
+# xn picks its SIMD kernels at compile time. x86-64-v3 (AVX2, FMA: Intel Haswell and AMD Zen
+# onwards) is the baseline the released x86 binaries are built for; aarch64 always has NEON.
+[target.'cfg(target_arch = "x86_64")']
+rustflags = ["-C", "target-cpu=x86-64-v3"]

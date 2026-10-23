@@ -31,10 +31,14 @@
             android:orientation="vertical"
             android:padding="24dp">
 
+            <!-- Polite live region: TalkBack says when the download finishes
+                 or fails. Its text moves in steps of 10% while downloading,
+                 so it is not read out a hundred times. -->
             <TextView
                 android:id="@+id/modelStatus"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:accessibilityLiveRegion="polite"
                 android:textAppearance="?attr/textAppearanceBodyMedium" />
 
             <com.google.android.material.progressindicator.LinearProgressIndicator
@@ -50,6 +54,14 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
                 android:text="@string/download_model" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/chooseModelButton"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/choose_model" />
 
 
             <com.google.android.material.button.MaterialButton
@@ -93,6 +105,7 @@
                 android:textAppearance="?attr/textAppearanceTitleMedium" />
 
             <TextView
+                android:id="@+id/stepsExplained"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/decode_steps_explained"
@@ -165,6 +178,14 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
                 android:text="@string/speak_code_blocks" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/speak_code_blocks_explained"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textColor="?attr/colorOnSurfaceVariant" />
 
             <com.google.android.material.materialswitch.MaterialSwitch
                 android:id="@+id/steadyVoiceSwitch"

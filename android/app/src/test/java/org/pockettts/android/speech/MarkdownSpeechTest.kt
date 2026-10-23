@@ -134,14 +134,89 @@ class MarkdownSpeechTest {
     }
 
     @Test
-    fun `table rows are read as comma separated cells`() {
+    fun `a table is announced, then read row by row under its column names`() {
         val markdown = """
             | Voice | Language |
             | ----- | -------- |
             | alba  | English  |
         """.trimIndent()
-        val spoken = speak(markdown)
-        assertEquals("Voice, Language.\n\nalba, English.", spoken)
+        assertEquals("Table, 1 row.\n\nalba: Language, English.", speak(markdown))
+    }
+
+    @Test
+    fun `issue 10's tables read the same whatever their first header`() {
+        // Both reproductions from the issue, verbatim.
+        val named = """
+            | stage | before | after |
+            |-------|--------|-------|
+            | alpha | one | two |
+            | bravo | three | four |
+        """.trimIndent()
+        val blank = """
+            | | before | after |
+            |---|---|---|
+            | alpha | one | two |
+            | bravo | three | four |
+        """.trimIndent()
+        val expected = "Table, 2 rows.\n\nalpha: before, one; after, two.\n\nbravo: before, three; after, four."
+        assertEquals(expected, speak(named))
+        assertEquals(expected, speak(blank))
+    }
+
+    @Test
+    fun `a table wider than four columns is announced and not read`() {
+        val markdown = """
+            | a | b | c | d | e |
+            |---|---|---|---|---|
+            | 1 | 2 | 3 | 4 | 5 |
+            | 6 | 7 | 8 | 9 | 0 |
+
+            After.
+        """.trimIndent()
+        assertEquals("Table not read: 2 rows, 5 columns, headed a, b, c, d and e.\n\nAfter.", speak(markdown))
+    }
+
+    @Test
+    fun `empty cells are skipped rather than read as gaps`() {
+        val markdown = """
+            | name | role | note |
+            |------|------|------|
+            | Ada  |      | first |
+            |      | lead |      |
+            |      |      |      |
+        """.trimIndent()
+        assertEquals("Table, 3 rows.\n\nAda: note, first.\n\nrole, lead.", speak(markdown))
+    }
+
+    @Test
+    fun `a table needs no outer pipes, as in GitHub's Markdown`() {
+        val markdown = "key | value\n--- | ---\nmodel | 7m"
+        assertEquals("Table, 1 row.\n\nmodel: value, 7m.", speak(markdown))
+    }
+
+    @Test
+    fun `table rows point back at their own source lines`() {
+        val markdown = "Intro.\n\n| k | v |\n|---|---|\n| a | 1 |\n|  |  |\n| b | 2 |"
+        val result = MarkdownSpeech.toSpeakableWithSource(markdown)
+        val sources = result.spans.map { markdown.substring(it.sourceStart, it.sourceEnd) }
+        assertEquals(listOf("Intro.", "| k | v |\n|---|---|", "| a | 1 |", "| b | 2 |"), sources)
+    }
+
+    @Test
+    fun `pipes in a line with no delimiter row below are not a table`() {
+        assertEquals("a, b.", speak("| a | b |"))
+        assertEquals("Run it with a | b to pipe.", speak("Run it with a | b to pipe."))
+    }
+
+    @Test
+    fun `inline code is read even when code blocks are not (issue 9)`() {
+        // Decided, not overlooked: a path or a flag mid-sentence is usually the
+        // word the sentence turns on, where a fenced block is a listing.
+        val markdown = "Edit `settings.json` and pass `--verbose`.\n\n```\nlisting\n```"
+        val spoken = MarkdownSpeech.toSpeakable(markdown, MarkdownSpeech.Options(speakCodeBlocks = false))
+        assertTrue(spoken, spoken.contains("settings.json") || spoken.contains("settings"))
+        assertTrue(spoken, spoken.contains("verbose"))
+        assertFalse(spoken, spoken.contains("listing"))
     }
 
     @Test

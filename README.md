@@ -14,17 +14,23 @@ Supports Python 3.10, 3.11, 3.12, 3.13 and 3.14. Requires PyTorch 2.5+. Does not
 [📄 Paper](https://arxiv.org/abs/2509.06926) | 
 [📚 Documentation](https://kyutai-labs.github.io/pocket-tts/)
 
+> [!NOTE]
+> **New (October 2026):** Small English models with 18.2M, 6.9M and 1.9M parameters (decoder included), up to 25x faster than real time on one CPU thread. Try them with `--language english_18m_2026-10`, `english_7m_2026-10` or `english_2m_2026-10`; see the [blog post](https://kyutai.org/blog/2026-10-20-pocket-tts-small) for how they were made.
+>
+> **New (August 2026):** We've released the training code! Check out [`training/`](https://github.com/kyutai-labs/pocket-tts/blob/main/training/README.md) to start training your own models.
+> Open a PR to add your model to the [Models trained by the community](#models-trained-by-the-community) section.
+
 
 ## Main takeaways
 * Runs on CPU
-* Small model size, 100M parameters
+* Small model size, 100M parameters, and English models down to 1.9M parameters
 * Audio streaming
 * Low latency, ~200ms to get the first audio chunk
 * Faster than real-time, ~6x real-time on a CPU of MacBook Air M4
 * Uses only 2 CPU cores
 * Python API and CLI
 * Voice cloning
-* Multi-language support: english, french, german, portuguese, italian, spanish
+* Multi-language support: english, french, german, portuguese, italian, spanish, dutch
 * Can handle infinitely long text inputs
 * [Can run on client-side in the browser](#in-browser-implementations)
 
@@ -40,6 +46,7 @@ Navigate to the [Kyutai website](https://kyutai.org/pocket-tts) to try it out di
 You can use pocket-tts directly from the command line. We recommend using
 `uv` as it installs any dependencies on the fly in an isolated environment (uv installation instructions [here](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)).
 You can also use `pip install pocket-tts` to install it manually.
+On Linux, see [CPU-only installation](#cpu-only-installation) to avoid pulling in the CUDA build of PyTorch.
 
 This will generate a wav file `./tts_output.wav` saying the default text with the default voice, and display some speed statistics.
 ```bash
@@ -49,7 +56,9 @@ pocket-tts generate
 ```
 Modify the voice with `--voice` and the text with `--text`. We provide a small catalog of voices.
 Choose a pretrained language model with `--language` when running `generate`, `export-voice`, or `serve` (default: `english`). Non-english languages have also biggers 24 layers variants that are higher quality but slower. You can select them by using for example `--language italian_24l`.
-The `--config` option accepts only a local YAML path for custom weights.
+`--language english_drifting_26-09` selects an English model whose sampler head was trained with drifting instead of LSD (see [training/README.md](training/README.md) for the recipe).
+`--language english_18m_2026-10`, `english_7m_2026-10` and `english_2m_2026-10` select small English models with 18.2M, 6.9M and 1.9M parameters (decoder included). The `_refl` variants, such as `english_7m_refl_2026-10`, add reward fine-tuning.
+The `--config` option accepts a local YAML path, an `https://` URL, or an `hf://` path (e.g. `hf://<repo_id>/<path>[@revision]`) for custom weights.
 
 You can take a look at [this page](https://huggingface.co/kyutai/tts-voices) which details the licenses
 for each voice.
@@ -104,6 +113,15 @@ You can check out the [serve documentation](https://kyutai-labs.github.io/pocket
 
 Processing an audio file (e.g., a .wav or .mp3) for voice cloning is relatively slow, but loading a safetensors file -- a voice embedding converted from an audio file -- is very fast. You can use the `export-voice` command to do this conversion. See the [export-voice documentation](https://kyutai-labs.github.io/pocket-tts/CLI%20Commands/export_voice/) for more details and examples.
 
+### Standalone binaries, without Python
+
+Each [release](https://github.com/kyutai-labs/pocket-tts/releases) comes with a `pocket-tts` binary for Linux and macOS (x86 and ARM) and Windows (x86), which needs neither Python nor PyTorch. It has the same commands and options as the Python CLI, reads the same configs (community models included), voices and exported voice files, and shares the Hugging Face cache with it:
+```bash
+tar xzf pocket-tts-*-x86_64-unknown-linux-gnu.tar.gz
+./pocket-tts-*/pocket-tts generate --text "Hello world." --voice marius
+```
+It is a Rust port built on [xn-ptts](https://github.com/gradium-ai/xn-ptts), whose sources are in [`rust/`](rust/). It runs on the CPU only, cannot load training checkpoints (`--checkpoint`), and its audio is not bit-identical to the Python package's, as the sampling noise differs.
+
 
 ## Using it as a Python library
 
@@ -115,6 +133,34 @@ pip install pocket-tts
 # or
 uv add pocket-tts
 ```
+
+### CPU-only installation
+
+On Linux, PyPI serves the CUDA build of PyTorch by default, so `pip install pocket-tts` also
+downloads the `nvidia-*` CUDA runtime wheels, even though pocket-tts runs on CPU. This adds
+several gigabytes to the install (with torch 2.13, roughly 3 GB instead of 200 MB). Installing
+from the PyTorch CPU index pulls the CPU build and no NVIDIA packages:
+```bash
+pip install pocket-tts --extra-index-url https://download.pytorch.org/whl/cpu
+```
+
+To run the CLI without installing, pass the same index to `uvx`:
+```bash
+uvx --index https://download.pytorch.org/whl/cpu pocket-tts generate
+```
+
+With `uv`, declare the index explicitly in your project:
+```toml
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+```
+
+This is not needed on macOS or Windows, where the default PyTorch wheels are already CPU-only.
 
 You can use this package as a simple Python library to generate audio from text.
 ```python
@@ -220,7 +266,7 @@ You can find development instructions in the [CONTRIBUTING.md](https://github.co
 
 Pocket TTS is small enough to run directly in your browser in WebAssembly/JavaScript.
 We don't have official support for this yet, but you can try out one of these community implementations:
-- [wasm-pocket-tts](https://github.com/LaurentMazare/xn/tree/main/wasm-pocket-tts) by @LaurentMazare: Rust port of pocket TTS with XN. Demo [here](https://laurentmazare.github.io/pocket-tts/)
+- [wasm-pocket-tts](https://github.com/gradium-ai/xn-ptts/tree/main/ptts-wasm) by @LaurentMazare: Rust port of pocket TTS with XN. Demo [here](https://laurentmazare.github.io/pocket-tts/)
 - [pocket-tts-onnx-export](https://github.com/KevinAHM/pocket-tts-onnx-export) by @KevinAHM: Model exported to .onnx and run using [ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/). Demo [here](https://huggingface.co/spaces/KevinAHM/pocket-tts-web)
 - [pocket-tts](https://github.com/babybirdprd/pocket-tts) by @babybirdprd: Candle version (Rust) with WebAssembly and PyO3 bindings, meaning it can run on the web too.
 - [jax-js](https://github.com/ekzhang/jax-js/tree/main/website/src/routes/tts) by @ekzhang: Using jax-js, a ML library for the web. Demo [here](https://jax-js.com/tts)
@@ -228,11 +274,175 @@ We don't have official support for this yet, but you can try out one of these co
 
 ## Alterative implementations
 - [pocket-tts-mlx](https://github.com/jishnuvenugopal/pocket-tts-mlx) by @jishnuvenugopal - MLX backend optimized for Apple Silicon
-- [pocket-tts-xn](https://github.com/LaurentMazare/xn/tree/main/pocket-tts) by @LaurentMazare - A Rust port of Pocket TTS implemented with XN.
+- [pocket-tts-xn](https://github.com/gradium-ai/xn-ptts) by @LaurentMazare - A Rust port of Pocket TTS implemented with XN.
 - [pocket-tts-candle](https://github.com/babybirdprd/pocket-tts) by @babybirdprd - Candle version (Rust) with WebAssembly and PyO3 bindings.
 - [PocketTTS.cpp](https://github.com/VolgaGerm/PocketTTS.cpp) by @VolgaGerm - Single-file C++ runtime using ONNX Runtime, with CLI, HTTP server, and FFI C API.
 - [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) by @csukuangfj - Run PocketTTS on **Windows, macOS, Linux**, and embedded boards (Raspberry Pi, Jetson, RK3588, etc.) with bindings for 12 programming languages: **C++, C, Python, JavaScript, Java, C#, Kotlin, Swift, Go, Dart, Rust, Pascal**, plus [WebAssembly](https://huggingface.co/spaces/k2-fsa/web-assembly-en-tts-pocket).
 - [pocket-tts-csharp](https://github.com/TheAjaykrishnanR/pocket-tts-csharp) by @TheAjaykrishnanR - A C# port of Pocket TTS implemented using [TorchSharp](https://github.com/dotnet/TorchSharp) and [TorchSharp.PyBridge](https://github.com/shaltielshmid/TorchSharp.PyBridge) for ease of use as a library in .NET projects.
+- [pocket-tts-timestamped](https://github.com/dpm63/pocket-tts-timestamped) by @dpm63 - A fork that adds support for word-level timestamps.
+- [Pocket-TTS-LiteRT](https://huggingface.co/mlboydaisuke/Pocket-TTS-LiteRT) by @john-rocky - LiteRT (.tflite) graphs that run on Android phone GPUs through the LiteRT CompiledModel API, ~1x real-time on a Pixel 8a, with Python and Kotlin usage snippets.
+
+## Models trained by the community
+
+To use a community model, just use the `--config` argument and point it to the url of the model's yaml file. For example:
+```bash
+uvx pocket-tts generate --config https://raw.githubusercontent.com/kyutai-labs/pocket-tts/refs/heads/main/pocket_tts/config/english_2026-04.yaml
+```
+
+It also works with huggingface urls like `hf://kyutai/pocket-tts/config/english_2026-04.yaml` or local paths like `./english_2026-04.yaml`.
+
+The pre-made voices listed above are embeddings precomputed with our released weights, so they are not available for community models. With `--config`, `--voice` defaults to [alba's audio file](https://huggingface.co/kyutai/tts-voices/blob/main/alba-mackenna/casual.wav), which any model can clone. Pass your own audio file to `--voice` to use another voice.
+
+We recommend inserting the commit hash somehow in the url to avoid breaking changes by the model authors. For example:
+
+```bash
+uvx pocket-tts generate --config https://raw.githubusercontent.com/kyutai-labs/pocket-tts/891886a61a1ed45fd429a0a63bd96181e6cff637/pocket_tts/config/english_2026-04.yaml
+```
+or with `hf://...`
+```bash
+uvx pocket-tts generate --config hf://user/repo/config_file.yaml@commit_hash
+```
+
+### List of community-trained models
+
+<details>
+<summary><a href="https://huggingface.co/vvolhejn/pocket-tts-czech">Pocket TTS Czech</a> by @vvolhejn</summary>
+
+```bash
+uvx pocket-tts generate \
+  --config hf://vvolhejn/pocket-tts-czech/czech.yaml@7b7760dd0fe994a0800f2fdbc837dc4b8f219d1c \
+  --text "Dnešek je velmi dobrý den"
+```
+</details>
+
+<details>
+<summary><a href="https://huggingface.co/saryps-labs/pocket-tts-hindi">Pocket TTS Hindi</a> by <a href="https://huggingface.co/saryps-labs">Saryps Labs</a></summary>
+
+```bash
+uvx pocket-tts generate \
+  --config hf://saryps-labs/pocket-tts-hindi/config.yaml@dbaa326069d20bfbdaeb625613736773741a24ea \
+  --text "आज का दिन बहुत अच्छा है"
+```
+</details>
+
+<details>
+<summary><a href="https://huggingface.co/seastar105/pocket-tts-korean-300m">Pocket TTS Korean 300M</a> by <a href="https://huggingface.co/seastar105">@seastar105</a></summary>
+
+```bash
+uvx pocket-tts generate \
+  --config hf://seastar105/pocket-tts-korean-300m/korean.yaml@df328c817a02866f20a6f74e5183e0a1fc6f6435 \
+  --text "안녕하세요. 한국어 음성 합성 모델입니다."
+```
+</details>
+
+<details>
+<summary><a href="https://huggingface.co/mehdi-hf/pocket-tts-farsi">Pocket TTS Persian (Farsi)</a> by @mallahyari</summary>
+
+```bash
+uvx --with soundfile pocket-tts generate --config hf://mehdi-hf/pocket-tts-farsi/farsi.yaml@3c59d06b3177b21c5cd0df9e9e3e899f4d361c1c \
+    --voice hf://mehdi-hf/pocket-tts-farsi/example_voice.wav --text "سلام، حال شما چطور است؟"
+```
+</details>
+
+<details>
+<summary><a href="https://huggingface.co/anak10thn/pocket-tts-indonesian">Pocket TTS Indonesian</a> by <a href="https://huggingface.co/anak10thn">@anak10thn</a>, 6 layers</summary>
+
+```bash
+uvx pocket-tts generate \
+  --config hf://anak10thn/pocket-tts-indonesian/indonesian_6l.yaml@6196fe14c6c2108332c16d33c864c8901c044aaa \
+  --text "Selamat pagi. Ini model sintesis suara bahasa Indonesia."
+```
+</details>
+
+<details>
+<summary><a href="https://huggingface.co/cbentes/pocket-tts-estonian">Pocket TTS Estonian</a> by @cbentes</summary>
+
+```bash
+uvx pocket-tts generate \
+  --config hf://cbentes/pocket-tts-estonian/estonian.yaml@8934022f1befb3dc568351e3b88e48a9edb94d7d \
+  --voice hf://cbentes/pocket-tts-estonian/voices/et_f_reporter.wav@8934022f1befb3dc568351e3b88e48a9edb94d7d \
+  --text "Tere! Mina olen eesti keele kõnesüntesaator ja töötan tavalises arvutis kiiremini kui reaalajas."
+```
+</details>
+
+<details>
+<summary><a href="https://huggingface.co/EryriLabs/pocket-tts-cymraeg">Pocket TTS Cymraeg (Welsh)</a> by <a href="https://huggingface.co/EryriLabs">EryriLabs</a>, 24 layers</summary>
+
+```bash
+uvx pocket-tts generate \
+  --config hf://EryriLabs/pocket-tts-cymraeg/config.yaml@1f23b3a8d1706b24a2faf3c77075a223ed69f57c \
+  --text "Mae'r tywydd yn braf yng Nghymru heddiw."
+```
+</details>
+
+<details>
+<summary><a href="https://huggingface.co/alperiox/pocket-tts-turkish">Pocket TTS Turkish</a> by <a href="https://huggingface.co/alperiox">@alperiox</a>, 6 layers</summary>
+
+```bash
+uvx pocket-tts generate \
+  --config hf://alperiox/pocket-tts-turkish/turkish_6l.yaml@13d9b4ad051ce9d5ef5bfb8af9724be01ad2fd31 \
+  --text "Merhaba, bugün hava çok güzel."
+```
+</details>
+
+<details>
+<summary><a href="https://huggingface.co/shefowl/pocket-tts-polish-6l">Pocket TTS Polish</a> by <a href="https://huggingface.co/shefowl">@shefowl</a>, 6 layers</summary>
+
+```bash
+uvx pocket-tts generate \
+  --config hf://shefowl/pocket-tts-polish-6l/config.yaml@a8630f2a39055d3e5a91acb7922e31bd0c506cfe \
+  --voice hf://shefowl/pocket-tts-polish-6l/reference.wav@a8630f2a39055d3e5a91acb7922e31bd0c506cfe \
+  --text "Dzień dobry. Nazywam się Krzysztof Wiśniewski i mówię po polsku."
+```
+</details>
+
+<details>
+<summary><a href="https://huggingface.co/myned-ai/pocket-tts-greek">Pocket TTS Greek (Ελληνικά)</a> by <a href="https://huggingface.co/myned-ai">Myned AI</a>, 6 layers</summary>
+
+```bash
+uvx pocket-tts generate \
+  --config hf://myned-ai/pocket-tts-greek/greek.yaml@c578b65949df101ac352e84ac5c236206e5bb348 \
+  --voice hf://myned-ai/pocket-tts-greek/voices/eleni.wav@c578b65949df101ac352e84ac5c236206e5bb348 \
+  --text "Καλημέρα! Θέλετε να κλείσουμε ένα ραντεβού για αύριο;"
+```
+</details>
+
+<details>
+<summary><a href="https://huggingface.co/takuma104/pocket-tts-ja">Pocket TTS Japanese (日本語)</a> by <a href="https://huggingface.co/takuma104">@takuma104</a>, 6 layers</summary>
+
+```bash
+uvx pocket-tts generate \
+  --config hf://takuma104/pocket-tts-ja/japanese.yaml@562a82cba331499b75a050b7e200f4ee3241b9e9 \
+  --voice hf://takuma104/pocket-tts-ja/voices/female_03.wav@119685fd7a51356429c6d25e37d570b423c17663 \
+  --text "こんにちは。今日はいい天気ですね。"
+```
+</details>
+
+<details>
+<summary><a href="https://huggingface.co/hustfyb/PocketTTS-ZH-6L">Pocket TTS Chinese (中文)</a> by <a href="https://huggingface.co/hustfyb/">@hustfyb</a>, 6 layers</summary>
+
+```bash
+pip install pocket-tts soundfile wetext
+cd <本目录>
+python demo.py --prompt your_voice.wav --text "您的订单编号是20260918123456，退款368.5元预计三个工作日内到账。" --out out.wav
+```
+</details>
+
+<details>
+<summary><a href="https://huggingface.co/Thanushttk/pocket-tts-multilingual">Pocket TTS Multilingual</a> by <a href="https://huggingface.co/Thanushttk">Thanush Thankachan</a>, 6 layers</summary>
+
+English, Hindi, Marathi, Kannada, Tamil, Malayalam, and Telugu, including code mixing. Use an Indian voice for a better Indian accent.
+
+```bash
+uvx pocket-tts generate \
+  --config hf://Thanushttk/pocket-tts-multilingual/config.yaml@80c7f2835138c62750d76a93d4333c5c5bb6a754 \
+  --voice my_voice.wav \
+  --text "Hello, नमस्ते, how are you?"
+```
+</details>
+
+
+Want your model here? Head to the [training Readme](https://github.com/kyutai-labs/pocket-tts/blob/main/training/README.md) to get started!
 
 ## Projects using Pocket TTS
 
@@ -254,6 +464,9 @@ We don't have official support for this yet, but you can try out one of these co
 - [tts-audiobook-tool](https://github.com/zeropointnine/tts-audiobook-tool) by @zeropointnine - Multi-model audiobook generator with automatic error detection, 48khz upscaling, synced browser reader, stand-alone server-mode.
 - [seshat-tts](https://github.com/scriptriva/seshat-tts) by @scriptriva - Accessibility tool that provides real-time audio synthesis for games and apps. It also features a voice manager capable of cloning voices based on user presets.
 - [LocalVocal.ai](https://localvocal.ai) by @joshwhiton - Fully local conversational voice-harness for Macs with Apple Silicon. Includes voice-activity & turn detection, dictation, voice cloning, CLI to talk to Claude, Codex... and more.
+- [Libratory](https://github.com/subev/libratory) by @subev - Turns PDFs into read-along audiobooks with the narration highlighted on the printed page; Pocket TTS is one of its local narrators, with voice cloning from the picker.
+- [ToBe SAID Android](https://play.google.com/store/apps/details?id=ai.lookbe.tts), [iOS/Mac](https://apps.apple.com/us/app/tobe-said/id6801981584), [Windows](https://apps.microsoft.com/detail/9mtw9scqhggc) by @lookbe - Pocket TTS that integrate into OS system voice with low latency and realtime streaming. Support quick language addition by using only HuggingFace url.
+- [Outmake](https://outmake.app) by @DaneBentley - Free Mac app for running open models on the Mac itself. Pocket TTS is one of its built-in voices, run on device through the MLX port ([mlx-community/pocket-tts](https://huggingface.co/mlx-community/pocket-tts)) with no Python.
 
 
 ## Prohibited use

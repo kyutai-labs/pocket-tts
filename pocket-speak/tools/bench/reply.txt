@@ -1,0 +1,4 @@
+The build is green again. I traced the failure to the voice loader, which read the cache before the download had finished, so a slow connection left it with half a file.
+It now waits for the verified copy and refuses anything that does not match its pinned hash. I also added a test that cuts the connection halfway through, and it passes on all three architectures.
+Two things are still open. The first is the settings screen, which forgets the chosen voice after an update. The second is speed on older phones, where the first sentence takes almost a second to start.
+I would look at the second one next, because it is the one people notice. Want me to start on it?

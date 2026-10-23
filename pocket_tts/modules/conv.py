@@ -5,7 +5,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from pocket_tts.modules.stateful_module import StatefulModule
+from pocket_tts.modules.stateful_module import ModelState, StatefulModule
 
 
 def get_extra_padding_for_conv1d(
@@ -18,7 +18,9 @@ def get_extra_padding_for_conv1d(
     return ideal_length - length
 
 
-def pad_for_conv1d(x: torch.Tensor, kernel_size: int, stride: int, padding_total: int = 0):
+def pad_for_conv1d(
+    x: torch.Tensor, kernel_size: int, stride: int, padding_total: int = 0
+) -> torch.Tensor:
     """Pad for a convolution to make sure that the last window is full.
     Extra padding is added at the end. This is required to ensure that we can rebuild
     an output of the same length, as otherwise, even with padding, some time steps
@@ -90,7 +92,7 @@ class StreamingConv1d(StatefulModule):
         first = torch.ones(batch_size, dtype=torch.bool, device=device)
         return dict(previous=previous, first=first)
 
-    def forward(self, x, model_state: dict | None):
+    def forward(self, x: torch.Tensor, model_state: ModelState | None) -> torch.Tensor:
         B, C, T = x.shape
         S = self._stride
         assert T > 0 and T % S == 0, "Steps must be multiple of stride"
@@ -148,7 +150,7 @@ class StreamingConvTranspose1d(StatefulModule):
         device = self.convtr.weight.device
         return dict(partial=torch.zeros(batch_size, self.convtr.out_channels, K - S, device=device))
 
-    def forward(self, x, mimi_state: dict):
+    def forward(self, x: torch.Tensor, mimi_state: ModelState) -> torch.Tensor:
         layer_state = self.get_state(mimi_state)["partial"]
         y = self.convtr(x)
         PT = layer_state.shape[-1]

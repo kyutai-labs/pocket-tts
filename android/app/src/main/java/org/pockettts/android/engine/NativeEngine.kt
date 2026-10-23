@@ -3,10 +3,10 @@ package org.pockettts.android.engine
 /**
  * pocket-speak's engine, the Rust crate the desk CLI runs, over JNI.
  *
- * `rust/crates/android` builds `libpocket_tts_jni.so`; ONNX Runtime is
- * Microsoft's `onnxruntime-android`, loaded first so the Rust side can open it
- * by name. One instance per process, never closed: [PocketTts] holds it for
- * the process's life. Synthesis is serialised by [PocketTts]; the native side
+ * `pocket-speak/crates/android` builds `libpocket_tts_jni.so`, the whole of the
+ * app's native code: the model is upstream's own Rust implementation (xn-ptts).
+ * One instance per loaded model: [PocketTts] holds it, and closes it when the
+ * model is changed. Synthesis is serialised by [PocketTts]; the native side
  * also locks the engine, which is what keeps a voice load from overlapping a
  * synthesis. A [CancelToken] may be cancelled from any thread.
  */
@@ -68,15 +68,18 @@ class NativeEngine private constructor(private var handle: Long) : AutoCloseable
 
     companion object {
         init {
-            System.loadLibrary("onnxruntime")
             System.loadLibrary("pocket_tts_jni")
         }
 
-        /** Loads the model files in [modelDir]. Throws if any is missing or wrong. */
-        fun load(modelDir: String, threads: Int): NativeEngine =
-            NativeEngine(nativeLoad(modelDir, threads, "libonnxruntime.so"))
+        /**
+         * Loads model [modelName] (a [ModelCatalog] name) from its files in
+         * [modelDir]. Throws if any is missing or wrong. The [threads] of the
+         * first load in the process hold for its life.
+         */
+        fun load(modelDir: String, modelName: String, threads: Int): NativeEngine =
+            NativeEngine(nativeLoad(modelDir, modelName, threads))
 
-        @JvmStatic private external fun nativeLoad(modelDir: String, threads: Int, ortLibrary: String): Long
+        @JvmStatic private external fun nativeLoad(modelDir: String, modelName: String, threads: Int): Long
         @JvmStatic private external fun nativeFree(handle: Long)
         @JvmStatic private external fun nativeSampleRate(handle: Long): Int
         @JvmStatic private external fun nativeLoadVoice(handle: Long, path: String): Long

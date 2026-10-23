@@ -60,7 +60,7 @@ The sample is the voice's own reference audio rather than a synthesised
 sentence. That is the most direct answer to "what does this sound like": the
 reference audio *is* the voice. It also costs nothing but the prompt download -
 no model bundle, no inference, no wait - so voices can be auditioned on a fresh
-install before the 98 MB model has ever been fetched, and the download it does
+install before the model has ever been fetched, and the download it does
 is the same one selecting that voice would trigger later. The trade-off worth
 knowing: it is the raw prompt, so it carries the recording's own room and
 pacing. The synthesised voice tracks its timbre closely, which is the thing
@@ -85,16 +85,17 @@ echo "sdk.dir=$ANDROID_HOME" > local.properties
 ./gradlew :app:testDebugUnitTest
 ```
 
-The build compiles the engine from `../rust` first (`cargo ndk`, the
+The build compiles the engine from `../pocket-speak` first (`cargo ndk`, the
 `buildNative` task), so it needs rustup's `aarch64-linux-android`,
 `armv7-linux-androideabi` and `x86_64-linux-android` targets, `cargo-ndk` and
 the NDK. Pass `-PskipNative` to package the libraries already in
 `app/src/main/jniLibs`.
 
-The debug APK lands in `app/build/outputs/apk/debug/`. It is about 85 MB, most of
-it ONNX Runtime for `arm64-v8a`, `armeabi-v7a` and `x86_64`. Dropping ABIs from
-`abiFilters` in `app/build.gradle.kts` shrinks it. Until 2026-10-03 this said
-60 MB, with sherpa-onnx's libraries for two ABIs; see `docs/engine-swap.md`.
+The debug APK lands in `app/build/outputs/apk/debug/`. It is about 28 MB (the
+release APK 23 MB), most of it the engine for `arm64-v8a`, `armeabi-v7a` and
+`x86_64`, 5 to 8 MB each. Dropping ABIs from `abiFilters` in
+`app/build.gradle.kts` shrinks it. Until 2026-10 it was 85 MB, most of it ONNX
+Runtime; see `docs/pure-rust-engine.md`.
 
 ## The debug key is committed, on purpose
 
@@ -142,13 +143,14 @@ carried on headless while the recreated screen said "not downloaded" and invited
 a second tap - and the partial was deleted on the way out, so that tap began
 again from zero.
 
-`engine/ModelInstall` owns one shared attempt. Everybody who asks joins the one
-in flight, a screen that goes away leaves it running, and progress is a
+`engine/ModelInstall` owns one shared attempt per model. Everybody who asks for a
+model joins the one in flight for it, a screen that goes away leaves it running,
+and progress is a
 `StateFlow` a recreated screen can pick up rather than something an activity
 holds. Removing the sharing fails the test for it.
 
-The download resumes. It is 98 MB; without a `Range` request a drop at 90 MB
-throws away 90 MB, and on a connection that drops regularly it never finishes at
+The download resumes. The largest model is 219 MB; without a `Range` request a
+drop at 200 MB throws away 200 MB, and on a connection that drops regularly it never finishes at
 all - each attempt just gets a different distance through the same first
 stretch. The partial now survives a network failure and is deleted only when the
 archive turns out not to unpack, because that one is not worth resuming.
@@ -156,18 +158,18 @@ archive turns out not to unpack, because that one is not worth resuming.
 ## Keeping the model, and the voices
 
 Everything lives in internal storage, so uninstalling threw all of it away: a
-98 MB download, and - the part that matters - every voice the user had recorded
+model download of up to 219 MB, and - the part that matters - every voice the user had recorded
 or imported, which exists nowhere else. `android:hasFragileUserData` makes the
 uninstall dialog offer to keep the data, which is the only way to offer that
 choice at all.
 
-Backup rules exclude the unpacked model and nothing else. Cloud backup allows an
-app 25 MB, so including 200 MB of regenerable weights does not make a partial
+Backup rules exclude the models and nothing else. Cloud backup allows an app
+25 MB, so including up to 219 MB of regenerable weights does not make a partial
 backup - it makes a failed one, taking the settings and the voices down with it.
-Those rules name the directory as a literal string because XML cannot reference
-a Kotlin constant, so `BackupRulesTest` asserts the string still matches
-`ModelManager.MODEL_NAME`. Renaming the bundle would otherwise break the
-exclusion silently.
+Every model lives under `pocket-tts/models`, which the rules exclude as a whole,
+so a model added later can never be backed up by accident. The rules name the
+directory as a literal string because XML cannot reference a Kotlin constant, so
+`BackupRulesTest` asserts the string still matches `ModelManager.MODELS_DIR`.
 
 **Since 2026-10-03 "Install from a file" is hidden and refuses**: the paragraph
 below describes sherpa-onnx's archive, which the new engine cannot read, and no
@@ -181,22 +183,27 @@ a working install working.
 
 ## First run
 
-The model is not in the APK. On first launch the app downloads pocket-speak's
-`english_2026-04` bundle - six files, 125 MB, each checked against a pinned
-sha256 - into app storage. Each voice's embedding is about 6 MB and is fetched
-the first time that voice is used. (Until 2026-10-03 this was sherpa-onnx's
-98 MB `sherpa-onnx-pocket-tts-int8-2026-01-26`; the app deletes that directory
-once the new engine has loaded. See `docs/engine-swap.md`.)
+The model is not in the APK. On first launch the app downloads the selected
+model - Kyutai's `english_2026-10` unless another is chosen in **Choose
+model**, 219 MB, each file
+checked against the sha256 `pocket-speak/models.json` pins - into app storage.
+Each voice is a state precomputed for that model, 0.5 to 7 MB, fetched the first
+time that voice is used. An upgraded install deletes the models earlier engines
+read (sherpa-onnx's, then the ONNX export of `english_2026-04`) once the new one
+has loaded. See `docs/pure-rust-engine.md`.
 
-Inference runs on the CPU. On a Galaxy S25 it generates 3.7 to 5 times faster
-than real time, with the first audio of a chunk about 0.2 to 0.3 s after it is
-asked for. Until 2026-10-03 this said "roughly real-time", which was sherpa-onnx
-on an older phone.
+Inference runs on the CPU, on upstream's own Rust implementation of the model.
+The previous engine generated 3.7 to 5 times faster than real time on a Galaxy
+S25, with first audio 0.2 to 0.3 s into a chunk; on the same desktop CPU the new
+one is 2.4 times faster on the larger `english_2026-10` model and starts in a
+fifth of the time. Phone numbers for it are to come.
 
 ## How it works
 
 **Since 2026-10-03 the engine is pocket-speak's Rust core, not sherpa-onnx**
-(`docs/engine-swap.md`). The sections below that describe sherpa-onnx's
+(`docs/engine-swap.md`), and since 2026-10 that core runs upstream's own Rust
+implementation of the model rather than ONNX Runtime
+(`docs/pure-rust-engine.md`). The sections below that describe sherpa-onnx's
 behaviour are the history of how the app got here, kept as written.
 
 ```
@@ -206,12 +213,22 @@ scratchpad ─────▶ ScratchpadActivity ─┼─▶ Reader ─▶ Stre
 other apps ─────▶ PocketTtsService ───┘      ▼
                   (system TTS engine)   MarkdownSpeech ─▶ TextChunker ─▶ PocketTts
                                                                             │
-                                                     NativeEngine (JNI) ─▶ rust/crates/engine
+                                                     NativeEngine (JNI) ─▶ pocket-speak/crates/engine
                                                                             │
-                                                                  onnxruntime-android
+                                                          xn-ptts + upstream's rust/src
 ```
 
-- `speech/MarkdownSpeech` turns Markdown into speakable prose.
+- `ui/ModelPickerActivity` chooses the model: Best quality (`english_2026-10`,
+  219 MB), Balanced (18m, 112 MB), Small (7m, 67 MB) or Smallest (2m, 47 MB).
+  Downloads ask first, with the size and a warning on a metered connection,
+  and the model is put to use when its download is done, even if the screen
+  has gone. Each row reads to TalkBack as a radio button with its state and
+  what a double tap will do; deleting is a separate button.
+- `speech/MarkdownSpeech` turns Markdown into speakable prose. A table is read
+  as a screen reader reads one: announced ("Table, 2 rows."), then row by row
+  under its column names; past four columns it is announced with its column
+  names and not read (#10). Inline code is always read, as words; the setting
+  covers fenced blocks only (#9).
 - `speech/TextChunker` cuts it at sentence boundaries so the first audio arrives
   quickly and stopping is responsive.
 - `engine/PocketTts` owns the single loaded model and serialises synthesis.
@@ -878,17 +895,17 @@ toolbar wears the status bar and the first control is sliced in half.
 
 Worth reading before shipping anything built from this.
 
-- The ONNX export bundled by sherpa-onnx carries a
-  [CC-BY-4.0 `LICENSE` file](https://huggingface.co/KevinAHM/pocket-tts-onnx),
-  but its README states the export is for non-commercial use. Those two
-  statements do not agree; treat the narrower one as binding until the exporter
-  clarifies.
-- Since 2026-10-03 the app downloads that same exporter's `english_2026-04`
-  graphs directly (pinned in `ModelManager`), so the point above still applies.
-  Voice embeddings come from `kyutai/pocket-tts-without-voice-cloning`; read its
-  terms before redistributing them.
+- Since 2026-10 the models, their tokenizers and the voice states all come
+  from Kyutai's own
+  [`kyutai/pocket-tts-without-voice-cloning`](https://huggingface.co/kyutai/pocket-tts-without-voice-cloning),
+  CC-BY-4.0, pinned in `pocket-speak/models.json`. Until then the app read an
+  ONNX export whose `LICENSE` file said CC-BY-4.0 while its README said
+  non-commercial use only; that ambiguity went with it.
+- The engine is upstream's Rust code and
+  [xn-ptts](https://github.com/gradium-ai/xn-ptts), MIT (xn-ptts: MIT or
+  Apache-2.0); `pocket-speak/crates/engine/NOTICE.md` has the details.
 - `app/src/main/java/sonic/Sonic.java` is Bill Cox's Sonic, Apache 2.0, vendored
-  unmodified. ONNX Runtime (`onnxruntime-android`) is MIT.
+  unmodified.
 - Voices have individual licences, listed per voice at
   [`kyutai/tts-voices`](https://huggingface.co/kyutai/tts-voices).
 - Pocket TTS's own prohibited-use terms apply, in particular the ban on cloning

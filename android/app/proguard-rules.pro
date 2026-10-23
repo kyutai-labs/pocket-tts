@@ -1,10 +1,10 @@
 # pocket-speak's engine calls back into these from JNI by name: the native
 # methods themselves, and NativeEngine.Sink.onAudio(float[]) on whatever
-# implements it ("([F)Z" in rust/crates/android). R8 would otherwise rename or
+# implements it ("([F)Z" in pocket-speak/crates/android). R8 would otherwise rename or
 # inline them, and a JNI lookup that fails leaves a pending exception the
 # engine turns into "audio sink" errors - a release build reading nothing.
 # Kept outright, not just named: R8 otherwise drops a native method nothing
-# calls yet (nativeFreeVoice), and check-jni-callback.sh holds all nine.
+# calls in some build, and check-jni-callback.sh holds all nine.
 -keepclasseswithmembers class org.pockettts.android.engine.NativeEngine {
     native <methods>;
 }
@@ -12,6 +12,3 @@
 -keepclassmembers class * implements org.pockettts.android.engine.NativeEngine$Sink {
     boolean onAudio(float[]);
 }
-# ONNX Runtime's Java API ships with the library and is unused, but its JNI
-# shim resolves classes by name if anything ever loads it.
--keep class ai.onnxruntime.** { *; }

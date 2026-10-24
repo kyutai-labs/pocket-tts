@@ -55,10 +55,7 @@ def word_error_rate(expected: list[str], heard: list[str]) -> float:
     for i, word in enumerate(expected, 1):
         previous, row[0] = row[0], i
         for j, other in enumerate(heard, 1):
-            previous, row[j] = (
-                row[j],
-                min(row[j] + 1, row[j - 1] + 1, previous + (word != other)),
-            )
+            previous, row[j] = (row[j], min(row[j] + 1, row[j - 1] + 1, previous + (word != other)))
     return row[-1] / max(len(expected), 1)
 
 

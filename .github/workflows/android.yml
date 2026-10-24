@@ -46,7 +46,8 @@ jobs:
 
   # Every offered model on an arm64 CPU, the architecture of every phone this
   # app is meant for: the engine's tests against each, then its speed, the
-  # numbers the default model is chosen from, as a table in the run's summary.
+  # numbers the default model is chosen from, and how well Whisper understands
+  # it, as tables in the run's summary.
   models-arm64:
     runs-on: ubuntu-24.04-arm
     steps:
@@ -58,6 +59,14 @@ jobs:
       with:
         path: ~/models
         key: models-${{ hashFiles('pocket-speak/models.json') }}
+    # Whisper, the listening check's ear: fetched once, not every run.
+    - uses: actions/cache@v4
+      with:
+        path: ~/.cache/huggingface
+        key: whisper-small
+    - uses: astral-sh/setup-uv@v7
+    # cpal, the desk CLI's audio output, links ALSA; the check runs the CLI.
+    - run: sudo apt-get update -q && sudo apt-get install -y -q libasound2-dev
     - name: Fetch the models
       run: python3 pocket-speak/tools/fetch-models.py ~/models
     - name: Tests with the models
@@ -68,6 +77,20 @@ jobs:
         lscpu | grep -E 'Model name|^CPU\(s\)' | sed 's/^/    /' >> "$GITHUB_STEP_SUMMARY"
         echo >> "$GITHUB_STEP_SUMMARY"
         pocket-speak/tools/bench/run.sh ~/models 1 2 4 | tee -a "$GITHUB_STEP_SUMMARY"
+    # Each model reads its language's sample sentence and Whisper writes down
+    # what it heard; a model over its ceiling in tools/listen/ceilings.json
+    # fails the job. The tests above only know that audio came out.
+    - name: Listen
+      working-directory: pocket-speak
+      run: |
+        cargo build --quiet --release -p pocket-speak
+        {
+          echo
+          echo "### What Whisper heard"
+          echo
+        } >> "$GITHUB_STEP_SUMMARY"
+        set -o pipefail
+        uv run tools/listen/check.py target/release/pocket-speak ~/models | tee -a "$GITHUB_STEP_SUMMARY"
 
   build:
     runs-on: ubuntu-latest

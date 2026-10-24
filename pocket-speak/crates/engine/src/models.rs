@@ -21,6 +21,14 @@ pub struct Manifest {
 pub struct Model {
     /// The config's name in upstream's `pocket_tts/config`.
     pub name: String,
+    /// What it reads, as a BCP-47 language tag: `en`, `fr`, ...
+    pub language: String,
+    /// The config's `default_temperature`, for callers that have not loaded it.
+    pub default_temperature: f32,
+    /// Upstream's voice for this language when none is chosen.
+    pub default_voice: String,
+    /// Upstream's sample sentence in this language.
+    pub sample_text: String,
     /// Saved in the model's directory under [`File::name`].
     pub files: Vec<File>,
     /// Precomputed voice states, by voice name; each is a `<name>.safetensors`.
@@ -56,10 +64,31 @@ pub fn find(name: &str) -> Option<&'static Model> {
     offered().iter().find(|model| model.name == name)
 }
 
+/// The language of a config name, as upstream reads it: the first language whose
+/// name is part of the config's (`french_24l` is French), else `None`.
+pub fn language_of(config_name: &str) -> Option<&'static str> {
+    LANGUAGES
+        .iter()
+        .find(|(name, _)| config_name.contains(name))
+        .map(|(_, tag)| *tag)
+}
+
+/// Upstream's language names and their BCP-47 tags.
+pub const LANGUAGES: &[(&str, &str)] = &[
+    ("english", "en"),
+    ("french", "fr"),
+    ("german", "de"),
+    ("spanish", "es"),
+    ("italian", "it"),
+    ("portuguese", "pt"),
+    ("dutch", "nl"),
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::config::{CONFIGS, Config};
+    use crate::defaults;
     use std::collections::HashSet;
 
     /// `hf://owner/repo/path@rev` as the URL `pin-models.py` writes for it.
@@ -100,6 +129,49 @@ mod tests {
                     model.name
                 );
             }
+        }
+    }
+
+    /// What models.json says about each model that upstream also says: its
+    /// language, temperature, default voice and sample sentence. Fails when
+    /// upstream changes one until `tools/pin-models.py` is rerun.
+    #[test]
+    fn every_offered_model_agrees_with_upstream_defaults() {
+        for model in offered() {
+            let (_, yaml) = CONFIGS
+                .iter()
+                .find(|(name, _)| *name == model.name)
+                .unwrap();
+            let config = Config::parse(yaml).unwrap();
+            let rerun = "rerun tools/pin-models.py";
+            assert_eq!(
+                Some(model.language.as_str()),
+                language_of(&model.name),
+                "{}: language; {rerun}",
+                model.name
+            );
+            assert_eq!(
+                model.default_temperature, config.default_temperature,
+                "{}: default_temperature; {rerun}",
+                model.name
+            );
+            assert_eq!(
+                model.default_voice,
+                defaults::get_default_voice_for_language(Some(&model.name), false),
+                "{}: default_voice; {rerun}",
+                model.name
+            );
+            assert_eq!(
+                model.sample_text,
+                defaults::get_default_text_for_language(Some(&model.name)),
+                "{}: sample_text; {rerun}",
+                model.name
+            );
+            assert!(
+                model.voices.contains_key(&model.default_voice),
+                "{}: no embedding for its default voice",
+                model.name
+            );
         }
     }
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Measures every offered model with pocket-bench, as a Markdown table on stdout.
+# Measures the English models with pocket-bench, as a Markdown table on stdout.
+# The other languages' models have the largest English model's shape, and its speed.
 #
 #   pocket-speak/tools/bench/run.sh MODELS_DIR [THREADS ...]
 #
@@ -20,7 +21,7 @@ trap 'rm -rf "$out"' EXIT
 
 echo "| model | weights | threads | load | first audio | speed |"
 echo "|---|---|---|---|---|---|"
-for model in $(python3 -c "import json,sys; print(' '.join(m['name'] for m in json.load(open(sys.argv[1]))['models']))" "$here/../../models.json"); do
+for model in $(python3 -c "import json,sys; print(' '.join(m['name'] for m in json.load(open(sys.argv[1]))['models'] if m['language'] == 'en'))" "$here/../../models.json"); do
     for t in "${threads[@]}"; do
         "$bench" "$model" "$models_dir/$model" "$models_dir/$model/embeddings/alba.safetensors" \
             "$out/$model-$t" 1 "$t" < "$here/reply.txt" > "$out/$model-$t.jsonl"

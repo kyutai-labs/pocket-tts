@@ -126,8 +126,9 @@ object ModelInstall {
         val manager = ModelManager(context, modelName)
         manager.ensureModel(progress).also {
             // A model with no voice cannot speak, and the first read may come
-            // with no network; fetch the selected voice's embedding now.
-            val voice = VoiceCatalog.byId(Settings(context).voiceId) ?: VoiceCatalog.default()
+            // with no network; fetch the voice chosen for its language now.
+            val settings = Settings(context)
+            val voice = VoiceCatalog.byId(settings.voiceFor(manager.model.language)) ?: VoiceCatalog.default()
             manager.ensureEmbedding(voice)
         }
     }

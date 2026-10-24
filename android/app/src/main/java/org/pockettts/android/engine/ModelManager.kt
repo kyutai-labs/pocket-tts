@@ -211,6 +211,7 @@ class ModelManager(
         voice: VoiceCatalog.Voice,
         progress: ProgressListener? = null,
     ): File = withContext(Dispatchers.IO) {
+        val url = voice.url ?: throw IOException("${voice.displayName} has no public recording")
         voiceDir.mkdirs()
         val target = File(voiceDir, voice.fileName)
         if (isCached(voice, target)) return@withContext target
@@ -221,7 +222,7 @@ class ModelManager(
 
         val temp = File(voiceDir, "${voice.fileName}.part")
         try {
-            download(URL(voice.url), temp, progress)
+            download(URL(url), temp, progress)
             if (!temp.renameTo(target)) throw IOException("Could not save voice ${voice.id}")
         } finally {
             temp.delete()

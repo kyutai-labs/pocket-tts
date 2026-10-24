@@ -19,6 +19,14 @@ class ModelCatalog private constructor(val models: List<Model>) {
     data class Model(
         /** The config's name in upstream's `pocket_tts/config`. */
         val name: String,
+        /** What it reads, as a BCP-47 language tag: "en", "fr", ... */
+        val language: String,
+        /** Kyutai's temperature for it, from its config. */
+        val defaultTemperature: Float,
+        /** Kyutai's voice for its language when none has been chosen. */
+        val defaultVoice: String,
+        /** Kyutai's sample sentence in its language. */
+        val sampleText: String,
         val files: List<File>,
         /** Precomputed voice states, by voice id. */
         val voices: Map<String, File>,
@@ -31,6 +39,12 @@ class ModelCatalog private constructor(val models: List<Model>) {
     }
 
     fun byName(name: String): Model? = models.firstOrNull { it.name == name }
+
+    /** The languages on offer, English first, in the catalog's order. */
+    val languages: List<String> get() = models.map { it.language }.distinct()
+
+    /** [language]'s models, largest first. */
+    fun modelsFor(language: String): List<Model> = models.filter { it.language == language }
 
     companion object {
         const val ASSET = "models.json"
@@ -54,6 +68,10 @@ class ModelCatalog private constructor(val models: List<Model>) {
                     val voices = model.getJSONObject("voices")
                     Model(
                         name = model.getString("name"),
+                        language = model.getString("language"),
+                        defaultTemperature = model.getDouble("default_temperature").toFloat(),
+                        defaultVoice = model.getString("default_voice"),
+                        sampleText = model.getString("sample_text"),
                         files = (0 until files.length()).map { j ->
                             val file = files.getJSONObject(j)
                             File(

@@ -210,16 +210,17 @@ class PocketTts private constructor(
         private val loadLock = Mutex()
 
         /**
-         * Returns the shared engine for the selected model, loading it if
+         * Returns the shared engine for [wanted], the selected model unless a
+         * request in another language asks for another, loading it if
          * necessary. Suspends for as long as the model takes to download on
          * first run. When another model has been selected since, the engine
          * for the old one is freed once its synthesis in progress is done.
          */
         suspend fun get(
             context: Context,
+            wanted: String = Settings(context).modelName,
             progress: ModelManager.ProgressListener? = null,
         ): PocketTts {
-            val wanted = Settings(context).modelName
             instance?.takeIf { it.modelName == wanted }?.let { return it }
             return loadLock.withLock {
                 instance?.takeIf { it.modelName == wanted } ?: run {

@@ -55,7 +55,35 @@ class ModelCatalogTest {
     fun `every model on offer has a name a person would choose by`() {
         // A model without one still shows, under its config name; this says
         // when the catalog gains a model the picker has no words for.
-        assertEquals(catalog.models.map { it.name }.toSet(), org.pockettts.android.ui.ModelNames.known)
+        val unnamed = catalog.models.map { it.name }
+            .filterNot { org.pockettts.android.ui.ModelNames.hasWords(context, it) }
+        assertTrue("no words for $unnamed", unnamed.isEmpty())
+    }
+
+    @Test
+    fun `english comes first and every language has a model and a native voice`() {
+        assertEquals(listOf("en", "fr", "de", "es", "it", "pt", "nl"), catalog.languages)
+        for (language in catalog.languages) {
+            val models = catalog.modelsFor(language)
+            assertTrue(language, models.isNotEmpty())
+            // The picker and the system engine both start a language on
+            // Kyutai's voice for it, so the app must know that voice.
+            val voice = VoiceCatalog.byId(models.first().defaultVoice)
+            assertNotNull("${models.first().defaultVoice} is not in the voice catalog", voice)
+            assertTrue(models.all { it.sampleText.isNotBlank() && it.defaultTemperature in 0.1f..1.0f })
+        }
+        assertEquals("estelle", catalog.modelsFor("fr").first().defaultVoice)
+        assertEquals("alba", catalog.modelsFor("en").first().defaultVoice)
+    }
+
+    @Test
+    fun `every voice the catalog knows is one the models have`() {
+        // The reverse of the test above: a voice the app lists that a model
+        // lacks fails the moment it is chosen; one the models have that the
+        // app does not list is a voice nobody can choose.
+        for (model in catalog.models) {
+            assertEquals(model.name, model.voices.keys, VoiceCatalog.voices.map { it.id }.toSet())
+        }
     }
 
     @Test

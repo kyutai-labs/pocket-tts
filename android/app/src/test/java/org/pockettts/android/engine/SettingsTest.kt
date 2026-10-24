@@ -63,4 +63,77 @@ class SettingsTest {
         settings.speed = 0f
         assertEquals(Settings.MIN_SPEED, settings.speed, 0f)
     }
+
+    @Test
+    fun `temperature follows the model until it is set, and again once reset`() {
+        assertEquals(null, settings.temperatureOverride)
+        assertEquals(0.3f, settings.temperatureFor(Settings.DEFAULT_MODEL), 0f)
+        assertEquals(0.3f, settings.temperatureFor("french"), 0f)
+
+        settings.temperatureOverride = 0.45f
+        assertEquals(0.45f, settings.temperatureFor(Settings.DEFAULT_MODEL), 0f)
+        assertEquals(0.45f, settings.temperatureFor("french"), 0f)
+
+        settings.temperatureOverride = 9f
+        assertEquals(Settings.MAX_TEMPERATURE, settings.temperatureOverride!!, 0f)
+
+        settings.temperatureOverride = null
+        assertEquals(0.3f, settings.temperatureFor(Settings.DEFAULT_MODEL), 0f)
+    }
+
+    @Test
+    fun `a stored 0_3 from before per-model defaults becomes the default, once`() {
+        val prefs = ApplicationProvider.getApplicationContext<Context>()
+            .getSharedPreferences("pocket-tts", Context.MODE_PRIVATE)
+        prefs.edit().putFloat("temperature", 0.3f).commit()
+        assertEquals(null, settings.temperatureOverride)
+
+        // After the migration, 0.3 set on purpose stays set.
+        settings.temperatureOverride = 0.3f
+        assertEquals(0.3f, settings.temperatureOverride!!, 0f)
+    }
+
+    @Test
+    fun `a value chosen before per-model defaults is kept`() {
+        val prefs = ApplicationProvider.getApplicationContext<Context>()
+            .getSharedPreferences("pocket-tts", Context.MODE_PRIVATE)
+        prefs.edit().putFloat("temperature", 0.6f).commit()
+        assertEquals(0.6f, settings.temperatureOverride!!, 0f)
+    }
+
+    @Test
+    fun `each language keeps its own voice, starting on Kyutai's`() {
+        assertEquals("en", settings.readingLanguage)
+        assertEquals("alba", settings.voiceId)
+        assertEquals("estelle", settings.voiceFor("fr"))
+        assertEquals("juergen", settings.voiceFor("de"))
+
+        settings.voiceId = "vera"
+        settings.modelName = "french"
+        assertEquals("fr", settings.readingLanguage)
+        assertEquals("estelle", settings.voiceId)
+        settings.voiceId = "alba"
+
+        settings.modelName = "english_7m_2026-10"
+        assertEquals("vera", settings.voiceId)
+        assertEquals("alba", settings.voiceFor("fr"))
+    }
+
+    @Test
+    fun `english keeps the voice stored before there were languages`() {
+        val prefs = ApplicationProvider.getApplicationContext<Context>()
+            .getSharedPreferences("pocket-tts", Context.MODE_PRIVATE)
+        prefs.edit().putString("voice", "marius").commit()
+        assertEquals("marius", settings.voiceFor("en"))
+    }
+
+    @Test
+    fun `the selected model reads its language, downloaded or not, and others need a download`() {
+        assertEquals(Settings.DEFAULT_MODEL, settings.modelFor("en"))
+        // Nothing is downloaded in a test.
+        assertEquals(null, settings.modelFor("fr"))
+        settings.modelName = "french"
+        assertEquals("french", settings.modelFor("fr"))
+        assertEquals(null, settings.modelFor("en"))
+    }
 }

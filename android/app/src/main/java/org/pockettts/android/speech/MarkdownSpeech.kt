@@ -27,6 +27,11 @@ object MarkdownSpeech {
         val codeBlockPlaceholder: String = "",
         /** URLs are unlistenable. Spoken in place of one; empty means drop it. */
         val linkPlaceholder: String = "",
+        /**
+         * The language being read, a BCP-47 tag: what this adds of its own (a
+         * table's size) is said in it.
+         */
+        val language: String = "en",
     )
 
     private val HTML_COMMENT = Regex("""<!--.*?-->""", RegexOption.DOT_MATCHES_ALL)
@@ -245,7 +250,7 @@ object MarkdownSpeech {
                         end++
                     }
                     val headerTo = sourceEndOf(index + 1)
-                    val spoken = speakTable(header, rows.map { it.value })
+                    val spoken = speakTable(header, rows.map { it.value }, options.language)
                     for ((text, rowLine) in spoken.zip(listOf(-1) + rows.map { it.index })) {
                         when {
                             text == null -> {}
@@ -328,13 +333,18 @@ object MarkdownSpeech {
      * follows per row, null for a row with nothing in it, so each stays
      * aligned with its source line.
      */
-    internal fun speakTable(header: List<String>, rows: List<List<String>>): List<String?> {
+    internal fun speakTable(
+        header: List<String>,
+        rows: List<List<String>>,
+        language: String = "en",
+    ): List<String?> {
+        val words = Phrases.of(language)
         val columns = maxOf(header.size, rows.maxOfOrNull { it.size } ?: 0)
-        val count = if (rows.size == 1) "1 row" else "${rows.size} rows"
+        val count = if (rows.size == 1) "1 ${words.row}" else "${rows.size} ${words.rows}"
         val names = header.filter { it.isNotBlank() }
         if (columns > MAX_READ_COLUMNS) {
-            val headed = if (names.isEmpty()) "" else ", headed ${spokenList(names)}"
-            return listOf("Table not read: $count, $columns columns$headed.")
+            val headed = if (names.isEmpty()) "" else ", ${words.headed} ${spokenList(names, words.and)}"
+            return listOf("${words.notRead}: $count, $columns ${words.columns}$headed.")
         }
         val spoken = rows.map { cells ->
             val label = cells.getOrElse(0) { "" }
@@ -354,12 +364,55 @@ object MarkdownSpeech {
                 else -> "$label: ${pairs.joinToString("; ")}"
             }?.ensureSentenceEnd()
         }
-        return listOf("Table, $count.") + spoken
+        return listOf("${words.table}, $count.") + spoken
     }
 
-    /** "a", "a and b", "a, b and c". */
-    private fun spokenList(items: List<String>): String =
-        if (items.size <= 1) items.joinToString() else items.dropLast(1).joinToString(", ") + " and " + items.last()
+    /** "a", "a and b", "a, b and c", with [and] in the reading's language. */
+    private fun spokenList(items: List<String>, and: String): String =
+        if (items.size <= 1) items.joinToString() else items.dropLast(1).joinToString(", ") + " $and " + items.last()
+
+    /**
+     * The words a reading adds of its own, in each language a model reads. The
+     * same table is in pocket-speak's `text.rs`, for the desk.
+     */
+    private class Phrases(
+        val table: String,
+        val notRead: String,
+        val row: String,
+        val rows: String,
+        val columns: String,
+        val headed: String,
+        val and: String,
+    ) {
+        companion object {
+            private val ENGLISH = Phrases("Table", "Table not read", "row", "rows", "columns", "headed", "and")
+
+            private val OTHERS = mapOf(
+                "fr" to Phrases(
+                    "Tableau", "Tableau non lu", "ligne", "lignes", "colonnes", "avec les en-têtes", "et",
+                ),
+                "de" to Phrases(
+                    "Tabelle", "Tabelle nicht vorgelesen", "Zeile", "Zeilen", "Spalten",
+                    "mit den Überschriften", "und",
+                ),
+                "es" to Phrases(
+                    "Tabla", "Tabla no leída", "fila", "filas", "columnas", "con los encabezados", "y",
+                ),
+                "it" to Phrases(
+                    "Tabella", "Tabella non letta", "riga", "righe", "colonne", "con le intestazioni", "e",
+                ),
+                "pt" to Phrases(
+                    "Tabela", "Tabela não lida", "linha", "linhas", "colunas", "com os cabeçalhos", "e",
+                ),
+                "nl" to Phrases(
+                    "Tabel", "Tabel niet voorgelezen", "rij", "rijen", "kolommen", "met de kopjes", "en",
+                ),
+            )
+
+            fun of(language: String): Phrases =
+                OTHERS[language.substringBefore('-').substringBefore('_').lowercase()] ?: ENGLISH
+        }
+    }
 
     /** Collects blocks with the source range each was made from. */
     private class Blocks {

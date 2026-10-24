@@ -52,8 +52,16 @@ const PARAGRAPH_PAUSE_SECONDS: f32 = 0.45;
 /// three, and nothing with a three-word sentence before the end lost anything.
 const SHORT_SENTENCE_WORDS: usize = 2;
 
-/// Markdown in, paragraphs of plain prose out, separated by blank lines.
+/// Markdown in, paragraphs of plain prose out, separated by blank lines, with
+/// anything this adds of its own (a table's size) in English.
 pub fn speakable(markdown: &str) -> String {
+    speakable_in(markdown, "en")
+}
+
+/// [`speakable`], with what it adds in `language`, a BCP-47 tag of one of the
+/// models' languages. Any other reads as English.
+pub fn speakable_in(markdown: &str, language: &str) -> String {
+    let phrases = Phrases::for_language(language);
     let mut paragraphs: Vec<String> = Vec::new();
     let mut current: Vec<String> = Vec::new();
     let mut fence: Option<String> = None;
@@ -103,7 +111,7 @@ pub fn speakable(markdown: &str) -> String {
                 rows.push(cells(row));
                 index += 1;
             }
-            paragraphs.extend(speak_table(&header, &rows));
+            paragraphs.extend(speak_table(&header, &rows, phrases));
             continue;
         }
         if line.starts_with('|') || is_rule(line) {
@@ -128,6 +136,113 @@ pub fn speakable(markdown: &str) -> String {
     }
     flush(&mut current, &mut paragraphs);
     paragraphs.join("\n\n")
+}
+
+/// The words a reading adds of its own, in one language. The same table is in
+/// `MarkdownSpeech.kt`.
+struct Phrases {
+    table: &'static str,
+    not_read: &'static str,
+    row: &'static str,
+    rows: &'static str,
+    columns: &'static str,
+    headed: &'static str,
+    and: &'static str,
+}
+
+impl Phrases {
+    const ENGLISH: Phrases = Phrases {
+        table: "Table",
+        not_read: "Table not read",
+        row: "row",
+        rows: "rows",
+        columns: "columns",
+        headed: "headed",
+        and: "and",
+    };
+
+    fn for_language(language: &str) -> &'static Phrases {
+        const OTHERS: &[(&str, Phrases)] = &[
+            (
+                "fr",
+                Phrases {
+                    table: "Tableau",
+                    not_read: "Tableau non lu",
+                    row: "ligne",
+                    rows: "lignes",
+                    columns: "colonnes",
+                    headed: "avec les en-têtes",
+                    and: "et",
+                },
+            ),
+            (
+                "de",
+                Phrases {
+                    table: "Tabelle",
+                    not_read: "Tabelle nicht vorgelesen",
+                    row: "Zeile",
+                    rows: "Zeilen",
+                    columns: "Spalten",
+                    headed: "mit den Überschriften",
+                    and: "und",
+                },
+            ),
+            (
+                "es",
+                Phrases {
+                    table: "Tabla",
+                    not_read: "Tabla no leída",
+                    row: "fila",
+                    rows: "filas",
+                    columns: "columnas",
+                    headed: "con los encabezados",
+                    and: "y",
+                },
+            ),
+            (
+                "it",
+                Phrases {
+                    table: "Tabella",
+                    not_read: "Tabella non letta",
+                    row: "riga",
+                    rows: "righe",
+                    columns: "colonne",
+                    headed: "con le intestazioni",
+                    and: "e",
+                },
+            ),
+            (
+                "pt",
+                Phrases {
+                    table: "Tabela",
+                    not_read: "Tabela não lida",
+                    row: "linha",
+                    rows: "linhas",
+                    columns: "colunas",
+                    headed: "com os cabeçalhos",
+                    and: "e",
+                },
+            ),
+            (
+                "nl",
+                Phrases {
+                    table: "Tabel",
+                    not_read: "Tabel niet voorgelezen",
+                    row: "rij",
+                    rows: "rijen",
+                    columns: "kolommen",
+                    headed: "met de kopjes",
+                    and: "en",
+                },
+            ),
+        ];
+        let primary = language.split(['-', '_']).next().unwrap_or("");
+        OTHERS
+            .iter()
+            .find(|(tag, _)| tag.eq_ignore_ascii_case(primary))
+            .map(|(_, phrases)| phrases)
+            .unwrap_or(&Self::ENGLISH)
+    }
 }
 
 /// The widest table read row by row, as in the app: each row is read with its
@@ -163,7 +278,7 @@ fn cells(line: &str) -> Vec<String> {
 /// each row as its first cell followed by each other cell under its column's
 /// name, "alpha: before, one; after, two." Wider than [`MAX_READ_COLUMNS`], it
 /// is announced with its column names and not read.
-fn speak_table(header: &[String], rows: &[Vec<String>]) -> Vec<String> {
+fn speak_table(header: &[String], rows: &[Vec<String>], phrases: &Phrases) -> Vec<String> {
     let columns = rows
         .iter()
         .map(Vec::len)
@@ -171,9 +286,9 @@ fn speak_table(header: &[String], rows: &[Vec<String>]) -> Vec<String> {
         .max()
         .unwrap_or(0);
     let count = if rows.len() == 1 {
-        "1 row".to_string()
+        format!("1 {}", phrases.row)
     } else {
-        format!("{} rows", rows.len())
+        format!("{} {}", rows.len(), phrases.rows)
     };
     let names: Vec<&str> = header
         .iter()
@@ -184,13 +299,14 @@ fn speak_table(header: &[String], rows: &[Vec<String>]) -> Vec<String> {
         let headed = if names.is_empty() {
             String::new()
         } else {
-            format!(", headed {}", spoken_list(&names))
+            format!(", {} {}", phrases.headed, spoken_list(&names, phrases.and))
         };
         return vec![format!(
-            "Table not read: {count}, {columns} columns{headed}."
+            "{}: {count}, {columns} {}{headed}.",
+            phrases.not_read, phrases.columns
         )];
     }
-    let mut spoken = vec![format!("Table, {count}.")];
+    let mut spoken = vec![format!("{}, {count}.", phrases.table)];
     for row in rows {
         let label = row.first().map(String::as_str).unwrap_or("");
         let pairs: Vec<String> = (1..columns)
@@ -215,10 +331,10 @@ fn speak_table(header: &[String], rows: &[Vec<String>]) -> Vec<String> {
     spoken
 }
 
-/// "a", "a and b", "a, b and c".
-fn spoken_list(items: &[&str]) -> String {
+/// "a", "a and b", "a, b and c", with `and` in the reading's language.
+fn spoken_list(items: &[&str], and: &str) -> String {
     match items.split_last() {
-        Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
+        Some((last, rest)) if !rest.is_empty() => format!("{} {and} {last}", rest.join(", ")),
         _ => items.join(""),
     }
 }
@@ -588,6 +704,25 @@ mod tests {
             speakable(markdown),
             "Table not read: 1 row, 5 columns, headed a, b, c, d and e.\n\nAfter."
         );
+    }
+
+    /// A French model reads "Table" as a French word it has never seen next
+    /// to "rows"; the announcement is in the language being read.
+    #[test]
+    fn a_table_is_announced_in_the_reading_language() {
+        let two = "| stage | before |\n|---|---|\n| alpha | one |\n| bravo | two |";
+        assert_eq!(
+            speakable_in(two, "fr"),
+            "Tableau, 2 lignes.\n\nalpha: before, one.\n\nbravo: before, two."
+        );
+        assert!(speakable_in(two, "de-DE").starts_with("Tabelle, 2 Zeilen."));
+        let wide = "| a | b | c | d | e |\n|---|---|---|---|---|\n| 1 | 2 | 3 | 4 | 5 |";
+        assert_eq!(
+            speakable_in(wide, "es"),
+            "Tabla no leída: 1 fila, 5 columnas, con los encabezados a, b, c, d y e."
+        );
+        // Anything without its own words reads as English.
+        assert_eq!(speakable_in(wide, "ja"), speakable(wide));
     }
 
     #[test]

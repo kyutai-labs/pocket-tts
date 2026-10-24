@@ -51,10 +51,19 @@ class MainActivity : AppCompatActivity() {
         binding.timingsButton.setOnClickListener { showTimings() }
         binding.temperatureSlider.addOnChangeListener { _, value, fromUser ->
             if (fromUser) {
-                settings.temperature = value
-                binding.temperatureLabel.text =
-                    getString(R.string.temperature, settings.temperature)
+                // Back on the model's own value is the model's value again,
+                // not a value of one's own that happens to match it today.
+                val default = settings.defaultTemperatureFor(settings.modelName)
+                val onDefault = kotlin.math.abs(value - default) < binding.temperatureSlider.stepSize / 2
+                settings.temperatureOverride = if (onDefault) null else value
+                showTemperature()
             }
+        }
+        binding.temperatureResetButton.setOnClickListener {
+            settings.temperatureOverride = null
+            refresh()
+            // The button goes away under the finger; say where focus went.
+            binding.temperatureSlider.requestFocus()
         }
         binding.stepsSlider.addOnChangeListener { _, value, fromUser ->
             if (fromUser) {
@@ -201,12 +210,12 @@ class MainActivity : AppCompatActivity() {
         )
         binding.speedLabel.text = getString(R.string.speed, settings.speed)
         binding.temperatureSlider.value = GlassValues.snapToStep(
-            settings.temperature,
+            settings.temperatureFor(settings.modelName),
             binding.temperatureSlider.valueFrom,
             binding.temperatureSlider.valueTo,
             binding.temperatureSlider.stepSize,
         )
-        binding.temperatureLabel.text = getString(R.string.temperature, settings.temperature)
+        showTemperature()
         binding.stepsSlider.value = settings.decodeSteps.toFloat()
             .coerceIn(binding.stepsSlider.valueFrom, binding.stepsSlider.valueTo)
         binding.stepsLabel.text = getString(R.string.decode_steps, settings.decodeSteps)
@@ -224,6 +233,21 @@ class MainActivity : AppCompatActivity() {
         val busy = ModelInstall.isRunning
         binding.downloadButton.isEnabled = !installed && !busy
         binding.installButton.isEnabled = !installed && !busy
+    }
+
+    /** The label says whose value it is; the reset is there only when it is ours. */
+    private fun showTemperature() {
+        val model = settings.modelName
+        val override = settings.temperatureOverride
+        val default = settings.defaultTemperatureFor(model)
+        binding.temperatureLabel.text = if (override == null) {
+            getString(R.string.temperature_default, default)
+        } else {
+            getString(R.string.temperature, override)
+        }
+        binding.temperatureResetButton.visibility =
+            if (override == null) android.view.View.GONE else android.view.View.VISIBLE
+        binding.temperatureResetButton.text = getString(R.string.temperature_reset, default)
     }
 
     /**
@@ -338,9 +362,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** "Voice model: Best quality", for the model reads are made with. */
+    /** "Voice model: English, Best quality", for the model reads are made with. */
     private fun modelLine(manager: ModelManager): String =
-        getString(R.string.model_in_use, ModelNames.title(this, manager.modelName))
+        getString(R.string.model_in_use, ModelNames.full(this, manager.modelName))
 
     private companion object {
         /** Enough of the report to recognise the failure without a wall of text. */

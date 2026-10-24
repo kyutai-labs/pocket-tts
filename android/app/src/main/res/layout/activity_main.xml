@@ -97,6 +97,14 @@
                 android:valueFrom="0.1"
                 android:valueTo="1.0" />
 
+            <!-- Only while the slider holds a value of the user's own. -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/temperatureResetButton"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:visibility="gone" />
+
             <TextView
                 android:id="@+id/stepsLabel"
                 android:layout_width="match_parent"

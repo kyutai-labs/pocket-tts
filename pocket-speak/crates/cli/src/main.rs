@@ -21,13 +21,14 @@ usage: pocket-speak [options] < text
 
 Reads text on stdin and plays it. With --out, writes a WAV instead.
 `install` fetches a model and its voices (all of them unless --voice is
-given); `models` lists the models on offer.
+given); `models` lists the models on offer and their languages.
 
   --out PATH          write a 16-bit 24 kHz WAV instead of playing
   --play              play as well, when --out is given
-  --model NAME        model (default: english_2026-10)
+  --model NAME        model, which sets the language (default: english_2026-10;
+                      french, german, spanish, italian, portuguese, dutch)
   --model-dir DIR     its directory (default: $POCKET_TTS_MODEL_DIR, else the cache)
-  --voice NAME|PATH   voice (default: alba)
+  --voice NAME|PATH   voice (default: the model's, alba for English)
   --chunking MODE     sentence | packed | packed-raw (default: packed)
   --plain             do not strip Markdown
   --seed N            reproducible sampling
@@ -41,7 +42,8 @@ struct Options {
     play: bool,
     model: String,
     model_dir: Option<PathBuf>,
-    voice: String,
+    /// None: the model's default voice.
+    voice: Option<String>,
     chunking: Chunking,
     plain: bool,
     seed: Option<u64>,
@@ -72,7 +74,7 @@ fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
         play: false,
         model: DEFAULT_MODEL.to_string(),
         model_dir: None,
-        voice: "alba".to_string(),
+        voice: None,
         chunking: Chunking::PACKED_DEFAULT,
         plain: false,
         seed: None,
@@ -88,7 +90,7 @@ fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
             "--play" => options.play = true,
             "--model" => options.model = value("--model")?,
             "--model-dir" => options.model_dir = Some(PathBuf::from(value("--model-dir")?)),
-            "--voice" => options.voice = value("--voice")?,
+            "--voice" => options.voice = Some(value("--voice")?),
             "--chunking" => {
                 options.chunking = match value("--chunking")?.as_str() {
                     "sentence" => Chunking::Sentence,
@@ -191,10 +193,12 @@ fn run(options: Options) -> Result<(), String> {
     std::io::stdin()
         .read_to_string(&mut input)
         .map_err(|e| format!("reading stdin: {e}"))?;
+    let model = pocket_tts_engine::models::find(&options.model)
+        .ok_or_else(|| install::unknown_model(&options.model))?;
     let speakable = if options.plain {
         input
     } else {
-        text::speakable(&input)
+        text::speakable_in(&input, &model.language)
     };
     let chunks = text::chunk(&speakable, options.chunking);
     if chunks.is_empty() {
@@ -205,9 +209,6 @@ fn run(options: Options) -> Result<(), String> {
         .model_dir
         .clone()
         .unwrap_or_else(|| default_model_dir(&options.model));
-    if pocket_tts_engine::models::find(&options.model).is_none() {
-        return Err(install::unknown_model(&options.model));
-    }
     let load = LoadOptions {
         threads: options.threads,
         quantize: options.quantize,
@@ -232,14 +233,14 @@ fn run(options: Options) -> Result<(), String> {
             options.model, options.threads
         );
     }
-    let voice_path =
-        if options.voice.contains(['/', '\\']) || options.voice.ends_with(".safetensors") {
-            PathBuf::from(&options.voice)
-        } else {
-            model_dir
-                .join("embeddings")
-                .join(format!("{}.safetensors", options.voice))
-        };
+    let voice = options.voice.as_deref().unwrap_or(&model.default_voice);
+    let voice_path = if voice.contains(['/', '\\']) || voice.ends_with(".safetensors") {
+        PathBuf::from(voice)
+    } else {
+        model_dir
+            .join("embeddings")
+            .join(format!("{voice}.safetensors"))
+    };
     let voice = engine.load_voice(&voice_path).map_err(|e| e.to_string())?;
     let sample_rate = engine.sample_rate();
 

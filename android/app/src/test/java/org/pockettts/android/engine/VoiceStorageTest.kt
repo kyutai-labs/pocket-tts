@@ -147,8 +147,13 @@ class VoiceStorageTest {
     fun `every stock voice carries the size it ships as`() {
         // Read from Hugging Face rather than guessed. A zero here would make
         // the check above vacuous for that voice.
-        VoiceCatalog.voices.forEach {
+        VoiceCatalog.voices.filter { it.url != null }.forEach {
             assertTrue("${it.id} has no expected size", it.bytes > 0)
         }
+        // Only these have no public recording, and are previewed by reading.
+        assertEquals(
+            setOf("juergen", "lola", "giovanni", "rafael", "daan"),
+            VoiceCatalog.voices.filter { it.url == null }.map { it.id }.toSet(),
+        )
     }
 }

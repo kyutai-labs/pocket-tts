@@ -18,9 +18,19 @@ object VoiceCatalog {
     data class Voice(
         val id: String,
         val displayName: String,
-        /** BCP-47 tag, for the Android TTS voice list. */
+        /**
+         * The speaker's own language and accent, as a BCP-47 tag. Every voice
+         * reads every language the app offers; this is what it sounds like
+         * doing so, and which language it is native to.
+         */
         val language: String,
-        val path: String,
+        /**
+         * The reference recording, for the picker's preview; null where it is
+         * not public (Kyutai's recordings of the native voices of Italian,
+         * Spanish, German, Portuguese and Dutch need a Hugging Face login).
+         * Those are previewed by reading a sentence in them instead.
+         */
+        val path: String?,
         /**
          * The prompt's exact size on Hugging Face.
          *
@@ -36,7 +46,10 @@ object VoiceCatalog {
         // preview the picker plays, but the voice's state for the selected
         // model: ModelCatalog pins one per model.
     ) {
-        val url: String get() = BASE + path
+        val url: String? get() = path?.let { BASE + it }
+
+        /** The primary language subtag of [language]: "en", "fr", ... */
+        val nativeLanguage: String get() = language.substringBefore('-')
         /** Stable filename for the cached wav. */
         val fileName: String get() = "$id.wav"
     }
@@ -66,10 +79,18 @@ object VoiceCatalog {
         Voice("peter_yearsley", "Peter Yearsley", "en-US", "voice-zero/peter_yearsley.wav", 524448),
         Voice("stuart_bell", "Stuart Bell", "en-US", "voice-zero/stuart_bell.wav", 745776),
         Voice("vera", "Vera", "en-GB", "vctk/p229_023_enhanced.wav", 691416),
+        // Kyutai's voices for the other languages, each the default for its
+        // own (upstream's DEFAULT_VOICE_FOR_LANGUAGE, carried in models.json).
+        Voice("estelle", "Estelle", "fr", "unmute-prod-website/developpeuse-3.wav", 1282324),
+        Voice("juergen", "Jürgen", "de-DE", null, 0),
+        Voice("lola", "Lola", "es", null, 0),
+        Voice("giovanni", "Giovanni", "it", null, 0),
+        Voice("rafael", "Rafael", "pt", null, 0),
+        Voice("daan", "Daan", "nl", null, 0),
     )
 
+    /** English's default, and the fallback for a voice that is gone. */
     const val DEFAULT_VOICE_ID = "alba"
-
 
     fun byId(id: String?): Voice? = voices.firstOrNull { it.id == id }
 

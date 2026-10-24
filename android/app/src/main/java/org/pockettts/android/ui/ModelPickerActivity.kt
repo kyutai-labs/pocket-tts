@@ -26,6 +26,7 @@ import org.pockettts.android.R
 import org.pockettts.android.databinding.ActivityModelPickerBinding
 import org.pockettts.android.databinding.ItemModelBinding
 import org.pockettts.android.databinding.ItemModelHeaderBinding
+import org.pockettts.android.databinding.ItemModelLanguageBinding
 import org.pockettts.android.debug.Metrics
 import org.pockettts.android.engine.ModelCatalog
 import org.pockettts.android.engine.ModelInstall
@@ -35,9 +36,12 @@ import org.pockettts.android.engine.Settings
 import org.pockettts.android.player.Reader
 
 /**
- * Chooses the model reads are made with: Kyutai's full English model, or one
- * of the small ones, which start sooner, take less space and keep up on older
- * phones.
+ * Chooses the model reads are made with, and so the language: Kyutai's full
+ * English model or one of the small ones, which start sooner, take less space
+ * and keep up on older phones, or the model of another language.
+ *
+ * Every downloaded model is also used by the system engine for its own
+ * language; the one chosen here is the one the app's own reads use.
  *
  * A model is downloaded only when asked, with its size shown first and a
  * warning on a metered connection, and is put to use once the download is
@@ -119,7 +123,7 @@ class ModelPickerActivity : AppCompatActivity() {
         settings.modelName = model
         refresh()
         // A toast, so TalkBack says it too.
-        val title = ModelNames.title(this, model)
+        val title = ModelNames.full(this, model)
         Toast.makeText(this, getString(R.string.model_now_in_use, title), Toast.LENGTH_SHORT).show()
         // Loaded now, so the next read does not wait for it. Frees the old one.
         val app = applicationContext
@@ -127,7 +131,7 @@ class ModelPickerActivity : AppCompatActivity() {
     }
 
     private fun confirmDownload(model: String) {
-        val title = ModelNames.title(this, model)
+        val title = ModelNames.full(this, model)
         val megabytes = megabytes(model)
         val metered = (getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager)
             .isActiveNetworkMetered
@@ -147,7 +151,7 @@ class ModelPickerActivity : AppCompatActivity() {
     }
 
     private fun confirmDelete(model: String) {
-        val title = ModelNames.title(this, model)
+        val title = ModelNames.full(this, model)
         MaterialAlertDialogBuilder(this)
             .setTitle(getString(R.string.model_delete_title, title))
             .setMessage(getString(R.string.model_delete_body, megabytes(model)))
@@ -163,10 +167,17 @@ class ModelPickerActivity : AppCompatActivity() {
             .show()
     }
 
+    /** In the model's own language: Kyutai's sample sentence for it. */
     private fun hear() {
+        val model = ModelCatalog.get(this).byName(settings.modelName)
+        val text = if (model == null || model.language == Settings.ENGLISH) {
+            getString(R.string.model_sample_text)
+        } else {
+            model.sampleText
+        }
         Reader.speak(
             this,
-            getString(R.string.model_sample_text),
+            text,
             treatAsMarkdown = false,
             source = Reader.Source.ModelPicker,
         )
@@ -176,7 +187,7 @@ class ModelPickerActivity : AppCompatActivity() {
         ModelCatalog.get(this).byName(model)?.downloadMegabytes ?: 0
 
     private class ModelAdapter(
-        private val models: List<ModelCatalog.Model>,
+        models: List<ModelCatalog.Model>,
         private val onChoose: (String) -> Unit,
         private val onDelete: (String) -> Unit,
         private val onHear: () -> Unit,
@@ -187,26 +198,46 @@ class ModelPickerActivity : AppCompatActivity() {
         var install: ModelInstall.State = ModelInstall.State.Idle
         var measured: Float = 0f
 
+        /** The list as shown: the explanation, then each language's heading and models. */
+        private sealed interface Item {
+            data object Intro : Item
+            data class Language(val tag: String) : Item
+            data class Row(val model: ModelCatalog.Model) : Item
+        }
+
+        private val items: List<Item> = listOf(Item.Intro) +
+            models.groupBy { it.language }.flatMap { (tag, inLanguage) ->
+                listOf(Item.Language(tag)) + inLanguage.map { Item.Row(it) }
+            }
+
         class Header(val binding: ItemModelHeaderBinding) : RecyclerView.ViewHolder(binding.root)
+        class LanguageHeading(val binding: ItemModelLanguageBinding) : RecyclerView.ViewHolder(binding.root)
         class Row(val binding: ItemModelBinding) : RecyclerView.ViewHolder(binding.root)
 
-        override fun getItemCount() = models.size + 1
+        override fun getItemCount() = items.size
 
-        override fun getItemViewType(position: Int) = if (position == 0) HEADER else ROW
+        override fun getItemViewType(position: Int) = when (items[position]) {
+            Item.Intro -> HEADER
+            is Item.Language -> LANGUAGE
+            is Item.Row -> ROW
+        }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
             val inflater = LayoutInflater.from(parent.context)
-            return if (viewType == HEADER) {
-                Header(ItemModelHeaderBinding.inflate(inflater, parent, false))
-            } else {
-                Row(ItemModelBinding.inflate(inflater, parent, false))
+            return when (viewType) {
+                HEADER -> Header(ItemModelHeaderBinding.inflate(inflater, parent, false))
+                LANGUAGE -> LanguageHeading(ItemModelLanguageBinding.inflate(inflater, parent, false)).also {
+                    ViewCompat.setAccessibilityHeading(it.binding.root, true)
+                }
+                else -> Row(ItemModelBinding.inflate(inflater, parent, false))
             }
         }
 
         override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-            when (holder) {
-                is Header -> bindHeader(holder.binding)
-                is Row -> bindRow(holder.binding, models[position - 1])
+            when (val item = items[position]) {
+                Item.Intro -> bindHeader((holder as Header).binding)
+                is Item.Language -> (holder as LanguageHeading).binding.language.text = ModelNames.language(item.tag)
+                is Item.Row -> bindRow((holder as Row).binding, item.model)
             }
         }
 
@@ -280,7 +311,8 @@ class ModelPickerActivity : AppCompatActivity() {
 
         private companion object {
             const val HEADER = 0
-            const val ROW = 1
+            const val LANGUAGE = 1
+            const val ROW = 2
         }
     }
 }

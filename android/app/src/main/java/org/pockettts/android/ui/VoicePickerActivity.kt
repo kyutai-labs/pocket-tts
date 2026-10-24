@@ -50,6 +50,7 @@ class VoicePickerActivity : AppCompatActivity() {
 
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        supportActionBar?.subtitle = getString(R.string.voices_reading_in, ModelNames.language(settings.readingLanguage))
         binding.toolbar.setNavigationOnClickListener { finish() }
         Insets.apply(top = binding.appBar, bottom = binding.root)
 
@@ -108,14 +109,34 @@ class VoicePickerActivity : AppCompatActivity() {
 
     private data class Entry(val id: String, val name: String, val detail: String)
 
+    /**
+     * Every voice reads the reading language; its native speakers come first,
+     * Kyutai's own voice for it at the top. Each says its accent, because Alba
+     * reading French is a British speaker reading French.
+     */
     private fun entries(): List<Entry> {
-        val stock = VoiceCatalog.voices.map { voice ->
-            Entry(
-                voice.id,
-                voice.displayName,
-                Locale.forLanguageTag(voice.language).displayName,
-            )
-        }
+        val language = settings.readingLanguage
+        val default = settings.defaultVoiceFor(language)
+        val stock = VoiceCatalog.voices
+            .sortedBy { voice ->
+                when {
+                    voice.id == default -> 0
+                    voice.nativeLanguage == language -> 1
+                    else -> 2
+                }
+            }
+            .map { voice ->
+                val accent = Locale.forLanguageTag(voice.language).displayName
+                Entry(
+                    voice.id,
+                    voice.displayName,
+                    if (voice.id == default) {
+                        getString(R.string.voice_default_for, accent, ModelNames.language(language))
+                    } else {
+                        accent
+                    },
+                )
+            }
         // Imported voices are not offered while the engine cannot clone
         // (PocketTts.loadVoiceFile); their files are kept for when it can.
         return stock

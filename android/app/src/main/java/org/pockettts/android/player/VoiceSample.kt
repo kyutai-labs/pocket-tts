@@ -18,9 +18,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.pockettts.android.R
+import org.pockettts.android.engine.EngineTurn
+import org.pockettts.android.engine.ModelCatalog
 import org.pockettts.android.engine.ModelManager
+import org.pockettts.android.engine.NativeEngine
+import org.pockettts.android.engine.PocketTts
+import org.pockettts.android.engine.Settings
 import org.pockettts.android.engine.VoiceCatalog
 import org.pockettts.android.engine.WavReader
+import org.pockettts.android.ui.ModelNames
 import java.io.File
 import java.io.IOException
 import kotlin.coroutines.cancellation.CancellationException
@@ -42,6 +49,14 @@ import kotlin.math.min
  * The trade-off is honest to state: this is the raw prompt, so it carries the
  * recording's own room and pacing. The synthesised voice tracks its timbre
  * closely, which is the thing being chosen, but not its background.
+ *
+ * Two cases have no recording to play. Reading in another language than
+ * English, the recording would be the speaker in English (or in their own
+ * language) when the question is how they sound reading this one. And Kyutai's
+ * recordings of the native Italian, Spanish, German, Portuguese and Dutch
+ * voices are behind a login. In both the sample is the voice reading the
+ * language's sample sentence on this phone, which needs that model
+ * downloaded, and says so when it is not.
  */
 object VoiceSample {
 
@@ -80,6 +95,10 @@ object VoiceSample {
 
     @Volatile
     private var player: StreamingPlayer? = null
+
+    /** The spoken sample's generation, so stopping it stops the engine too. */
+    @Volatile
+    private var token: NativeEngine.CancelToken? = null
 
     /** The voice whose sample is loading or playing, if any. */
     val activeVoiceId: String?
@@ -120,7 +139,14 @@ object VoiceSample {
         scope.launch { control.withLock { stopLocked() } }
     }
 
+    /** Whether [voiceId]'s sample is synthesised rather than its recording; see the class doc. */
+    internal fun isSpoken(context: Context, voiceId: String): Boolean {
+        val voice = VoiceCatalog.byId(voiceId) ?: return false
+        return voice.url == null || Settings(context).readingLanguage != Settings.ENGLISH
+    }
+
     private suspend fun run(context: Context, voiceId: String) {
+        if (isSpoken(context, voiceId)) return speak(context, voiceId)
         var localPlayer: StreamingPlayer? = null
         try {
             _state.value = State.Loading(voiceId)
@@ -152,6 +178,62 @@ object VoiceSample {
         }
     }
 
+    /** [voiceId] reading the reading language's sample sentence. */
+    private suspend fun speak(context: Context, voiceId: String) {
+        var localPlayer: StreamingPlayer? = null
+        val cancel = NativeEngine.CancelToken()
+        token = cancel
+        try {
+            _state.value = State.Loading(voiceId)
+            val settings = Settings(context)
+            val manager = ModelManager(context)
+            if (!manager.isModelInstalled) {
+                val language = ModelNames.language(manager.model.language)
+                throw IOException(context.getString(R.string.sample_needs_model, language))
+            }
+            val engine = PocketTts.get(context)
+            val voice = engine.loadVoice(VoiceCatalog.byId(voiceId) ?: VoiceCatalog.default())
+            val text = ModelCatalog.get(context).byName(engine.modelName)?.sampleText
+                ?: throw IOException("No sample sentence for ${engine.modelName}")
+            coroutineContext.ensureActive()
+
+            localPlayer = StreamingPlayer(engine.sampleRate).also {
+                player = it
+                it.start()
+            }
+            val sink = localPlayer
+            // A read asked for while this one is composing wins the engine.
+            val turn = EngineTurn.take()
+            engine.synthesize(
+                text,
+                voice,
+                speed = 1f,
+                numSteps = settings.decodeSteps,
+                temperature = settings.temperatureFor(engine.modelName),
+                seed = settings.voiceSeed,
+                cancel = cancel,
+            ) { samples ->
+                if (EngineTurn.superseded(turn)) return@synthesize false
+                _state.value = State.Playing(voiceId)
+                sink.write(samples)
+            }
+            sink.drain()
+            _state.value = State.Idle
+        } catch (cancelled: CancellationException) {
+            _state.value = State.Idle
+            throw cancelled
+        } catch (error: Throwable) {
+            Log.w(TAG, "Spoken sample for $voiceId failed", error)
+            _state.value = State.Idle
+            _errors.tryEmit(error.message ?: error.javaClass.simpleName)
+        } finally {
+            localPlayer?.release()
+            if (player === localPlayer) player = null
+            if (token === cancel) token = null
+            cancel.close()
+        }
+    }
+
     private suspend fun resolve(context: Context, voiceId: String): File {
         val models = ModelManager(context)
         VoiceCatalog.byId(voiceId)?.let { return models.ensureVoice(it) }
@@ -165,6 +247,7 @@ object VoiceSample {
         // Stopping the player first unblocks a write parked on buffer space, so
         // the cancel below does not have to wait it out.
         player?.stop()
+        token?.cancel()
         job?.cancelAndJoin()
         job = null
         _state.value = State.Idle

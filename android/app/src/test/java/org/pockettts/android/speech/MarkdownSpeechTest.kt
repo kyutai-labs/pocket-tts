@@ -189,6 +189,20 @@ class MarkdownSpeechTest {
     }
 
     @Test
+    fun `a table is announced in the language being read, as the desk does`() {
+        // The same strings as pocket-speak's text.rs test of the same name.
+        val two = "| stage | before |\n|---|---|\n| alpha | one |\n| bravo | two |"
+        val french = MarkdownSpeech.toSpeakable(two, MarkdownSpeech.Options(language = "fr"))
+        assertEquals("Tableau, 2 lignes.\n\nalpha: before, one.\n\nbravo: before, two.", french)
+        val wide = "| a | b | c | d | e |\n|---|---|---|---|---|\n| 1 | 2 | 3 | 4 | 5 |"
+        assertEquals(
+            "Tabla no leída: 1 fila, 5 columnas, con los encabezados a, b, c, d y e.",
+            MarkdownSpeech.toSpeakable(wide, MarkdownSpeech.Options(language = "es")),
+        )
+        assertEquals(speak(wide), MarkdownSpeech.toSpeakable(wide, MarkdownSpeech.Options(language = "ja")))
+    }
+
+    @Test
     fun `a table needs no outer pipes, as in GitHub's Markdown`() {
         val markdown = "key | value\n--- | ---\nmodel | 7m"
         assertEquals("Table, 1 row.\n\nmodel: value, 7m.", speak(markdown))

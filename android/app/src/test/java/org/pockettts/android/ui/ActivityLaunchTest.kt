@@ -196,11 +196,23 @@ class ActivityLaunchTest {
             layOut(activity)
             val list = activity.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.modelList)
             val catalog = org.pockettts.android.engine.ModelCatalog.get(activity)
-            // The explanation, then one row per model.
-            assertEquals(catalog.models.size + 1, list.adapter?.itemCount)
-            val rows = (0 until list.childCount).map { list.getChildAt(it) }
-                .mapNotNull { it.findViewById<View>(R.id.row) }
+            // The explanation, then each language's heading and its models.
+            assertEquals(catalog.models.size + catalog.languages.size + 1, list.adapter?.itemCount)
+            // Each item bound on its own: eighteen do not fit on one screen.
+            @Suppress("UNCHECKED_CAST")
+            val adapter = list.adapter as androidx.recyclerview.widget.RecyclerView.Adapter<
+                androidx.recyclerview.widget.RecyclerView.ViewHolder,
+                >
+            val children = (0 until adapter.itemCount).map { position ->
+                val holder = adapter.onCreateViewHolder(list, adapter.getItemViewType(position))
+                adapter.onBindViewHolder(holder, position)
+                holder.itemView
+            }
+            val rows = children.mapNotNull { it.findViewById<View>(R.id.row) }
             assertEquals(catalog.models.size, rows.size)
+            val headings = children.mapNotNull { it.findViewById<android.widget.TextView>(R.id.language) }
+            assertEquals(catalog.languages.map { ModelNames.language(it) }, headings.map { it.text.toString() })
+            assertTrue(headings.all { androidx.core.view.ViewCompat.isAccessibilityHeading(it) })
             for ((row, model) in rows.zip(catalog.models)) {
                 val info = android.view.accessibility.AccessibilityNodeInfo.obtain()
                 row.onInitializeAccessibilityNodeInfo(info)

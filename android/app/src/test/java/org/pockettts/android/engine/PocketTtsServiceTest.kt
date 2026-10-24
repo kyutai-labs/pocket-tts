@@ -117,8 +117,64 @@ class PocketTtsServiceTest {
         )
         assertEquals(
             TextToSpeech.LANG_NOT_SUPPORTED,
-            service.onIsLanguageAvailable("fra", "FRA", ""),
+            service.onIsLanguageAvailable("jpn", "JPN", ""),
         )
+    }
+
+    @Test
+    fun `another language is missing data until its model is downloaded`() {
+        // Not "not supported": a caller can then say what is missing rather
+        // than read French with the English model.
+        assertEquals(TextToSpeech.LANG_MISSING_DATA, service.onIsLanguageAvailable("fra", "FRA", ""))
+        assertEquals(TextToSpeech.LANG_MISSING_DATA, service.onIsLanguageAvailable("ger", "", ""))
+
+        val settings = Settings(ApplicationProvider.getApplicationContext())
+        settings.modelName = "french"
+        try {
+            // The reading language is available: the app's first screen
+            // fetches its model, as it always has English's.
+            assertEquals(TextToSpeech.LANG_AVAILABLE, service.onIsLanguageAvailable("fra", "FRA", ""))
+            assertEquals(TextToSpeech.LANG_MISSING_DATA, service.onIsLanguageAvailable("eng", "GBR", ""))
+            assertEquals(arrayOf("fra", "", "").toList(), service.onGetLanguage().toList())
+        } finally {
+            settings.modelName = Settings.DEFAULT_MODEL
+        }
+    }
+
+    @Test
+    fun `each language has its own alias and voices`() {
+        assertEquals("selected", service.onGetDefaultVoiceNameFor("eng", "USA", ""))
+        assertEquals("selected-fr", service.onGetDefaultVoiceNameFor("fra", "", ""))
+        assertEquals("selected", service.onGetDefaultVoiceNameFor("jpn", "", ""))
+        assertEquals(TextToSpeech.SUCCESS, service.onIsValidVoiceName("selected-de"))
+        assertEquals(TextToSpeech.SUCCESS, service.onIsValidVoiceName("alba-fr"))
+        assertEquals(TextToSpeech.SUCCESS, service.onIsValidVoiceName("estelle"))
+        assertEquals(TextToSpeech.ERROR, service.onIsValidVoiceName("alba-ja"))
+
+        val names = service.onGetVoices().map { it.name }
+        assertTrue(names.containsAll(listOf("selected", "alba", "selected-fr", "selected-nl")))
+        // Only the reading language's voices one by one: nothing else is downloaded.
+        assertFalse("alba-fr" in names)
+    }
+
+    @Test
+    fun `a request is read in its language, with that language's voice`() {
+        val settings = Settings(ApplicationProvider.getApplicationContext())
+        fun reading(voice: String?, language: String) = service.readingFor(voice, language)
+
+        assertEquals("fr", reading("selected-fr", "fra").language)
+        assertEquals(settings.voiceFor("fr"), reading("selected-fr", "fra").voiceId)
+        assertEquals("estelle", reading("selected-fr", "fra").voiceId)
+        // A concrete voice is read in its own language.
+        assertEquals("fr", reading("alba-fr", "eng").language)
+        assertEquals("alba", reading("alba-fr", "eng").voiceId)
+        // The English alias with a French request: the request's language.
+        assertEquals("fr", reading("selected", "fra").language)
+        // A language with nothing to read it falls back to the reading language.
+        assertEquals("en", reading(null, "jpn").language)
+        assertEquals(Settings.DEFAULT_MODEL, reading(null, "jpn").model)
+        // Nothing downloaded for French, so no model to read it with.
+        assertEquals(null, reading("selected-fr", "fra").model)
     }
 
     @Test

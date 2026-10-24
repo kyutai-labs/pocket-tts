@@ -9,6 +9,7 @@ pocket-speak install                        # the default model and its voices
 echo "The build is green. One. Two. Three." | pocket-speak
 pocket-speak --out reply.wav < reply.md     # write a WAV instead of playing
 pocket-speak install --model english_7m_2026-10 && pocket-speak --model english_7m_2026-10 < reply.md
+pocket-speak install --model french --voice estelle && echo "Le build est vert." | pocket-speak --model french
 ```
 
 It reads Markdown on stdin and drops what should not be spoken (fenced code,
@@ -16,13 +17,14 @@ HTML, Markdown syntax), keeping link text and the words in inline code. Bare
 URLs are read as their host. A table is announced ("Table, 2 rows.") and read
 row by row under its column names ("alpha: before, one; after, two."); one
 wider than four columns is announced with its column names and not read. The
-app does the same.
+announcement is in the model's language ("Tableau, 2 lignes."). The app does
+the same.
 
 | option | |
 |---|---|
 | `--out PATH` | write a 16-bit 24 kHz WAV instead of playing; `--play` does both |
-| `--model NAME` | `english_2026-10` by default; `pocket-speak models` lists the others |
-| `--voice NAME\|PATH` | `alba` by default; `install` fetches all 27 unless given `--voice` |
+| `--model NAME` | `english_2026-10` by default; the model sets the language. `pocket-speak models` lists them |
+| `--voice NAME\|PATH` | the model's own by default: `alba` for English, Kyutai's native voice for each other language; `install` fetches all 27 unless given `--voice` |
 | `--chunking MODE` | `packed` (default), `sentence`, or `packed-raw` for measuring |
 | `--plain` | do not strip Markdown |
 | `--seed N` | reproducible sampling |
@@ -39,6 +41,13 @@ app does the same.
 | `english_18m_2026-10` | 112 MB | 10.6x | 45 ms |
 | `english_7m_2026-10` | 67 MB | 9.0x | 28 ms |
 | `english_2m_2026-10` | 47 MB | 16.3x | 10 ms |
+| `french`, `german`, `spanish`, `italian`, `portuguese`, `dutch` | 220 MB each | as `english_2026-10`, whose shape they share | |
+
+Each language's default voice is the one Kyutai picks for it: Estelle (French),
+Jürgen (German), Lola (Spanish), Giovanni (Italian), Rafael (Portuguese), Daan
+(Dutch). Every model has all 27 voices, so any voice reads any language, with
+its own accent. Every model reads at Kyutai's temperature for it, from its
+config (0.3 for all of them today).
 
 Kyutai's models, from
 [kyutai/pocket-tts-without-voice-cloning](https://huggingface.co/kyutai/pocket-tts-without-voice-cloning)
@@ -59,7 +68,11 @@ Pocket TTS is by [Kyutai](https://kyutai.org).
   which measures the engine without the app, on a phone over `adb` or on any
   Linux machine.
 - `tools/pin-models.py` writes `models.json`; `tools/fetch-models.py` fetches
-  from it without the CLI; `tools/bench/run.sh` measures every model.
+  from it without the CLI; `tools/bench/run.sh` measures the English models.
+- `tools/listen/check.py` has every model read its language's sample sentence
+  and Whisper transcribe it, and fails a model whose word error rate is over
+  its ceiling in `tools/listen/ceilings.json`. CI runs it on arm64 on every
+  change to the engine, and puts what Whisper heard in the run's summary.
 - `tools/tokdiff` checks the pure-Rust tokenizer against Google's.
 - `tools/utterances` measures where generations lose words, with Whisper as
   the judge.

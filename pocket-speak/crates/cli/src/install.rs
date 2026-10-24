@@ -50,10 +50,12 @@ pub fn list() -> String {
         .map(|model| {
             let bytes: u64 = model.files.iter().map(|file| file.size).sum();
             format!(
-                "{:<22} {:>4} MB  {} voices",
+                "{:<22} {}  {:>4} MB  {} voices, default {}",
                 model.name,
+                model.language,
                 bytes.div_ceil(1_000_000),
-                model.voices.len()
+                model.voices.len(),
+                model.default_voice
             )
         })
         .collect::<Vec<_>>()

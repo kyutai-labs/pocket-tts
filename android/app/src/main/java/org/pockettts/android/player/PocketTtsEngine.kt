@@ -46,7 +46,7 @@ class PocketTtsEngine(
             loaded,
             speed,
             settings.decodeSteps,
-            settings.temperature,
+            settings.temperatureFor(tts.modelName),
             settings.voiceSeed,
             onAudio = onAudio,
         )
@@ -103,6 +103,6 @@ class PocketTtsEngine(
         override suspend fun create(
             context: Context,
             progress: (Float) -> Unit,
-        ): SpeechEngine = PocketTtsEngine(context, PocketTts.get(context, progress))
+        ): SpeechEngine = PocketTtsEngine(context, PocketTts.get(context, progress = progress))
     }
 }

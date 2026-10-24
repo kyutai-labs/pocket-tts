@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A language's heading in the model list, marked a heading for TalkBack
+     in code (the attribute needs API 28), so its users can move between
+     languages rather than through every row. -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/language"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingHorizontal="20dp"
+    android:paddingTop="20dp"
+    android:paddingBottom="4dp"
+    android:textAppearance="?attr/textAppearanceTitleSmall"
+    android:textColor="?attr/colorPrimary" />

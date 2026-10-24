@@ -53,7 +53,7 @@ table - a voice is a few seconds of reference audio the model conditions on - so
 the stock voices and a wav you record yourself are the same kind of thing. The
 voice picker lists the catalogue from
 [`kyutai/tts-voices`](https://huggingface.co/kyutai/tts-voices) and can import a
-local wav. Each row plays a short sample, because twenty one names tell you
+local wav. Each row plays a short sample, because twenty seven names tell you
 nothing about which one you want.
 
 The sample is the voice's own reference audio rather than a synthesised
@@ -64,7 +64,26 @@ install before the model has ever been fetched, and the download it does
 is the same one selecting that voice would trigger later. The trade-off worth
 knowing: it is the raw prompt, so it carries the recording's own room and
 pacing. The synthesised voice tracks its timbre closely, which is the thing
-being chosen, but not its background.
+being chosen, but not its background. Where there is no recording to play - the
+app reading another language than English, or the five native voices whose
+recordings need a Hugging Face login - the sample is the voice reading that
+language's sample sentence on the phone instead.
+
+**Seven languages.** English, French, German, Spanish, Italian, Portuguese and
+Dutch, each read by Kyutai's model for it. The model chosen under **Choose
+language and model** is the language the app reads in: the share sheet, a
+selection and the scratchpad carry no language of their own. As the system
+engine it reads each request in the language the request asks for, with that
+language's model, once it is downloaded: TalkBack moving into a French passage
+gets the French model. Each language keeps its own voice, starting on Kyutai's
+native one for it (Estelle for French), and every voice reads every language,
+in its own accent. Tables are announced in the language being read. Only one
+model is in memory at a time, so switching language costs a model load, about
+half a second.
+
+**Voice variation follows the model.** How far each sentence's speaker may be
+drawn from the voice is Kyutai's value for the model in use, from its config,
+until the slider is moved; **Use Kyutai's default** goes back to following it.
 
 ## Installing
 
@@ -185,7 +204,7 @@ a working install working.
 
 The model is not in the APK. On first launch the app downloads the selected
 model - Kyutai's `english_2026-10` unless another is chosen in **Choose
-model**, 219 MB, each file
+language and model**, 219 MB, each file
 checked against the sha256 `pocket-speak/models.json` pins - into app storage.
 Each voice is a state precomputed for that model, 0.5 to 7 MB, fetched the first
 time that voice is used. An upgraded install deletes the models earlier engines
@@ -218,8 +237,10 @@ other apps ─────▶ PocketTtsService ───┘      ▼
                                                           xn-ptts + upstream's rust/src
 ```
 
-- `ui/ModelPickerActivity` chooses the model: Best quality (`english_2026-10`,
-  219 MB), Balanced (18m, 112 MB), Small (7m, 67 MB) or Smallest (2m, 47 MB).
+- `ui/ModelPickerActivity` chooses the model, and with it the language, under a
+  heading per language: for English Best quality (`english_2026-10`, 219 MB),
+  Balanced (18m, 112 MB), Small (7m, 67 MB) or Smallest (2m, 47 MB); one model
+  of 219 MB for each other language.
   Downloads ask first, with the size and a warning on a metered connection,
   and the model is put to use when its download is done, even if the screen
   has gone. Each row reads to TalkBack as a radio button with its state and
@@ -227,11 +248,15 @@ other apps ─────▶ PocketTtsService ───┘      ▼
 - `speech/MarkdownSpeech` turns Markdown into speakable prose. A table is read
   as a screen reader reads one: announced ("Table, 2 rows."), then row by row
   under its column names; past four columns it is announced with its column
-  names and not read (#10). Inline code is always read, as words; the setting
-  covers fenced blocks only (#9).
+  names and not read (#10), in the language being read. Inline code is always
+  read, as words; the setting covers fenced blocks only (#9).
 - `speech/TextChunker` cuts it at sentence boundaries so the first audio arrives
   quickly and stopping is responsive.
 - `engine/PocketTts` owns the single loaded model and serialises synthesis.
+- `engine/PocketTtsService` is the system engine. `engine/SystemVoices` names
+  its voices per language - `selected` and `alba` for English, as before;
+  `selected-fr` and `alba-fr` for French - and a request is read in its voice's
+  language, else the language it asks for, else the app's.
 - `player/StreamingPlayer` writes float PCM to an `AudioTrack` with blocking
   writes, which back-pressures generation to the speed of playback.
 - `player/PlaybackService` is a foreground service so reading survives the

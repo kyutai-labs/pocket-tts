@@ -1,6 +1,6 @@
 //! The engine against real models: each offered model found in
 //! `$POCKET_TTS_TEST_MODELS` (as `tools/fetch-models.py` fills it, voice
-//! `alba` at least). Skipped, with a note, when that is unset; CI's arm64 job
+//! `alba` and the model's default voice). Skipped, with a note, when that is unset; CI's arm64 job
 //! sets it.
 
 use std::path::PathBuf;
@@ -20,7 +20,13 @@ fn installed() -> Vec<(String, PathBuf)> {
     let found: Vec<_> = models::offered()
         .iter()
         .map(|model| (model.name.clone(), root.join(&model.name)))
-        .filter(|(_, dir)| dir.join("embeddings/alba.safetensors").is_file())
+        .filter(|(name, dir)| {
+            let default_voice = &models::find(name).unwrap().default_voice;
+            dir.join("embeddings/alba.safetensors").is_file()
+                && dir
+                    .join(format!("embeddings/{default_voice}.safetensors"))
+                    .is_file()
+        })
         .collect();
     assert!(!found.is_empty(), "no models in {}", root.display());
     found
@@ -33,8 +39,19 @@ fn run(
     cancel: &Cancel,
     stop_after: Option<usize>,
 ) -> (pocket_tts_engine::ChunkStats, Vec<f32>) {
+    run_in(engine, dir, "alba", text, cancel, stop_after)
+}
+
+fn run_in(
+    engine: &mut Engine,
+    dir: &std::path::Path,
+    voice: &str,
+    text: &str,
+    cancel: &Cancel,
+    stop_after: Option<usize>,
+) -> (pocket_tts_engine::ChunkStats, Vec<f32>) {
     let voice = engine
-        .load_voice(&dir.join("embeddings/alba.safetensors"))
+        .load_voice(&dir.join(format!("embeddings/{voice}.safetensors")))
         .unwrap();
     let mut audio = Vec::new();
     let mut calls = 0;
@@ -48,23 +65,27 @@ fn run(
     (stats, audio)
 }
 
+/// Each model's own sample sentence, in its language and its default voice.
+/// Whether the words are right is `tools/listen/check.py`'s question.
 #[test]
-fn every_model_reads_a_sentence_to_its_end() {
+fn every_model_reads_its_sample_to_the_end() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     for (name, dir) in installed() {
+        let model = models::find(&name).unwrap();
         let mut engine = Engine::load(&dir, &name, 2).unwrap();
-        let (stats, audio) = run(
+        let (stats, audio) = run_in(
             &mut engine,
             &dir,
-            "The build is green again.",
+            &model.default_voice,
+            &model.sample_text,
             &Cancel::new(),
             None,
         );
         assert_eq!(stats.end, EndReason::EndOfSpeech, "{name}: {stats:?}");
         assert_eq!(stats.samples, audio.len(), "{name}");
-        // About a second and a half of speech: not silence, not a runaway.
+        // Four short sentences, about six seconds: not silence, not a runaway.
         let seconds = audio.len() as f32 / engine.sample_rate() as f32;
-        assert!((0.6..6.0).contains(&seconds), "{name}: {seconds} s");
+        assert!((3.0..15.0).contains(&seconds), "{name}: {seconds} s");
         assert!(
             audio.iter().all(|s| (-1.0..=1.0).contains(s)),
             "{name}: unclamped"
@@ -146,17 +167,29 @@ fn a_cancelled_or_stopped_chunk_says_so() {
     }
 }
 
+/// Only between models of different shapes: the languages and English's
+/// largest model share one, and a voice is refused by its shape. The app
+/// keeps each model's voices in that model's directory, so it never offers one
+/// model another's.
 #[test]
-fn a_voice_for_another_model_is_refused() {
+fn a_voice_for_a_model_of_another_shape_is_refused() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let found = installed();
-    let Some(((name, dir), (other, other_dir))) = found.first().zip(found.last()) else {
+    let alba_size = |dir: &PathBuf| {
+        std::fs::metadata(dir.join("embeddings/alba.safetensors"))
+            .unwrap()
+            .len()
+    };
+    let Some((name, dir)) = found.first() else {
         return;
     };
-    if name == other {
-        eprintln!("one model installed: skipping the cross-model voice test");
+    let Some((other, other_dir)) = found
+        .iter()
+        .find(|(_, other_dir)| alba_size(other_dir) != alba_size(dir))
+    else {
+        eprintln!("no two shapes of model installed: skipping the cross-model voice test");
         return;
-    }
+    };
     let engine = Engine::load(dir, name, 2).unwrap();
     let error = engine
         .load_voice(&other_dir.join("embeddings/alba.safetensors"))

@@ -10,7 +10,6 @@ import android.util.Log
 import kotlinx.coroutines.runBlocking
 import org.pockettts.android.debug.VoiceTrace
 import org.pockettts.android.speech.TextChunker
-import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.Locale
@@ -33,6 +32,8 @@ class PocketTtsService : TextToSpeechService() {
 
     private val stopRequested = AtomicBoolean(false)
 
+    private val catalog: ModelCatalog get() = ModelCatalog.get(this)
+
     /** The request being synthesised, so [onStop] cancels that one and no other. */
     @Volatile
     private var current: NativeEngine.CancelToken? = null
@@ -43,67 +44,83 @@ class PocketTtsService : TextToSpeechService() {
     // worse problem than a slightly larger public API on a service nothing
     // else in this app talks to.
 
-    public override fun onIsLanguageAvailable(lang: String?, country: String?, variant: String?): Int =
-        when {
-            lang == null -> TextToSpeech.LANG_NOT_SUPPORTED
-            !lang.equals(ISO3_ENGLISH, ignoreCase = true) -> TextToSpeech.LANG_NOT_SUPPORTED
+    /**
+     * A language is available once it can be read: it is the app's reading
+     * language (whose model the app's first screen fetches), or another with a
+     * model on the phone. One on offer but not downloaded is missing data, so
+     * a caller can say so rather than read it in the wrong language.
+     */
+    public override fun onIsLanguageAvailable(lang: String?, country: String?, variant: String?): Int {
+        val language = SystemVoices.languageOf(lang, catalog.languages)
+            ?: return TextToSpeech.LANG_NOT_SUPPORTED
+        return when {
+            Settings(this).modelFor(language) == null -> TextToSpeech.LANG_MISSING_DATA
             country.isNullOrEmpty() -> TextToSpeech.LANG_AVAILABLE
-            supportedCountries.any { it.equals(country, ignoreCase = true) } ->
+            language == Settings.ENGLISH && supportedCountries.any { it.equals(country, ignoreCase = true) } ->
                 TextToSpeech.LANG_COUNTRY_AVAILABLE
 
             else -> TextToSpeech.LANG_AVAILABLE
         }
+    }
 
     public override fun onLoadLanguage(lang: String?, country: String?, variant: String?): Int =
         onIsLanguageAvailable(lang, country, variant)
 
     public override fun onGetLanguage(): Array<String> {
-        val voice = VoiceCatalog.byId(Settings(this).voiceId) ?: VoiceCatalog.default()
-        val locale = Locale.forLanguageTag(voice.language)
-        return arrayOf(ISO3_ENGLISH, locale.isO3Country.orEmpty(), "")
+        val settings = Settings(this)
+        val language = settings.readingLanguage
+        val voice = VoiceCatalog.byId(settings.voiceId) ?: VoiceCatalog.default()
+        val locale = SystemVoices.localeOf(voice, language)
+        return arrayOf(Locale(language).isO3Language, locale.isO3Country.orEmpty(), "")
     }
 
     public override fun onGetVoices(): MutableList<Voice> {
-        // Until the model is downloaded nothing here can speak. Saying so in
-        // the voice's own feature set is what makes a picker offer to install
-        // it rather than let someone choose a voice and hear silence.
-        val features =
-            if (ModelManager(this).isModelInstalled) {
-                emptySet()
-            } else {
-                setOf(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED)
-            }
+        val settings = Settings(this)
+        val voices = mutableListOf<Voice>()
+        for (language in catalog.languages) {
+            val model = settings.modelFor(language)
+            // Until a language's model is downloaded nothing in it can speak.
+            // Saying so in the voice's own feature set is what makes a picker
+            // offer to install it rather than let someone choose a voice and
+            // hear silence.
+            val features =
+                if (model != null && ModelManager(this, model).isModelInstalled) {
+                    emptySet()
+                } else {
+                    setOf(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED)
+                }
 
-        // The alias, first, because it is what onGetDefaultVoiceNameFor
-        // returns. The framework resolves an engine's default voice name once
-        // per client and then sends that name back on every request
-        // thereafter, so returning a concrete id there pinned whichever voice
-        // was selected when Select to Speak or Chrome first bound - and
-        // changing the voice in this app did nothing for them until they were
-        // force-stopped. A name that means "whatever is selected now" is
-        // resolved late instead, on each request.
-        val voices = mutableListOf(
-            Voice(
-                SELECTED_VOICE,
-                Locale.ENGLISH,
+            // The alias, first, because it is what onGetDefaultVoiceNameFor
+            // returns. The framework resolves an engine's default voice name
+            // once per client and then sends that name back on every request
+            // thereafter, so returning a concrete id there pinned whichever
+            // voice was selected when Select to Speak or Chrome first bound -
+            // and changing the voice in this app did nothing for them until
+            // they were force-stopped. A name that means "whatever is selected
+            // now" is resolved late instead, on each request.
+            voices += Voice(
+                SystemVoices.selectedName(language),
+                Locale(language),
                 Voice.QUALITY_VERY_HIGH,
-                Voice.LATENCY_NORMAL,
-                false,
-                features,
-            ),
-        )
-
-        voices += VoiceCatalog.voices.map { entry ->
-            Voice(
-                entry.id,
-                Locale.forLanguageTag(entry.language),
-                Voice.QUALITY_VERY_HIGH,
-                // Everything runs on the phone's CPU, so latency is real but
-                // there is no network round trip.
                 Voice.LATENCY_NORMAL,
                 false,
                 features,
             )
+            // Each voice, in each language that can be read: listing 27 voices
+            // for a language that cannot speak would bury the ones that can.
+            if (model == null) continue
+            voices += VoiceCatalog.voices.map { entry ->
+                Voice(
+                    SystemVoices.nameOf(entry.id, language),
+                    SystemVoices.localeOf(entry, language),
+                    Voice.QUALITY_VERY_HIGH,
+                    // Everything runs on the phone's CPU, so latency is real
+                    // but there is no network round trip.
+                    Voice.LATENCY_NORMAL,
+                    false,
+                    features,
+                )
+            }
         }
 
         // Voices cloned from the user's own audio are not listed: this engine
@@ -113,16 +130,16 @@ class PocketTtsService : TextToSpeechService() {
     }
 
     public override fun onIsValidVoiceName(name: String?): Int =
-        if (name == SELECTED_VOICE || (name != null && resolveVoiceFile(name) != null)) {
-            TextToSpeech.SUCCESS
-        } else {
-            TextToSpeech.ERROR
-        }
+        if (SystemVoices.parse(name, catalog.languages) != null) TextToSpeech.SUCCESS else TextToSpeech.ERROR
 
     public override fun onLoadVoice(name: String?): Int = onIsValidVoiceName(name)
 
+    /**
+     * The language's alias, resolved on each request; see onGetVoices. A
+     * language this engine does not read gets English's, as it always has.
+     */
     public override fun onGetDefaultVoiceNameFor(lang: String?, country: String?, variant: String?): String =
-        SELECTED_VOICE
+        SystemVoices.selectedName(SystemVoices.languageOf(lang, catalog.languages) ?: Settings.ENGLISH)
 
     public override fun onStop() {
         stopRequested.set(true)
@@ -167,11 +184,15 @@ class PocketTtsService : TextToSpeechService() {
             return
         }
 
-        // Downloading 125 MB inside a synthesis request would look like a hang to
-        // whichever app asked for the speech, so fail and let the app's own
-        // first-run screen fetch the model.
-        if (!ModelManager(this).isModelInstalled) {
-            Log.w(TAG, "Refusing to synthesise: model is not downloaded yet")
+        // Read in the request's language, with the model and the voice chosen
+        // for it; see readingFor.
+        val reading = readingFor(request.voiceName, request.language, settings)
+
+        // Downloading 219 MB inside a synthesis request would look like a hang
+        // to whichever app asked for the speech, so fail and let the app's own
+        // screens fetch the model.
+        if (reading.model == null || !ModelManager(this, reading.model).isModelInstalled) {
+            Log.w(TAG, "Refusing to synthesise: no model for ${reading.language} is downloaded")
             callback.error(TextToSpeech.ERROR_NOT_INSTALLED_YET)
             return
         }
@@ -188,8 +209,10 @@ class PocketTtsService : TextToSpeechService() {
             // library can fail, and that should be a synthesis error.
             val cancel = NativeEngine.CancelToken().also { token = it; current = it }
             runBlocking {
-                val engine = PocketTts.get(this@PocketTtsService)
-                val voice = loadRequestedVoice(engine, request.voiceName ?: SELECTED_VOICE)
+                // Another language than the last request's loads its model in
+                // place of the last one: one at a time fits a phone's memory.
+                val engine = PocketTts.get(this@PocketTtsService, reading.model)
+                val voice = loadRequestedVoice(engine, request.voiceName ?: SystemVoices.SELECTED, reading.voiceId)
 
                 // SynthesisRequest reports the rate as a percentage, where 100
                 // is the user's normal speed.
@@ -202,7 +225,7 @@ class PocketTtsService : TextToSpeechService() {
                 // The same speaker draw the in-app reader uses - and this is
                 // the path most people spend their day in, since Select to
                 // Speak and reader apps all arrive here.
-                val temperature = settings.temperature
+                val temperature = settings.temperatureFor(reading.model)
                 val seed = settings.voiceSeed
 
                 callback.start(engine.sampleRate, AudioFormat.ENCODING_PCM_16BIT, 1)
@@ -247,17 +270,38 @@ class PocketTtsService : TextToSpeechService() {
         }
     }
 
+    /** What a request is read in: its language, that language's model and voice. */
+    internal data class Reading(val language: String, val model: String?, val voiceId: String)
+
+    /**
+     * A concrete voice is read in its own language, whatever else the request
+     * says. Otherwise the request's language decides - TalkBack moving from
+     * English into a French passage sends the French alias and "fra" - and a
+     * language this engine does not read falls back to the app's reading
+     * language, as every request did before there was more than one.
+     */
+    internal fun readingFor(voiceName: String?, language: String?, settings: Settings = Settings(this)): Reading {
+        val named = SystemVoices.parse(voiceName, catalog.languages)
+        val asked = SystemVoices.languageOf(language, catalog.languages)
+        val reading = when {
+            named?.voiceId != null -> named.language
+            asked != null -> asked
+            named != null -> named.language
+            else -> settings.readingLanguage
+        }
+        val voiceId = named?.voiceId?.takeIf { named.language == reading } ?: settings.voiceFor(reading)
+        return Reading(reading, settings.modelFor(reading), voiceId)
+    }
+
     private suspend fun loadRequestedVoice(
         engine: PocketTts,
         requested: String,
+        voiceId: String,
     ): PocketTts.LoadedVoice {
-        val settings = Settings(this)
-        // Resolved now rather than when the caller bound; see onGetVoices.
-        val name = if (requested == SELECTED_VOICE) settings.voiceId else requested
-        val manager = ModelManager(this)
+        val manager = ModelManager(this, engine.modelName)
 
-        VoiceCatalog.byId(name)?.let { stock ->
-            VoiceTrace.resolved("system", requested, name, manager.voiceFile(name).length(), stock.bytes)
+        VoiceCatalog.byId(voiceId)?.let { stock ->
+            VoiceTrace.resolved("system", requested, voiceId, manager.voiceFile(voiceId).length(), stock.bytes)
             return engine.loadVoice(stock)
         }
         // An imported voice falls through: see onGetVoices.
@@ -270,18 +314,6 @@ class PocketTtsService : TextToSpeechService() {
             expectedBytes = fallback.bytes,
         )
         return engine.loadVoice(fallback)
-    }
-
-    private fun resolveVoiceFile(name: String): File? {
-        val manager = ModelManager(this)
-        VoiceCatalog.byId(name)?.let { stock ->
-            // Stock voices are downloadable, so they count as valid whether or
-            // not the wav happens to be cached yet. Asked of the manager rather
-            // than rebuilt from a path literal here, which is how the two got
-            // to disagree in the first place.
-            return manager.cachedVoice(stock) ?: manager.voiceFile(name)
-        }
-        return null
     }
 
     /**
@@ -317,15 +349,6 @@ class PocketTtsService : TextToSpeechService() {
     private companion object {
         const val TAG = "PocketTtsService"
 
-        /**
-         * A voice name that means "whatever is selected in the app right now".
-         *
-         * Not a voice: an indirection, resolved on each request rather than
-         * when a client bound. Apps that offer their own voice picker still
-         * send concrete ids and still get them.
-         */
-        const val SELECTED_VOICE = "selected"
-        const val ISO3_ENGLISH = "eng"
         const val SAMPLE_RATE_FALLBACK = 24000
         const val SYSTEM_MAX_SPEED = 3.0f
         val supportedCountries = listOf("USA", "GBR")

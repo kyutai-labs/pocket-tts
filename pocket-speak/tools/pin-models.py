@@ -19,12 +19,14 @@ no sha256 there, so it is downloaded and hashed.
 Rerun it when upstream moves a model's files; the engine's tests fail until then.
 """
 
+import ast
 import hashlib
 import json
 import pathlib
 import sys
 import urllib.parse
 import urllib.request
+from typing import Any
 
 import yaml
 
@@ -32,14 +34,63 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 CONFIGS = ROOT / "pocket_tts" / "config"
 OUT = ROOT / "pocket-speak" / "models.json"
 
-# Largest first. The app lists them in this order.
-OFFERED = ["english_2026-10", "english_18m_2026-10", "english_7m_2026-10", "english_2m_2026-10"]
+# English largest first, then the other languages. The app lists them in this order.
+OFFERED = [
+    "english_2026-10",
+    "english_18m_2026-10",
+    "english_7m_2026-10",
+    "english_2m_2026-10",
+    "french",
+    "german",
+    "spanish",
+    "italian",
+    "portuguese",
+    "dutch",
+]
+
+# The BCP-47 tag of each language upstream names its configs after.
+LANGUAGES = {
+    "english": "en",
+    "french": "fr",
+    "german": "de",
+    "spanish": "es",
+    "italian": "it",
+    "portuguese": "pt",
+    "dutch": "nl",
+}
+
+# Upstream's value when a config does not set default_temperature.
+DEFAULT_TEMPERATURE = 0.3
 
 # The stock voices' precomputed states: the revision pocket_tts/utils/utils.py
 # pins in get_predefined_voice (upstream's rust/src/defaults.rs pins an older
 # one, which lacks the 2026-10 models).
 VOICE_REPO = "kyutai/pocket-tts-without-voice-cloning"
 VOICE_REVISION = "a7056f505a4a8ca72d8b5fb1440071d6f1a35739"
+
+
+def upstream_defaults() -> dict[str, Any]:
+    """DEFAULT_VOICE_FOR_LANGUAGE and DEFAULT_TEXT_FOR_LANGUAGE from default_parameters.py.
+
+    Read as literals rather than imported: importing it imports the package, and torch.
+    """
+    source = (ROOT / "pocket_tts" / "default_parameters.py").read_text(encoding="utf-8")
+    wanted = {"DEFAULT_VOICE_FOR_LANGUAGE", "DEFAULT_TEXT_FOR_LANGUAGE", "DEFAULT_VOICE_FALLBACK"}
+    found: dict[str, Any] = {}
+    for node in ast.parse(source).body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+            if isinstance(target, ast.Name) and target.id in wanted:
+                found[target.id] = ast.literal_eval(node.value)
+    missing = wanted - found.keys()
+    if missing:
+        sys.exit(f"default_parameters.py no longer defines {', '.join(sorted(missing))}")
+    return found
+
+
+def by_language(table: dict[str, str], name: str, fallback: str) -> str:
+    """Upstream's lookup: the first key that is a substring of the config name."""
+    return next((value for key, value in table.items() if key in name), fallback)
 
 
 def parse_hf(path: str) -> tuple[str, str, str]:
@@ -87,8 +138,11 @@ def pin(repo: str, file: str, revision: str, info: dict) -> dict:
     return {"name": file.rsplit("/", 1)[-1], "url": url, "sha256": sha256, "size": entry["size"]}
 
 
-def model_entry(name: str) -> dict:
+def model_entry(name: str, defaults: dict[str, Any]) -> dict:
     config = yaml.safe_load((CONFIGS / f"{name}.yaml").read_text(encoding="utf-8"))
+    language = by_language(LANGUAGES, name, "")
+    if not language:
+        sys.exit(f"{name}: no language in its name; add it to LANGUAGES")
     # The weights without the voice-cloning encoder: public, smaller, and all a
     # model needs with precomputed voices.
     sources = [
@@ -113,14 +167,29 @@ def model_entry(name: str) -> dict:
                 "size": pinned["size"],
             }
     print(f"{name}: {len(files)} files, {len(voices)} voices", file=sys.stderr)
-    return {"name": name, "files": files, "voices": voices}
+    default_voice = by_language(
+        defaults["DEFAULT_VOICE_FOR_LANGUAGE"], name, defaults["DEFAULT_VOICE_FALLBACK"]
+    )
+    if default_voice not in voices:
+        sys.exit(f"{name}: no embedding for its default voice {default_voice}")
+    texts = defaults["DEFAULT_TEXT_FOR_LANGUAGE"]
+    return {
+        "name": name,
+        "language": language,
+        "default_temperature": config.get("default_temperature", DEFAULT_TEMPERATURE),
+        "default_voice": default_voice,
+        "sample_text": by_language(texts, name, texts["english"]),
+        "files": files,
+        "voices": voices,
+    }
 
 
 def main() -> None:
     names = sys.argv[1:] or OFFERED
+    defaults = upstream_defaults()
     manifest = {
         "generated_by": "pocket-speak/tools/pin-models.py",
-        "models": [model_entry(name) for name in names],
+        "models": [model_entry(name, defaults) for name in names],
     }
     OUT.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(f"wrote {OUT.relative_to(ROOT)}", file=sys.stderr)

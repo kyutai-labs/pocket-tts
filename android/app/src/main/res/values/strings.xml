@@ -58,7 +58,9 @@
 
     <string name="install_model">Install from a file</string>
     <string name="temperature">Voice variation: %1$.2f</string>
-    <string name="temperature_explained">How far each sentence\'s speaker may be drawn from the voice sample. Kyutai\'s default, and this app\'s, is 0.30.</string>
+    <string name="temperature_default">Voice variation: %1$.2f, Kyutai\'s default</string>
+    <string name="temperature_reset">Use Kyutai\'s default, %1$.2f</string>
+    <string name="temperature_explained">How far each sentence\'s speaker may be drawn from the voice sample. Each model comes with Kyutai\'s value for it, which this follows until you move the slider.</string>
     <string name="decode_steps">Decode steps: %1$d</string>
     <string name="decode_steps_explained">Passes per audio frame. Kyutai\'s own code uses 1; this engine defaults to 5. Fewer should be faster - listen for whether it is also worse.</string>
     <string name="timings">Timings</string>
@@ -73,6 +75,9 @@
     <string name="stop_sample">Stop the sample</string>
     <string name="sample_while_reading">Stop reading before playing a sample.</string>
     <string name="sample_failed">Could not play that sample: %1$s</string>
+    <string name="sample_needs_model">the %1$s model is not downloaded yet. Choose it under Language and model to hear this voice in it.</string>
+    <string name="voices_reading_in">Reading in %1$s</string>
+    <string name="voice_default_for">%1$s · Kyutai\'s voice for %2$s</string>
     <string name="label_opacity">Panel opacity — %1$s</string>
     <string name="label_blur">Blur radius — %1$s</string>
     <string name="label_dim">Dim behind — %1$s</string>
@@ -101,10 +106,12 @@
 
     <!-- Voice models (Phase 4). Speeds are relative to the best-quality model,
          measured on arm64: see android/docs/pure-rust-engine.md. -->
-    <string name="models">Voice model</string>
-    <string name="choose_model">Choose model</string>
+    <string name="models">Language and voice model</string>
+    <string name="choose_model">Choose language and model</string>
     <string name="model_in_use">Voice model: %1$s</string>
-    <string name="models_intro">Larger models sound more natural. Smaller ones start sooner, take less space, and keep up on older phones. Every voice works with every model.</string>
+    <string name="models_intro">The app reads in the language of the model you choose. Apps that read through the phone\'s text-to-speech get each language they ask for, once its model is downloaded. English comes in four sizes: larger ones sound more natural, smaller ones start sooner, take less space and keep up on older phones. Every voice reads every language.</string>
+    <string name="model_language_detail">Kyutai\'s %1$s model, the size and speed of English\'s Best quality.</string>
+    <string name="model_full_name">%1$s, %2$s</string>
     <string name="model_measured">On this phone the last read was composed at %1$.1fx real time.</string>
     <string name="model_measured_slow">On this phone the last read was composed at %1$.1fx real time. A smaller model will keep up more easily.</string>
     <string name="hear_model">Hear the current model</string>

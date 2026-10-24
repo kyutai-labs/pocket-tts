@@ -508,7 +508,10 @@ object Reader {
         val mapped = if (treatAsMarkdown) {
             MarkdownSpeech.toSpeakableWithSource(
                 text,
-                MarkdownSpeech.Options(speakCodeBlocks = settings.speakCodeBlocks),
+                MarkdownSpeech.Options(
+                    speakCodeBlocks = settings.speakCodeBlocks,
+                    language = settings.readingLanguage,
+                ),
             )
         } else {
             // Nothing was stripped, so the speakable text is the source and the

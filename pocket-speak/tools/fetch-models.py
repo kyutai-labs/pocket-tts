@@ -6,7 +6,8 @@ machines without the CLI. Files already present and matching are kept.
 
     python3 pocket-speak/tools/fetch-models.py DIR [--model NAME ...] [--voice NAME ...]
 
-Every model unless --model is given; alba unless --voice is.
+Every model unless --model is given. Voices: alba and the model's default voice,
+unless --voice is given.
 """
 
 import argparse
@@ -57,7 +58,7 @@ def main() -> None:
         directory = args.dir / name
         for file in model["files"]:
             fetch(file["url"], directory / file["name"], file["sha256"])
-        for voice in args.voice or ["alba"]:
+        for voice in args.voice or sorted({"alba", model["default_voice"]}):
             pinned = model["voices"][voice]
             fetch(
                 pinned["url"], directory / "embeddings" / f"{voice}.safetensors", pinned["sha256"]

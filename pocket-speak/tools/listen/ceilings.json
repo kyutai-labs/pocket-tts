@@ -1,6 +1,6 @@
 {
   "about": "The highest word error rate check.py lets each model score: its rate on a real run, plus 0.15 (three words of the sample sentence), rounded up to 0.05. Most misses are on Kyutai, TTS and CPU. A model that drops a sentence or babbles scores far above these. When a change makes one better, lower its ceiling.",
-  "measured": "x86-64 2026-10-24 and arm64 CI, seed 1, Whisper small int8",
+  "measured": "x86-64, 2026-10-24, seed 1, Whisper small int8. Not yet checked against arm64, where CI runs it.",
   "models": {
     "english_2026-10": 0.2,
     "english_18m_2026-10": 0.2,

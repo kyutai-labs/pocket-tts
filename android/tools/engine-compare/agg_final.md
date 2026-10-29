@@ -1,3 +1,5 @@
+Output of `agg_seeds.py` over `seeds/*/judge.json` (those files are not in the repository). Mode names are defined in `synth.py` and `ref_synth.py`, `ps_synth.py`: `whole` is one generation per chunk with the raw text (the app after PR #5); `sherpa` is sherpa-onnx's own sentence split, which PR #5 turned off; `ref` applies the reference's text preparation (`prepare_text_prompt`) in one pass; `refsherpa` is the same with sherpa's split; `refpad` adds the reference's space padding and EOS frame count; `lines` and `linessherpa` read each line as a sentence; `perunit@P` makes one generation per sentence with a P-second pause; `reference` is upstream pocket-tts 3.3.0 in PyTorch; `fp32-` is the fp32 sherpa-onnx model; `pocketspeak` is the desk build of pocket-speak; `phone-pocketspeak` is `pocket-bench` on the S25.
+
 | mode, steps | corpus | WER (5 seeds) | worst seed WER | items with WER>=0.3 | wps | boundary quiet median s | boundaries <100 ms |
 |---|---|---|---|---|---|---|---|
 | whole_st1 | TalkBack | 53.0% | 57.1% | 37/45 | 3.02 | 0.13 | 24/57 |

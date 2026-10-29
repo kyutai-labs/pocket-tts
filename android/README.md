@@ -1,101 +1,42 @@
 # Pocket TTS for Android
 
-A native Android app that reads text aloud in Pocket TTS voices, entirely on the
-device. No server, no network at speaking time.
+A native Android app that reads text aloud in Pocket TTS voices. Speech is generated on the device. Once the model and a voice are on the phone, speaking needs no network. The first use of a voice downloads its prompt.
 
-It exists to remove a specific papercut: wanting to hear a paragraph in a good
-voice and having to paste it into a notes app or a pastebin to get there.
+The app exists to remove one annoyance: hearing a paragraph in a good voice meant pasting it into a notes app or a pastebin first.
 
 ## What it gives you
 
-**A "Read aloud" item in the tap-and-hold text selection menu.** Select text
-anywhere - a browser, a chat app, a PDF reader - and Pocket TTS appears in the
-selection toolbar next to Copy and Share. Tapping it starts reading immediately
-in a small floating window with pause and stop. This is an
-`ACTION_PROCESS_TEXT` activity; apps that draw their own selection toolbar and
-suppress the system one will not show it, and for those there is a share-sheet
-entry as well.
+The text selection menu has a "Read aloud" item. Select text in any app (a browser, a chat app, a PDF reader) and Pocket TTS appears in the selection toolbar next to Copy and Share. Tapping it starts reading at once in a small floating window with pause and stop. This is an `ACTION_PROCESS_TEXT` activity. Apps that draw their own selection toolbar and suppress the system one will not show it, so the share sheet has an entry as well.
 
-**A system-wide text-to-speech engine.** Once Pocket TTS is selected under
-*Settings → Accessibility → Text-to-speech output*, every app that already knows
-how to read text uses these voices: Select to Speak, Chrome's read-aloud, ebook
-readers, accessibility tools. None of them need to know this app exists. Audio
-is streamed back chunk by chunk as it is generated, so playback starts after the
-first sentence rather than the last one, and each chunk is announced with
-`rangeStart` so callers that highlight along can.
+Once Pocket TTS is selected as the text-to-speech engine under *Settings → Accessibility → Text-to-speech output*, every app that reads text aloud can use these voices. That includes Select to Speak, Chrome's read-aloud, ebook readers and accessibility tools. None of them need to know this app exists. Audio is streamed back chunk by chunk as it is generated, so playback starts after the first chunk (a paragraph, or a few hundred characters of one) rather than after the whole text. Each chunk is announced with `rangeStart`, so callers that highlight along can.
 
-Text arriving through the engine is **not** rewritten. It was chosen by another
-app and is nearly always prose already; running it through the Markdown stripper
-took asterisks out of ordinary sentences, reshaped `snake_case` identifiers, and
-replaced links with nothing at all. An accessibility tool exists to say what is
-on the screen, and quietly deleting a URL from that is a false account of the
-content rather than a formatting choice. It is also what makes the offsets
-meaningful: strip the text and they no longer point anywhere the caller could
-highlight. The app's own screens still strip, because there the Markdown is the
-user's own and reading it as prose is the point.
+Text arriving through the engine is not rewritten. Another app chose it, and it is nearly always prose already. Running it through the Markdown stripper removed asterisks from ordinary sentences, reshaped `snake_case` identifiers and deleted links entirely. An accessibility tool exists to say what is on the screen, so silently dropping a URL gives a false account of the content. Stripping also breaks the offsets: they would no longer point at text the caller can highlight. The app's own screens still strip Markdown, because there the Markdown is the user's own and reading it as prose is the point.
 
-**A read-aloud broadcast, for scripts and agents.** `am broadcast -n
-org.pockettts.android/.SpeakReceiver --es text "..."` reads text with no window
-and no foreground app, which is the one thing the selection window cannot do -
-an activity start needs a foreground caller. It was built for a coding agent on
-the same phone: a reply finishes and it is read, rather than copied, switched to
-and pasted. See [reading Claude Code's replies aloud](docs/read-aloud-from-claude-code.md).
+A read-aloud broadcast works for scripts and agents. `am broadcast -n org.pockettts.android/.SpeakReceiver --es text "..."` reads text with no window and no foreground app. The selection window cannot do this, because starting an activity needs a foreground caller. The receiver was built for a coding agent on the same phone: when a reply finishes, it is read aloud rather than copied, switched to and pasted. It takes three extras:
 
-**A Markdown scratchpad.** Type or paste, hit speak. Markdown is stripped for
-speaking, so `## Heading` is spoken as "Heading" rather than "hash hash
-Heading", `**bold**` loses its asterisks, links are read as their text instead
-of spelling out a URL, and code fences are skipped by default. Selecting a
-passage in the editor and hitting speak reads just that passage, and the
-sentence being spoken is highlighted as it goes.
+- `text`: the Markdown to read, up to 64 KB.
+- `path`: a UTF-8 file to read instead of `text`, up to 1 MB.
+- `append`: a boolean that queues the text behind the current read instead of replacing it.
 
-**Any Pocket TTS voice, including your own.** Pocket TTS has no fixed speaker
-table - a voice is a few seconds of reference audio the model conditions on - so
-the stock voices and a wav you record yourself are the same kind of thing. The
-voice picker lists the catalogue from
-[`kyutai/tts-voices`](https://huggingface.co/kyutai/tts-voices) and can import a
-local wav. Each row plays a short sample, because twenty seven names tell you
-nothing about which one you want.
+The receiver is exported with no permission check and no intent filter. Any app on the device can send it a broadcast that starts a read, replaces the current one, or reads any file the app can open. Nothing is returned to the sender. See [reading Claude Code's replies aloud](docs/read-aloud-from-claude-code.md).
 
-The sample is the voice's own reference audio rather than a synthesised
-sentence. That is the most direct answer to "what does this sound like": the
-reference audio *is* the voice. It also costs nothing but the prompt download -
-no model bundle, no inference, no wait - so voices can be auditioned on a fresh
-install before the model has ever been fetched, and the download it does
-is the same one selecting that voice would trigger later. The trade-off worth
-knowing: it is the raw prompt, so it carries the recording's own room and
-pacing. The synthesised voice tracks its timbre closely, which is the thing
-being chosen, but not its background. Where there is no recording to play - the
-app reading another language than English, or the five native voices whose
-recordings need a Hugging Face login - the sample is the voice reading that
-language's sample sentence on the phone instead.
+The scratchpad is a Markdown editor. Type or paste, then tap Speak. Markdown is stripped before speaking: `## Heading` is spoken as "Heading" rather than "hash hash Heading", `**bold**` loses its asterisks, and links are read as their text instead of spelling out a URL. Fenced code blocks are skipped unless "Read code blocks aloud" is on. Selecting a passage and tapping Speak reads just that passage, and the sentence being spoken is highlighted as it goes.
 
-**Seven languages.** English, French, German, Spanish, Italian, Portuguese and
-Dutch, each read by Kyutai's model for it. The model chosen under **Choose
-language and model** is the language the app reads in: the share sheet, a
-selection and the scratchpad carry no language of their own. As the system
-engine it reads each request in the language the request asks for, with that
-language's model, once it is downloaded: TalkBack moving into a French passage
-gets the French model. Each language keeps its own voice, starting on Kyutai's
-native one for it (Estelle for French), and every voice reads every language,
-in its own accent. Tables are announced in the language being read. Only one
-model is in memory at a time, so switching language costs a model load, about
-half a second.
+Pocket TTS has no fixed speaker table. A voice is a few seconds of reference audio that the model conditions on, so the stock voices and a wav you record yourself are the same kind of thing. The voice picker lists the 27 stock voices from [`kyutai/tts-voices`](https://huggingface.co/kyutai/tts-voices). Each row plays a short sample, because twenty-seven names say nothing about which one you want. Importing your own wav is hidden in this version (see below).
 
-**Voice variation follows the model.** How far each sentence's speaker may be
-drawn from the voice is Kyutai's value for the model in use, from its config,
-until the slider is moved; **Use Kyutai's default** goes back to following it.
+The sample is the voice's own reference audio rather than a synthesised sentence. That is the most direct answer to "what does this sound like", because the reference audio is the voice. It costs only the prompt download: no model bundle, no inference, no wait. A voice can be auditioned on a fresh install before the model has been fetched, and the download is the same one that selecting the voice would trigger later. The trade-off is that the sample is the raw prompt, so it carries the recording's room and pacing. The synthesised voice matches the timbre closely, which is the thing being chosen, but not the background. Where there is no recording to play, the sample is the voice reading that language's sample sentence on the phone instead. That covers reading in a language other than English, and the five native voices (Italian, Spanish, German, Portuguese and Dutch) whose recordings need a Hugging Face login. In that case the language's model must be downloaded, and the app says so when it is not.
+
+The app reads in seven languages: English, French, German, Spanish, Italian, Portuguese and Dutch. Each language has a Kyutai model, which is the one the app reads with. The model chosen under "Choose language and model" sets the language the app reads in. The share sheet, a selection and the scratchpad carry no language of their own. As the system engine, the app reads each request in the language it asks for, using that language's model once it is downloaded. TalkBack moving into a French passage gets the French model. Each language keeps its own voice, starting on Kyutai's native one for it (Estelle for French). Every voice reads every language, in its own accent. Tables are announced in the language being read. Only one model is in memory at a time, so switching language costs a model load, about half a second.
+
+How far each sentence's speaker may be drawn from the voice is set by the "Voice variation" slider. Until the slider is moved, the value is Kyutai's for the model in use (0.3 for every model offered today, from `pocket-speak/models.json`). "Use Kyutai's default" clears the override.
 
 ## Installing
 
-Every build of `main` that touches the app publishes its release APK as a
-GitHub release. The newest is always at
-<https://github.com/mycosavant/pocket-tts/releases/latest/download/pocket-tts.apk>;
-open it on the phone and allow the install. Every APK is signed with the same
-committed key, so a new one installs over an old one and keeps its data.
+Each push to `main` that changes the app or the engine builds a release APK and publishes it as a GitHub release. The newest one is always at <https://github.com/mycosavant/pocket-tts/releases/latest/download/pocket-tts.apk>. Open it on the phone and allow the install. Every APK is signed with the same committed key, so a new build installs over an old one and keeps its data. The release workflow keeps the ten newest `android-*` releases.
 
 ## Building
 
-Requires JDK 17+ and the Android SDK (compileSdk 35, build-tools 35.0.0).
+Requires JDK 17 and the Android SDK (compileSdk 35, build-tools 35.0.0).
 
 ```bash
 cd android
@@ -104,126 +45,53 @@ echo "sdk.dir=$ANDROID_HOME" > local.properties
 ./gradlew :app:testDebugUnitTest
 ```
 
-The build compiles the engine from `../pocket-speak` first (`cargo ndk`, the
-`buildNative` task), so it needs rustup's `aarch64-linux-android`,
-`armv7-linux-androideabi` and `x86_64-linux-android` targets, `cargo-ndk` and
-the NDK. Pass `-PskipNative` to package the libraries already in
-`app/src/main/jniLibs`.
+The build compiles the engine from `../pocket-speak` first. The `buildNative` task in `app/build.gradle.kts` runs `cargo ndk`, so the build needs rustup's `aarch64-linux-android`, `armv7-linux-androideabi` and `x86_64-linux-android` targets, `cargo-ndk`, and the NDK. Pass `-PskipNative` to package the libraries already in `app/src/main/jniLibs` instead.
 
-The debug APK lands in `app/build/outputs/apk/debug/`. It is about 28 MB (the
-release APK 23 MB), most of it the engine for `arm64-v8a`, `armeabi-v7a` and
-`x86_64`, 5 to 8 MB each. Dropping ABIs from `abiFilters` in
-`app/build.gradle.kts` shrinks it. Until 2026-10 it was 85 MB, most of it ONNX
-Runtime; see `docs/pure-rust-engine.md`.
+The debug APK lands in `app/build/outputs/apk/debug/`, and the release APK in the sibling `release/` directory. The debug APK is about 28 MB and the release APK about 23 MB. Most of that is the engine, built for `arm64-v8a`, `armeabi-v7a` and `x86_64`. Dropping ABIs from `abiFilters` in `app/build.gradle.kts` shrinks it. Until 2026-10 the debug APK was 85 MB, most of it ONNX Runtime; see `docs/pure-rust-engine.md`.
 
 ## The debug key is committed, on purpose
 
-`app/debug.keystore` is in the repository, and both build types are signed with
-it. That is the opposite of the usual advice, and the usual advice is about a
-key that ships an app to a store. This one is not that.
+`app/debug.keystore` is in the repository, and both build types are signed with it. The usual advice is to keep signing keys out of the repository, and that advice is about keys that ship an app to a store. This key does not do that.
 
-Left alone, the Android plugin signs debug builds with `~/.android/debug.keystore`
-and generates one if it is missing. A CI runner has no home directory worth the
-name, so every run generated a fresh key pair, and every APK this project ever
-published was a different app as far as Android is concerned - identity is the
-signing certificate, not the package name. The consequences were permanent
-rather than intermittent:
+Left alone, the Android plugin signs debug builds with `~/.android/debug.keystore` and generates one if it is missing. A CI runner has no home directory worth the name, so every run generated a new key pair. Every APK this project published was therefore a different app as far as Android is concerned, because identity is the signing certificate, not the package name. The consequences were permanent rather than intermittent:
 
-- no build could be installed over another, ever: `INSTALL_FAILED_UPDATE_INCOMPATIBLE`,
-- keeping app data on uninstall - which `hasFragileUserData` exists to offer, and
-  which is the only thing standing between an uninstall and a lost voice clone -
-  made the *next* install fail outright, because retained data remembers the
-  identity that wrote it,
-- so the way through was always uninstall-and-discard, which costs a 98 MB model
-  download on every single sideload.
+- No build could be installed over another: every attempt failed with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`.
+- Keeping app data on uninstall, which `hasFragileUserData` offers, made the next install fail outright, because the retained data remembers the identity that wrote it.
+- The only way through was to uninstall and discard the data, which meant re-downloading the model (98 MB for the sherpa-onnx bundle) on every sideload.
 
-None of that is visible in the build file, which said "sign with the debug
-config" before and after. It is a property of the artefact, so
-`tools/check-signing.sh` reads the artefact: it pins the certificate's SHA-256
-and CI runs it against both APKs. Change the key deliberately and that constant
-has to change with it - and everyone holding the old build has to uninstall to
-take the new one, which is exactly the cost worth being reminded of.
+None of this is visible in the build file, which said "sign with the debug config" before and after. It is a property of the built artefact. `tools/check-signing.sh` reads the APK: it pins the certificate's SHA-256, and CI runs it against both APKs. Changing the key means changing that constant, and everyone holding the old build has to uninstall to take the new one.
 
-What committing it gives away is real but small: anyone with this repository can
-build an APK that installs over yours. The platform's own debug key is public
-and identical on every machine for the same reason.
+Committing the key does give something away, though small. Anyone with this repository can build an APK that installs over yours. The platform's own debug key is public and identical on every machine for the same reason.
 
 ## One install, however many things ask for it
 
-Two callers reached the downloader independently - the button on the main
-screen, and any read that arrived before the model existed - and neither knew
-about the other. They shared a partial-download file and a staging directory, so
-tapping Download and then selecting text in another app had them writing the
-same `.part` and deleting each other's unpacked files.
+Two callers reached the downloader independently: the button on the main screen, and any read that reached the engine before the model existed. Neither knew about the other. They shared a partial-download file and a staging directory, so tapping Download and then selecting text in another app had them writing the same `.part` file and deleting each other's unpacked files.
 
-The download also belonged to the activity that started it. A configuration
-change cancelled the coroutine, but the transfer has no suspension point, so it
-carried on headless while the recreated screen said "not downloaded" and invited
-a second tap - and the partial was deleted on the way out, so that tap began
-again from zero.
+The download also belonged to the activity that started it. A configuration change cancelled the coroutine, but the transfer has no suspension point, so it carried on in the background while the recreated screen said "not downloaded" and invited a second tap. The partial file was then deleted on the way out, so that tap started again from zero.
 
-`engine/ModelInstall` owns one shared attempt per model. Everybody who asks for a
-model joins the one in flight for it, a screen that goes away leaves it running,
-and progress is a
-`StateFlow` a recreated screen can pick up rather than something an activity
-holds. Removing the sharing fails the test for it.
+`engine/ModelInstall` now owns one shared attempt per model. Anything that asks for a model joins the attempt already in flight, and a screen that goes away leaves it running. Progress is a `StateFlow`, so a recreated screen can pick it up. Removing the sharing fails `ModelInstallTest`.
 
-The download resumes. The largest model is 219 MB; without a `Range` request a
-drop at 200 MB throws away 200 MB, and on a connection that drops regularly it never finishes at
-all - each attempt just gets a different distance through the same first
-stretch. The partial now survives a network failure and is deleted only when the
-archive turns out not to unpack, because that one is not worth resuming.
+The download resumes. The largest model is 219 MB. Without a `Range` request, a drop partway through throws away everything already fetched. On a connection that drops regularly, the download never finishes, because each attempt starts over from the beginning. A partial file now survives a network failure. It is deleted only when its sha256 does not match the pinned value, because resuming a bad file would never succeed. Each file is checked against its sha256 before it replaces anything.
 
 ## Keeping the model, and the voices
 
-Everything lives in internal storage, so uninstalling threw all of it away: a
-model download of up to 219 MB, and - the part that matters - every voice the user had recorded
-or imported, which exists nowhere else. `android:hasFragileUserData` makes the
-uninstall dialog offer to keep the data, which is the only way to offer that
-choice at all.
+Everything lives in internal storage, so uninstalling used to delete all of it: a model download of up to 219 MB and, more important, every voice the user had recorded or imported, which exists nowhere else. `android:hasFragileUserData` makes the uninstall dialog offer to keep the data. That is the only way to offer the choice.
 
-Backup rules exclude the models and nothing else. Cloud backup allows an app
-25 MB, so including up to 219 MB of regenerable weights does not make a partial
-backup - it makes a failed one, taking the settings and the voices down with it.
-Every model lives under `pocket-tts/models`, which the rules exclude as a whole,
-so a model added later can never be backed up by accident. The rules name the
-directory as a literal string because XML cannot reference a Kotlin constant, so
-`BackupRulesTest` asserts the string still matches `ModelManager.MODELS_DIR`.
+The backup rules exclude the model directory and two retired model paths, and nothing else. Cloud backup allows an app 25 MB. Including a model of up to 219 MB would make the backup fail as a whole, taking the settings and the voices with it. Every model lives under `pocket-tts/models`, which the rules exclude as a whole, so a model added later is excluded too. The rules name the directory as a literal string, because XML cannot reference a Kotlin constant. `BackupRulesTest` checks that the string matches `ModelManager.MODELS_DIR`.
 
-**Since 2026-10-03 "Install from a file" is hidden and refuses**: the paragraph
-below describes sherpa-onnx's archive, which the new engine cannot read, and no
-archive of pocket-speak's bundle is defined yet (`docs/engine-swap.md`).
-
-"Install from a file" takes the same `.tar.bz2` as the download, streamed
-straight from the content URI - the unpacked model is already 200 MB and there
-is no reason to want another 98 MB beside it. It is checked for the expected
-ONNX files before anything is replaced, so pointing at the wrong archive leaves
-a working install working.
+Until 2026-10-03, "Install from a file" accepted sherpa-onnx's `.tar.bz2` archive. The app streamed it straight from the content URI and checked for the expected ONNX files before replacing anything. The engine swap ended that. The button is hidden, and `ModelManager.installFromArchive` refuses with a message that says to use Download. An archive format for pocket-speak's bundle is not defined yet (`docs/engine-swap.md`).
 
 ## First run
 
-The model is not in the APK. On first launch the app downloads the selected
-model - Kyutai's `english_2026-10` unless another is chosen in **Choose
-language and model**, 219 MB, each file
-checked against the sha256 `pocket-speak/models.json` pins - into app storage.
-Each voice is a state precomputed for that model, 0.5 to 7 MB, fetched the first
-time that voice is used. An upgraded install deletes the models earlier engines
-read (sherpa-onnx's, then the ONNX export of `english_2026-04`) once the new one
-has loaded. See `docs/pure-rust-engine.md`.
+The model is not in the APK. The app downloads the model when you tap Download on the main screen, or the first time a read needs it. The default is Kyutai's `english_2026-10`, 219 MB, unless another is chosen under "Choose language and model". Each file is checked against the sha256 that `pocket-speak/models.json` pins, and the files go into app storage.
 
-Inference runs on the CPU, on upstream's own Rust implementation of the model.
-The previous engine generated 3.7 to 5 times faster than real time on a Galaxy
-S25, with first audio 0.2 to 0.3 s into a chunk; on the same desktop CPU the new
-one is 2.4 times faster on the larger `english_2026-10` model and starts in a
-fifth of the time. Phone numbers for it are to come.
+Each voice is a state precomputed for that model, from 0.3 to 7.6 MB depending on the model. A voice is fetched the first time it is used. An upgraded install deletes the models that earlier engines read (sherpa-onnx's bundle, then the ONNX export of `english_2026-04`) once the new model has loaded. See `docs/pure-rust-engine.md`.
+
+Inference runs on the CPU, using upstream's Rust implementation of the model through pocket-speak. The previous engine generated audio 3.7 to 5 times faster than real time on a Galaxy S25, with first audio 0.2 to 0.3 s into a chunk. On the same desktop CPU, the new engine is 2.4 times faster on the larger `english_2026-10` model and starts in a fifth of the time. Phone numbers for the new engine are still to come.
 
 ## How it works
 
-**Since 2026-10-03 the engine is pocket-speak's Rust core, not sherpa-onnx**
-(`docs/engine-swap.md`), and since 2026-10 that core runs upstream's own Rust
-implementation of the model rather than ONNX Runtime
-(`docs/pure-rust-engine.md`). The sections below that describe sherpa-onnx's
-behaviour are the history of how the app got here, kept as written.
+As of 2026-10-03, the engine is pocket-speak's Rust core, not sherpa-onnx (`docs/engine-swap.md`). As of 2026-10, that core runs upstream's own Rust implementation of the model rather than ONNX Runtime (`docs/pure-rust-engine.md`). Where a section below describes sherpa-onnx's behaviour, it says so and is history.
 
 ```
 selected text ──▶ ReadAloudActivity ─┐
@@ -232,725 +100,229 @@ scratchpad ─────▶ ScratchpadActivity ─┼─▶ Reader ─▶ Stre
 other apps ─────▶ PocketTtsService ───┘      ▼
                   (system TTS engine)   MarkdownSpeech ─▶ TextChunker ─▶ PocketTts
                                                                             │
-                                                     NativeEngine (JNI) ─▶ pocket-speak/crates/engine
+                                                     NativeEngine (JNI) ─▶ pocket-speak/crates/android
                                                                             │
-                                                          xn-ptts + upstream's rust/src
+                                                          pocket-speak/crates/engine ─▶ xn-ptts + upstream's rust/src
 ```
 
-- `ui/ModelPickerActivity` chooses the model, and with it the language, under a
-  heading per language: for English Best quality (`english_2026-10`, 219 MB),
-  Balanced (18m, 112 MB), Small (7m, 67 MB) or Smallest (2m, 47 MB); one model
-  of 219 MB for each other language.
-  Downloads ask first, with the size and a warning on a metered connection,
-  and the model is put to use when its download is done, even if the screen
-  has gone. Each row reads to TalkBack as a radio button with its state and
-  what a double tap will do; deleting is a separate button.
-- `speech/MarkdownSpeech` turns Markdown into speakable prose. A table is read
-  as a screen reader reads one: announced ("Table, 2 rows."), then row by row
-  under its column names; past four columns it is announced with its column
-  names and not read (#10), in the language being read. Inline code is always
-  read, as words; the setting covers fenced blocks only (#9).
-- `speech/TextChunker` cuts it at sentence boundaries so the first audio arrives
-  quickly and stopping is responsive.
+- `ui/ModelPickerActivity` chooses the model, and with it the language. It shows a heading per language. For English the choices are Best quality (`english_2026-10`, 219 MB), Balanced (`english_18m_2026-10`, 112 MB), Small (`english_7m_2026-10`, 67 MB) and Smallest (`english_2m_2026-10`, 47 MB). Each other language has one 219 MB model. A download asks first, showing the size and a warning on a metered connection. The model is put to use when its download finishes, even if the screen has gone. Each row is announced to TalkBack as a radio button with its state and what a double tap does. Deleting is a separate button.
+- `speech/MarkdownSpeech` turns Markdown into speakable prose. A table is read the way a screen reader reads one: it is announced ("Table, 2 rows."), then read row by row under its column names. A table wider than four columns is announced with its column names and not read (issue #10). Inline code is always read, as words. The "Read code blocks aloud" setting covers fenced blocks only (issue #9).
+- `speech/TextChunker` cuts text at sentence boundaries, so the first audio arrives quickly and stopping takes effect quickly. A chunk targets 200 characters and never exceeds 400.
 - `engine/PocketTts` owns the single loaded model and serialises synthesis.
-- `engine/PocketTtsService` is the system engine. `engine/SystemVoices` names
-  its voices per language - `selected` and `alba` for English, as before;
-  `selected-fr` and `alba-fr` for French - and a request is read in its voice's
-  language, else the language it asks for, else the app's.
-- `player/StreamingPlayer` writes float PCM to an `AudioTrack` with blocking
-  writes, which back-pressures generation to the speed of playback.
-- `player/PlaybackService` is a foreground service so reading survives the
-  floating window being dismissed, and holds audio focus for as long as it is
-  playing.
-- `player/AudioFocus` asks the system for the right to be heard and gives it
-  back. Without it the app read over whatever was already playing, a call did
-  not pause it - muting the media stream during a call is at the vendor's
-  discretion - and unplugging headphones carried on out loud from the phone's
-  speaker. A transient loss pauses and resumes; a permanent one stops, because
-  another app has taken over for as long as it likes and a paused reader nobody
-  asked for helps no one. Ducking is declined: two voices at once are not two
-  things you can listen to.
+- `engine/PocketTtsService` is the system engine. `engine/SystemVoices` names its voices per language: `selected` and `alba` for English, as before, and `selected-fr` and `alba-fr` for French. A request is read in the language of its voice if it names one. Otherwise it is read in the language the request asks for, and failing that, in the app's reading language.
+- `player/StreamingPlayer` writes float PCM to an `AudioTrack` with blocking writes. A blocking write slows generation to the speed of playback.
+- `player/PlaybackService` is a foreground service, so reading continues after the floating window is dismissed. It holds audio focus while it plays.
+- `player/AudioFocus` requests audio focus and gives it back. Without it, the app read over whatever was already playing, a phone call did not pause it (muting the media stream during a call is up to the vendor), and unplugging headphones kept the voice playing from the phone's speaker. A transient loss pauses and resumes. A permanent loss stops, because another app has taken over for as long as it likes, and a paused reader nobody asked for helps no one. The app declines ducking, because two voices at once cannot both be followed.
 
-`MarkdownSpeech`, `TextChunker` and `WavReader` are plain JVM code and are
-covered by unit tests in `app/src/test`.
+`MarkdownSpeech`, `TextChunker` and `WavReader` are plain JVM code and have unit tests in `app/src/test`.
 
 ## Stop has to be in the collapsed controls
 
-The collapsed media player - the shade before it is expanded, the lock screen,
-which cannot expand it - shows three controls. Stop was the fourth, on the
-theory that swiping the notification away already ended the read; a media
-notification for a read in progress cannot be swiped away, and on the device
-the broadcast path was first tested on there was no way to end a read from the
-shade at all. That is the one control a reader started from a pocket cannot be
-without.
+The collapsed media player (the shade before it is expanded, and the lock screen, which cannot expand it) shows three controls. Stop used to be the fourth. The reasoning was that swiping the notification away already ended the read. A media notification for a read in progress cannot be swiped away, though, and on the device where the broadcast path was first tested there was no way to end a read from the shade at all. A reader started from a pocket needs a Stop control.
 
-Two things draw those controls and both had to change. Before Android 13 the
-notification's own actions are drawn, and the compact view now shows back,
-pause and stop. From Android 13 the system draws the media session's actions
-instead: previous, play/pause and next take the three slots, and a custom
-action - which is the only way to offer Stop at all, since the system has no
-button for `ACTION_STOP` - appears only once expanded. So `Transport` no longer
-publishes `ACTION_SKIP_TO_NEXT`, which hands that slot to the first custom
-action, and that is Stop. Forward becomes a custom action in the expanded
-view, and the headset's "next" button - which the framework only routes to
-`onSkipToNext` when the action is published - is taken by the callback itself.
-Forward was the one to demote: it is the control that ends a read by accident.
+Two things draw those controls, and both changed. Before Android 13, the notification's own actions are drawn. The compact view shows back, pause and stop (`setShowActionsInCompactView(0, 1, 3)`). From Android 13, the system draws the media session's actions instead: previous, play/pause and next take the three slots. Stop can only be offered as a custom action, because the system has no button for `ACTION_STOP`. Custom actions appear only once the player is expanded. So `Transport` no longer publishes `ACTION_SKIP_TO_NEXT`. That leaves the next slot free for the first custom action, which is Stop. Forward becomes a custom action in the expanded view. The headset's "next" key is handled in `Transport`'s media button callback, because the framework forwards it to `onSkipToNext` only when that action is published. Forward was the control to demote, since it is the one that ends a read by accident.
 
 ## Saying the true thing while waiting
 
-The model composes an entire sentence before it emits a single sample, so there
-are several silent seconds between asking for speech and hearing any. The reader
-reached `Speaking` when it started *working*, and every screen printed "Reading
-aloud" through that silence - which is most of what the wait before the first
-word actually feels like, and the reason it reads as broken rather than slow.
+The first sound of a chunk takes the model a noticeable time to produce. During that time the reader was in the `Speaking` state, and every screen said "Reading aloud". That is most of what the wait feels like, and it is why the wait seems broken rather than slow.
 
-`Speaking.audible` is false until a sample has actually been written, and the
-screens say "Composing the first sentence…" until it turns true. The wait did
-not get shorter; it stopped being a lie.
+`Speaking.audible` is false until a sample has actually been written. Until it turns true, the screens say "Composing the first sentence…". The wait is no shorter. The label stopped claiming that sound was playing.
 
 ## Following along
 
-`Speaking` reports the character range of the chunk being read, but those
-offsets are into the *stripped* text: stripping deletes syntax, so they drift
-further from the document with every heading, link and asterisk passed.
-`MarkdownSpeech.toSpeakableWithSource` records where each block came from, and
-`Reader.spokenRangeIn` turns one into the other.
+`Speaking` reports the character range of the chunk being read. Those offsets are into the stripped text, not the document. Stripping deletes syntax, so the offsets drift further from the document with every heading, link and asterisk. `MarkdownSpeech.toSpeakableWithSource` records where each block came from, and `Reader.spokenRangeIn` turns a range in the stripped text into one in the source.
 
-The map is per block, not per character - a block comes from a known run of
-source lines, which is cheap to track. Within a block the range is narrowed to
-the exact sentence when that sentence survived stripping unchanged, which is the
-common case for prose; a rewritten line falls back to highlighting the whole
-block, which is less precise but never wrong.
+The map is per block, not per character, because a block comes from a known run of source lines, which is cheap to track. Within a block, the range is narrowed to the exact sentence when that sentence survived stripping unchanged. That is the common case for prose. A rewritten line falls back to highlighting the whole block. That is less precise, but it is never wrong.
 
-Everything hard about it is in the setup rather than the algorithm. Anything
-that rewrites the string before the lines are counted silently shifts every
-offset after it, so HTML comments are blanked with spaces of equal length rather
-than removed, and line breaks are found by scanning rather than by normalising
-CRLF to LF. Both have a test, and both tests fail if the normalisation comes
-back. The CRLF one needed a second pass to be worth anything: the first version
-used text that survived stripping unchanged, so the exact-sentence search
-silently corrected the drift and the test stayed green against broken offsets.
+Most of the difficulty is in the setup rather than the algorithm. Anything that rewrites the string before the lines are counted shifts every offset after it. So HTML comments are blanked with spaces of the same length rather than removed, and line breaks are found by scanning rather than by normalising CRLF to LF. `MarkdownSourceMapTest` covers both. The CRLF test needed a second pass to be useful. The first version used text that survived stripping unchanged, so the exact-sentence search quietly corrected the drift, and the test passed against broken offsets.
 
 ## Two callers, one engine
 
-There is a single model in the process and two things drive it: the in-app
-reader, and the system text-to-speech service other apps call. `synthesize`
-serialised them per *chunk*, so with both active they took turns sentence by
-sentence and a passage came out read alternately in two different voices.
-Neither side knew the other existed.
+One model lives in the process, and two things drive it: the in-app reader, and the system text-to-speech service other apps call. In the sherpa-onnx era, each side serialised its work per chunk, so with both active they took turns sentence by sentence, and a passage came out read alternately in two voices. Neither side knew the other existed.
 
-Serialising whole utterances instead would replace the alternation with a wait:
-an app asking through Select to Speak would hang until a whole document finished
-reading, which looks broken from the other side. So `engine/EngineTurn` makes
-the most recent request win. A caller takes a turn before it starts and checks
-it as it goes - per chunk and per audio callback, so a request arriving
-mid-sentence does not have to wait out the rest of it. Finding the turn has
-moved on means somebody asked more recently, and standing down is the only
-thing that produces intelligible audio.
+Serialising whole utterances instead would replace the alternation with a wait. An app asking through Select to Speak would hang until a whole document had been read, which looks broken from the other side. So `engine/EngineTurn` makes the most recent request win. A caller takes a turn before it starts, and checks whether the turn has been superseded as it goes: per chunk, and in each audio callback, so a request that arrives mid-sentence does not wait for the rest of it. A superseded caller stands down, which is the only way to avoid two voices in one passage.
 
 ## A queue, where a turn will not do
 
-`EngineTurn` arbitrates between the two things that drive the one model, and its
-rule is that the most recent request wins. That is the right rule for two
-callers who cannot see each other, and exactly the wrong one for a caller
-sending several things to hear in order: an agent handing over one reply while
-the last is still being read would have each one silence the one before it, and
-a run of them would play as the last few words of the last.
+`EngineTurn` arbitrates between the two things that drive the one model, and its rule is that the most recent request wins. That is the right rule for two callers that cannot see each other. It is the wrong rule for a caller sending several things to hear in order. An agent handing over one reply while the last is still being read would have each reply silence the one before it, and a run of replies would play as the last few words of the last.
 
-So `Reader` has its own queue and `enqueue` joins it, while `speak` still
-replaces. Nothing about standing down for a stranger answers "after that one",
-and stretching `EngineTurn` to cover both would have made the same counter mean
-two opposite things.
+So `Reader` has its own queue. `enqueue` joins it, while `speak` still replaces. Nothing about standing down for a stranger answers "after that one", and stretching `EngineTurn` to cover both would have made one counter mean two opposite things.
 
-What the queue is careful about is whose it is. A `speak` that replaces the
-current read drops what was queued behind it - those follow-ups belonged to the
-passage being abandoned, and carrying them over would play a replacement
-followed by the tail of the thing it replaced. A stop drops them too. Skipping
-forward off the end of the last chunk does *not*: that is an ending like any
-other, and it is the one ending that does not arrive through the reading job
-completing, so it advances the queue by hand.
+The queue is careful about whose it is. A `speak` that replaces the current read drops what was queued behind it, because those follow-ups belonged to the passage being abandoned. Carrying them over would play a replacement followed by the tail of the thing it replaced. A stop drops the queue too. Skipping forward off the end of the last chunk does not drop it. That is an ending like any other, and it is the one ending that does not come through the reading job completing, so the queue advances by hand.
 
 ## The reader has one state machine, and it is testable
 
-`Idle` used to mean two things - "nothing has been asked for" and "the read is
-over" - so `stopLocked` published it between two utterances, and three screens
-each kept a boolean to tell those apart. `StateFlow` conflates, so whether
-anyone saw that transitional value was a race: the scratchpad overlay sometimes
-failed to appear on a second Speak, and the foreground service sometimes
-stopped and immediately restarted.
+`Idle` used to mean two things: "nothing has been asked for" and "the read is over". `stopLocked` published `Idle` between two utterances, and three screens each kept a boolean to tell the two apart. `StateFlow` conflates values, so whether anyone saw that transitional value was a race. The scratchpad overlay sometimes failed to appear on a second Speak, and the foreground service sometimes stopped and immediately restarted.
 
-`Reader.State` now ends in `Finished`, `Stopped` or `Failed`, each carrying the
-utterance it belongs to and who asked for it. The three flags are gone. Identity
-matters as much as finality: the reader is process-wide, so a screen has to tell
-its own read's ending from an earlier one it never asked for - the floating
-window would otherwise close itself on stale news before its own read had begun.
+`Reader.State` now ends in `Finished`, `Stopped` or `Failed`, each carrying the utterance it belongs to and who asked for it. The three flags are gone. Identity matters as much as finality. The reader is process-wide, so a screen has to tell its own read's ending from an earlier one it never asked for. Otherwise the floating window would close itself on stale news before its own read had begun.
 
-`player/SpeechEngine` and `player/AudioSink` exist so this can be tested at all.
-Before them, driving the reader meant a 98 MB model and an `AudioTrack`, which
-is why the part that had actually been wrong had no tests - and why
-`ActivityLaunchTest` reached `ensureModel` and quietly downloaded the model
-bundle on every run of the unit suite.
+`player/SpeechEngine` and `player/AudioSink` exist so the reader can be tested. Before them, driving the reader meant loading a 98 MB model and an `AudioTrack`. That is why the part that had actually been wrong had no tests, and why `ActivityLaunchTest` reached `ensureModel` and quietly downloaded the model on every run of the unit suite.
 
-Skipping is built on the same seam. An utterance keeps its chunks, its engine
-and its loaded voice, so skipping back costs re-composing one chunk and nothing
-else: no re-selection, no reload. Back at the first chunk replays it; forward
-past the last one ends the read, which is what someone who keeps tapping
-forward means by it - and starts the next queued read, if there is one.
+Skipping is built on the same seam. An utterance keeps its chunks, its engine and its loaded voice, so skipping back costs re-composing one chunk and nothing else: no re-selection, no reload. Skipping back from the first chunk replays it. Skipping forward past the last chunk ends the read, which is what someone who keeps tapping forward means by it, and it starts the next queued read if there is one.
 
-A chunk is the unit, and a chunk is not a sentence: it is a paragraph, or up to
-a few hundred characters of one, cut at sentence ends. The controls used to be
-labelled "a sentence", and on a short reply - one paragraph, one chunk - a tap
-forward near its second sentence ended the read, which reads as the wrong
-button doing stop's job. The labels now say what the buttons do. A skip finer
-than a chunk would need the engine to give audio back sentence by sentence,
-and it composes a chunk whole.
+A chunk is the unit of skipping, and a chunk is not a sentence. It is a paragraph, or up to a few hundred characters of one, cut at sentence ends. The controls used to be labelled "a sentence". On a short reply (one paragraph, one chunk), a tap forward near its second sentence ended the read, which looks like the wrong button doing stop's job. The labels now say what the buttons do. A skip finer than a chunk would need the engine to return audio sentence by sentence, and the engine composes a chunk as a whole.
 
-`GlassPanelViewTest` asserts the two things that were missing when the sliders
-went dead: where the panel thinks it is relative to its backdrop, and what
-colour it actually put on the canvas. Its predecessor asserted only that drawing
-did not throw, and Robolectric's software canvas made the panel bail before it
-ever reached the geometry - so the broken function was never called by any test.
+`GlassPanelViewTest` asserts the two things that were missing when the sliders went dead: where the panel thinks it is relative to its backdrop, and what colour it actually put on the canvas. Its predecessor asserted only that drawing did not throw. Robolectric's software canvas made the panel bail out before it reached the geometry, so the broken function was never called by any test.
 
-`ActivityLaunchTest` drives every activity through its real lifecycle under
-Robolectric, and forces a measure and layout pass at a realistic size. A theme,
-a manifest entry and a layout can crash an activity just as easily as a function
-can, and none of them are type-checked — one build shipped a theme that supplied
-a decor action bar to screens that also called `setSupportActionBar`, and
-another handed a Material `Slider` a value off its step grid. Both compiled,
-packaged, and threw the instant the screen opened.
+`ActivityLaunchTest` drives every activity through its real lifecycle under Robolectric, and forces a measure and layout pass at a realistic size. A theme, a manifest entry or a layout can crash an activity as easily as a function can, and none of those are type-checked. One build shipped a theme that supplied a decor action bar to screens that also called `setSupportActionBar`. Another handed a Material `Slider` a value off its step grid. Both compiled, packaged, and threw as soon as the screen opened.
 
-The layout pass is the part that earns its keep. Views validate themselves while
-sizing, so reaching RESUMED proves very little: the slider bug passed a version
-of these tests that stopped at `setup()`, because nothing had been laid out yet.
+The layout pass is the part that earns its keep. Views validate themselves while sizing, so reaching RESUMED proves little. The slider bug passed an earlier version of these tests that stopped at `setup()`, because nothing had been laid out yet.
 
 ## The one thing here that cannot be fetched again
 
-**Since 2026-10-03 imported voices are hidden, not deleted.** The engine is
-conditioned on precomputed embeddings and has no encoder to make one from a wav,
-so the picker and the system voice list leave imports out until cloning returns
-(`docs/engine-swap.md`). The files stay where this section says.
+Since 2026-10-03, imported voices are hidden, not deleted. The engine is conditioned on precomputed embeddings and has no encoder to make one from a wav. So the picker and the system voice list leave imports out, and the import button is hidden, until cloning returns (`docs/engine-swap.md`). The files stay where they are.
 
-A model re-downloads and a setting is retyped in seconds. A voice somebody
-recorded exists in one directory and nowhere else, so the failure worth
-guarding against is not a crash but a quiet overwrite.
+A model re-downloads, and a setting is retyped in seconds. A voice somebody recorded exists in one directory and nowhere else. The failure worth guarding against is therefore not a crash but a quiet overwrite.
 
-Imports used to share a directory with the downloaded prompts, so a wav named
-`alba.wav` landed on exactly the path the stock Alba prompt is cached at,
-replaced it, and then vanished from the list - because anything named like a
-stock voice was filtered out of that list. One action, two losses, no message.
+Imports used to share a directory with the downloaded prompts. A wav named `alba.wav` landed on exactly the path where the stock Alba prompt is cached. It replaced that prompt, and then vanished from the list, because anything named like a stock voice was filtered out. One action caused two losses, with no message.
 
-Imports now live in their own directory under `voices/imported`, and a name that
-collides with a stock voice or an earlier import is suffixed rather than allowed
-to win. Voices imported by an older build are carried across on first access;
-one that was already named after a stock voice is indistinguishable from the
-prompt it replaced and is left to be re-downloaded. `VoiceStorageTest` covers
-all of it, and restoring the shared directory fails four of its six cases.
+Imports now live in their own directory, `pocket-tts/voices/imported` under the app's files directory. A name that collides with a stock voice or an earlier import gets a suffix rather than winning. Voices imported by an older build are moved across on first access. An import that was already named after a stock voice is indistinguishable from the prompt it replaced, so it is left to be downloaded again. `VoiceStorageTest` covers these cases.
 
-## The model decides when it is done, and gets the end wrong
+A stock prompt is cached only if its size matches the size the voice ships as. `VoiceCatalog` records each prompt's exact size, and `ModelManager` treats a prompt of the wrong size as not cached. Before that check, an import named like a stock voice overwrote the stock prompt, and nothing fetched the real one again. Every "Alba" from then on was read in someone else's voice, silently.
 
-The engine has no length for a chunk in advance. It runs the language model
-frame by frame and stops when the model's own end-of-speech head crosses a
-fixed threshold, plus three frames. That head is wrong in one particular
-place: the end of a generation, when what remains to be said is a few very
-short sentences. Found on the device - a reply ending `One. Two. Three. Four.
-Five.` stopped after "Two" - and then reproduced here on the same engine build,
-the same int8 bundle and the same Alba prompt, with a speech recogniser as the
-judge, so the mechanism is measured rather than guessed:
+## The model decides when it is done
 
-- `... One. Two. Three.` lost "Three" in two runs of three; `... Patching.
-  Testing. Done.` said "done" twice in all three; `One. Two. Three. Four.
-  Five.` on its own lost "Five" every time. The same runs with ordinary prose
-  after them were read in full every time: it is the *end* that is fragile.
-- Letting generation run on past the end-of-speech mark does not recover the
-  words. After a genuine ending the model does not fall silent, it repeats the
-  last word - `five, five, five` for as long as it is allowed - so there is no
-  silence to trim to.
-- The reference implementation pads very short inputs with leading spaces
-  because "the model does not perform well when there are very few tokens".
-  sherpa-onnx strips them before the model sees them; padded and bare runs
-  were identical to the sample.
-- The same short sentences joined with commas into one - `One, Two, Three.` -
-  were read in full in every run, for every shape tried.
+The engine has no length for a chunk in advance. It runs the language model frame by frame and stops when the model's end-of-speech (EOS) head crosses a threshold. The EOS head is ignored for the first six frames, so a short chunk does not end before its first word. After EOS, the engine generates the frames the model recommends, or a text-length estimate plus two.
 
-So `TextChunker` gives each chunk a `speech` form: a run of two or more
-sentences of two words or fewer at the end of a chunk is joined with commas.
-What the user sees and what is highlighted is untouched; a period becoming a
-comma is the whole of the difference in what is said. `MarkdownSpeech` already
-makes every list item and heading its own paragraph, so a list is never a run
-of short sentences inside one chunk; this is for prose that ends in a
-countdown or a string of one-word statuses, which is how agent replies end.
+The head is wrong in one particular place: the end of a generation, when what remains to be said is a few very short sentences. This was found on the device in the sherpa-onnx era. A reply ending `One. Two. Three. Four. Five.` stopped after "Two". It was then reproduced on the same engine build and the same int8 bundle, with the stock Alba prompt, using a speech recogniser as the judge. The measurements below are from that sherpa-onnx build. The mechanism was measured rather than guessed:
 
-What it does not cover, and is written down so nobody re-derives it: the same
-head can fire early inside an ordinary sentence. `Tests 1, 2 and 3 are green.`
-lost "green" in two runs of three here - an enumeration of numbers reads to the
-model like a countdown ending - while `Files A, B and C are updated.` and plain
-prose endings were never cut. The threshold is hard-coded in the engine, the
-reference implementation uses the same value, and nothing at this layer can
-tell a premature end from a real one without a recogniser listening. This is
-the model's limit, and the tail rule is the part of it the app can reach.
+- `... One. Two. Three.` lost "Three" in two runs out of three. `... Patching. Testing. Done.` said "done" twice in all three runs. `One. Two. Three. Four. Five.` on its own lost "Five" every time. The same runs with ordinary prose after them were read in full. It is the end of the text that is fragile.
+- Letting generation run past the end-of-speech mark does not recover the words. After a genuine ending, the model does not fall silent. It repeats the last word (`five, five, five`) for as long as it is allowed, so there is no silence to trim to.
+- The reference implementation pads very short inputs with leading spaces, because "the model does not perform well when there are very few tokens". The sherpa-onnx front end stripped that padding before the model saw it. Padded and bare runs gave identical results.
+- The same short sentences joined with commas, as in `One, Two, Three.`, were read in full in every run and for every shape tried.
+
+So `TextChunker` gives each chunk a `speech` form. A run of two or more sentences of two words or fewer at the end of a chunk is joined with commas. What the user sees and what is highlighted is unchanged, and a period becoming a comma is the whole of the difference in what is said. `MarkdownSpeech` already makes every list item and heading its own paragraph, so a list is never a run of short sentences inside one chunk. The join is for prose that ends in a countdown or a string of one-word statuses, which is how agent replies often end.
+
+What it does not cover is recorded here so nobody has to re-derive it. The EOS head can also fire early inside an ordinary sentence. `Tests 1, 2 and 3 are green.` lost "green" in two runs of three. An enumeration of numbers reads to the model like a countdown ending. `Files A, B and C are updated.` and plain prose endings were never cut. The threshold is fixed in the engine, and nothing at this layer can tell a premature end from a real one without a recogniser listening. This is the model's limit. The tail rule is the part the app can reach.
 
 ## Measuring before optimising
 
-Inference is CPU-only and near real time, and every performance question about
-this app turns on timings that cannot be measured here - no emulator, no device.
-So `debug/Metrics` collects three numbers and the main screen shows them, with a
-share button, the way the exit report does.
+Every performance question about this app depends on timings, and the build environment has no emulator or device to take them on. So `debug/Metrics` collects three numbers, and the Timings button on the main screen shows them. The dialog also shows the voice trace, and it has a share button.
 
-- **Time to first audio**, which is the wait everybody feels.
-- **Generation speed on the first chunk**: audio seconds composed per wall
-  second, by the engine alone. Below 1.0 means the model cannot keep up with
-  its own playback.
-- **Underruns**, which now say one thing: whether composing the next chunk
-  while the current one plays is enough to keep the speaker fed. They climb
-  only when the model falls behind real time.
+- Time to first audio: the wait everybody feels.
+- Generation speed on the first chunk: audio seconds composed per wall-clock second, measured by the engine alone. Below 1.0 means the model cannot keep up with its own playback.
+- Underruns: whether composing the next chunk while the current one plays is enough to keep the speaker fed. Underruns rise only when the model falls behind real time.
 
-The channel between synthesis and the audio track, which an earlier version of
-this section deliberately left unwritten until underruns proved it necessary,
-is written - but the device proved something else first. Reading the engine's
-source settled how it actually delivers audio: `GenerateSingleSentence` runs
-every frame of the language model over a chunk *before* the decoder produces a
-sample, and only then hands audio back, in pieces of just over a second. So
-`first=NNNms` in the voice trace is not a prompt being primed; it is the whole
-of the model's pass over that chunk. And because the sink was fed from inside
-the engine's callback, chunk N+1 could not begin until chunk N had been *heard*:
-the silence before every paragraph was the model's full pass over it, less a
-couple of seconds of buffer, charged for a table that stripped to one line just
-as for a long one. Underruns could not see that, because a track that is simply
-not written to between chunks is not "running dry" in a way that counts.
+`Reader` composes a chunk ahead of the one being played. The lookahead is one chunk (`LOOKAHEAD_CHUNKS`). That is enough to hide the model's work behind the previous chunk's audio whenever the model is faster than real time. What the state publishes, such as the highlighted chunk and the point a skip counts from, follows the listener and not the engine.
 
-`Reader` now composes a chunk ahead of the one being played. The bound is one
-chunk of lookahead, which is enough to hide the model's pass behind the
-previous chunk's audio whenever the model is faster than real time, and it is
-on the device this was measured on. What the state publishes - the highlighted
-chunk, what a skip counts from - follows the listener, not the engine.
+`Metrics.generationRealTimeFactor` is taken on a read's first chunk only, so it cannot show a cost that repeats on every chunk. The per-chunk `first=` figure in the voice trace can.
 
-An unmeasured value reports "not measured yet" rather than a confident zero, and
-`MetricsTest` enforces that. "0 underruns" from a session that never played
-anything reads as evidence and is not.
+An unmeasured value reports "not measured yet" rather than a confident zero, and `MetricsTest` enforces that. A count of "0 underruns" from a session that never played anything is not evidence, so the report does not present it as one.
 
 ## The voice, and why it kept changing
 
-The voice used to change from sentence to sentence, and sometimes was not the
-voice that had been selected at all. Three separate faults, all of which sound
-identical from the outside.
+The voice used to change from sentence to sentence, and sometimes was not the voice that had been selected at all. There were three separate faults, and all of them sound identical from the outside.
 
-**The speaker is drawn, and the draw was uncontrolled.** Pocket TTS has no
-speaker table. It is prompted with a few seconds of reference audio and samples
-a speaker in that audio's neighbourhood; the draw is a vector of Gaussian noise.
-In `offline-tts-pocket-impl.h`:
+The speaker is drawn from noise, and the draw was uncontrolled. Pocket TTS has no speaker table. It is conditioned on a few seconds of reference audio, and it samples a speaker in that audio's neighbourhood. The sample is a vector of Gaussian noise. In the sherpa-onnx era, the generator's seed was -1 by default, which means a fresh draw from a random device on every call. sherpa-onnx split each chunk into sentences and made one call per sentence, so a paragraph was read by a succession of slightly different people.
 
-```cpp
-float temperature = gen_config.GetExtraFloat("temperature", 0.7f);
-float stddev = std::sqrt(temperature);
-int32_t seed = gen_config.GetExtraInt("seed", -1);
-NormalDataGenerator normal_gen(0, stddev, seed);
-```
+The app now sends a seed with each chunk. Both the seed and the temperature travel in the engine's configuration:
 
-That sits inside `GenerateSingleSentence`, which sherpa-onnx calls once per
-sentence after re-splitting whatever text it is handed on `.!?`. Per *sentence*,
-not per call. A seed of -1 means a fresh draw from a random device every time,
-so a paragraph is read by a succession of slightly different people.
+- A fixed seed, when "Keep one voice across sentences" is on, so every chunk draws the same speaker. The seed is 1. It is the whole of that feature. An earlier attempt kept the last six seconds of generated audio and fed it back as the next chunk's prompt. That could not work: it acted at chunk boundaries, while the redraws happened per sentence inside a chunk. It also replaced the selected voice with generated audio and never returned to the voice. That code has been removed.
+- Temperature 0.3, rather than sherpa-onnx's 0.7. Kyutai moved the English model to 0.3 in this repository (`d108410`), with the reasoning "Human evaluations consistently prefer the English model at temperature 0.3 over the current default 0.7, and the change is free on every objective axis we measured." Each model's `default_temperature` in `models.json` carries that value. The slider exists so a user can set a different value.
 
-Both knobs travel in `GenerationConfig.extra`, an untyped string map. This app
-passed nothing, so it got sherpa-onnx's defaults. It now sends both:
+The system engine served a voice chosen weeks ago. Android resolves an engine's default voice name once per client, then sends that name back on every later request. Returning a concrete voice id from `onGetDefaultVoiceNameFor` therefore pinned whichever voice was selected when Select to Speak or Chrome first bound. Changing the voice in this app did nothing for them until they were force-stopped. The engine now advertises one alias voice, `selected`, which is resolved on each request.
 
-- **A fixed seed**, when "Keep one voice across sentences" is on, so every
-  sentence draws the same speaker. It is the whole of that feature. An earlier
-  attempt kept the last six seconds of generated audio and fed it back as the
-  next sentence's prompt - which could not work, because it acted at chunk
-  boundaries while the re-draws happen per sentence *inside* a chunk, and
-  because replacing the prompt with generated audio abandons the selected voice
-  entirely and never returns to it. That code is gone.
-- **Temperature 0.3** rather than sherpa-onnx's 0.7. Kyutai moved English to 0.3
-  in this repository (`d108410`): "Human evaluations consistently prefer the
-  English model at temperature 0.3 over the current default 0.7, and the change
-  is free on every objective axis we measured." Their default is recorded
-  against `english.yaml` and `english_2026-04.yaml`, while the bundle this app
-  downloads is `english_2026-01` - a strong prior rather than a measured value
-  for this snapshot, hence a slider.
+## One generation per chunk
 
-**A stock prompt could be somebody else.** An import named like a stock voice
-overwrote that voice's wav, and `ensureVoice` treated any non-empty file at the
-right path as cached - so nothing ever fetched the real one again. Every "Alba"
-from that moment on was read in a different person's voice, silently, on every
-build. `VoiceCatalog` now carries each prompt's exact size and a mismatch is not
-cached. (The comment claiming these "will be replaced by a fresh download" had
-been there the whole time. Nothing did it.)
+The app asks the engine for one chunk at a time, and the engine generates each chunk in a single pass. `TextChunker` cuts text at sentence boundaries, targets 200 characters and never exceeds 400, so a chunk is usually a sentence or two. Each chunk costs one start of the model.
 
-**The system engine served a voice chosen weeks ago.** Android resolves an
-engine's default voice name once per client and then sends that name back on
-every subsequent request. Returning a concrete voice id from
-`onGetDefaultVoiceNameFor` therefore pinned whichever voice was selected when
-Select to Speak or Chrome first bound, and changing the voice here did nothing
-for them until they were force-stopped. The engine now advertises one alias
-voice, `selected`, resolved on each request.
+In the sherpa-onnx era, the engine split each chunk again and started over once per sentence. On the device where it was measured, that produced clipped first syllables and seams between sentences. Sending whole chunks removed almost all of the clipping there.
 
-## The engine splits what has already been split
+## One decode step
 
-Measured against a reference implementation of this same model - a Rust adapter
-over ONNX Runtime 1.23.2, in
-[speech-kit-obsidian-plugin](https://github.com/mycosavant/speech-kit-obsidian-plugin)
-(`native/src/adapters/pocket_tts.rs`) - the single biggest difference is not a
-parameter. It is that the reference **never restarts**:
+In the sherpa-onnx era, `numSteps` was the number of Euler steps the flow integration took for each generated frame. sherpa-onnx defaulted to 5. The reference implementation defaults to 1, in `lsd_decode` and in `default_parameters.py`. pocket-speak's engine decodes in one step for every flow type. The setting therefore has no effect now. The app still stores a `decode_steps` value (default 1) and passes it to synthesis, but `PocketTts.synthesize` ignores it. The "Decode steps" slider on the main screen is hidden for the same reason.
 
-```rust
-fn synthesize(&mut self, text: &str, ...) -> Result<SynthesisPcm, SynthesisError> {
-    Ok(SynthesisPcm { samples: self.generate_chunk(text, voice_path, cancellation)?, ... })
-}
-```
+The default was changed from 5 to 1 on a device report, not on reasoning. At one step, a listener described the reading as closer to what the same model does on a desktop ("maybe a little more expressive, or more inflection") and noticed no other difference. One report called one step a touch slower to the first word. Fewer steps should mean less work per frame, so the `first=` figure on each chunk trace line is the measure that settles it. Chunk timings on that device move by about 90 ms between identical runs, which is about the size of the difference reported.
 
-The whole text goes into one autoregressive loop, which runs until the EOS logit
-fires and a few frames after it, and the latents are then Mimi-decoded in
-blocks. There is no sentence splitting anywhere in it.
-
-sherpa-onnx does the opposite. `SplitByPunctuation` cuts on `.!?`,
-`MergeShortSentences` re-accumulates to a 30-character floor, and each resulting
-sentence is an independent generation with its own onset and its own ending,
-knowing nothing of what came before. That is where the seams come from, and it
-is why a paragraph here has never sounded like the same paragraph elsewhere:
-sentences run into each other and first syllables sound clipped.
-
-Both bounds are caller-configurable through the same `extra` map that already
-carries the temperature and the seed:
-
-```cpp
-int32_t max_char_in_sentence = gen_config.GetExtraInt("max_char_in_sentence", 200);
-int32_t min_char_in_sentence = gen_config.GetExtraInt("min_char_in_sentence", 30);
-```
-
-So both are set above `TextChunker`'s 400-character maximum, and a chunk is
-generated whole. This is not a new policy - the text was already cut at sentence
-boundaries, at a size chosen for time-to-first-audio - it is declining to have
-that work undone. A chunk is comfortably inside the generation's own `max_frames`
-cap of 500 frames: 400 characters is roughly 28 seconds of speech at the model's
-frame rate.
-
-What that leaves is one restart per chunk instead of one per sentence.
-
-On a device, that change removed almost all of the clipped first syllable, at
-both step counts. **And one flow-decoding step was then reported closer to the
-same model on a desktop** - "maybe a little more expressive, or more
-inflection" - so the default follows the reference's one rather than
-sherpa-onnx's five. Fewer steps is also less work per frame, which sits oddly
-beside the same report calling it a touch slower to the first word; the `first=`
-figure in the trace is what settles that, and chunk timings on that device move
-by about 90 ms between identical runs anyway.
-
-Two differences from the reference remain. The seed is pinned to a constant here
-against a fresh draw there. And the bundle is `english_2026-01` here against
-`english_2026-04` there - which is not a version number so much as a different
-package: sherpa-onnx's bundle carries a Mimi *encoder*, and the reference's does
-not, because its voices are precomputed embeddings from
-`kyutai/pocket-tts-without-voice-cloning`. The encoder is what turns a wav
-somebody recorded into a voice, so that bundle cannot clone one. The temperature
-is 0.3 in both.
-
-## What the seed could not fix, and what did
-
-Pinning the seed made every sentence draw the *same speaker*, and that is what
-stopped a paragraph being read by a succession of different people. It left a
-residue, reported from the device as "still drifting, not as bad as before".
-
-The obvious explanation was that nothing generated crosses a sentence boundary,
-so pitch, pace and energy reset at every full stop even when timbre holds. The
-standard fix for chunked neural TTS follows from it: condition what is about to
-be generated on what was just spoken. This repository has now tried that twice
-and deleted it twice, and the second attempt is worth a paragraph because of how
-it failed.
-
-It worked, in the sense that it did what it said. `VoiceContinuity` made each
-chunk's reference the voice prompt plus the last two seconds actually spoken,
-with the prompt always the head - so identity was re-anchored on every
-generation, which is the thing the first attempt got wrong. Three tests pinned
-that. On a device it sounded *slightly worse*, and it cost a Mimi encode of
-50-70 ms per chunk, because sherpa-onnx caches the voice embedding in a 50-entry
-LRU keyed by a hash of the reference samples: a prompt that never changes is
-encoded once per process, and one that moves every chunk is a miss every chunk.
-"The same ten seconds either way" is exactly what makes it not free.
-
-Then the splitting came to light, and the residue turned out not to be a missing
-mechanism at all - it was sherpa-onnx cutting a chunk back into sentences and
-generating each one independently. Four lines of `extra` map fixed it, the
-clipped first syllables went away on the device, and what `VoiceContinuity` had
-been built to work around no longer existed. It was cut before this merged.
-
-Two things it found on the way out are worth keeping in mind, because both were
-found by the device rather than by reasoning:
-
-- **A sample-rate guard made it inert.** The stock prompts are 48 kHz, the model
-  generates at 24 kHz, and the guard stood down on mismatch - silently, on the
-  default voice, while the splitting it paid for went on happening. All of the
-  cost and none of the effect. Two runs went into working out that a prompt hash
-  which never changed meant "disabled" rather than "switched off", which is why
-  the voice trace now says outright what it is doing.
-- **Per-sentence conditioning cost a third of the generation speed.** The
-  reference is re-encoded once per generation call, so splitting a chunk into
-  three sentences pays it three times: 1.12x real time fell to **0.73x**, below
-  playback, at which point gaps are arithmetic rather than bad luck. And it did
-  not even decide what a sentence was, because sherpa-onnx re-splits whatever it
-  is handed - `. . . .`, an ellipsis typed as spaced periods and ordinary in
-  scripture and older prose, still reached the model as a request to speak three
-  bare full stops however carefully this side folded them into their neighbours.
-
-What survived is the instrumentation, which is the part that settled any of it:
-each `[chunk n]` line carries `first=NNNms`, wall clock from asking for a chunk
-to its first sample, so the encode is inside it and the blocking write is not.
-`Metrics.generationRealTimeFactor` cannot see that interval - it is taken on the
-first chunk of a read, which is always a cache hit.
+`docs/direct-ort.md` scopes what running the graphs directly would involve. `docs/owning-the-pipeline.md` asks the wider version of the same question.
 
 ## Who is actually speaking
 
-`debug/VoiceTrace` records, per read: the voice asked for, the voice found,
-whether that was a fallback, the prompt file's size against the size that voice
-ships as, and then per chunk the prompt's length and content hash with the
-temperature and seed in force.
+`debug/VoiceTrace` records, for each read, the voice asked for, the voice found, whether that was a fallback, and the prompt file's size against the size that voice ships as. For each chunk, it records the voice id, a hash, the temperature, the seed (or `random`), and the time to the first sample.
 
 ```
-[reader] asked for alba, got alba (958542 bytes as expected)
-[chunk 0] alba prompt=9.98s hash=6f3a1c2e temp=0.30 seed=1
+[selection] asked for alba, got alba (958542 bytes as expected)
+[chunk 0] alba prompt=0.00s hash=1a2b3c4d temp=0.30 seed=1 first=412ms
 ```
 
-It exists because the faults above are mutually indistinguishable by ear and the
-phone this runs on has no logcat within reach. Each line separates them: a
-fallback names itself, a prompt that is not the one it claims to be shows a size
-that does not match, a client sending a stale id shows a `requested` that is not
-the selection, and a voice wandering with all of that correct is the draw. It
-shares a screen with Timings, by the same reasoning as the exit report.
+The first line answers the question the trace was built for. The bracketed name is where the read came from: `selection`, `scratchpad`, `agent`, `system` or `model-picker`. A fallback names itself with `FELL BACK`. A prompt that is not the file it claims to be shows a size that does not match. A client that sends a stale voice id shows a requested name that is not the current selection.
 
-## Steps per frame, and the factor of five that was not there
+Two fields on the chunk line do not yet carry what their names say. `prompt=` is always `0.00s`, because the call that records the chunk passes no prompt length. `hash=` is the identity hash of the loaded native voice handle, not a hash of the prompt audio. The example hash above is illustrative.
 
-`GenerationConfig.numSteps` is how many Euler steps the flow integration takes
-for each generated frame. sherpa-onnx defaults it to 5. The reference
-implementation defaults to 1 - in `lsd_decode` itself and again in
-`default_parameters.py`. Four fifths of that work looked like it might be buying
-nothing, per frame, on a phone.
-
-It was shipped as a slider with the default left at 5, on the reasoning that one
-side of the trade is only audible and nobody here can hear it. The device
-answered: at one step the reading was reported closer to the same model on a
-desktop, *"maybe a little more expressive, or more inflection"*, and no worse. So
-the default is 1 now, and the slider stays for anyone who disagrees.
-
-How much time that can buy is bounded, and worth knowing before reading the
-number. The steps multiply one graph in the bundle - `lm_flow`, 10 MB - and not
-the 76 MB `lm_main` that runs once per frame regardless. So the ceiling on the
-saving is whatever fraction of a frame the small model accounts for, and that
-fraction is still unmeasured. One report called one step a touch *slower* to the
-first word, which cannot be a cost of doing less work; the `first=` figure on
-each chunk trace line is what settles it, and chunk timings on that device move
-by about 90 ms between identical runs anyway.
-
-`docs/direct-ort.md` scopes what running these graphs ourselves would involve,
-and starts from the same reading of the bundle. `docs/owning-the-pipeline.md`
-asks the wider version of the same question.
+The trace exists because several separate faults sound the same: a fallback to another voice, a stock prompt that is a different speaker, a client holding a stale voice name, and the model drawing a different speaker from the right prompt. The phone has no logcat within reach, so the trace is the only record. It shares the Timings dialog with the metrics.
 
 ## When it crashes
 
-Sideloading onto a phone means no logcat within reach, and an app that dies
-silently reports exactly one bit: "it crashed". `debug/CrashLog` writes the last
-uncaught exception to app storage on the way down, and the next launch offers to
-share it. It chains to the previous handler rather than swallowing the crash, so
-the process still dies and the system dialog still appears - only the evidence
-survives.
+Sideloaded apps on a phone have no logcat within reach, and an app that dies silently reports exactly one thing: "it crashed". `debug/CrashLog` writes the last uncaught exception to app storage on the way down, and the next launch offers to share it. It chains to the previous handler rather than swallowing the crash, so the process still dies and the system dialog still appears. Only the evidence survives.
 
-`CrashLog` alone cannot catch native crashes, ANRs or low-memory kills - none of
-them unwind through the JVM - and those look identical from the outside to a
-Kotlin exception. `debug/ExitReasons` closes that gap by reading the platform's
-own record via `ApplicationExitInfo`, which names the kind of death and, for a
-native crash on Android 12+, carries the tombstone. That reason code is the fact
-that decides what to fix; the two sources are shown together on next launch.
+`CrashLog` cannot catch native crashes, ANRs or low-memory kills, because none of them unwind through the JVM. These look identical from outside to a Kotlin exception. `debug/ExitReasons` closes that gap by reading the platform's record via `ApplicationExitInfo`. It names the kind of death and, for a native crash on Android 12 and later, includes the tombstone. The reason code decides what to fix, and the two sources are shown together on the next launch.
 
-## The JNI callback is not a lambda, on purpose
+## The JNI callback has to survive shrinking
 
-`PocketTts.audioCallback` wraps the streaming callback in an object expression
-rather than passing a lambda. sherpa-onnx resolves that callback from native
-code by name and exact signature - `invoke([F)Ljava/lang/Integer;`.
+The engine calls back into the app from native code by name and exact signature. Two things resolve those names: the native methods of `NativeEngine`, which are bound by their exported `Java_…` symbols, and `NativeEngine.Sink.onAudio`, which the engine calls for each chunk of audio with the JNI signature `([F)Z`.
 
-Kotlin 2.0 emits lambdas via `invokedynamic`, and D8 desugars them into
-`$$ExternalSyntheticLambda` classes carrying only the erased
-`invoke(Object)Object`. The specialised method is absent, `GetMethodID` returns
-nothing, the JNI call proceeds with a pending exception, and the runtime aborts
-the process. It surfaces as `REASON_CRASH_NATIVE` with no Java stack trace, from
-code that is entirely ordinary Kotlin and compiles without a warning.
+Nothing in Kotlin references that signature, so nothing in Kotlin breaks when R8 renames or inlines the method. The build passes, and the failure appears only on a phone. A failed JNI lookup leaves a pending exception, the process aborts, and the crash surfaces as `REASON_CRASH_NATIVE` with no Java stack trace. In a release build the failure can also look like a silent read, because the engine receives nothing to play.
 
-Nothing in Kotlin references that signature, so nothing in Kotlin breaks when it
-disappears. `PocketTtsCallbackTest` asserts it by reflection and fails if the
-callback becomes a lambda again.
+Two guards cover this. `app/proguard-rules.pro` keeps the native methods and the `onAudio(float[])` method of every `Sink` implementation. `tools/check-jni-callback.sh` reads the built APK with `dexdump` and fails if any of the nine native methods, or `onAudio ([F)Z`, is not declared. CI runs it against both the debug and the release APK. Both APKs are also uploaded, so the shrunk build is something that gets installed and tested, not something that is assumed to work. The source is not the artefact, and only the artefact shows what R8 kept.
 
-It then disappeared a second time, by a different route. R8 inlined the
-specialised method into its own bridge, leaving one method whose descriptor is
-`(Ljava/lang/Object;)Ljava/lang/Object;` - the reflective test still passed,
-because it reflects over the unshrunk class. Release builds have no CheckJNI, so
-instead of aborting they synthesised entire utterances into nowhere and reported
-a failure after a long silence. Nobody noticed for a simple reason: CI built
-only `assembleDebug`, so every APK ever sideloaded was a debug build.
-
-`proguard-rules.pro` now keeps the method, and `tools/check-jni-callback.sh`
-reads the built APK with `dexdump` and fails if no method declares that
-descriptor. Both APKs are built and checked in CI, and both are uploaded, so
-the shrunk build is something that gets installed rather than something that is
-assumed to work. The source is not the artefact, and only the artefact knows.
-
-Since the engine swap the callback is `NativeEngine.Sink.onAudio([F)Z`, and the
-engine also needs `NativeEngine`'s native methods under their own names.
-`check-jni-callback.sh` now looks for those instead of sherpa-onnx's `invoke`.
+The check reads declarations, not behaviour. It shows that the method exists in the APK, and it does not show that a lambda or other `Sink` implementation calls it correctly. A device run is still the only test of that.
 
 ## Glass, and where it cannot exist
 
-Blurring depends entirely on what is behind the panel, and the two cases have
-different answers.
+Blurring depends on what is behind the panel, and the two cases have different answers.
 
-Behind **another app**, only `Window.setBackgroundBlurRadius` can blur, because
-an app may not read another app's pixels. Whether that works is not something to
-reason about: `WindowManager.isCrossWindowBlurEnabled` answers it. On the device
-this was built for it says no, and no value of any slider will produce a frost.
+Behind another app, only `Window.setBackgroundBlurRadius` can blur, because an app may not read another app's pixels. Whether that works is not something to reason about. `WindowManager.isCrossWindowBlurEnabled` answers it. On the device this was built for, it says no, and no value of any slider will produce a frost.
 
-What it does not say is *why*, and this app no longer guesses. Accessibility →
-"Reduce transparency and blur" turns it off system-wide, battery saver takes it
-away too, and some devices never had it. The frosted panels the system draws for
-*itself* - Samsung's quick settings and app-drawer folders, which are lovely -
-are composited by a privileged process and settle none of it.
+The app does not guess why it is unavailable. Accessibility's "Reduce transparency and blur" turns it off system-wide, battery saver turns it off too, and some devices never had it. The frosted panels that the system draws for itself, such as Samsung's quick settings and app-drawer folders, come from a privileged process and do not show whether the app can blur.
 
-Most of those causes come and go, so the capability is followed with
-`addCrossWindowBlurEnabledListener` rather than read once when the screen opens.
-That also makes the appearance screen the test: toggle the accessibility setting
-and the line changes under you, which answers the question without anyone having
-to be right about it in advance.
+Those causes come and go, so the capability is followed with `addCrossWindowBlurEnabledListener` rather than read once when the screen opens. The appearance screen therefore serves as the test. Toggle the accessibility setting and the status line changes while you watch.
 
-The read-aloud sheet used to pretend otherwise. It drew a near-transparent
-surface, found it could not blur, and painted a hard 0.94 instead - silently
-overriding the opacity that had been dialled in, and looking like a blur that
-had failed rather than like a decision. It is now an opaque Material card at the
-bottom of the screen: bottom, because a centred dialog lands on the paragraph
-that was just selected, which is the one thing the reader may want to keep
-looking at. Where the platform genuinely supports cross-window blur it is
-applied on top and the surface steps back to the tuned opacity - a bonus on the
-devices that have it, not the design.
+The read-aloud sheet used to pretend otherwise. It drew a near-transparent surface, found that it could not blur, and painted a fixed 0.94 opacity instead. That silently overrode the opacity the user had set, and it looked like a blur that had failed rather than a decision. The sheet is now an opaque surface at the bottom of the screen. Bottom placement is deliberate: a centred dialog would cover the paragraph that was just selected, which is the one thing the reader may want to keep in view. Where the platform supports cross-window blur, the blur is applied on top and the surface steps back to the chosen opacity. That is a bonus on devices that have it, not the design.
 
-Behind **our own content**, `ui/GlassPanelView` gives a true
-`backdrop-filter: blur()`: the blur is confined to the panel's own rounded
-bounds and everything outside stays sharp. Each frame it records the backdrop
-view into a `RenderNode`, offset so the slice behind the panel lands at the
-panel's origin, hangs a blur `RenderEffect` on that node, and draws it clipped
-to the panel - then the dim, then the tint, then the hairline. This works on any
-Android 12 device with no vendor opt-in, so the scratchpad overlay is where the
-glass lives.
+Behind our own content, `ui/GlassPanelView` gives a real `backdrop-filter: blur()` effect. The blur is confined to the panel's rounded bounds, and everything outside stays sharp. Each frame, the view records the backdrop into a `RenderNode`, offset so that the slice behind the panel lands at the panel's origin. It applies a blur `RenderEffect` to that node and draws it clipped to the panel, then the dim, then the tint, then the hairline. This works on any Android 12 device with no vendor opt-in, so the scratchpad overlay is where the glass is.
 
-That offset is the whole trick, and getting it wrong is silent. The panel has to
-sit *outside* the backdrop - capturing an ancestor would draw the panel into its
-own backdrop and recurse - so the backdrop is always a sibling. An earlier
-version located the panel by walking *up* its parent chain looking for the
-backdrop, which a sibling is never on: the walk ran off the top of the
-hierarchy, the capture declined, and every panel fell back to a flat tint with
-the configured opacity thrown away. The appearance sliders appeared to do
-nothing, because for three of the four that was exactly true. Both views are now
-located against the root they share and the difference is taken, which is
-correct for siblings, cousins and ancestors alike.
+The offset is the key part, and getting it wrong fails silently. The panel has to sit outside its backdrop. Capturing an ancestor would draw the panel into its own backdrop and recurse, so the backdrop is always a sibling. An earlier version found the panel by walking up its parent chain looking for the backdrop, which a sibling is never on. The walk ran off the top of the hierarchy, the capture was declined, and every panel fell back to a flat tint with the configured opacity discarded. The appearance sliders seemed to do nothing, because for three of the four they did nothing. Both views are now located against the root they share, and the difference is taken. That is correct for siblings, cousins and ancestors alike.
 
-The capture also has to start opaque, which is the second way this looked
-broken. A backdrop view usually has no background of its own - it is letting the
-window's background show through - so recording it captures its text on
-transparency. Blur that, composite it, and the blurred copy lands *on top of*
-the original, which is still there and still sharp underneath. Only the dim and
-the tint appeared to do anything, and the panel read exactly like one whose blur
-was not working.
+The capture also has to start opaque, which was the second way this looked broken. A backdrop view usually has no background of its own. It lets the window's background show through, so recording it captures its text on transparency. Blurring that and compositing it puts the blurred copy on top of the original, which is still there and still sharp underneath. Only the dim and the tint appeared to work, and the panel looked as if its blur had failed. The panel now fills the capture with the window background before drawing the backdrop into it. The blur has something solid to work on, and the result covers what is underneath instead of ghosting over it.
 
-That is why the appearance preview frosted convincingly while the real
-scratchpad overlay did not: the preview's backdrop has a background and a row of
-colour swatches, and the editor behind the overlay has neither. The panel now
-fills the capture with the window background before drawing the backdrop into
-it, so the blur has something solid to work on and the result covers what is
-underneath instead of ghosting over it. Nothing about the backdrop's own layout
-is required any more.
-
-Because these failures have no visual signature - a panel that quietly gave up
-looks like settings that were never wired - every frame records *why* it drew
-what it drew in `lastDraw`, and the appearance screen prints it. A log line is
-no use on a phone with no logcat within reach. It is worth saying that
-`lastDraw` did *not* catch either of the two faults above: both reported
-`BLURRED`, because the capture genuinely ran. It answers "did the blur path
-execute", which is a narrower question than "did anything blur".
+These failures leave no visual sign. A panel that quietly gave up looks like settings that were never connected. So every frame records why it drew what it drew in `lastDraw`, and the appearance screen prints it. `lastDraw` did not catch either of the two faults above, because both reported `BLURRED` when the capture ran. It answers whether the blur path executed, which is a narrower question than whether anything blurred.
 
 ## The keyboard is not the window's problem any more
 
-The scratchpad's Speak and Stop buttons sat under the keyboard. `adjustResize`
-is in the manifest and does nothing: a window laid out edge to edge - which
-`targetSdk 35` makes every window - is no longer resized when the keyboard
-opens. It is handed the keyboard's size in the insets and expected to deal with
-it. Nothing warns you, and the symptom is that reaching the control means
-dismissing the keyboard you were typing with.
+The scratchpad's Speak and Stop buttons sat under the keyboard. `adjustResize` is set in the manifest, but it has no effect here. A window laid out edge to edge, which `targetSdk 35` makes every window, is not resized when the keyboard opens. The window is given the keyboard's size as an inset and must handle it. Nothing warns about this, and the symptom is that reaching a control means dismissing the keyboard you were typing with.
 
-`ui/Insets` now pays back the maximum of the system bars and the IME, rather
-than the system bars alone. The maximum and not the sum: the keyboard is drawn
-over the navigation bar, so its inset already contains it, and adding them
-leaves a gap exactly one navigation bar tall.
+`ui/Insets` now pads the bottom of the view by the larger of the system bars and the IME inset. The maximum is used, not the sum. The keyboard is drawn over the navigation bar, so its inset already includes the navigation bar. Adding the two would leave a gap exactly one navigation bar tall.
 
-This is the technique [Haze](https://chrisbanes.github.io/haze/) uses on
-Android. Haze is Compose Multiplatform and this app is Views, so the technique
-is borrowed and the dependency is not.
+This is the technique [Haze](https://chrisbanes.github.io/haze/) uses on Android. Haze is a Compose Multiplatform library and this app uses Views, so the technique is borrowed and the dependency is not.
 
-`ui/AppearanceActivity` exposes opacity, blur, dim and corner radius as sliders,
-because how this reads depends on the wallpaper-derived palette and the display
-density - neither of which can be judged from source. Every label reports the
-value in the form the source wants (`0.37f · alpha 94 · 37%`), and a button
-copies the whole set as pasteable Kotlin. The defaults in `Settings` are the
-values that came back from a device that way.
+`ui/AppearanceActivity` exposes opacity, blur, dim and corner radius as sliders. The right values depend on the wallpaper-derived palette and the display density, and neither can be judged from source. Each label reports its value in the form the source code wants (`0.37f  ·  alpha 94  ·  37%`), and a button copies the whole set as Kotlin. The defaults in `Settings` are the values that came back from a device this way.
 
 ## Selecting text inside our own app
 
-The `PROCESS_TEXT` item this app registers appears in the selection toolbar of
-its own editor too, so selecting a line in the scratchpad opened the floating
-window over the screen that already had controls for it - two sets of controls
-for one utterance, in two different treatments, one of which could not frost.
+The `PROCESS_TEXT` item this app registers also appears in the selection toolbar of its own editor. So selecting a line in the scratchpad opened the floating window over a screen that already had controls for the same thing. That gave two sets of controls for one utterance, in two treatments, one of which could not frost.
 
-`ReadAloudActivity` checks `callingPackage`: called from ourselves, it tags the
-read as coming from the scratchpad, starts the service and finishes without ever
-showing a window. The scratchpad claims any read tagged that way, whichever
-route it arrived by.
+`ReadAloudActivity` checks `callingPackage`. When it is called from this app, it tags the read as coming from the scratchpad, starts the service and finishes without showing a window. The scratchpad claims any read tagged that way, whichever route it arrived by.
 
 ## Edge-to-edge
 
-`targetSdk 35` means Android 15 lays every window out edge to edge, so the
-system bars are drawn over the content rather than beside it. `ui/Insets.kt`
-pays those insets back as padding: each screen names the view that absorbs the
-top inset (its app bar) and the one that absorbs the bottom. Without it the
-toolbar wears the status bar and the first control is sliced in half.
+`targetSdk 35` means Android 15 lays every window out edge to edge, so the system bars are drawn over the content rather than beside it. `ui/Insets.kt` applies those insets as padding. Each screen names the view that absorbs the top inset (its app bar) and the view that absorbs the bottom. Without that, the toolbar sits under the status bar and the first control is cut in half.
 
 ## Licensing
 
-Worth reading before shipping anything built from this.
+Read this before shipping anything built from the app.
 
-- Since 2026-10 the models, their tokenizers and the voice states all come
-  from Kyutai's own
-  [`kyutai/pocket-tts-without-voice-cloning`](https://huggingface.co/kyutai/pocket-tts-without-voice-cloning),
-  CC-BY-4.0, pinned in `pocket-speak/models.json`. Until then the app read an
-  ONNX export whose `LICENSE` file said CC-BY-4.0 while its README said
-  non-commercial use only; that ambiguity went with it.
-- The engine is upstream's Rust code and
-  [xn-ptts](https://github.com/gradium-ai/xn-ptts), MIT (xn-ptts: MIT or
-  Apache-2.0); `pocket-speak/crates/engine/NOTICE.md` has the details.
-- `app/src/main/java/sonic/Sonic.java` is Bill Cox's Sonic, Apache 2.0, vendored
-  unmodified.
-- Voices have individual licences, listed per voice at
-  [`kyutai/tts-voices`](https://huggingface.co/kyutai/tts-voices).
-- Pocket TTS's own prohibited-use terms apply, in particular the ban on cloning
-  someone's voice without their explicit and lawful consent. The import-a-wav
-  feature makes that easy to do accidentally.
+- The models, their tokenizers and the voice states all come from Kyutai's [`kyutai/pocket-tts-without-voice-cloning`](https://huggingface.co/kyutai/pocket-tts-without-voice-cloning) repository, under CC-BY-4.0. They are pinned in `pocket-speak/models.json`. Before the engine swap, the app read an ONNX export whose `LICENSE` file said CC-BY-4.0 while its README said non-commercial use only. That ambiguity went away with the swap.
+- The engine is upstream's Rust code and [xn-ptts](https://github.com/gradium-ai/xn-ptts), which is MIT (xn-ptts: MIT or Apache-2.0). The build uses a pinned fork of it, as `pocket-speak/crates/engine/Cargo.toml` shows. `pocket-speak/crates/engine/NOTICE.md` has the details.
+- `app/src/main/java/sonic/Sonic.java` is Bill Cox's Sonic, under Apache 2.0.
+- Each voice has its own licence, listed per voice at [`kyutai/tts-voices`](https://huggingface.co/kyutai/tts-voices).
+- Pocket TTS's prohibited-use terms apply (see the root `README.md`), in particular the ban on cloning someone's voice without their explicit and lawful consent. The import-a-wav feature makes that easy to do by accident.
 
 ## Prior art
 
 If you would rather not build anything:
 
-- [NekoSpeak](https://github.com/siva-sub/NekoSpeak) (MIT) is an offline Android
-  TTS engine that already supports Pocket TTS alongside Kokoro, KittenTTS and
-  Piper, with voice cloning. It registers as a system engine but does not add a
-  text-selection menu item or a scratchpad.
-- [TTS Util](https://github.com/Danesprite/tts-util-app) (Apache 2.0) adds
-  share-sheet entries and can read the clipboard through whichever system engine
-  you have selected.
-- [SherpaOnnxTtsEngineAndroid](https://github.com/jing332/SherpaOnnxTtsEngineAndroid)
-  wraps sherpa-onnx as a system engine with in-app model downloads.
+- [NekoSpeak](https://github.com/siva-sub/NekoSpeak) (MIT) is an offline Android TTS engine. It supports Pocket TTS alongside Kokoro, KittenTTS and Piper, with voice cloning. It registers as a system engine but does not add a text-selection menu item or a scratchpad.
+- [TTS Util](https://github.com/Danesprite/tts-util-app) (Apache 2.0) adds share-sheet entries and can read the clipboard through whichever system engine is selected.
+- [SherpaOnnxTtsEngineAndroid](https://github.com/jing332/SherpaOnnxTtsEngineAndroid) wraps sherpa-onnx as a system engine, with in-app model downloads.
 
-Pairing NekoSpeak (or this app's engine) with TTS Util gets you most of the way
-without writing code; this app exists mainly to put all three pieces behind one
-tap.
+Pairing NekoSpeak (or this app's engine) with TTS Util gets most of the way there without writing code. This app exists mainly to put all three pieces behind one tap.

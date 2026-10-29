@@ -1,18 +1,19 @@
 # This fork
 
-[kyutai-labs/pocket-tts](https://github.com/kyutai-labs/pocket-tts) with two things on top:
+[kyutai-labs/pocket-tts](https://github.com/kyutai-labs/pocket-tts) with two additions:
 
-- **`android/`**: an Android app that reads text aloud in Pocket TTS voices, from the
-  share sheet, a text selection, a broadcast, or as the phone's system TTS engine.
-  [android/README.md](android/README.md).
-- **`pocket-speak/`**: the engine the app runs, and `pocket-speak`, the same engine as a
-  desktop command that reads text from stdin. [pocket-speak/README.md](pocket-speak/README.md).
+- **`android/`**: an Android app that reads text aloud in Pocket TTS voices. It
+  takes text from the share sheet, a text selection, or a broadcast, and it can
+  be the phone's system TTS engine. [android/README.md](android/README.md).
+- **`pocket-speak/`**: the engine the app runs, and `pocket-speak`, the same
+  engine as a desktop command that reads text from stdin.
+  [pocket-speak/README.md](pocket-speak/README.md).
 
-Everything else is upstream's, unchanged. `README.md` and `AGENTS.md` describe upstream's
-Python package and are upstream's files.
+Everything else is upstream's and stays identical to it. `README.md` and
+`AGENTS.md` describe upstream's Python package.
 
 **Install the app:** <https://github.com/mycosavant/pocket-tts/releases/latest/download/pocket-tts.apk>
-is the newest build of `main`.
+always points at the newest release the Android workflow built from `main`.
 
 ## One rule: upstream's files stay upstream's
 
@@ -26,32 +27,40 @@ nothing else:
 | `FORK.md`, `.github/fork/` | this file and the scripts below |
 | `.github/workflows/android.yml`, `fork-*.yml` | the fork's CI |
 
-Upstream never touches these, so merging upstream cannot conflict on them. Every other
-file stays identical to upstream's, and the **Fork checks** workflow fails a PR that
-changes one. When fork code needs something upstream has, it builds on upstream's file
-from a fork path rather than editing it. If an upstream file truly must change, list it
-in [.github/fork/upstream-edits](.github/fork/upstream-edits) with the reason; expect
-it to conflict whenever upstream edits that file.
+Upstream never touches these paths, so a merge of upstream cannot conflict on
+them. Every other file must stay identical to upstream's. The **Fork checks**
+workflow fails a PR that changes one. When fork code needs something upstream
+has, it builds on upstream's file from a fork path instead of editing it. If an
+upstream file must change, list it in
+[.github/fork/upstream-edits](.github/fork/upstream-edits) with the reason. Expect
+a conflict whenever upstream edits that file.
 
 ## The engine builds on upstream's Rust code
 
 The engine in `pocket-speak/crates/engine` compiles in four of upstream's
-`rust/src` files unchanged, and embeds `pocket_tts/config`. A merge of upstream
-updates the engine's config parsing, text preparation and weight loading, and
-runs the Android workflow, whose engine job includes upstream's own tests of
-those files. Two more it ports rather than compiles in, listed in
-`.github/fork/ported`: **Fork checks** fails the PR that merges a change to
-either, with the command to review it, and fails too if the engine's xn-ptts
-pin no longer matches upstream's. `android/docs/pure-rust-engine.md` has the
+`rust/src` files unchanged: `config.rs`, `defaults.rs`, `text.rs`, and
+`weights.rs`. It also embeds the model configs in `pocket_tts/config`. A merge of
+upstream that changes any of these runs the Android workflow, whose `engine` job
+runs the unit tests in `config.rs`, `defaults.rs`, and `text.rs`. Upstream has
+no tests in `weights.rs`.
+
+Two more files are ported rather than compiled in: `rust/src/model.rs` and
+`rust/src/rng.rs`, listed in [.github/fork/ported](.github/fork/ported) with the
+git blob each port follows. When upstream changes either file, **Fork checks**
+fails the PR. The failure prints the `git diff` to review. After porting the
+change, record the new blob in `.github/fork/ported`. The same check also fails
+when the engine's xn-ptts pin differs from upstream's `rust/Cargo.toml`.
+[android/docs/pure-rust-engine.md](android/docs/pure-rust-engine.md) has the
 details.
 
 ## Merging upstream
 
-The **Upstream watch** workflow runs every Monday. When upstream has commits the fork
-lacks, it keeps one issue labelled `upstream-sync` up to date: how many commits, and
-whether they merge cleanly or which files conflict. It closes the issue once the fork
-has caught up. Run it on demand from the Actions tab, or locally with
-`.github/fork/upstream-status.sh`.
+The **Upstream watch** workflow runs every Monday at 06:17 UTC, and it can be run
+on demand from the Actions tab. When upstream has commits the fork lacks, it keeps
+one issue labelled `upstream-sync` up to date. The issue gives the number of
+commits and says whether they merge cleanly or which files conflict. The workflow
+closes the issue once the fork has every upstream commit. To run the same report
+locally, use `.github/fork/upstream-status.sh`.
 
 To merge:
 
@@ -64,14 +73,19 @@ git push -u origin upstream-sync   # then open a PR
 ```
 
 **Merge that PR with "Create a merge commit", never "Squash and merge".** A squash
-records upstream's changes as the fork's own, forgets which upstream commit they came
-from, and the next merge then conflicts on every file upstream has changed since.
+records upstream's changes as the fork's own and forgets which upstream commit
+they came from. The next merge then conflicts on every file upstream has changed
+since.
 
 ## Releases
 
-Each push to `main` that touches the app or the engine builds the APK and publishes it as
-a release tagged `android-<run>-<commit>`, marked latest; the ten newest are kept and
-older `android-*` releases are deleted with their tags. Releases made by that workflow
-do not trigger other workflows. A release made by hand would also start upstream's
-release workflows (PyPI publish, docs, Rust binaries), which fail or do nothing useful in
-this fork.
+Each push to `main` that touches `android/` or `pocket-speak/` (or the other
+paths in the workflow's trigger) builds the APK and publishes it as a release
+tagged `android-<run>-<commit>`, marked latest. The workflow keeps the ten newest
+of these releases and deletes older `android-*` releases along with their tags.
+Releases made by that workflow do not trigger other workflows, because they use
+the default `GITHUB_TOKEN`.
+
+A release made by hand would start upstream's `publish-package.yml`,
+`gh-pages.yml`, and `rust-release.yml`, which are upstream's PyPI, docs, and
+binary workflows.

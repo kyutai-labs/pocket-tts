@@ -15,7 +15,9 @@
 //!   JVM through a `JNIEnv`, which is only valid on the thread that received it;
 //! * the text is one chunk the caller has already split, not split again;
 //! * each chunk reports how it ended, because "the model said it was done" and
-//!   "the frame budget ran out" sound alike and mean different things.
+//!   "the frame budget ran out" sound alike and mean different things;
+//! * one decoder call takes at most [`MAX_DECODE_FRAMES`] latents, not every
+//!   latent queued.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -45,6 +47,12 @@ const GEN_SECONDS_PADDING: f32 = 2.0;
 /// some voices can cross the threshold, and a short text then ends before the
 /// word is spoken.
 const MIN_FRAMES_BEFORE_EOS: usize = 6;
+/// The most latents one decoder call takes. Upstream decodes every latent
+/// queued, which suits a sink that never blocks. A sink that blocks, as
+/// Android's TTS framework does with about 0.7 s of audio held, lets generation
+/// run ahead meanwhile, and the next call then decoded seconds of audio while
+/// the speaker ran dry. Four frames are 320 ms of audio.
+const MAX_DECODE_FRAMES: usize = 4;
 
 #[derive(Debug)]
 pub struct Error(String);
@@ -573,8 +581,9 @@ impl Run<'_> {
         })
     }
 
-    /// Decodes the latents as they come, as many as are queued in one call, and
-    /// hands the audio to `sink` until it returns false or `cancel` is set.
+    /// Decodes the latents as they come, up to [`MAX_DECODE_FRAMES`] queued ones
+    /// in one call, and hands the audio to `sink` until it returns false or
+    /// `cancel` is set.
     ///
     /// Checks `cancel` itself rather than relying on generation to: the 2m
     /// model generates a chunk several times faster than it is decoded, so a
@@ -601,7 +610,9 @@ impl Run<'_> {
                 return Ok(Decoded::Stopped);
             }
             let mut latents = vec![latent];
-            while let Ok(latent) = latent_rx.try_recv() {
+            while latents.len() < MAX_DECODE_FRAMES
+                && let Ok(latent) = latent_rx.try_recv()
+            {
                 latents.push(latent);
             }
             let refs: Vec<&Tensor<f32, CpuDevice>> = latents.iter().collect();

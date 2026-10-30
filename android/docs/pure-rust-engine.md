@@ -107,11 +107,13 @@ those modules run in the engine's test suite.
 The generation loop is ported because what it needs is private upstream and fixed
 at load: the noise generator, its temperature and its seed, which the app sets per
 read. It keeps upstream's frame budget, EOS rule (ignored for the first 6 frames),
-frames after EOS, 5 ms fade-in and decoding while generating. It differs in three
+frames after EOS, 5 ms fade-in and decoding while generating. It differs in four
 ways. The caller's thread decodes and calls the sink, and generation runs on a
 scoped thread, because the app's sink calls into the JVM through a `JNIEnv`, which
-is only valid on its own thread. Each chunk reports how it ended. And the text is
-one chunk the caller has already split.
+is only valid on its own thread. Each chunk reports how it ended. The text is one
+chunk the caller has already split. And one decoder call takes at most 4 frames,
+where upstream's takes every frame queued: behind a sink that blocks, generation
+runs ahead, and decoding it all at once left the speaker silent meanwhile.
 
 `.github/fork/ported` records the upstream version (git blob) each port follows.
 `check-ported.sh` fails when the upstream file changes, and the fork checks run it

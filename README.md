@@ -456,6 +456,15 @@ uvx pocket-tts generate \
 </details>
 
 
+<details>
+<summary><a href="https://samuel.vvolhejn.com/">Samuel TTS using Pink Trombone</a> by @vvolhejn</summary>
+
+A model based on Pocket TTS that reads English text using [Pink Trombone](https://dood.al/pinktrombone/), a silly mouth simulator.
+Cannot be used directly with `uvx pocket-tts`, head over to [the repo](https://github.com/vvolhejn/samuel) to use it.
+
+</details>
+
+
 Want your model here? Head to the [training Readme](https://github.com/kyutai-labs/pocket-tts/blob/main/training/README.md) to get started!
 
 ## Projects using Pocket TTS

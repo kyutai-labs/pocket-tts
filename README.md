@@ -441,6 +441,20 @@ uvx pocket-tts generate \
 ```
 </details>
 
+<details>
+<summary><a href="https://huggingface.co/meeeetxd/pocket-tts-gujarati">Pocket TTS Gujarati</a> by <a href="https://huggingface.co/meeeetxd">Meet Patel</a>, 6 layers</summary>
+
+Gujarati language. Use an Indian voice for a better Indian accent.
+
+```bash
+uvx pocket-tts generate \
+  --config hf://meeeetxd/pocket-tts-gujarati/config.yaml \
+  --voice my_voice.wav \
+  --text "નમસ્તે, તમે કેમ છો?" \
+  --output-path out.wav
+```
+</details>
+
 
 Want your model here? Head to the [training Readme](https://github.com/kyutai-labs/pocket-tts/blob/main/training/README.md) to get started!
 

@@ -7,13 +7,20 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.TextToSpeechService
 import android.speech.tts.Voice
 import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Semaphore
 import org.pockettts.android.debug.VoiceTrace
 import org.pockettts.android.speech.TextChunker
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Exposes Pocket TTS as a system-wide Android text-to-speech engine.
@@ -231,32 +238,76 @@ class PocketTtsService : TextToSpeechService() {
                 callback.start(engine.sampleRate, AudioFormat.ENCODING_PCM_16BIT, 1)
                 val maxBytes = callback.maxBufferSize
 
-                for (chunk in TextChunker.chunk(speakable)) {
-                    if (stopRequested.get() || EngineTurn.superseded(turn)) break
-                    // Where in the request this chunk is, so the caller can
-                    // highlight along. Chrome and Select to Speak both use it,
-                    // and it costs one call - the offsets are only meaningful
-                    // because the text above is passed through unrewritten.
-                    callback.rangeStart(chunk.start, chunk.end, 0)
-                    // The chunk's speech, not its text: the same words, with a
-                    // trailing run of short sentences joined so the model does
-                    // not end early on them. Offsets above stay the text's.
-                    val completed = engine.synthesize(
-                        chunk.speech,
-                        voice,
-                        speed,
-                        steps,
-                        temperature,
-                        seed,
-                        cancel,
-                    ) { samples ->
-                        val giveUp = stopRequested.get() || EngineTurn.superseded(turn)
-                        if (giveUp) false else deliver(callback, samples, maxBytes)
+                // The engine runs ahead on another thread, as in Reader.play.
+                // audioAvailable blocks once the framework holds about half a
+                // second of audio, and composing inside it meant the next
+                // chunk could not start until this one had all but played:
+                // its text prefill, longer than that half second on a phone,
+                // was heard as a silence at every chunk.
+                val chunks = TextChunker.chunk(speakable)
+                val pieces = Channel<Piece>(Channel.UNLIMITED)
+                // The chunk being delivered plus one composed ahead.
+                val permits = Semaphore(2)
+                coroutineScope {
+                    val producer = launch(Dispatchers.Default) {
+                        val self = coroutineContext.job
+                        try {
+                            for ((index, chunk) in chunks.withIndex()) {
+                                permits.acquire()
+                                if (stopRequested.get() || EngineTurn.superseded(turn)) break
+                                pieces.send(Piece(index, null))
+                                // The chunk's speech, not its text: the same
+                                // words, with a trailing run of short sentences
+                                // joined so the model does not end early on
+                                // them. Offsets stay the text's.
+                                val completed = engine.synthesize(
+                                    chunk.speech,
+                                    voice,
+                                    speed,
+                                    steps,
+                                    temperature,
+                                    seed,
+                                    cancel,
+                                ) { samples ->
+                                    val giveUp = !self.isActive || stopRequested.get() || EngineTurn.superseded(turn)
+                                    if (!giveUp) pieces.trySend(Piece(index, samples))
+                                    !giveUp
+                                }
+                                if (!completed) break
+                                if (chunk.trailingPauseSeconds > 0f) {
+                                    val silence = (chunk.trailingPauseSeconds * engine.sampleRate).toInt()
+                                    pieces.send(Piece(index, FloatArray(silence)))
+                                }
+                            }
+                            pieces.close()
+                        } catch (cancelled: CancellationException) {
+                            pieces.close()
+                            throw cancelled
+                        } catch (error: Throwable) {
+                            // Delivered after the audio composed before it.
+                            pieces.close(error)
+                        }
                     }
-                    if (!completed) break
-                    if (chunk.trailingPauseSeconds > 0f) {
-                        val silence = FloatArray((chunk.trailingPauseSeconds * engine.sampleRate).toInt())
-                        if (!deliver(callback, silence, maxBytes)) break
+
+                    var delivering = -1
+                    for (piece in pieces) {
+                        if (piece.chunk != delivering) {
+                            if (delivering >= 0) permits.release()
+                            delivering = piece.chunk
+                        }
+                        val samples = piece.samples
+                        if (samples == null) {
+                            // Where in the request this chunk is, so the caller
+                            // can highlight along. Chrome and Select to Speak
+                            // both use it, and it costs one call - the offsets
+                            // are only meaningful because the text above is
+                            // passed through unrewritten.
+                            val chunk = chunks[piece.chunk]
+                            callback.rangeStart(chunk.start, chunk.end, 0)
+                        } else if (!deliver(callback, samples, maxBytes)) {
+                            producer.cancel()
+                            break
+                        }
                     }
                 }
                 callback.done()
@@ -269,6 +320,12 @@ class PocketTtsService : TextToSpeechService() {
             token?.close()
         }
     }
+
+    /**
+     * A chunk's audio on its way to the framework; null samples mark where
+     * chunk [chunk] starts.
+     */
+    private class Piece(val chunk: Int, val samples: FloatArray?)
 
     /** What a request is read in: its language, that language's model and voice. */
     internal data class Reading(val language: String, val model: String?, val voiceId: String)

@@ -464,6 +464,17 @@ Cannot be used directly with `uvx pocket-tts`, head over to [the repo](https://g
 
 </details>
 
+<details>
+<summary><a href="https://huggingface.co/abdazizsall/wolof-pocket-tts">Pocket TTS Wolof</a> by <a href="https://huggingface.co/abdazizsall">@abdazizsall</a>, 6 layers</summary>
+
+```bash
+uvx pocket-tts generate \
+  --config hf://abdazizsall/wolof-pocket-tts/wolof.yaml@ad1de52ff6321c119d9160c738c41ddc32c1aac2 \
+  --voice hf://abdazizsall/wolof-pocket-tts/voices/alffa_10.wav@ad1de52ff6321c119d9160c738c41ddc32c1aac2 \
+  --text "Salaam aleekum. Lii mooy jumtukaayu wax ci làkku wolof."
+```
+The repository is gated: accept the terms on the model page and log in with `hf auth login` first.
+</details>
 
 Want your model here? Head to the [training Readme](https://github.com/kyutai-labs/pocket-tts/blob/main/training/README.md) to get started!
 

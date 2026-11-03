@@ -374,3 +374,44 @@ def test_splits_without_decimal_numbers_are_unchanged(tokenizer: Tokenizer):
         "It was raining.",
         "The bus was late.",
     ]
+
+
+def test_prepare_text_prompt_hindi_punctuation():
+    # Devanagari danda should be recognized as terminal punctuation and not get an extra period.
+    got, _ = prepare_text_prompt("नमस्ते दुनिया।", False, False, capitalize_first_letter=False)
+    assert got == "नमस्ते दुनिया।"
+
+    got, _ = prepare_text_prompt("पहला चरण॥", False, False, capitalize_first_letter=False)
+    assert got == "पहला चरण॥"
+
+
+def test_prepare_text_prompt_digit_warning(caplog: pytest.LogCaptureFixture):
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        got, _ = prepare_text_prompt("3 बजे meeting है।", False, False, capitalize_first_letter=False)
+    assert "Digits found in input text" in caplog.text
+    assert got == "3 बजे meeting है।"
+
+
+def test_normalize_numbers_hindi():
+    from pocket_tts.models.text_chunking import normalize_numbers, normalize_text
+
+    assert normalize_numbers("10", mode="hindi") == "दस"
+    assert normalize_numbers("₹500", mode="hindi") == "पाँच सौ रुपये"
+    assert normalize_numbers("3:30", mode="hindi") == "साढ़े तीन बजे"
+    assert normalize_numbers("50%", mode="hindi") == "पचास प्रतिशत"
+    assert normalize_numbers("1st", mode="hindi") == "पहला"
+
+    norm, changes = normalize_text("10 लोग और ₹50", mode="hindi")
+    assert norm == "दस लोग और पचास रुपये"
+    assert len(changes) == 2
+
+
+def test_normalize_numbers_english():
+    from pocket_tts.models.text_chunking import normalize_numbers
+
+    assert normalize_numbers("10", mode="english") == "ten"
+    assert normalize_numbers("$50", mode="english") == "fifty dollars"
+    assert normalize_numbers("50%", mode="english") == "fifty percent"
+    assert normalize_numbers("1st", mode="english") == "first"

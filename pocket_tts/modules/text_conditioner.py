@@ -38,6 +38,12 @@ class SentencePieceTokenizer:
     def decode(self, tokens: list[int]) -> str:
         return self.sp.decode(tokens)
 
+    def get_vocab_size(self) -> int:
+        return self.sp.vocab_size()
+
+    def id_to_piece(self, idx: int) -> str:
+        return self.sp.id_to_piece(idx)
+
     def serialize(self) -> tuple[str, bytes]:
         """(kind, payload) for `encoder_from_serialized`, to cross a process boundary."""
         return "sentencepiece", self.sp.serialized_model_proto()
@@ -68,6 +74,13 @@ class JsonTokenizer:
 
     def decode(self, tokens: list[int]) -> str:
         return self.tokenizer.decode(tokens)
+
+    def get_vocab_size(self) -> int:
+        return self.tokenizer.get_vocab_size()
+
+    def id_to_piece(self, idx: int) -> str:
+        token = self.tokenizer.id_to_token(idx)
+        return "" if token is None else token
 
     def serialize(self) -> tuple[str, bytes]:
         return "tokenizers", self.tokenizer.to_str().encode()

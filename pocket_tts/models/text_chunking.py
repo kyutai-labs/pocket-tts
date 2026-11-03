@@ -54,8 +54,9 @@ def prepare_text_prompt(
 
 
 _TERMINAL_PUNCTUATION = ".!?\u2026"
-# A segment ending on a decimal number, as in "... a fee of $822.95," or "... is 3.14."
-_ENDS_WITH_DECIMAL_NUMBER = re.compile(r"\d\.\d+\W*$")
+# A segment ending on a decimal number, as in "... a fee of $822.95,", "... is 3.14." or, with a
+# decimal comma, "... de 822,95 €,"
+_ENDS_WITH_DECIMAL_NUMBER = re.compile(r"\d[.,]\d+\W*$")
 _WEAK_PUNCTUATION = ",;:-\u2013\u2014"
 _CLOSERS = "\"'\u201d\u2019)]\u00bb"
 
@@ -84,7 +85,8 @@ def _ensure_terminal_punctuation(text: str) -> str:
 def _is_decimal_period_boundary(
     list_of_tokens: list[int], segment_start_idx: int, tokenizer: Tokenizer
 ) -> bool:
-    """Return True when segment_start_idx begins right after a decimal period, as in "3.14".
+    """Return True when segment_start_idx begins right after a period or comma between two
+    digits, as in "3.14", "3,14" (decimal comma) or "1,000".
 
     Only the tokens next to the boundary are decoded, so checking every sentence boundary
     stays linear in the text length. Decoding the period together with the next token keeps
@@ -95,7 +97,7 @@ def _is_decimal_period_boundary(
     after = tokenizer.decode(list_of_tokens[segment_start_idx - 1 : segment_start_idx + 1])
     return (
         len(before) >= 2
-        and before[-1] == "."
+        and before[-1] in ".,"
         and before[-2].isdigit()
         and len(after) >= 2
         and after[1].isdigit()
@@ -186,7 +188,9 @@ def split_into_best_sentences(
             refined_segments.append((nb_tokens, text))
         else:
             sub_tokens = tokenizer(text.strip())[0].tolist()
-            sub_boundaries = _find_boundary_indices(sub_tokens, fallback_tokens)
+            sub_boundaries = _find_boundary_indices(
+                sub_tokens, fallback_tokens, tokenizer, skip_decimal_periods=True
+            )
             sub_segments = _segments_from_boundaries(sub_tokens, sub_boundaries, tokenizer)
             if len(sub_segments) > 1:
                 refined_segments.extend(sub_segments)

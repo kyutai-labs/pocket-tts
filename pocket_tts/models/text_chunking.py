@@ -54,6 +54,8 @@ def prepare_text_prompt(
 
 
 _TERMINAL_PUNCTUATION = ".!?\u2026"
+# A segment ending on a decimal number, as in "... a fee of $822.95," or "... is 3.14."
+_ENDS_WITH_DECIMAL_NUMBER = re.compile(r"\d\.\d+\W*$")
 _WEAK_PUNCTUATION = ",;:-\u2013\u2014"
 _CLOSERS = "\"'\u201d\u2019)]\u00bb"
 
@@ -190,6 +192,18 @@ def split_into_best_sentences(
                 refined_segments.extend(sub_segments)
             else:
                 refined_segments.append((nb_tokens, text))
+
+    # Never end a chunk on a decimal number: "... $822.95," would become the chunk "... $822.95."
+    # and the model takes the decimal point for the sentence end, stopping before the decimals.
+    # Such a segment stays with the next one.
+    glued_segments: list[tuple[int, str]] = []
+    for nb_tokens, text in refined_segments:
+        if glued_segments and _ENDS_WITH_DECIMAL_NUMBER.search(glued_segments[-1][1]):
+            prev_tokens, prev_text = glued_segments[-1]
+            glued_segments[-1] = (prev_tokens + nb_tokens, prev_text.rstrip() + " " + text.strip())
+        else:
+            glued_segments.append((nb_tokens, text))
+    refined_segments = glued_segments
 
     max_nb_tokens_in_a_chunk = max_tokens
     chunks = []

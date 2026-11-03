@@ -391,3 +391,37 @@ def test_commas_between_digits_do_not_split(tokenizer: Tokenizer):
     assert len(chunks) > 1
     for number in ["1,994.42", "1,874", "3,5"]:
         assert any(number in chunk for chunk in chunks), (number, chunks)
+
+
+URLS = (
+    "You can view the details of your consultation and of the invoice at www.actu.com/tech, "
+    "or send an email to liam_jones@icloud.com, and we will reply before 4 p.m. on Monday."
+)
+TITLES = (
+    "Hi, I'm calling to follow up on your latest lab results, the ones we discussed with Dr. "
+    "Miller and Prof. Chen, the specialists in cardiology, and the general practitioner."
+)
+
+
+@pytest.mark.parametrize(
+    "text, kept",
+    [
+        (URLS, ["www.actu.com/tech,", "liam_jones@icloud.com,", "p.m."]),
+        (TITLES, ["Dr. Miller", "Prof. Chen"]),
+    ],
+)
+def test_no_cut_inside_words_or_after_titles(tokenizer: Tokenizer, text: str, kept: list[str]):
+    """A period followed by a letter (URLs, emails, "p.m.") or ending a title ("Dr.") is not a
+    sentence end: no chunk is cut there and no space is inserted ("icloud. com")."""
+    chunks = _split(tokenizer, text, 20)
+    assert len(chunks) > 1
+    for words in kept:
+        assert any(words in chunk for chunk in chunks), (words, chunks)
+    assert " ".join(chunks).split() == text.split()
+
+
+def test_sentence_ending_on_an_abbreviation_still_splits(tokenizer: Tokenizer):
+    assert _split(tokenizer, "We live in the U.S. It is big. Very big.", 8) == [
+        "We live in the U.S.",
+        "It is big. Very big.",
+    ]

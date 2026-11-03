@@ -154,22 +154,34 @@ fn ensure_terminal_punctuation(text: &str) -> String {
     }
 }
 
-/// Whether `segment_start_idx` begins right after a period or comma between two digits, as in
-/// "3.14", "3,14" (decimal comma) or "1,000".
-fn is_decimal_period_boundary(
+/// Abbreviations that always precede a name or an example, never end a sentence.
+const TITLES: [&str; 9] = [
+    "Mr.", "Mrs.", "Ms.", "Dr.", "Prof.", "Rev.", "vs.", "e.g.", "i.e.",
+];
+
+/// Whether the punctuation right before `segment_start_idx` does not end a sentence or clause: it
+/// is followed by a letter or digit without a space ("3.14", "3,14" with a decimal comma,
+/// "1,000", "4 p.m.", "www.kyutai.org"), or it ends a title that precedes a name ("Dr. Miller").
+/// Only the tokens next to the boundary are decoded, as in Python.
+fn is_inner_punctuation(
     tokens: &[u32],
     segment_start_idx: usize,
     tokenizer: &dyn TextTokenizer,
 ) -> Result<bool> {
-    let prefix: Vec<char> = tokenizer
-        .decode(&tokens[..segment_start_idx])?
+    let after: Vec<char> = tokenizer
+        .decode(&tokens[segment_start_idx - 1..=segment_start_idx])?
         .chars()
         .collect();
-    let suffix = tokenizer.decode(&tokens[segment_start_idx..])?;
-    Ok(prefix.len() >= 2
-        && matches!(prefix[prefix.len() - 1], '.' | ',')
-        && prefix[prefix.len() - 2].is_numeric()
-        && suffix.chars().next().is_some_and(char::is_numeric))
+    if after.len() >= 2 && after[1].is_alphanumeric() {
+        return Ok(true);
+    }
+    let window_start = segment_start_idx.saturating_sub(6);
+    let window = tokenizer.decode(&tokens[window_start..segment_start_idx])?;
+    let words: Vec<&str> = window.split_whitespace().collect();
+    // The first word of the window may be cut, unless the window starts the text.
+    Ok(words
+        .last()
+        .is_some_and(|w| TITLES.contains(w) && (words.len() > 1 || window_start == 0)))
 }
 
 /// Whether `text` ends on a decimal number, possibly followed by punctuation or symbols, as in
@@ -188,7 +200,7 @@ fn ends_with_decimal_number(text: &str) -> bool {
 fn find_boundary_indices(
     tokens: &[u32],
     boundary_tokens: &[u32],
-    decimal_tokenizer: Option<&dyn TextTokenizer>,
+    inner_tokenizer: Option<&dyn TextTokenizer>,
 ) -> Result<Vec<usize>> {
     let boundary_set: HashSet<u32> = boundary_tokens.iter().copied().collect();
     let mut indices = vec![0];
@@ -199,11 +211,11 @@ fn find_boundary_indices(
             continue;
         }
         if previous_was_boundary {
-            let is_decimal = match decimal_tokenizer {
-                Some(tokenizer) => is_decimal_period_boundary(tokens, idx, tokenizer)?,
+            let is_inner = match inner_tokenizer {
+                Some(tokenizer) => is_inner_punctuation(tokens, idx, tokenizer)?,
                 None => false,
             };
-            if !is_decimal {
+            if !is_inner {
                 indices.push(idx);
             }
         }
@@ -448,5 +460,22 @@ mod tests {
         for text in ["in 2008.", "822.95 dollars,", "1.", ".5", "v2"] {
             assert!(!ends_with_decimal_number(text), "{text}");
         }
+    }
+
+    #[test]
+    fn punctuation_inside_words_and_titles_do_not_split() {
+        let o = options();
+        let chunks = split_into_best_sentences(
+            &CharTokenizer,
+            "Mail jo@mail.com at 4 p.m. Ask Dr. Who. Then go.",
+            24,
+            &o,
+        )
+        .unwrap();
+        // Without the rule: ["Mail jo@mail.", "com at 4 p. m.  Ask Dr.", "Who.  Then go."].
+        assert_eq!(
+            chunks,
+            ["Mail jo@mail.com at 4 p.m.", "Ask Dr. Who.  Then go."]
+        );
     }
 }

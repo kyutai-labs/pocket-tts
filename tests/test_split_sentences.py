@@ -321,6 +321,10 @@ REIMBURSEMENT = (
     "will be a reimbursement of $822.95, which should be reflected in your account within "
     "a few business days."
 )
+DECIMAL_COMMA = (
+    "Le dossier a été transmis au service comptable de la région et le remboursement prévu "
+    "sera de 822,95 €, ce qui devrait apparaître sur votre compte dans quelques jours."
+)
 SERVICE_FEE = (
     "Sure, I can walk you through the procedure, the solution we typically offer includes "
     "an onsite technician visit, and the standard service fee is $286.50, our team "
@@ -333,6 +337,7 @@ SERVICE_FEE = (
     [
         (REIMBURSEMENT, 50, "$822.95,"),
         (SERVICE_FEE, 50, "$286.50,"),
+        (DECIMAL_COMMA, 50, "822,95 €,"),
         (
             "The value is 3.14. The next value is larger. And the third one is the largest.",
             10,
@@ -374,3 +379,15 @@ def test_splits_without_decimal_numbers_are_unchanged(tokenizer: Tokenizer):
         "It was raining.",
         "The bus was late.",
     ]
+
+
+def test_commas_between_digits_do_not_split(tokenizer: Tokenizer):
+    """Splitting a long sentence on commas must not cut "1,994.42" or "3,5" (decimal comma)."""
+    text = (
+        "The technician reported that the centrifuge needs 1,994.42 kW and an extra 1,874 kW to "
+        "function on 06-30-2028 at 14 Lab Court, E8 5TT Manchester, MU9S 3VC, le taux est de 3,5 %"
+    )
+    chunks = _split(tokenizer, text, 20)
+    assert len(chunks) > 1
+    for number in ["1,994.42", "1,874", "3,5"]:
+        assert any(number in chunk for chunk in chunks), (number, chunks)

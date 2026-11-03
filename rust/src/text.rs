@@ -154,7 +154,8 @@ fn ensure_terminal_punctuation(text: &str) -> String {
     }
 }
 
-/// Whether `segment_start_idx` begins right after a decimal period.
+/// Whether `segment_start_idx` begins right after a period or comma between two digits, as in
+/// "3.14", "3,14" (decimal comma) or "1,000".
 fn is_decimal_period_boundary(
     tokens: &[u32],
     segment_start_idx: usize,
@@ -166,9 +167,20 @@ fn is_decimal_period_boundary(
         .collect();
     let suffix = tokenizer.decode(&tokens[segment_start_idx..])?;
     Ok(prefix.len() >= 2
-        && prefix[prefix.len() - 1] == '.'
+        && matches!(prefix[prefix.len() - 1], '.' | ',')
         && prefix[prefix.len() - 2].is_numeric()
         && suffix.chars().next().is_some_and(char::is_numeric))
+}
+
+/// Whether `text` ends on a decimal number, possibly followed by punctuation or symbols, as in
+/// "... a fee of $822.95," or "... de 822,95 €," (Python's `\d[.,]\d+\W*$`).
+fn ends_with_decimal_number(text: &str) -> bool {
+    let core = text.trim_end_matches(|c: char| !(c.is_alphanumeric() || c == '_'));
+    let decimals = core.trim_end_matches(|c: char| c.is_numeric());
+    let mut rest = decimals.chars().rev();
+    decimals.len() < core.len()
+        && matches!(rest.next(), Some('.' | ','))
+        && rest.next().is_some_and(char::is_numeric)
 }
 
 /// Token indices where the text should be split. Each consecutive pair of the result delimits a
@@ -241,7 +253,7 @@ pub fn split_into_best_sentences(
             continue;
         }
         let sub_tokens = tokenizer.encode(sentence.trim())?;
-        let sub_boundaries = find_boundary_indices(&sub_tokens, &fallback_tokens, None)?;
+        let sub_boundaries = find_boundary_indices(&sub_tokens, &fallback_tokens, Some(tokenizer))?;
         let sub_segments = segments_from_boundaries(&sub_tokens, &sub_boundaries, tokenizer)?;
         if sub_segments.len() > 1 {
             refined_segments.extend(sub_segments);
@@ -249,6 +261,21 @@ pub fn split_into_best_sentences(
             refined_segments.push((nb_tokens, sentence));
         }
     }
+
+    // Never end a chunk on a decimal number: "... $822.95," would become the chunk "... $822.95."
+    // and the model takes the decimal point for the sentence end, stopping before the decimals.
+    // Such a segment stays with the next one.
+    let mut glued_segments: Vec<(usize, String)> = Vec::new();
+    for (nb_tokens, text) in refined_segments {
+        match glued_segments.last_mut() {
+            Some((prev_tokens, prev_text)) if ends_with_decimal_number(prev_text) => {
+                *prev_tokens += nb_tokens;
+                *prev_text = format!("{} {}", prev_text.trim_end(), text.trim());
+            }
+            _ => glued_segments.push((nb_tokens, text)),
+        }
+    }
+    let refined_segments = glued_segments;
 
     let mut chunks = Vec::new();
     let mut current_chunk = String::new();
@@ -380,5 +407,46 @@ mod tests {
         let chunks =
             split_into_best_sentences(&CharTokenizer, "aaaa, bbbb, cccc.", 8, &options()).unwrap();
         assert_eq!(chunks, ["Aaaa,", "bbbb,", "cccc."]);
+    }
+
+    #[test]
+    fn chunks_never_end_on_a_decimal_number() {
+        let o = options();
+        // Without the rule: ["A fee of 822.95,", "which is due."], then "A fee of 822.95." is read
+        // as ending at the decimal point.
+        let chunks =
+            split_into_best_sentences(&CharTokenizer, "A fee of 822.95, which is due.", 18, &o)
+                .unwrap();
+        assert_eq!(chunks, ["A fee of 822.95, which is due."]);
+        let chunks =
+            split_into_best_sentences(&CharTokenizer, "Une note de 822,95 €, à payer.", 18, &o)
+                .unwrap();
+        assert_eq!(chunks, ["Une note de 822,95 €, à payer."]);
+        let chunks =
+            split_into_best_sentences(&CharTokenizer, "It is 3.14. Next one. Last.", 12, &o)
+                .unwrap();
+        assert_eq!(chunks, ["It is 3.14. Next one.", "Last."]);
+    }
+
+    #[test]
+    fn commas_between_digits_do_not_split() {
+        let chunks = split_into_best_sentences(
+            &CharTokenizer,
+            "aaaa 1,500 bbbb, cccc 3,5 dd, eeee.",
+            14,
+            &options(),
+        )
+        .unwrap();
+        assert_eq!(chunks, ["Aaaa 1,500 bbbb,", "cccc 3,5 dd,", "eeee."]);
+    }
+
+    #[test]
+    fn decimal_number_endings() {
+        for text in ["a 822.95,", "de 822,95 €,", "3.14.", "x 1,000"] {
+            assert!(ends_with_decimal_number(text), "{text}");
+        }
+        for text in ["in 2008.", "822.95 dollars,", "1.", ".5", "v2"] {
+            assert!(!ends_with_decimal_number(text), "{text}");
+        }
     }
 }

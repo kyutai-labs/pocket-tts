@@ -108,6 +108,32 @@ def _is_inner_punctuation(
     return bool(words) and words[-1] in _TITLES and (len(words) > 1 or window_start == 0)
 
 
+# A closing quote can span several byte tokens; bound the lookahead so the check stays linear.
+_MAX_CLOSER_TOKENS = 8
+
+
+def _skip_closers(list_of_tokens: list[int], segment_start_idx: int, tokenizer: Tokenizer) -> int:
+    """Return where the segment starting at segment_start_idx should really start: after the
+    closing quotes and brackets that directly follow the punctuation, as in "“Stop.”" or
+    "(quietly.)", so that they stay with their sentence instead of starting the next segment.
+
+    A closer like the curly quote is made of byte tokens that decode to U+FFFD on their own, so
+    the tokens are decoded together with the punctuation and the start only moves past complete
+    closers. A closer preceded by a space opens the next sentence and is left alone.
+    """
+    punctuation = tokenizer.decode(list_of_tokens[segment_start_idx - 1 : segment_start_idx])
+    start = segment_start_idx
+    stop = min(len(list_of_tokens), segment_start_idx + _MAX_CLOSER_TOKENS)
+    for end in range(segment_start_idx + 1, stop + 1):
+        window = tokenizer.decode(list_of_tokens[segment_start_idx - 1 : end])
+        after = window[len(punctuation) :]
+        if not after or any(c not in _CLOSERS + "\ufffd" for c in after):
+            break
+        if "\ufffd" not in after:
+            start = end
+    return start
+
+
 def _find_boundary_indices(
     list_of_tokens: list[int],
     boundary_tokens: list[int],
@@ -135,7 +161,9 @@ def _find_boundary_indices(
                 ):
                     previous_was_boundary = False
                     continue
-                indices.append(idx)
+                start = idx if tokenizer is None else _skip_closers(list_of_tokens, idx, tokenizer)
+                if start < len(list_of_tokens):
+                    indices.append(start)
             previous_was_boundary = False
     indices.append(len(list_of_tokens))
     return indices

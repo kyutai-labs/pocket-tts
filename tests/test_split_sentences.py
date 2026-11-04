@@ -425,3 +425,34 @@ def test_sentence_ending_on_an_abbreviation_still_splits(tokenizer: Tokenizer):
         "We live in the U.S.",
         "It is big. Very big.",
     ]
+
+
+@pytest.mark.parametrize(
+    "text, max_tokens, expected",
+    [
+        ("He said “Stop.”", 50, ["He said “Stop.”"]),
+        ("He said “Stop.” Then he left.", 8, ["He said “Stop.”", "Then he left."]),
+        (
+            "A long first sentence goes right here. He said “Stop.”",
+            9,
+            ["A long first sentence goes right here.", "He said “Stop.”"],
+        ),
+        ("He said 'Stop.' Then he left.", 8, ["He said 'Stop.'", "Then he left."]),
+        ("(quietly.) Okay then.", 4, ["(quietly.)", "Okay then."]),
+        (
+            "“Stop,” he said, and then he left the room very quietly.",
+            8,
+            ["“Stop,”", "he said,", "and then he left the room very quietly."],
+        ),
+    ],
+)
+def test_closing_quotes_and_brackets_stay_with_their_sentence(
+    tokenizer: Tokenizer, text: str, max_tokens: int, expected: list[str]
+):
+    """A closer right after the punctuation ends that sentence or clause: it must not start the
+    next chunk, become a chunk of its own, or get a space inserted before it ("Stop. ”")."""
+    assert _split(tokenizer, text, max_tokens) == expected
+
+
+def test_opening_quote_of_the_next_sentence_is_not_moved(tokenizer: Tokenizer):
+    assert _split(tokenizer, "He left. “Hi.” Bye.", 4) == ["He left.", "“Hi.”", "Bye."]

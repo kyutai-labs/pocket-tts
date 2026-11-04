@@ -248,6 +248,10 @@ By default, the training saves:
     `-- ...
 ```
 
+To stop a run cleanly, `touch <run_dir>/STOP`: it finishes its current step, saves a checkpoint and
+exits. Relaunching the same config resumes from that checkpoint. `SIGTERM` (e.g. `scancel`) does the
+same, but Slurm only waits `KillWait` (30 s by default) before killing the job.
+
 `model.safetensors`: different from the `checkpoint_<N>.pt` checkpoints in two ways.
 One, it uses the format that the inference code (in the repo root) expects.
 And two, it's an exponential moving average of the model weights, averaged over training timesteps.

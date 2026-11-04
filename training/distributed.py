@@ -75,3 +75,20 @@ def average_grads(params: list[torch.nn.Parameter]):
     dist.all_reduce(flat, op=dist.ReduceOp.AVG)
     for p, g in zip(params, flat.split([p.numel() for p in params]), strict=True):
         p.grad = g.view_as(p)
+
+
+def exit_training():
+    """Shut NCCL down and exit the process now.
+
+    The spawned loader processes and their queue feeder threads can keep the interpreter alive
+    after training; a hard exit releases the GPUs immediately. Kill the loaders first: as
+    orphans they would keep a piped stdout open and stall whatever runs after training.
+    """
+    import logging
+    import multiprocessing
+
+    shutdown_distributed()
+    for child in multiprocessing.active_children():
+        child.kill()
+    logging.shutdown()
+    os._exit(0)

@@ -33,11 +33,11 @@ from training.dataloader.teacher_cache import cached_batches
 from training.distributed import (
     average_grads,
     avg_across_ranks,
+    exit_training,
     get_rank,
     get_world_size,
     init_distributed,
     is_torchrun,
-    shutdown_distributed,
 )
 from training.modules.builders import build_models
 from training.modules.model import TrainableTTS
@@ -228,6 +228,13 @@ def main(config_path: str):
 
     signal.signal(signal.SIGTERM, _request_stop)
     signal.signal(signal.SIGUSR1, _request_stop)
+    # graceful stop with no 30 s deadline: `touch <run_dir>/STOP`, the run checkpoints after
+    # its current step and exits. A STOP left from the last stop is renamed so a resume runs.
+    _stop_file = os.path.join(args.run_dir, "STOP")
+    if rank == 0 and os.path.exists(_stop_file):
+        os.rename(_stop_file, f"{_stop_file}.used_{int(time.time())}")
+    if run.world_size > 1:
+        torch.distributed.barrier()
     if rank == 0:
         logger.info("starting training loop, first step can take a few minutes (compilation etc.)")
     last_log = time.time()
@@ -298,7 +305,10 @@ def main(config_path: str):
         if ema is not None:
             ema.update(model)
 
-        stop = torch.tensor(float(stop_requested), device=device)
+        stop = torch.tensor(
+            float(stop_requested or os.path.exists(os.path.join(args.run_dir, "STOP"))),
+            device=device,
+        )
         if run.world_size > 1:
             torch.distributed.all_reduce(stop, op=torch.distributed.ReduceOp.MAX)
         if stop.item():
@@ -312,8 +322,7 @@ def main(config_path: str):
                 progress.log("checkpoint", step + 1)
             if train_data is not None:
                 train_data.close()
-            shutdown_distributed()
-            return
+            exit_training()
 
         steps_since_log += 1
         if rank == 0 and step == start_step and args.compile:
@@ -365,7 +374,7 @@ def main(config_path: str):
         logger.info("done")
     if train_data is not None:
         train_data.close()
-    shutdown_distributed()
+    exit_training()
 
 
 @torch.no_grad()

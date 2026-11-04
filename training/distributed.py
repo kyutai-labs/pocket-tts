@@ -48,17 +48,6 @@ def init_distributed() -> torch.device:
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def shutdown_distributed():
-    """Hold every rank until all are done, then tear NCCL down.
-
-    Without the barrier, multi-GPU training can crash at the end.
-    """
-    if not dist.is_initialized():
-        return
-    dist.barrier(device_ids=[torch.cuda.current_device()])
-    dist.destroy_process_group()
-
-
 def avg_across_ranks(value: float) -> float:
     if not dist.is_initialized():
         return value
@@ -78,7 +67,7 @@ def average_grads(params: list[torch.nn.Parameter]):
 
 
 def exit_training():
-    """Shut NCCL down and exit the process now.
+    """Exit the process now (NCCL is torn down with it).
 
     The spawned loader processes and their queue feeder threads can keep the interpreter alive
     after training; a hard exit releases the GPUs immediately. Kill the loaders first: as
@@ -87,7 +76,6 @@ def exit_training():
     import logging
     import multiprocessing
 
-    shutdown_distributed()
     for child in multiprocessing.active_children():
         child.kill()
     logging.shutdown()

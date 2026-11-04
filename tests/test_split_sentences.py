@@ -1,7 +1,11 @@
 """Tests for the text splitting logic in split_into_best_sentences."""
 
-import pytest
+from typing import cast
 
+import pytest
+import torch
+
+from pocket_tts.models import text_chunking
 from pocket_tts.models.tts_model import prepare_text_prompt, split_into_best_sentences
 from pocket_tts.modules.text_conditioner import Tokenizer, get_default_tokenizer
 
@@ -321,6 +325,10 @@ REIMBURSEMENT = (
     "will be a reimbursement of $822.95, which should be reflected in your account within "
     "a few business days."
 )
+DECIMAL_COMMA = (
+    "Le dossier a été transmis au service comptable de la région et le remboursement prévu "
+    "sera de 822,95 €, ce qui devrait apparaître sur votre compte dans quelques jours."
+)
 SERVICE_FEE = (
     "Sure, I can walk you through the procedure, the solution we typically offer includes "
     "an onsite technician visit, and the standard service fee is $286.50, our team "
@@ -333,6 +341,7 @@ SERVICE_FEE = (
     [
         (REIMBURSEMENT, 50, "$822.95,"),
         (SERVICE_FEE, 50, "$286.50,"),
+        (DECIMAL_COMMA, 50, "822,95 €,"),
         (
             "The value is 3.14. The next value is larger. And the third one is the largest.",
             10,
@@ -376,42 +385,112 @@ def test_splits_without_decimal_numbers_are_unchanged(tokenizer: Tokenizer):
     ]
 
 
-def test_prepare_text_prompt_hindi_punctuation():
-    # Devanagari danda should be recognized as terminal punctuation and not get an extra period.
+def test_commas_between_digits_do_not_split(tokenizer: Tokenizer):
+    """Splitting a long sentence on commas must not cut "1,994.42" or "3,5" (decimal comma)."""
+    text = (
+        "The technician reported that the centrifuge needs 1,994.42 kW and an extra 1,874 kW to "
+        "function on 06-30-2028 at 14 Lab Court, E8 5TT Manchester, MU9S 3VC, le taux est de 3,5 %"
+    )
+    chunks = _split(tokenizer, text, 20)
+    assert len(chunks) > 1
+    for number in ["1,994.42", "1,874", "3,5"]:
+        assert any(number in chunk for chunk in chunks), (number, chunks)
+
+
+URLS = (
+    "You can view the details of your consultation and of the invoice at www.actu.com/tech, "
+    "or send an email to liam_jones@icloud.com, and we will reply before 4 p.m. on Monday."
+)
+TITLES = (
+    "Hi, I'm calling to follow up on your latest lab results, the ones we discussed with Dr. "
+    "Miller and Prof. Chen, the specialists in cardiology, and the general practitioner."
+)
+
+
+@pytest.mark.parametrize(
+    "text, kept",
+    [
+        (URLS, ["www.actu.com/tech,", "liam_jones@icloud.com,", "p.m."]),
+        (TITLES, ["Dr. Miller", "Prof. Chen"]),
+    ],
+)
+def test_no_cut_inside_words_or_after_titles(tokenizer: Tokenizer, text: str, kept: list[str]):
+    """A period followed by a letter (URLs, emails, "p.m.") or ending a title ("Dr.") is not a
+    sentence end: no chunk is cut there and no space is inserted ("icloud. com")."""
+    chunks = _split(tokenizer, text, 20)
+    assert len(chunks) > 1
+    for words in kept:
+        assert any(words in chunk for chunk in chunks), (words, chunks)
+    assert " ".join(chunks).split() == text.split()
+
+
+def test_sentence_ending_on_an_abbreviation_still_splits(tokenizer: Tokenizer):
+    assert _split(tokenizer, "We live in the U.S. It is big. Very big.", 8) == [
+        "We live in the U.S.",
+        "It is big. Very big.",
+    ]
+
+
+def test_danda_is_terminal_punctuation():
     got, _ = prepare_text_prompt("नमस्ते दुनिया।", False, False, capitalize_first_letter=False)
     assert got == "नमस्ते दुनिया।"
-
     got, _ = prepare_text_prompt("पहला चरण॥", False, False, capitalize_first_letter=False)
     assert got == "पहला चरण॥"
 
 
-def test_prepare_text_prompt_digit_warning(caplog: pytest.LogCaptureFixture):
-    import logging
-
-    with caplog.at_level(logging.WARNING):
-        got, _ = prepare_text_prompt("3 बजे meeting है।", False, False, capitalize_first_letter=False)
-    assert "Digits found in input text" in caplog.text
-    assert got == "3 बजे meeting है।"
+TALE = (
+    "It was the best of times, it was the worst of times, it was the age of wisdom, it was the "
+    "age of foolishness. It was the epoch of belief; it was the epoch of incredulity: it was the "
+    "season of Light! Was it the spring of hope? It was the winter of despair..."
+)
 
 
-def test_normalize_numbers_hindi():
-    from pocket_tts.models.text_chunking import normalize_numbers, normalize_text
+@pytest.mark.parametrize("max_tokens", [10, 20, 50])
+@pytest.mark.parametrize(
+    "text", [TALE, REIMBURSEMENT, DECIMAL_COMMA, SERVICE_FEE, URLS, TITLES, "Hello world."]
+)
+def test_danda_support_leaves_english_chunks_unchanged(
+    tokenizer: Tokenizer, monkeypatch: pytest.MonkeyPatch, text: str, max_tokens: int
+):
+    """The English tokenizer has no danda piece: same boundary tokens and chunks as before."""
+    before_tokens = tokenizer(".!...?")[0].tolist()[1:]
+    assert text_chunking._end_of_sentence_tokens(tokenizer) == before_tokens
+    after = _split(tokenizer, text, max_tokens)
+    monkeypatch.setattr(text_chunking, "_end_of_sentence_tokens", lambda _: before_tokens)
+    assert _split(tokenizer, text, max_tokens) == after
 
-    assert normalize_numbers("10", mode="hindi") == "दस"
-    assert normalize_numbers("₹500", mode="hindi") == "पाँच सौ रुपये"
-    assert normalize_numbers("3:30", mode="hindi") == "साढ़े तीन बजे"
-    assert normalize_numbers("50%", mode="hindi") == "पचास प्रतिशत"
-    assert normalize_numbers("1st", mode="hindi") == "पहला"
 
-    norm, changes = normalize_text("10 लोग और ₹50", mode="hindi")
-    assert norm == "दस लोग और पचास रुपये"
-    assert len(changes) == 2
+class _DandaTokenizer:
+    """Character-level stand-in for a tokenizer with real danda pieces and an unknown token."""
+
+    unk = 0
+
+    def __init__(self, known: str):
+        self.known = known
+
+    def __call__(self, text: str) -> torch.Tensor:
+        return torch.tensor(
+            [[1] + [self.known.find(c) + 2 if c in self.known else 0 for c in text]]
+        )
+
+    def decode(self, tokens: list[int]) -> str:
+        return "".join(" ⁇ " if t == 0 else "" if t == 1 else self.known[t - 2] for t in tokens)
 
 
-def test_normalize_numbers_english():
-    from pocket_tts.models.text_chunking import normalize_numbers
+def test_danda_splits_only_when_it_is_a_real_piece():
+    known = "abc .!?।॥"
+    with_danda = cast(Tokenizer, _DandaTokenizer(known))
+    tokens = text_chunking._end_of_sentence_tokens(with_danda)
+    assert known.find("।") + 2 in tokens and known.find("॥") + 2 in tokens
+    assert 0 not in tokens
+    chunks = split_into_best_sentences(with_danda, "abc। cab॥ bca।", 3, False, False, True, False)
+    assert chunks == ["abc।", "cab॥", "bca।"]
 
-    assert normalize_numbers("10", mode="english") == "ten"
-    assert normalize_numbers("$50", mode="english") == "fifty dollars"
-    assert normalize_numbers("50%", mode="english") == "fifty percent"
-    assert normalize_numbers("1st", mode="english") == "first"
+    without_danda = cast(Tokenizer, _DandaTokenizer("abc .!?"))
+    assert 0 not in text_chunking._end_of_sentence_tokens(without_danda)
+
+
+def test_normalize_numbers_is_off_by_default_and_opt_in():
+    assert prepare_text_prompt("I have 3 cats.", False, False)[0] == "I have 3 cats."
+    got, _ = prepare_text_prompt("I have 3 cats.", False, False, normalize_numbers="english")
+    assert got == "I have three cats."

@@ -24,6 +24,7 @@ def test_generate_audio_stream_uses_prepared_chunk_text(monkeypatch: pytest.Monk
         append_terminal_punctuation: bool,
         capitalize_first_letter: bool,
         replace_characters: dict[str, str],
+        normalize_numbers: str | None,
     ) -> list[str]:
         assert text_to_generate == "hi"
         assert pad_with_spaces_for_short_inputs is True
@@ -48,6 +49,7 @@ def test_generate_audio_stream_uses_prepared_chunk_text(monkeypatch: pytest.Monk
             append_terminal_punctuation=True,
             capitalize_first_letter=True,
             replace_characters={},
+            normalize_numbers=None,
             _generate_audio_stream_short_text=fake_generate_audio_stream_short_text,
         ),
     )

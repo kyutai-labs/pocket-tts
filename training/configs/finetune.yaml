@@ -21,6 +21,7 @@ voice_dropout: 0.2
 
 optim:
   lr: 2e-5  # a tenth of the scratch rate: the model already speaks this language
+  muon_lr: 5e-4  # a tenth of the default Muon rate, for the same reason
   schedule: constant
   warmup_steps: 1000
 

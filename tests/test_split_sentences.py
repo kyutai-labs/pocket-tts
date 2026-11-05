@@ -439,6 +439,7 @@ def test_sentence_ending_on_an_abbreviation_still_splits(tokenizer: Tokenizer):
         ),
         ("He said 'Stop.' Then he left.", 8, ["He said 'Stop.'", "Then he left."]),
         ("(quietly.) Okay then.", 4, ["(quietly.)", "Okay then."]),
+        ("He said (“Stop.”) Then he left.", 8, ["He said (“Stop.”)", "Then he left."]),
         (
             "“Stop,” he said, and then he left the room very quietly.",
             8,

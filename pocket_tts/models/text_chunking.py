@@ -110,6 +110,8 @@ def _is_inner_punctuation(
 
 # A closing quote can span several byte tokens; bound the lookahead so the check stays linear.
 _MAX_CLOSER_TOKENS = 8
+# Characters allowed after the punctuation while skipping closers: U+FFFD is an incomplete closer.
+_CLOSERS_OR_PARTIAL = _CLOSERS + "\ufffd"
 
 
 def _skip_closers(list_of_tokens: list[int], segment_start_idx: int, tokenizer: Tokenizer) -> int:
@@ -127,7 +129,7 @@ def _skip_closers(list_of_tokens: list[int], segment_start_idx: int, tokenizer: 
     for end in range(segment_start_idx + 1, stop + 1):
         window = tokenizer.decode(list_of_tokens[segment_start_idx - 1 : end])
         after = window[len(punctuation) :]
-        if not after or any(c not in _CLOSERS + "\ufffd" for c in after):
+        if not after or any(c not in _CLOSERS_OR_PARTIAL for c in after):
             break
         if "\ufffd" not in after:
             start = end

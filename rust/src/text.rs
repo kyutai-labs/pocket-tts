@@ -195,6 +195,41 @@ fn ends_with_decimal_number(text: &str) -> bool {
         && rest.next().is_some_and(char::is_numeric)
 }
 
+/// A closing quote can span several byte tokens; bound the lookahead so the check stays linear.
+const MAX_CLOSER_TOKENS: usize = 8;
+
+/// Where the segment starting at `segment_start_idx` should really start: after the closing quotes
+/// and brackets that directly follow the punctuation, as in "“Stop.”" or "(quietly.)", so that
+/// they stay with their sentence. A closer made of byte tokens only counts once it decodes
+/// completely; a closer preceded by a space opens the next sentence and is left alone.
+fn skip_closers(
+    tokens: &[u32],
+    segment_start_idx: usize,
+    tokenizer: &dyn TextTokenizer,
+) -> Result<usize> {
+    let punctuation = tokenizer.decode(&tokens[segment_start_idx - 1..segment_start_idx])?;
+    let mut start = segment_start_idx;
+    let stop = tokens.len().min(segment_start_idx + MAX_CLOSER_TOKENS);
+    for end in segment_start_idx + 1..=stop {
+        // A partial UTF-8 sequence may fail to decode: the closer is not complete yet.
+        let Ok(window) = tokenizer.decode(&tokens[segment_start_idx - 1..end]) else {
+            continue;
+        };
+        let after = window.get(punctuation.len()..).unwrap_or("");
+        if after.is_empty()
+            || after
+                .chars()
+                .any(|c| !(CLOSERS.contains(c) || c == '\u{fffd}'))
+        {
+            break;
+        }
+        if !after.contains('\u{fffd}') {
+            start = end;
+        }
+    }
+    Ok(start)
+}
+
 /// Token indices where the text should be split. Each consecutive pair of the result delimits a
 /// segment, the first is always 0 and the last `tokens.len()`.
 fn find_boundary_indices(
@@ -216,7 +251,13 @@ fn find_boundary_indices(
                 None => false,
             };
             if !is_inner {
-                indices.push(idx);
+                let start = match inner_tokenizer {
+                    Some(tokenizer) => skip_closers(tokens, idx, tokenizer)?,
+                    None => idx,
+                };
+                if start < tokens.len() {
+                    indices.push(start);
+                }
             }
         }
         previous_was_boundary = false;
@@ -438,6 +479,28 @@ mod tests {
             split_into_best_sentences(&CharTokenizer, "It is 3.14. Next one. Last.", 12, &o)
                 .unwrap();
         assert_eq!(chunks, ["It is 3.14. Next one.", "Last."]);
+    }
+
+    #[test]
+    fn closing_quotes_and_brackets_stay_with_their_sentence() {
+        let o = options();
+        let split = |text, max_tokens| {
+            split_into_best_sentences(&CharTokenizer, text, max_tokens, &o).unwrap()
+        };
+        assert_eq!(split("He said “Stop.”", 100), ["He said “Stop.”"]);
+        assert_eq!(
+            split("He said “Stop.” Then he left.", 16),
+            ["He said “Stop.”", "Then he left."]
+        );
+        assert_eq!(
+            split("(quietly.) Okay then.", 11),
+            ["(quietly.)", "Okay then."]
+        );
+        // A quote after a space opens the next sentence.
+        assert_eq!(
+            split("He left. “Hi.” Bye.", 8),
+            ["He left.", "“Hi.”", "Bye."]
+        );
     }
 
     #[test]

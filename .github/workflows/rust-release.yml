@@ -113,3 +113,41 @@ jobs:
           cd dist
           sha256sum * > SHA256SUMS
           gh release upload "${{ github.event.release.tag_name }}" * --clobber
+
+  publish-crate:
+    name: Publish kyutai-pocket-tts to crates.io
+    # Releases only. A pull request that touches this file builds the binaries above but must
+    # never reach the registry, where a version cannot be replaced or withdrawn.
+    if: github.event_name == 'release'
+    # After `build`, so five targets have to compile before anything is published. `cargo publish`
+    # verifies the packaged crate itself, which is what catches a file the crate reads but does
+    # not ship.
+    needs: build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # Required by crates.io Trusted Publishing: the job exchanges a short-lived OIDC token for a
+      # registry token, so no long-lived secret is stored in the repository.
+      id-token: write
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # The tag must agree with the manifest, or a release named v0.2.0 could publish 0.1.0.
+      - name: The tag matches the crate version
+        run: |
+          tag="${{ github.event.release.tag_name }}"
+          crate=$(cargo metadata --no-deps --format-version 1 \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["packages"][0]["version"])')
+          if [ "${tag#v}" != "$crate" ]; then
+            echo "::error::release tag $tag does not match the crate version $crate"
+            exit 1
+          fi
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+      - run: cargo publish --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}

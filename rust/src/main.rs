@@ -1,17 +1,12 @@
 //! `pocket-tts` without Python: the `generate`, `serve` and `export-voice` commands of the
 //! Python package's CLI (`pocket_tts/main.py`), with the same options and defaults.
 
-mod audio;
-mod config;
-mod defaults;
-mod download;
-mod logging;
-mod model;
-mod rng;
-mod server;
-mod text;
-mod tokenizer;
-mod weights;
+// The modules live in `lib.rs` since the crate grew a library target. Imported
+// by name rather than qualified at each use, so the bare paths below —
+// `defaults::MAX_TOKEN_PER_CHUNK`, `audio::audio_read` — keep working as they
+// did when the modules were declared here. Only the six the command itself
+// names: the rest are reached through these.
+use pocket_tts::{audio, config, defaults, logging, model, server};
 
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};

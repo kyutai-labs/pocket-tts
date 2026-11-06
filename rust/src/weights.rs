@@ -141,6 +141,13 @@ fn remap_key(name: &str) -> Option<String> {
     if name == "flow_lm.bos_before_voice" {
         return Some(SPEAKER_SINK.to_string());
     }
+    // A low-rank text table: pocket-tts calls the projection that widens the `rank`-wide rows
+    // `conditioner.proj`, xn-ptts calls it `conditioner.output_proj` and keys the whole
+    // factorisation off its presence. Without this rename the tensor goes unused and the table
+    // loads at the wrong width. See `Config::to_ptts`, which passes the rank as `lut_dim`.
+    if name == "flow_lm.conditioner.proj.weight" {
+        return Some("flow_lm.conditioner.output_proj.weight".to_string());
+    }
     Some(name)
 }
 
@@ -157,6 +164,11 @@ fn flow_lm_file_key(key: &str) -> Option<String> {
     let key = match key {
         "condition_provider.conditioners.transcript_in_segment.embed.weight" => {
             "conditioner.embed.weight"
+        }
+        // The low-rank projection, under the name xn-ptts keys the factorisation off; the same
+        // rename as in `remap_key`, for the older key layout of a separate flow LM checkpoint.
+        "condition_provider.conditioners.transcript_in_segment.proj.weight" => {
+            "conditioner.output_proj.weight"
         }
         "condition_provider.conditioners.speaker_wavs.output_proj.weight" => "speaker_proj_weight",
         "fuser.padding_value" => "bos_before_voice",
@@ -245,4 +257,32 @@ pub fn load(files: &WeightFiles) -> Result<Weights> {
     let vb = xn::nn::VB::load_with_key_map(&paths, xn::CPU, key_map)
         .with_context(|| format!("cannot load the weights in {paths:?}"))?;
     Ok(Weights { vb: vb.root() })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The two halves of a low-rank text table have to meet: `Config::to_ptts` passes the rank as
+    /// `lut_dim`, and the projection that widens those rows must arrive under the name xn-ptts
+    /// keys the factorisation off. A rename that goes missing does not fail loudly — the tensor
+    /// goes unused and the table loads at the wrong width.
+    #[test]
+    fn the_low_rank_projection_reaches_xn_ptts() {
+        assert_eq!(
+            remap_key("flow_lm.conditioner.proj.weight").as_deref(),
+            Some("flow_lm.conditioner.output_proj.weight")
+        );
+        // The same tensor in the key layout of a separate flow LM checkpoint.
+        assert_eq!(
+            flow_lm_file_key("condition_provider.conditioners.transcript_in_segment.proj.weight")
+                .as_deref(),
+            Some("flow_lm.conditioner.output_proj.weight")
+        );
+        // The table itself is untouched, and so is everything else.
+        assert_eq!(
+            remap_key("flow_lm.conditioner.embed.weight").as_deref(),
+            Some("flow_lm.conditioner.embed.weight")
+        );
+    }
 }

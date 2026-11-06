@@ -90,6 +90,8 @@ CLAUDE.md
 QWEN.md
 .claude/
 voices
+# ...except the Rust crate's voice licence catalogue, which is checked-in data, not a cache.
+!rust/assets/voices/
 
 italk.yaml
 

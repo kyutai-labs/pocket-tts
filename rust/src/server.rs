@@ -4,6 +4,11 @@
 // The errors are HTTP responses, built once per failed request.
 #![allow(clippy::result_large_err)]
 
+// `INDEX_HTML`, the embedded web page. It lives here rather than beside the configs because this
+// handler is its only consumer, and the `cli` feature gates this module: a library build compiles
+// no server, so it should not carry the page either.
+include!(concat!(env!("OUT_DIR"), "/index_html.rs"));
+
 use crate::model::CpuBackend;
 use crate::model::{TtsModel, VoiceState};
 use anyhow::Result;
@@ -90,7 +95,7 @@ where
 {
     let origin = app.model.origin.display_path();
     let text = crate::defaults::get_default_text_for_language(Some(&origin));
-    Html(crate::config::INDEX_HTML.replace("DEFAULT_TEXT_PROMPT", text))
+    Html(INDEX_HTML.replace("DEFAULT_TEXT_PROMPT", text))
 }
 
 async fn health() -> impl IntoResponse {

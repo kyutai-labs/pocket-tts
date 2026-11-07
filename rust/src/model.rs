@@ -72,6 +72,12 @@ impl<Q: CpuBackend> VoiceState<Q> {
         }
     }
 
+    /// Whether the prompt filled no position at all, which means the voice conditioning is empty
+    /// and generation would start from nothing.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Writes the state as the Python package's `export_model_state` does: per attention layer,
     /// `{module}/cache` of shape `[2, batch, time, kv_heads, dim]` and `{module}/offset`.
     pub fn export(&self, path: &Path) -> Result<()> {
@@ -181,7 +187,7 @@ impl<Q: CpuBackend> TtsModel<Q> {
         // steps asked.
         let decode_steps = match config.flow_type() {
             FlowType::Drifting | FlowType::Pointwise => 1,
-            FlowType::Lsd | FlowType::FlowMatching => options.sampler_decode_steps,
+            FlowType::Lsd => options.sampler_decode_steps,
         };
         if decode_steps == 0 {
             bail!("the number of sampler decode steps must be positive")
@@ -239,15 +245,16 @@ impl<Q: CpuBackend> TtsModel<Q> {
             let path = crate::download::download_if_necessary(source)?;
             return self.import_state(&path);
         }
-        if defaults::is_predefined_voice(source) {
+        // One catalogue lookup rather than a membership test followed by a resolution, so the
+        // "it is predefined but has no path" case cannot arise.
+        if let Some(voice) = crate::voices::find(source) {
             let Origin::Language(language) = &self.origin else {
                 bail!(
                     "Cannot use predefined voices when the model is not loaded from a config associated with a language.Here the origin is {}",
                     self.origin.display_path()
                 )
             };
-            let voice = defaults::get_predefined_voice(language, source);
-            let path = crate::download::download_if_necessary(&voice)?;
+            let path = crate::download::download_if_necessary(&voice.embedding_for(language))?;
             return self.import_state(&path);
         }
         if !self.has_voice_cloning || self.encoder.is_none() {

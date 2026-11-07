@@ -82,6 +82,8 @@ test_en_audio_4000.model
 profile_output*
 *.safetensors
 *.wav
+# ...except the Rust crate's audio regression references, which are checked-in data, not output.
+!rust/tests/reference/*.wav
 *.model
 *.pt
 
@@ -90,6 +92,8 @@ CLAUDE.md
 QWEN.md
 .claude/
 voices
+# ...except the Rust crate's voice licence catalogue, which is checked-in data, not a cache.
+!rust/assets/voices/
 
 italk.yaml
 

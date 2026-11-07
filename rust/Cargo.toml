@@ -1,34 +1,78 @@
 [package]
-name = "pocket-tts"
-# Kept in step with the Python package in ../pyproject.toml.
-version = "3.3.0"
+# `pocket-tts` on crates.io is an unrelated third-party reimplementation (0.6.2, a Candle port),
+# and crates.io normalises `-` and `_`, so `pocket_tts` resolves to that same crate rather than
+# being a free alternative. It has no namespaces either — there is no `owner/name` form — so the
+# package needs a distinct flat name. The library inside stays `pocket_tts` (see `[lib]`), which
+# is what callers write; only the package name moved. A dependent that wants the old key writes
+# `pocket-tts = { package = "kyutai-pocket-tts", … }`.
+name = "kyutai-pocket-tts"
+# Deliberately *not* the Python package's number. On crates.io a version is a promise about this
+# crate's Rust API, which cargo resolves dependencies against; tying it to another artifact means
+# either bumping major for an API that did not change, or being unable to express one that did.
+# Starting at 0.1.0 is also honest: points of this surface are still open (the `anyhow` boundary,
+# `xn` in the API, `available_languages` listing release snapshots), and 0.x is where cargo expects
+# breaking changes to land on a minor. Which Python release the embedded configs came from is a
+# separate, checked fact — `PYTHON_PACKAGE_VERSION` in `src/lib.rs`.
+version = "0.1.0"
 edition = "2024"
 description = "Kyutai's pocket-sized text-to-speech, as a standalone binary with the CLI of the Python package"
 license = "MIT"
 repository = "https://github.com/kyutai-labs/pocket-tts"
-publish = false
+readme = "README.md"
+keywords = ["tts", "text-to-speech", "speech", "audio", "cpu"]
+categories = ["multimedia::audio", "science"]
+# `assets/` holds the configs and the web page the build script embeds; without it the packaged
+# crate does not build. Everything else cargo would pick up — `target/`, test fixtures — stays out.
+include = ["src/**/*", "examples/**/*", "build.rs", "assets/**/*", "README.md", "USAGE.md", "LICENSE"]
+
+[lib]
+name = "pocket_tts"
+path = "src/lib.rs"
 
 [[bin]]
 name = "pocket-tts"
 path = "src/main.rs"
+# The CLI is the whole reason axum, clap and tokio are here. Requiring the
+# feature keeps `cargo build` building the binary as it always did, while
+# `--no-default-features` gives a library that pulls none of the six.
+required-features = ["cli"]
 
 [features]
-default = []
+default = ["cli"]
+
+# The command and the server. Nothing below this feature is used by the model,
+# the config, the weights or the tokenizer — checked module by module.
+cli = [
+  "dep:axum",
+  "dep:clap",
+  "dep:tempfile",
+  "dep:tokio",
+  "dep:tokio-stream",
+  "dep:tower-http",
+]
+
+# The SentencePiece tokenizer, which **needs CMake and a C++ compiler**. Most
+# community models use it; none of the released ones do — they ship a Hugging
+# Face `tokenizer.json`, which `tokenizers` reads in pure Rust. Off by default
+# so the crate builds on a machine with no C++ toolchain, and a config that asks
+# for SentencePiece then fails with a message naming this feature rather than
+# with a link error.
+sentencepiece = ["dep:sentencepiece"]
+
 # Apple's Accelerate framework for the f32 matmuls, for macOS builds.
 accelerate = ["ptts/accelerate"]
 
 [dependencies]
-# The model itself: https://github.com/gradium-ai/xn-ptts, through a fork that adds what pocket-tts
-# models need on top of it (https://github.com/gabrieldemarmiesse/xn-ptts, branch
-# pocket-tts-small-models), pinned to a commit since its API is still moving between release
-# candidates.
-ptts = { git = "https://github.com/gabrieldemarmiesse/xn-ptts", rev = "7efa26973f81bba42cf2ace8da2c1eb9b605d54d", default-features = false, features = ["hf", "audio"] }
+# The model itself: https://github.com/gradium-ai/xn-ptts, from its crates.io release rather than
+# the fork this crate used to pin. Four of the fork's five model features landed upstream, and the
+# fifth needed nothing: xn-ptts infers a low-rank text table from the weight shapes, so the rank
+# travels as `lut_dim` and the projection is renamed on the way in. See `Config::to_ptts` in
+# `src/config.rs` and `remap_key` in `src/weights.rs` — all 27 configs are supported.
+ptts = { version = "0.5", default-features = false, features = ["hf", "audio"] }
 # Must be the version ptts uses, its tensors cross the boundary.
 xn = "0.2.11"
 
 anyhow = "1"
-axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "multipart", "query", "json", "form"] }
-clap = { version = "4", features = ["derive", "env"] }
 half = "2"
 hf-hub = { version = "1.0", features = ["blocking"] }
 log = "0.4"
@@ -36,17 +80,22 @@ rand = { version = "0.9", default-features = false, features = ["std", "std_rng"
 rand_distr = "0.5"
 reqwest = { version = "0.13", features = ["blocking"] }
 safetensors = "0.7"
-sentencepiece = { version = "0.14", features = ["static"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
 sha2 = "0.10"
 symphonia = { version = "0.5.3", features = ["all"] }
-tempfile = "3"
 tokenizers = { version = "0.23.1", default-features = false, features = ["fancy-regex"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "sync", "net"] }
-tokio-stream = "0.1"
-tower-http = { version = "0.6", features = ["cors"] }
+
+# Optional: the CLI and the server (`cli`), and the tokenizer that needs CMake
+# (`sentencepiece`).
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "multipart", "query", "json", "form"], optional = true }
+clap = { version = "4", features = ["derive", "env"], optional = true }
+sentencepiece = { version = "0.14", features = ["static"], optional = true }
+tempfile = { version = "3", optional = true }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "sync", "net"], optional = true }
+tokio-stream = { version = "0.1", optional = true }
+tower-http = { version = "0.6", features = ["cors"], optional = true }
 
 [profile.release]
 codegen-units = 1

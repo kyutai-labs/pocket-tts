@@ -477,25 +477,20 @@ The repository is gated: accept the terms on the model page and log in with `hf 
 </details>
 
 <details>
-<summary><a href="https://huggingface.co/AfriSpeech/africa-tts">Africa TTS</a> and <a href="https://huggingface.co/AfriSpeech/africa-tts-turbo">Africa TTS Turbo</a> by <a href="https://huggingface.co/AfriSpeech">AfriSpeech</a>, 24 and 6 layers</summary>
+<summary><a href="https://huggingface.co/AfriSpeech/africa-tts">Africa TTS</a> by <a href="https://huggingface.co/AfriSpeech">AfriSpeech</a>, 6 layers</summary>
 
-92 African languages and English in one model, with a default voice per language. The models read
-IPA, not spelling: convert text with [africa-g2p](https://github.com/AfriSpeech/africa-g2p) (English:
-espeak-ng), or use the [africa-tts package](https://github.com/AfriSpeech/africa-tts), which does it
-for you. [Live demo](https://huggingface.co/spaces/AfriSpeech/africa-tts-demo) ·
+92 African languages and English in one model, with a default voice per language, 2.4x faster than
+real time on 4 CPU cores. The model reads IPA, not spelling: convert text with
+[africa-g2p](https://github.com/AfriSpeech/africa-g2p) (English: espeak-ng), or use the
+[africa-tts package](https://github.com/AfriSpeech/africa-tts), which does it for you.
+[Live demo](https://huggingface.co/spaces/AfriSpeech/africa-tts-demo) ·
 [samples in 53 languages](https://huggingface.co/spaces/AfriSpeech/africa-tts-samples).
 
 ```bash
-# Turbo (6 layers, distilled; Twi: "Welcome! My name is Kofi, and I am from Kumasi.")
+# Twi: "Welcome! My name is Kofi, and I am from Kumasi."
 uvx pocket-tts generate \
-  --config hf://AfriSpeech/africa-tts-turbo/config.yaml@b6a6018c8f6e149e7699252a3aa18c4ab9b37b12 \
-  --voice hf://AfriSpeech/africa-tts/voices/twi.wav@ef7ccdd71fe8578e7b20532927fbd790b4922481 \
-  --text "akʷaaba! jɛfɾɛ me kofi, na mefiɾi kumase."
-
-# Africa TTS (24 layers)
-uvx pocket-tts generate \
-  --config hf://AfriSpeech/africa-tts/config.yaml@ef7ccdd71fe8578e7b20532927fbd790b4922481 \
-  --voice hf://AfriSpeech/africa-tts/voices/twi.wav@ef7ccdd71fe8578e7b20532927fbd790b4922481 \
+  --config hf://AfriSpeech/africa-tts/config.yaml@c5229a271b4362bf7c9667eaf8249e5e40454d8e \
+  --voice hf://AfriSpeech/africa-tts/voices/twi.wav@c5229a271b4362bf7c9667eaf8249e5e40454d8e \
   --text "akʷaaba! jɛfɾɛ me kofi, na mefiɾi kumase."
 ```
 </details>

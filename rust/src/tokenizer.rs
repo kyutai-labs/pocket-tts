@@ -1,10 +1,17 @@
 //! Port of `pocket_tts/modules/text_conditioner.py`: a SentencePiece `.model` or a Hugging Face
 //! `tokenizer.json`, picked from the config's `tokenizer` field or the file's suffix.
+//!
+//! SentencePiece sits behind a feature, because it is the one dependency in this
+//! crate that needs **CMake and a C++ compiler**. Every released model ships a
+//! `tokenizer.json`, which `tokenizers` reads in pure Rust; it is the community
+//! models that need the other path. With the feature off, asking for it fails
+//! with a sentence instead of a link error.
 
 use anyhow::{Context, Result, bail};
 use std::sync::Arc;
 
 pub enum Tokenizer {
+    #[cfg(feature = "sentencepiece")]
     SentencePiece(sentencepiece::SentencePieceProcessor),
     Json(Box<tokenizers::Tokenizer>),
 }
@@ -24,8 +31,10 @@ impl Tokenizer {
             if vocab_size != n_bins {
                 bail!("tokenizer has vocab size={vocab_size} but nbins={n_bins} was specified")
             }
-            Ok(Self::Json(Box::new(tokenizer)))
-        } else {
+            return Ok(Self::Json(Box::new(tokenizer)));
+        }
+        #[cfg(feature = "sentencepiece")]
+        {
             log::info!("Loading sentencepiece tokenizer from {tokenizer_path}");
             let sp = sentencepiece::SentencePieceProcessor::open(&local_path)
                 .with_context(|| format!("cannot load {}", local_path.display()))?;
@@ -37,10 +46,17 @@ impl Tokenizer {
             }
             Ok(Self::SentencePiece(sp))
         }
+        #[cfg(not(feature = "sentencepiece"))]
+        bail!(
+            "{tokenizer_path} is a SentencePiece tokenizer, and this build has none: \
+             rebuild with the `sentencepiece` feature, which needs CMake and a C++ compiler. \
+             The released models ship a tokenizer.json and do not need it."
+        )
     }
 
     pub fn encode(&self, text: &str) -> Result<Vec<u32>> {
         match self {
+            #[cfg(feature = "sentencepiece")]
             Self::SentencePiece(sp) => Ok(sp.encode(text)?.into_iter().map(|p| p.id).collect()),
             // `add_special_tokens` as in Python's `Tokenizer.encode` default.
             Self::Json(tok) => Ok(tok
@@ -53,6 +69,7 @@ impl Tokenizer {
 
     pub fn decode(&self, ids: &[u32]) -> Result<String> {
         match self {
+            #[cfg(feature = "sentencepiece")]
             Self::SentencePiece(sp) => Ok(sp.decode_piece_ids(ids)?),
             Self::Json(tok) => tok.decode(ids, true).map_err(|e| anyhow::anyhow!("{e}")),
         }

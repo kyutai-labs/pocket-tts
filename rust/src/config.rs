@@ -232,8 +232,25 @@ impl Origin {
     }
 }
 
+/// Every embedded config name, which is everything [`Config::load`] accepts as a language.
+///
+/// This is **not** a list of languages: of the 27 names, 15 are English — the current model, plus
+/// dated release snapshots and the small variants — and nothing in a name tells `french` from
+/// `english_drifting_26-09`. Use [`languages`] to offer a choice to a person, and this to validate
+/// what one typed.
 pub fn available_languages() -> Vec<&'static str> {
     CONFIGS.iter().map(|(name, _)| *name).collect()
+}
+
+/// The languages a model is published for, as config names: the list to put in front of someone
+/// choosing a voice, rather than the release history [`available_languages`] returns.
+///
+/// Filtered against the embedded configs, so every name it returns loads.
+pub fn languages() -> Vec<&'static str> {
+    crate::defaults::language_names()
+        .into_iter()
+        .filter(|language| CONFIGS.iter().any(|(name, _)| name == language))
+        .collect()
 }
 
 impl Config {
@@ -394,6 +411,34 @@ impl Config {
     ) -> Result<ptts::tts_model::TTSConfig> {
         let flow_lm = &self.flow_lm;
         let mimi = &self.mimi;
+        // A low-rank text table needs no `lut_rank` key, although pocket-tts has one: xn-ptts
+        // infers the factorisation from the weights. `LUTConditioner::load` reads
+        // `embed.weight` as `(n_bins + 1, lut_dim)` and, when the checkpoint also carries
+        // `output_proj.weight`, projects those rows to `d_model`. So the rank goes through as
+        // `lut_dim`, and the projection is pocket-tts's `conditioner.proj` under xn-ptts's name
+        // — `weights::remap_key` renames it.
+        //
+        // That works because the projection lands on `d_model`: pocket-tts projects the rank to
+        // `lookup_table.dim` and xn-ptts projects it to `d_model`, which is the same target only
+        // while the two are equal. They are, in all 27 embedded configs. A config where they
+        // differ needs two projections, which one `output_proj` cannot express, so it is refused
+        // rather than loaded into a shape mismatch.
+        let lut_dim = match flow_lm.lookup_table.rank {
+            None => flow_lm.lookup_table.dim,
+            Some(rank) => {
+                if flow_lm.lookup_table.dim != flow_lm.transformer.d_model {
+                    bail!(
+                        "this model has a low-rank text table (rank {rank}) projected to \
+                         lookup_table.dim {}, which differs from the flow LM's d_model {}. \
+                         xn-ptts projects the table straight to d_model, so it cannot represent \
+                         the two widths separately.",
+                        flow_lm.lookup_table.dim,
+                        flow_lm.transformer.d_model
+                    )
+                }
+                rank
+            }
+        };
         let mut config = serde_json::json!({
             "flow_lm": {
                 "d_model": flow_lm.transformer.d_model,
@@ -402,7 +447,7 @@ impl Config {
                 "dim_feedforward": flow_lm.transformer.dim_feedforward(),
                 "max_period": flow_lm.transformer.max_period,
                 "n_bins": flow_lm.lookup_table.n_bins,
-                "lut_dim": flow_lm.lookup_table.dim,
+                "lut_dim": lut_dim,
                 "flow_dim": flow_lm.flow.dim,
                 "flow_depth": flow_lm.flow.depth,
                 "ldim": mimi.quantizer.dimension,
@@ -410,7 +455,8 @@ impl Config {
                 "z_dim": flow_lm.z_dim,
                 "attn_dim": flow_lm.transformer.attn_dim,
                 "num_kv_heads": flow_lm.transformer.num_kv_heads,
-                "lut_rank": flow_lm.lookup_table.rank,
+                // No "lut_rank": the guard above rejects a config that sets one, and emitting a
+                // key the target struct does not have would be silently ignored.
             },
             "mimi": self.mimi_to_ptts(mimi.decoder_seanet(), mimi.decoder_transformer()),
             "lsd_decode_steps": sampler_decode_steps,
@@ -441,15 +487,85 @@ impl Config {
 mod tests {
     use super::*;
 
+    /// The configs with a low-rank text table, and their rank. Spelled out rather than computed,
+    /// so that a config gaining or losing a `rank` shows up here as a failure instead of passing
+    /// unnoticed.
+    ///
+    /// The `english_18m` pair is deliberately absent: both carry `rank: null`, so they have the key
+    /// without a low-rank table. Counting the configs that mention `rank` gives six and is wrong.
+    const LOW_RANK_CONFIGS: &[(&str, usize)] = &[
+        ("english_2m_2026-10", 32),
+        ("english_2m_refl_2026-10", 32),
+        ("english_7m_2026-10", 64),
+        ("english_7m_refl_2026-10", 64),
+    ];
+
     #[test]
     fn every_embedded_config_parses_and_translates() {
         for (name, yaml) in CONFIGS {
             let config = Config::parse(yaml).unwrap_or_else(|e| panic!("{name}: {e:#}"));
-            config
+            let ptts = config
                 .to_ptts(1, -4.0)
                 .unwrap_or_else(|e| panic!("{name}: {e:#}"));
+            // A low-rank table reaches xn-ptts as a `lut_dim` of the rank, which is what makes it
+            // read the narrow `embed.weight` and then apply `output_proj`.
+            let expected = match LOW_RANK_CONFIGS.iter().find(|(n, _)| n == name) {
+                Some((_, rank)) => *rank,
+                None => config.flow_lm.lookup_table.dim,
+            };
+            assert_eq!(ptts.flow_lm.lut_dim, expected, "{name}");
         }
         assert!(available_languages().contains(&"english"));
+    }
+
+    /// `languages()` is the human-facing list and `available_languages()` the validation one. The
+    /// gap between them is the point: 15 of the 27 configs are English release snapshots.
+    #[test]
+    fn languages_are_the_published_ones_not_the_release_history() {
+        let mut published = languages();
+        published.sort_unstable();
+        assert_eq!(
+            published,
+            [
+                "dutch",
+                "english",
+                "french",
+                "german",
+                "italian",
+                "portuguese",
+                "spanish"
+            ]
+        );
+        // Every one of them loads, which is what filtering against CONFIGS buys.
+        for language in &published {
+            Config::load(Some(language), None).unwrap_or_else(|e| panic!("{language}: {e:#}"));
+        }
+        assert!(available_languages().len() > published.len() * 3);
+    }
+
+    #[test]
+    fn the_low_rank_configs_are_the_ones_that_set_a_rank() {
+        let with_rank: Vec<(&str, usize)> = CONFIGS
+            .iter()
+            .filter_map(|(name, yaml)| {
+                let rank = Config::parse(yaml).ok()?.flow_lm.lookup_table.rank?;
+                Some((*name, rank))
+            })
+            .collect();
+        assert_eq!(with_rank, LOW_RANK_CONFIGS);
+    }
+
+    /// The width a low-rank table projects to has to be the flow LM's, because xn-ptts has one
+    /// projection where pocket-tts has a rank and a `dim`.
+    #[test]
+    fn a_low_rank_table_that_does_not_project_to_d_model_is_refused() {
+        let (_, yaml) = CONFIGS.iter().find(|(name, _)| *name == "english").unwrap();
+        let mut value: serde_yaml::Value = serde_yaml::from_str(yaml).unwrap();
+        value["flow_lm"]["lookup_table"]["rank"] = 32.into();
+        value["flow_lm"]["lookup_table"]["dim"] = 999.into();
+        let config = Config::parse(&serde_yaml::to_string(&value).unwrap()).unwrap();
+        let error = format!("{:#}", config.to_ptts(1, -1.0).unwrap_err());
+        assert!(error.contains("d_model"), "{error}");
     }
 
     fn english_with(extra: &str) -> Result<Config> {
@@ -468,6 +584,23 @@ mod tests {
         assert_eq!(config.default_eos_threshold, -1.0);
     }
 
+    /// A rank reaches xn-ptts as `lut_dim`, and nothing else about the table changes: that is the
+    /// whole of how the factorisation is expressed, since xn-ptts reads it off the weights.
+    #[test]
+    fn a_rank_becomes_the_lut_dim() {
+        let (_, yaml) = CONFIGS.iter().find(|(name, _)| *name == "english").unwrap();
+        let mut value: serde_yaml::Value = serde_yaml::from_str(yaml).unwrap();
+        let plain = Config::parse(&serde_yaml::to_string(&value).unwrap()).unwrap();
+        let dim = plain.flow_lm.lookup_table.dim;
+        assert_eq!(plain.to_ptts(1, -1.0).unwrap().flow_lm.lut_dim, dim);
+
+        value["flow_lm"]["lookup_table"]["rank"] = 32.into();
+        let low_rank = Config::parse(&serde_yaml::to_string(&value).unwrap()).unwrap();
+        let ptts = low_rank.to_ptts(1, -1.0).unwrap();
+        assert_eq!(ptts.flow_lm.lut_dim, 32);
+        assert_eq!(ptts.flow_lm.n_bins, plain.flow_lm.lookup_table.n_bins);
+    }
+
     #[test]
     fn the_small_model_options_reach_xn_ptts() {
         let (_, yaml) = CONFIGS.iter().find(|(name, _)| *name == "english").unwrap();
@@ -482,7 +615,6 @@ mod tests {
         for key in ["attn_dim", "num_kv_heads", "dim_feedforward"] {
             flow_lm["transformer"][key] = options[key].clone();
         }
-        flow_lm["lookup_table"]["rank"] = options["rank"].clone();
         let mut decoder_seanet = value["mimi"]["seanet"].clone();
         decoder_seanet["dimension"] = 128.into();
         value["mimi"]["decoder_seanet"] = decoder_seanet;
@@ -501,7 +633,9 @@ mod tests {
             (f.z_dim, f.attn_dim, f.num_kv_heads),
             (Some(64), Some(192), Some(1))
         );
-        assert_eq!((f.dim_feedforward, f.lut_rank), (96, Some(32)));
+        assert_eq!(f.dim_feedforward, 96);
+        // `rank` is deliberately absent above: it is tested on its own by
+        // `a_rank_becomes_the_lut_dim`.
         // The decoder's dims go to `mimi`, the encoder's to `speaker_mimi`.
         assert_eq!(ptts.mimi.dimension, 128);
         assert_eq!(ptts.mimi.transformer_context, 49);

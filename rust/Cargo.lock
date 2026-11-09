@@ -1690,6 +1690,35 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e037a2e1d8d5fdbd49b16a4ea09d5d6401c1f29eca5ff29d03d3824dba16256a"
 
 [[package]]
+name = "kyutai-pocket-tts"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "clap",
+ "half",
+ "hf-hub",
+ "log",
+ "ptts",
+ "rand 0.9.5",
+ "rand_distr",
+ "reqwest",
+ "safetensors",
+ "sentencepiece",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2 0.10.9",
+ "symphonia",
+ "tempfile",
+ "tokenizers",
+ "tokio",
+ "tokio-stream",
+ "tower-http",
+ "xn",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2137,35 +2166,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
-name = "pocket-tts"
-version = "3.3.0"
-dependencies = [
- "anyhow",
- "axum",
- "clap",
- "half",
- "hf-hub",
- "log",
- "ptts",
- "rand 0.9.5",
- "rand_distr",
- "reqwest",
- "safetensors",
- "sentencepiece",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2 0.10.9",
- "symphonia",
- "tempfile",
- "tokenizers",
- "tokio",
- "tokio-stream",
- "tower-http",
- "xn",
-]
-
-[[package]]
 name = "potential_utf"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2242,21 +2242,20 @@ dependencies = [
 
 [[package]]
 name = "ptts"
-version = "0.4.0-rc.3"
-source = "git+https://github.com/gabrieldemarmiesse/xn-ptts?rev=7efa26973f81bba42cf2ace8da2c1eb9b605d54d#7efa26973f81bba42cf2ace8da2c1eb9b605d54d"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e217df814515df17d532ddd765a498b0f980a46d422e85fe732de0c4ecafc7cb"
 dependencies = [
  "ebur128",
  "rand 0.9.5",
  "rand_distr",
  "rubato",
- "safetensors",
  "serde",
  "serde_json",
  "symphonia",
  "thiserror 2.0.21",
  "tokenizers",
  "tracing",
- "tracing-subscriber",
  "xn",
 ]
 

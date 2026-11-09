@@ -49,10 +49,21 @@ jobs:
         workspaces: rust
     - name: Check formatting
       run: cargo fmt --check
+    # The drift between `assets/` and the Python package is checked by
+    # `tests/embedded_assets.rs`, which the `Unit tests` step below runs — so it fails the same
+    # way on a laptop as it does here, and `scripts/sync_rust_assets.sh` is the fix either way.
     - name: Clippy
       run: cargo clippy --release --locked --all-targets -- -D warnings
+    # `--all-targets` above builds with the default features, so the library a consumer actually
+    # gets — no CLI, no server, no SentencePiece — is covered by nothing unless it is named here.
+    - name: Clippy, library only
+      run: cargo clippy --release --locked --no-default-features --lib --examples -- -D warnings
     - name: Unit tests
       run: cargo test --release --locked
+    # Builds from the packaged `.crate`, which is the only thing that catches a file the crate
+    # reads but does not ship — the failure mode `build.rs` had while it read `../pocket_tts/`.
+    - name: Package
+      run: cargo package --locked
     - name: Generate speech
       run: |
         cargo run --release --locked -- generate --text "Hello world." --output-path hello.wav
@@ -61,6 +72,12 @@ jobs:
           size=$(stat -c %s "$f")
           if [ "$size" -lt 50000 ]; then echo "::error::$f is only $size bytes"; exit 1; fi
         done
+    # The step above only proves a WAV is big enough, so audio that is wrong but well-formed
+    # passes it. This one compares against committed references with a tolerance. One target only:
+    # float results differ between an x86-64-v3 build and a baseline one, so running it on all
+    # five would be flaky rather than stricter.
+    - name: Audio has not regressed
+      run: cargo test --release --locked --test audio_regression -- --ignored
 
   pytest:
     runs-on: ubuntu-latest

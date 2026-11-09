@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pocket TTS - Streaming</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        .spinner {
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="max-w-xl mx-auto p-4 space-y-4">
+        <h1 class="text-xl font-bold text-center">Pocket TTS</h1>
+        
+        <div class="bg-white p-4 rounded-lg shadow">
+            <textarea
+                id="text-input"
+                class="w-full border rounded p-2"
+                placeholder="Enter your text here..."
+                rows="4"
+            >DEFAULT_TEXT_PROMPT</textarea>
+        </div>
+
+        <div class="bg-white p-4 rounded-lg shadow">
+            <label for="voice-url-input" class="block text-sm font-medium text-gray-700 mb-2">
+                Optional voice URL (leave empty to use default voice):
+            </label>
+            <input
+                type="text"
+                id="voice-url-input"
+                class="w-full border rounded p-2"
+                placeholder="hf://kyutai/tts-voices/alba-mackenna/casual.wav"
+            />
+            <p class="text-xs text-gray-500 mt-1">
+                Supports: http://, https://, or hf:// URLs.<br>
+                You can also use predefined voices (language code in parentheses):<br>
+                "alba" (en), "anna" (en), "azelma" (en), "bill_boerst" (en), "caro_davy" (en),
+                "charles" (en), "cosette" (en), "eponine" (en), "eve" (en), "fantine" (en),
+                "george" (en),  "jane" (en), "javert" (en), "jean" (en),
+                "marius" (en), "mary" (en), "michael" (en), "paul" (en),
+                "peter_yearsley" (en), "stuart_bell" (en), "vera" (en), "giovanni" (it), "lola" (es), "juergen" (de), "rafael" (pt), "estelle" (fr).
+                <br/>
+                You can find more voices in our
+                <a
+                    href="https://huggingface.co/kyutai/tts-voices"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-blue-600 hover:underline"
+                >
+                    voice repository</a>.
+            </p>
+        </div>
+
+        <div class="bg-white p-4 rounded-lg shadow">
+            <label for="voice-wav-input" class="block text-sm font-medium text-gray-700 mb-2">
+                Or upload an audio file for voice cloning:
+            </label>
+            <input
+                type="file"
+                id="voice-wav-input"
+                class="w-full border rounded p-2"
+                accept=".wav,.mp3,.flac,.ogg,.m4a,audio/*"
+            />
+            <p class="text-xs text-gray-500 mt-1">
+                Upload an audio file (WAV, MP3, FLAC, etc.) to use as voice reference. Takes precedence over voice URL.
+                For best results,
+                <a
+                    href="https://podcast.adobe.com/en/enhance"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-blue-600 hover:underline"
+                    >clean the sample</a
+                >
+                first.
+            </p>
+        </div>
+
+        
+        <button
+            id="generate-btn"
+            class="w-full px-4 py-2 rounded text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+        >
+            <span id="generate-text">Generate audio</span>
+        </button>
+
+        <div id="status" class="hidden">
+            <div class="flex items-center space-x-2">
+                <div id="status-spinner" class="spinner w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+                <span id="status-text"></span>
+            </div>
+        </div>
+
+        <div id="audio-section" class="hidden">
+            <div class="bg-white p-4 rounded-lg shadow">
+                <h3 class="text-lg font-semibold mb-2">Generated Audio</h3>
+                <audio id="audio" controls class="w-full"></audio>
+                <div class="mt-2">
+                    <a id="download-link" class="text-blue-600 text-sm hover:underline">Download</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class StreamingWavPlayer {
+            constructor() {
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)(
+                    { latencyHint: "playback" }
+                );
+                this.sampleRate = 0;
+                this.numChannels = 0;
+                this.headerParsed = false;
+                this.headerBuffer = new Uint8Array(44);
+                this.headerBytesReceived = 0;
+                this.nextStartTime = 0;
+                this.isPlaying = false;
+                this.minBufferSize = 16384;
+                this.pcmData = new Uint8Array(0);
+            }
+
+            parseWavHeader(header) {
+                const view = new DataView(header.buffer);
+
+                const riff = String.fromCharCode.apply(null, Array.from(header.slice(0, 4)));
+                const wave = String.fromCharCode.apply(null, Array.from(header.slice(8, 12)));
+
+                if (riff !== 'RIFF' || wave !== 'WAVE') {
+                    throw new Error('Invalid WAV file');
+                }
+
+                this.numChannels = view.getUint16(22, true);
+                this.sampleRate = view.getUint32(24, true);
+                const bitsPerSample = view.getUint16(34, true);
+
+                console.log(`WAV Format: ${this.sampleRate}Hz, ${this.numChannels} channels, ${bitsPerSample} bits`);
+
+                this.headerParsed = true;
+            }
+
+            appendPcmData(newData) {
+                const newBuffer = new Uint8Array(this.pcmData.length + newData.length);
+                newBuffer.set(this.pcmData);
+                newBuffer.set(newData, this.pcmData.length);
+                this.pcmData = newBuffer;
+            }
+
+            async tryPlayBuffer() {
+                if (!this.headerParsed || this.pcmData.length < this.minBufferSize) {
+                    return;
+                }
+
+                const bytesPerSample = this.numChannels * 2;
+                const samplesToPlay = Math.floor(this.pcmData.length / bytesPerSample);
+                const bytesToPlay = samplesToPlay * bytesPerSample;
+
+                if (bytesToPlay === 0) return;
+
+                const dataToPlay = this.pcmData.slice(0, bytesToPlay);
+                this.pcmData = this.pcmData.slice(bytesToPlay);
+
+                const audioBuffer = this.audioContext.createBuffer(
+                    this.numChannels,
+                    samplesToPlay,
+                    this.sampleRate
+                );
+
+                const int16Data = new Int16Array(dataToPlay.buffer, dataToPlay.byteOffset, samplesToPlay * this.numChannels);
+
+                for (let channel = 0; channel < this.numChannels; channel++) {
+                    const channelData = audioBuffer.getChannelData(channel);
+                    for (let i = 0; i < samplesToPlay; i++) {
+                        channelData[i] = int16Data[i * this.numChannels + channel] / 32768;
+                    }
+                }
+
+                const source = this.audioContext.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(this.audioContext.destination);
+
+                const currentTime = this.audioContext.currentTime;
+                const startTime = Math.max(currentTime, this.nextStartTime);
+
+                source.start(startTime);
+
+                // Track first audio playback
+                if (!this.firstAudioPlayed && window.firstAudioCallback) {
+                    this.firstAudioPlayed = true;
+                    window.firstAudioCallback();
+                }
+
+                this.nextStartTime = startTime + audioBuffer.duration;
+                this.isPlaying = true;
+
+                if (this.pcmData.length >= this.minBufferSize) {
+                    setTimeout(() => this.tryPlayBuffer(), 10);
+                }
+            }
+
+            addChunk(chunk) {
+                if (!this.headerParsed) {
+                    const headerBytesNeeded = 44 - this.headerBytesReceived;
+                    const bytesToCopy = Math.min(headerBytesNeeded, chunk.length);
+
+                    this.headerBuffer.set(
+                        chunk.slice(0, bytesToCopy),
+                        this.headerBytesReceived
+                    );
+
+                    this.headerBytesReceived += bytesToCopy;
+
+                    if (this.headerBytesReceived >= 44) {
+                        this.parseWavHeader(this.headerBuffer);
+
+                        if (chunk.length > bytesToCopy) {
+                            this.appendPcmData(chunk.slice(bytesToCopy));
+                        }
+                    }
+                } else {
+                    this.appendPcmData(chunk);
+                }
+
+                this.tryPlayBuffer();
+            }
+
+            stop() {
+                this.audioContext.close();
+                this.isPlaying = false;
+            }
+        }
+
+        // Application state
+        let streamingPlayer = null;
+        let currentAudioBlob = null;
+
+        // DOM elements
+        const textInput = document.getElementById('text-input');
+        const generateBtn = document.getElementById('generate-btn');
+        const generateText = document.getElementById('generate-text');
+        const status = document.getElementById('status');
+        const statusText = document.getElementById('status-text');
+        const statusSpinner = document.getElementById('status-spinner');
+        const audioSection = document.getElementById('audio-section');
+        const audio = document.getElementById('audio');
+        const downloadLink = document.getElementById('download-link');
+
+        // Event listeners
+        generateBtn.addEventListener('click', generateAudio);
+
+        function showStatus(message, isLoading = false) {
+            statusText.textContent = message;
+            statusSpinner.style.display = isLoading ? 'block' : 'none';
+            status.classList.remove('hidden');
+        }
+
+        function hideStatus() {
+            status.classList.add('hidden');
+        }
+
+        async function generateAudio() {
+            const text = textInput.value.trim();
+
+            if (!text) {
+                showStatus('Please enter some text to generate speech.', false);
+                setTimeout(hideStatus, 3000);
+                return;
+            }
+
+            // Stop any currently playing audio
+            if (streamingPlayer) {
+                streamingPlayer.stop();
+                streamingPlayer = null;
+            }
+
+            // Track timing
+            const startTime = performance.now();
+            let firstAudioTime = null;
+
+            // Set callback for first audio
+            window.firstAudioCallback = () => {
+                if (!firstAudioTime) {
+                    firstAudioTime = performance.now();
+                    const timeToFirstAudio = ((firstAudioTime - startTime) / 1000).toFixed(2);
+                    showStatus(`First audio in ${timeToFirstAudio}s...`, true);
+                }
+            };
+
+            // Update UI
+            generateBtn.disabled = true;
+            generateText.textContent = 'Generating...';
+            showStatus('Generating speech...', true);
+            audioSection.classList.add('hidden');
+
+            try {
+                const formData = new FormData();
+                formData.append('text', text);
+
+                // Add voice URL if provided (only if no WAV file is uploaded)
+                const voiceUrl = document.getElementById('voice-url-input').value.trim();
+                const voiceWavFile = document.getElementById('voice-wav-input').files[0];
+
+                if (voiceWavFile) {
+                    // If WAV file is uploaded, only use the WAV file (ignore voice URL)
+                    formData.append('voice_wav', voiceWavFile);
+                } else if (voiceUrl) {
+                    // Only use voice URL if no WAV file is uploaded
+                    formData.append('voice_url', voiceUrl);
+                }
+
+                const ttsEndpoint = `${window.location.pathname.replace(/\/+$/, '')}/tts`;
+
+                const response = await fetch(ttsEndpoint, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+
+                // Clone the response for both streaming and blob collection
+                const responseForPlayback = response.clone();
+                const responseForHistory = response.clone();
+
+                // Start streaming playback
+                const reader = responseForPlayback.body.getReader();
+                streamingPlayer = new StreamingWavPlayer();
+
+                const processStream = async () => {
+                    try {
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
+
+                            if (value) {
+                                streamingPlayer.addChunk(value);
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Error processing stream:', e);
+                    }
+                };
+
+                // Start processing the stream
+                processStream();
+
+                // Also collect the full blob for download/audio element
+                const blob = await responseForHistory.blob();
+                const totalTime = ((performance.now() - startTime) / 1000).toFixed(2);
+                currentAudioBlob = blob;
+
+                // Update UI with audio
+                const audioUrl = URL.createObjectURL(blob);
+                audio.src = audioUrl;
+
+                // Wait for audio metadata to load to get duration
+                audio.addEventListener('loadedmetadata', () => {
+                    const audioDuration = audio.duration;
+                    const speedRatio = (audioDuration / parseFloat(totalTime)).toFixed(1);
+
+                    const timeToFirst = firstAudioTime ? ((firstAudioTime - startTime) / 1000).toFixed(2) : 'N/A';
+
+                    showStatus(
+                        `✨ First audio: ${timeToFirst}s | Total: ${totalTime}s | ${speedRatio}x faster than real-time`,
+                        false
+                    );
+                });
+                downloadLink.href = audioUrl;
+                downloadLink.download = `tts-audio.wav`;
+                
+                audioSection.classList.remove('hidden');
+
+            } catch (error) {
+                console.error('Error generating audio:', error);
+                showStatus(`Error: ${error.message}`, false);
+                setTimeout(hideStatus, 3000);
+            } finally {
+                // Re-enable button
+                generateBtn.disabled = false;
+                generateText.textContent = 'Generate Audio';
+            }
+        }
+
+        // Focus on text input when page loads
+        window.addEventListener('load', () => {
+            textInput.focus();
+        });
+    </script>
+</body>
+</html>

@@ -10,18 +10,7 @@ Supports Python 3.10, 3.11, 3.12, 3.13 and 3.14. Requires PyTorch 2.5+. Does not
 [🔊 Demo](https://kyutai.org/pocket-tts) | 
 [🐱‍💻GitHub Repository](https://github.com/kyutai-labs/pocket-tts) | 
 [🤗 Hugging Face Model Card](https://huggingface.co/kyutai/pocket-tts) | 
-[⚙️ Tech report](https://kyutai.org/blog/2026-01-13-pocket-tts) |
-[⚙️ Tech report: drifting head](https://kyutai.org/blog/2026-09-28-pocket-tts-drifting) |
-[⚙️ Tech report: small models](https://kyutai.org/blog/2026-10-20-pocket-tts-small) |
-[📄 Paper](https://arxiv.org/abs/2509.06926) | 
-[📚 Documentation](https://kyutai-labs.github.io/pocket-tts/)
-
-> [!NOTE]
-> **New (October 2026):** Small English models with 18.2M, 6.9M and 1.9M parameters (decoder included), up to 25x faster than real time on one CPU thread. Try them with `--language english_18m_2026-10`, `english_7m_2026-10` or `english_2m_2026-10`; see the [blog post](https://kyutai.org/blog/2026-10-20-pocket-tts-small) for how they were made.
->
-> **New (August 2026):** We've released the training code! Check out [`training/`](https://github.com/kyutai-labs/pocket-tts/blob/main/training/README.md) to start training your own models.
-> Open a PR to add your model to the [Models trained by the community](#models-trained-by-the-community) section.
-
+[📄 Paper](https://arxiv.org/abs/2509.06926)
 
 ## Main takeaways
 * Runs on CPU
@@ -37,6 +26,11 @@ Supports Python 3.10, 3.11, 3.12, 3.13 and 3.14. Requires PyTorch 2.5+. Does not
 * [Can run on client-side in the browser](#in-browser-implementations)
 
 Additional languages may be added in the future.
+
+## Tech reports
+* [Pocket TTS: a high-quality TTS with voice cloning that runs on CPU](https://kyutai.org/blog/2026-01-13-pocket-tts) (January 2026)
+* [Building a Pocket TTS with a drifting objective](https://kyutai.org/blog/2026-09-28-pocket-tts-drifting) (September 2026)
+* [The tiny TTS was actually 10x too big](https://kyutai.org/blog/2026-10-20-pocket-tts-small) (October 2026)
 
 ## Trying it from the website, without installing anything
 

@@ -11,6 +11,8 @@ Supports Python 3.10, 3.11, 3.12, 3.13 and 3.14. Requires PyTorch 2.5+. Does not
 [🐱‍💻GitHub Repository](https://github.com/kyutai-labs/pocket-tts) | 
 [🤗 Hugging Face Model Card](https://huggingface.co/kyutai/pocket-tts) | 
 [⚙️ Tech report](https://kyutai.org/blog/2026-01-13-pocket-tts) |
+[⚙️ Tech report: drifting head](https://kyutai.org/blog/2026-09-28-pocket-tts-drifting) |
+[⚙️ Tech report: small models](https://kyutai.org/blog/2026-10-20-pocket-tts-small) |
 [📄 Paper](https://arxiv.org/abs/2509.06926) | 
 [📚 Documentation](https://kyutai-labs.github.io/pocket-tts/)
 

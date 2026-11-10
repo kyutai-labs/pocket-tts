@@ -47,6 +47,8 @@ jobs:
     - uses: Swatinem/rust-cache@v2
       with:
         workspaces: rust
+    - name: Version matches the Python package
+      run: diff <(grep -m1 '^version = ' Cargo.toml) <(grep -m1 '^version = ' ../pyproject.toml)
     - name: Check formatting
       run: cargo fmt --check
     - name: Clippy

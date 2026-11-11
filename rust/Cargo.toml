@@ -1,7 +1,7 @@
 [package]
 name = "pocket-tts"
 # Kept in step with the Python package in ../pyproject.toml.
-version = "3.3.0"
+version = "4.0.1"
 edition = "2024"
 description = "Kyutai's pocket-sized text-to-speech, as a standalone binary with the CLI of the Python package"
 license = "MIT"

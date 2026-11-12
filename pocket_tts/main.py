@@ -92,6 +92,7 @@ def write_to_queue(
     text_to_generate: str,
     model_state: ModelState,
     stop: threading.Event,
+    teacher_force_previous_chunk: bool = False,
 ):
     """Allows writing to the StreamingResponse as if it were a file."""
 
@@ -110,7 +111,10 @@ def write_to_queue(
 
     model = _loaded_model()
     audio_chunks = model.generate_audio_stream(
-        model_state=model_state, text_to_generate=text_to_generate, stop=stop
+        model_state=model_state,
+        text_to_generate=text_to_generate,
+        stop=stop,
+        teacher_force_previous_chunk=teacher_force_previous_chunk,
     )
     # FileLikeToQueue only implements the write/close subset that StreamingWAVWriter uses.
     stream_audio_chunks(
@@ -119,14 +123,19 @@ def write_to_queue(
 
 
 def generate_data_with_state(
-    text_to_generate: str, model_state: ModelState
+    text_to_generate: str,
+    model_state: ModelState,
+    teacher_force_previous_chunk: bool = False,
 ) -> Generator[bytes, None, None]:
     queue: Queue[bytes | None] = Queue()
     stop = threading.Event()
 
     # Run your function in a thread
     thread = threading.Thread(
-        target=write_to_queue, args=(queue, text_to_generate, model_state, stop)
+        target=write_to_queue,
+        args=(
+            queue, text_to_generate, model_state, stop, teacher_force_previous_chunk
+        ),
     )
     thread.start()
 
@@ -149,6 +158,7 @@ def text_to_speech(
     text: str = Form(...),
     voice_url: str | None = Form(None),
     voice_wav: UploadFile | None = File(None),
+    teacher_force_previous_chunk: bool = Form(False),
 ) -> StreamingResponse:
     """
     Generate speech from text using the pre-loaded voice prompt or a custom voice.
@@ -157,6 +167,7 @@ def text_to_speech(
         text: Text to convert to speech
         voice_url: Optional built-in voice name (e.g., "alba"), or voice URL (http://, https://, or hf://)
         voice_wav: Optional uploaded voice file (mutually exclusive with voice_url)
+        teacher_force_previous_chunk: Condition each chunk on the previous chunk's audio
     """
     if not text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
@@ -199,7 +210,7 @@ def text_to_speech(
         raise HTTPException(status_code=500, detail="The server has no default voice loaded.")
 
     return StreamingResponse(
-        generate_data_with_state(text, model_state),
+        generate_data_with_state(text, model_state, teacher_force_previous_chunk),
         media_type="audio/wav",
         headers={
             "Content-Disposition": "attachment; filename=generated_speech.wav",

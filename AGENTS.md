@@ -41,52 +41,6 @@ Pre-commit handles this automatically, but you can run manually:
 ### Building (No Build Step)
 This is a pure Python package with Rust extensions in `training/rust_exts/audio_ds/` for training-time audio processing. The main package does not require building.
 
-## Code Structure
-
-### Main Package (`pocket_tts/`)
-
-**Entry Points:**
-- `main.py`: CLI implementation with Typer (commands: `generate`, `serve`, and web interface)
-- `__init__.py`: Public API exports only `TTSModel`
-- `__main__.py`: Python module entry point
-- `default_parameters.py`: Default configuration values for generation parameters
-- `static/`: Web interface files (HTML for server UI)
-
-**Core Models (`models/`):**
-- `tts_model.py`: Main `TTSModel` class - orchestrates the entire TTS pipeline
-  - `load_model()`: Downloads weights from HuggingFace and initializes models
-  - `get_state_for_audio_prompt()`: Encodes audio prompt (voice) into model state
-  - `generate_audio_stream()`: Streaming generation that yields audio chunks
-  - Uses LRU cache for voice prompts to avoid reprocessing
-- `flow_lm.py`: `FlowLMModel` - transformer that generates latent audio codes from text
-
-**Modules (`modules/`):**
-- `transformer.py`: `StreamingTransformer` and `StreamingMultiheadAttention` with RoPE embeddings
-- `stateful_module.py`: Base class for streaming support (maintains KV cache and state)
-- `rope.py`: Rotary Position Embeddings
-- `mlp.py`: `SimpleMLPAdaLN` (AdaLN-conditioned MLP for flow prediction)
-- `conv.py`: Convolution utilities
-- `seanet.py`: SEANet encoder/decoder (copied from moshi)
-
-**Conditioners (`conditioners/`):**
-- `text.py`: `LUTConditioner` - SentencePiece tokenizer + embedding lookup table for text
-
-**Data (`data/`):**
-- `audio.py`: Audio I/O utilities (reading, writing WAV, streaming)
-- `audio_utils.py`: Audio processing (resampling, conversion)
-
-**Utils (`utils/`):**
-- `config.py`: Pydantic config models for FlowLM and Mimi
-- `utils.py`: HuggingFace downloads, timing utilities
-
-**Configuration (`config/`):**
-- `b6369a24.yaml`: Model configuration (transformer dims, layers, vocab size, etc.)
-
-### Testing (`tests/`)
-- `test_python_api.py`: Tests for public Python API
-- `test_cli_generate.py`: Tests for CLI generate command
-- `test_documentation_examples.py`: Ensures docs examples work
-
 ## Development Workflow
 
 ### Key Patterns

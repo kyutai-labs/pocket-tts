@@ -24,12 +24,14 @@ from types import FrameType
 import torch
 from torch import nn
 from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.flop_counter import FlopCounterMode
 
 from pocket_tts.models.mimi import MimiModel
 from training.args import TrainArgs, dump_args, load_args, save_args
 from training.checkpointing import EMA, latest_checkpoint, load_checkpoint, save_checkpoint
 from training.dataloader import DataLoader, SubprocessDataLoader, _prefetch, encode_batch
 from training.dataloader.teacher_cache import cached_batches
+from training.diag import PEAK_FLOPS, NoiseScale, StepTimer
 from training.distributed import (
     average_grads,
     avg_across_ranks,
@@ -213,6 +215,18 @@ def main(config_path: str):
         )
         train_loader = iter(train_data)
 
+    timer = gns = step_flops = step_frames = None
+    flop_sum = frame_sum = 0.0
+    if args.diag.mfu:  # synchronized breakdown of steps 30-49 (past compilation)
+        timer = StepTimer(start_step + 30)
+        if cache is not None:
+            cache = timer.wrap(cache)
+        else:
+            train_loader = timer.wrap(train_loader)
+    if args.diag.noise_scale_every:
+        assert not args.refl.enabled, "diag.noise_scale_every does its own all-reduce"
+        gns = NoiseScale(list(model.parameters()), args.diag.noise_scale_ema)
+
     autocast = torch.autocast(
         device_type=device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"
     )
@@ -246,6 +260,17 @@ def main(config_path: str):
         for group in optimizer.param_groups:
             group["lr"] = lr * group.get("lr_scale", 1.0)
         optimizer.zero_grad()
+        if timer is not None and (line := timer.step(step)) and rank == 0:
+            logger.info(f"diag step time breakdown (synchronized, 20 steps): {line}")
+        # FLOPs averaged over steps 3-12 (row lengths vary), past the compile steps
+        count_flops = args.diag.mfu and start_step + 3 <= step < start_step + 13
+        if count_flops:
+            flop_counter = FlopCounterMode(display=False)
+            flop_counter.__enter__()
+        diag_gns = gns is not None and (step + 1) % args.diag.noise_scale_every == 0
+        fwd = model if diag_gns else run.wrapped  # diag step: forward on the bare module, no DDP
+        if diag_gns:
+            gns.start()
         for micro in range(args.grad_accum_steps):
             if cache is not None:
                 (
@@ -262,8 +287,10 @@ def main(config_path: str):
                     mimi, batch, device
                 )
                 text_tokens, z_target = batch.text_tokens, None
+            if count_flops:
+                frame_sum += mask.sum().item()
             with autocast:
-                loss, metrics = run.wrapped(
+                loss, metrics = fwd(
                     latents,
                     mask,
                     text_tokens,
@@ -289,11 +316,32 @@ def main(config_path: str):
             # Under DDP, allreduce only on the last micro-batch.
             last_micro = micro == args.grad_accum_steps - 1
             scaled = loss / args.grad_accum_steps
-            if not last_micro and isinstance(run.wrapped, DDP):
+            if timer is not None:
+                timer.mark("fwd")
+            if diag_gns:  # gradient before the all-reduce, out of DDP's sight (NoiseScale.backward)
+                gns.backward(scaled)
+                gns.micro("all", args.batch_size, 1 / args.grad_accum_steps)
+            elif not last_micro and isinstance(run.wrapped, DDP):
                 with run.wrapped.no_sync():
                     scaled.backward()
             else:
                 scaled.backward()
+            if timer is not None:
+                timer.mark("bwd")
+        if diag_gns:
+            gns.end()
+        if count_flops:
+            flop_counter.__exit__(None, None, None)
+            flop_sum += flop_counter.get_total_flops()
+            if step == start_step + 12:
+                flops = torch.tensor([flop_sum / 10, frame_sum / 10], device=device)
+                if run.world_size > 1:
+                    torch.distributed.all_reduce(flops)
+                step_flops, step_frames = flops.tolist()
+                if rank == 0:
+                    logger.info(
+                        f"diag: {step_flops / 1e12:.1f} TFLOP per optimizer step (all ranks)"
+                    )
         if refl_rewards is not None and run.world_size > 1:
             average_grads([p for p in model.parameters() if p.requires_grad])
         grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), args.optim.max_norm)
@@ -304,6 +352,8 @@ def main(config_path: str):
         optimizer.step()
         if ema is not None:
             ema.update(model)
+        if timer is not None:
+            timer.mark("opt")
 
         stop = torch.tensor(
             float(stop_requested or os.path.exists(os.path.join(args.run_dir, "STOP"))),
@@ -334,6 +384,13 @@ def main(config_path: str):
             speed = steps_since_log / (now - last_log)
             last_log, steps_since_log = now, 0
             values = {k: v.item() for k, v in metrics.items() if v.numel() == 1}
+            if step_flops is not None and step_frames is not None:
+                values["mfu"] = step_flops * speed / (run.world_size * PEAK_FLOPS)
+                rows_s = args.batch_size * args.grad_accum_steps * run.world_size * speed
+                values["rows_s"] = rows_s
+                values["frames_s"] = step_frames * speed  # unpadded latent frames
+            if gns is not None:
+                values.update(gns.metrics())
             shown = {k: f"{v:.4f}" for k, v in values.items()}
             logger.info(
                 f"step {step + 1} | lr {lr:.2e} | grad {grad_norm:.2f} | {speed:.2f} it/s | {shown}"

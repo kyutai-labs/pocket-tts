@@ -107,11 +107,24 @@ class ReflArgs:
 
 
 @dataclass
+class DiagArgs:
+    """Log-only diagnostics (training/diag.py); training is unchanged. mfu: count one step's FLOPs
+    and log mfu, rows/s and frames/s every log_freq, plus a synchronized step-time breakdown
+    over 20 early steps. noise_scale_every: every N steps, measure the gradient noise scale
+    (that step bypasses DDP and all-reduces itself); 0 = off."""
+
+    mfu: bool = False
+    noise_scale_every: int = 0
+    noise_scale_ema: float = 0.95
+
+
+@dataclass
 class TrainArgs:
     data: DataArgs = field(default_factory=DataArgs)
     flow: FlowArgs = field(default_factory=FlowArgs)
     optim: OptimArgs = field(default_factory=OptimArgs)
     refl: ReflArgs = field(default_factory=ReflArgs)
+    diag: DiagArgs = field(default_factory=DiagArgs)
 
     # A pocket-tts model config (e.g. pocket_tts/config/english.yaml or a local
     # variant). Defines the FlowLM/Mimi architecture, the tokenizer, and the
@@ -269,7 +282,13 @@ class TrainArgs:
 
 
 def _from_dict(cls: type[T], data: dict[str, Any]) -> T:
-    sub = {"data": DataArgs, "flow": FlowArgs, "optim": OptimArgs, "refl": ReflArgs}
+    sub = {
+        "data": DataArgs,
+        "flow": FlowArgs,
+        "optim": OptimArgs,
+        "refl": ReflArgs,
+        "diag": DiagArgs,
+    }
     kwargs = {}
     fields = {f.name: f for f in dataclasses.fields(cls)}
     for key, value in data.items():

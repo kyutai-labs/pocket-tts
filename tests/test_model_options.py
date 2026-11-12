@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import TypeVar
 
+import pytest
 import safetensors.torch
 import torch
 
@@ -11,6 +12,7 @@ from pocket_tts.models.mimi import build_mimi
 from pocket_tts.modules.attention import StreamingMultiheadAttention
 from pocket_tts.modules.rope import RotaryEmbedding
 from pocket_tts.modules.stateful_module import StatefulModule, increment_steps, init_states
+from pocket_tts.modules.transformer import StreamingTransformer
 from pocket_tts.utils.config import CONFIGS_DIR, FlowLMConfig, load_config
 from pocket_tts.utils.weights_loading import get_mimi_state_dict
 
@@ -168,3 +170,31 @@ def test_pointwise_head_is_lsd_one_step_without_time_conditions():
             v.zero_()
     lsd.load_state_dict({**state, **pointwise.state_dict()}, strict=True)
     assert torch.equal(sample_latents(pointwise), sample_latents(lsd))
+
+
+@pytest.mark.parametrize("device", ["cpu", "cuda"])
+def test_is_causal_matches_explicit_mask(device: str):
+    """Stateless forward without a context window (is_causal, flash-eligible) against the explicit
+    causal mask (a window covering the sequence): same outputs and gradients."""
+    if device == "cuda" and not torch.cuda.is_available():
+        pytest.skip("no GPU")
+    x = torch.randn(2, 40, 32, device=device)
+    for dtype, tol in [(torch.float32, 1e-5)] + [(torch.bfloat16, 0.05)] * (device == "cuda"):
+        results = []
+        for context in (None, 40):
+            torch.manual_seed(0)
+            m = StreamingTransformer(
+                d_model=32, num_heads=4, num_layers=2, dim_feedforward=64, context=context
+            ).to(device)
+            with torch.autocast(device, dtype=dtype, enabled=dtype != torch.float32):
+                if dtype == torch.bfloat16 and context is None:  # raises unless flash runs it
+                    with torch.nn.attention.sdpa_kernel(
+                        torch.nn.attention.SDPBackend.FLASH_ATTENTION
+                    ):
+                        out = m(x, None)
+                else:
+                    out = m(x, None)
+            out.float().square().mean().backward()
+            results.append([out.float()] + [p.grad for p in m.parameters()])
+        for a, b in zip(*results):
+            assert (a - b).abs().max() <= tol * b.abs().max(), (dtype, (a - b).abs().max())

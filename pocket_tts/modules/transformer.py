@@ -121,9 +121,9 @@ class StreamingTransformer(nn.Module):
 
     def forward(self, x: torch.Tensor, model_state: ModelState | None) -> torch.Tensor:
         attn_mask = None
-        if model_state is None:
+        if model_state is None and self.context is not None:
             # Stateless (training) path: one shared mask for all layers, built
-            # outside any compiled region.
+            # outside any compiled region. Without a context window the layers use is_causal.
             attn_mask = _cached_causal_mask(x.shape[1], self.context, x.device)
         for layer in self.layers:
             x = layer(x, model_state, attn_mask=attn_mask)

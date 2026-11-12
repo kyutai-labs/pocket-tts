@@ -247,6 +247,10 @@ def main(config_path: str):
             group["lr"] = lr * group.get("lr_scale", 1.0)
         optimizer.zero_grad()
         for micro in range(args.grad_accum_steps):
+            # Under DDP, all-reduce only on the last micro-batch. DDP decides at forward time
+            # whether the backward synchronizes, so the flag (what DDP.no_sync sets) goes first.
+            if isinstance(run.wrapped, DDP):
+                run.wrapped.require_backward_grad_sync = micro == args.grad_accum_steps - 1
             if cache is not None:
                 (
                     latents,
@@ -286,14 +290,7 @@ def main(config_path: str):
                 metrics.update(refl_stats)
                 if reward_loss is not None:
                     loss = loss + reward_loss
-            # Under DDP, allreduce only on the last micro-batch.
-            last_micro = micro == args.grad_accum_steps - 1
-            scaled = loss / args.grad_accum_steps
-            if not last_micro and isinstance(run.wrapped, DDP):
-                with run.wrapped.no_sync():
-                    scaled.backward()
-            else:
-                scaled.backward()
+            (loss / args.grad_accum_steps).backward()
         if refl_rewards is not None and run.world_size > 1:
             average_grads([p for p in model.parameters() if p.requires_grad])
         grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), args.optim.max_norm)

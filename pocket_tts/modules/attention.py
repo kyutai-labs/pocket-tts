@@ -198,8 +198,13 @@ class StreamingMultiheadAttention(StatefulModule):
         if self.num_kv_heads != self.num_heads:
             k_attn = k_attn.repeat_interleave(self.num_heads // self.num_kv_heads, dim=1)
             v_attn = v_attn.repeat_interleave(self.num_heads // self.num_kv_heads, dim=1)
+        # Stateless and no context window: plain causal attention. is_causal with no explicit
+        # mask lets SDPA pick the flash kernel (a mask forces the slower mem-efficient one).
+        is_causal = False
         if attn_mask is not None:
             pass  # precomputed by the caller (stateless path)
+        elif state is None and self.context is None:
+            is_causal = True
         elif state is None:
             attn_mask = _cached_causal_mask(t, self.context, q.device)
         else:
@@ -207,7 +212,9 @@ class StreamingMultiheadAttention(StatefulModule):
                 1, -1
             )
             attn_mask = _build_attention_mask(pos_q, pos_k, self.context)
-        x = F.scaled_dot_product_attention(q, k_attn, v_attn, attn_mask, dropout_p=0.0)
+        x = F.scaled_dot_product_attention(
+            q, k_attn, v_attn, attn_mask, dropout_p=0.0, is_causal=is_causal
+        )
         x = x.transpose(1, 2)
         # Reshape from (b, t, h, d) to (b, t, h*d)
         b, t, h, d = x.shape

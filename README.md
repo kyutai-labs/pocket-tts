@@ -116,6 +116,8 @@ Each [release](https://github.com/kyutai-labs/pocket-tts/releases) comes with a 
 tar xzf pocket-tts-*-x86_64-unknown-linux-gnu.tar.gz
 ./pocket-tts-*/pocket-tts generate --text "Hello world." --voice marius
 ```
+The x86 binaries need a CPU with AVX2 (Intel Haswell, AMD Zen, or newer). For older CPUs, the Linux and Windows releases also have a `-v2` archive (e.g. `pocket-tts-*-x86_64-unknown-linux-gnu-v2.tar.gz`), which only needs SSE4.2: it is as fast in the default mode, but slower with `--quantize`, so prefer the regular one when your CPU supports it.
+
 It is a Rust port built on [xn-ptts](https://github.com/gradium-ai/xn-ptts), whose sources are in [`rust/`](rust/). It runs on the CPU only, cannot load training checkpoints (`--checkpoint`), and its audio is not bit-identical to the Python package's, as the sampling noise differs.
 
 

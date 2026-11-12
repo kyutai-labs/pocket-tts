@@ -12,7 +12,10 @@ cargo build --release
 ```
 
 Building needs CMake and a C++ compiler, for the SentencePiece tokenizer that most community
-models use. x86 builds target x86-64-v3 (AVX2), see `.cargo/config.toml`.
+models use. x86 builds target x86-64-v3 (AVX2), see `.cargo/config.toml`. For a CPU without AVX2,
+build with `RUSTFLAGS="-C target-cpu=x86-64-v2"`, as the `-v2` archives of the releases are:
+`--quantize` is slower there (xn picks its int8 kernels at compile time), the default f32 mode is
+not.
 
 ## Differences with the Python CLI
 

@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build ${{ matrix.target }}
+    name: Build ${{ matrix.target }}${{ matrix.suffix }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
@@ -33,6 +33,13 @@ jobs:
           # x86 builds target x86-64-v3 (AVX2, FMA) through rust/.cargo/config.toml.
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-22.04
+          # The `-v2` archives are for x86 CPUs without AVX2 (x86-64-v2: SSE4.2). They are separate
+          # builds since xn picks its int8 kernels at compile time: at this level `--quantize` is
+          # up to 2.6x slower, while the f32 matmuls, dispatched at runtime, keep their speed.
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-22.04
+            suffix: -v2
+            rustflags: '-C target-cpu=x86-64-v2'
           - target: aarch64-unknown-linux-gnu
             runner: ubuntu-22.04-arm
           - target: aarch64-apple-darwin
@@ -46,6 +53,10 @@ jobs:
           - target: x86_64-pc-windows-msvc
             runner: windows-2022
             rustflags: '-C target-cpu=x86-64-v3 -C target-feature=+crt-static'
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2022
+            suffix: -v2
+            rustflags: '-C target-cpu=x86-64-v2 -C target-feature=+crt-static'
     env:
       MACOSX_DEPLOYMENT_TARGET: '11.0'
     defaults:
@@ -60,7 +71,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust
-          key: ${{ matrix.target }}
+          key: ${{ matrix.target }}${{ matrix.suffix }}
       - name: Build
         env:
           RUSTFLAGS_OVERRIDE: ${{ matrix.rustflags }}
@@ -73,7 +84,7 @@ jobs:
         id: package
         run: |
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
-          name="pocket-tts-$version-${{ matrix.target }}"
+          name="pocket-tts-$version-${{ matrix.target }}${{ matrix.suffix }}"
           mkdir -p "dist/$name"
           binary="target/${{ matrix.target }}/release/pocket-tts"
           if [ "$RUNNER_OS" = Windows ]; then binary="$binary.exe"; fi
@@ -89,7 +100,7 @@ jobs:
           rm -r "$name"
       - uses: actions/upload-artifact@v4
         with:
-          name: pocket-tts-${{ matrix.target }}
+          name: pocket-tts-${{ matrix.target }}${{ matrix.suffix }}
           path: rust/dist/*
           if-no-files-found: error
 

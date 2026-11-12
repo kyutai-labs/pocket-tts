@@ -63,6 +63,19 @@ Requests are free to ask for another voice: `--default-voice` only changes what 
 `voice_url` and `voice_wav` fields of `/tts` are both empty (in the web interface, when the voice
 field is left empty).
 
+### Teacher Forcing Between Chunks
+
+Long texts are generated in chunks. Set the `teacher_force_previous_chunk` form field of `/tts` to
+`true` to generate each chunk as the continuation of the previous one instead of starting afresh
+from the voice prompt (same as `--teacher-force-previous-chunk` of `generate`; default: `false`,
+slightly slower):
+
+```bash
+curl -X POST http://localhost:8000/tts \
+  -F "text=A long text, made of several sentences..." \
+  -F "teacher_force_previous_chunk=true" -o output.wav
+```
+
 ### Custom Model Config
 
 If you'd like to override the paths from which the models are loaded, you can provide a custom YAML configuration.

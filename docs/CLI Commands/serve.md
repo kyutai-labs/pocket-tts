@@ -17,8 +17,8 @@ This starts a server on `http://localhost:8000` with the default voice model.
 - `--host HOST`: Host to bind to (default: "localhost")
 - `--port PORT`: Port to bind to (default: 8000)
 - `--reload`: Enable auto-reload for development
-- `--language`: Language for the TTS model, one of `'english_2026-01'`, `'english_2026-04'`, `'english_2026-09'`, `'english_2026-09_2'`, `'english_2026-10'`, `'english_drifting_26-09'`, `'english_18m_2026-10'`, `'english_18m_refl_2026-10'`, `'english_7m_2026-10'`, `'english_7m_refl_2026-10'`, `'english_2m_2026-10'`, `'english_2m_refl_2026-10'`, `'english'`, `'french'`, `'french_24l'`, `'german'`, `'german_24l'`, `'portuguese'`, `'portuguese_24l'`, `'italian'`, `'italian_24l'`, `'spanish'`, `'spanish_24l'`, `'dutch'`, `'dutch_24l'` (default: `english`, which is the same model as `'english_2026-10'`). Incompatible with `--config`. The "24l" variants are bigger models, not distilled yet and here only as preview.
-- `--config`: Path to a custom config .yaml — a local path, an `https://` URL, or an `hf://` path. Incompatible with `--language`.
+- `--default-model MODEL` (alias: `--language`): Built-in model loaded when the server starts. Defaults to `english` (the same model as `english_2026-10`); incompatible with `--config`. The `*_24l` models are previews.
+- `--config`: Path to a custom config .yaml — a local path, an `https://` URL, or an `hf://` path. Incompatible with `--language`/`--default-model`.
 - `--default-voice`: Voice used by the requests that don't ask for one (default: the built-in voice of the language). It accepts anything the `generate --voice` option accepts: a built-in voice name, a local path to an audio file or to a `.safetensors` voice, an `https://` URL, or an `hf://` path. It is loaded at startup, so a voice that cannot be read fails the server immediately instead of the first request.
 - `--quantize`: Use int8 quantization for the model (default: False). This can reduce memory usage and increase speed, with minimal impact on audio quality.
 ## Examples
@@ -92,5 +92,10 @@ pocket-tts serve --config "C://pocket-tts/my_config.yaml"
 ## Web Interface
 
 Once the server is running, navigate to `http://localhost:8000` to access the web interface.
+
+The interface can switch between built-in models and configure whether to keep one model or a
+selected set loaded. Keeping multiple models loaded speeds up switching but uses more memory. The
+language selector is a preference; when it does not match the selected model's language, the model
+may still generate speech in its trained language.
 
 For more advanced usage, see the [Python API documentation](../API%20Reference/python-api.md) for direct integration with the TTS model.

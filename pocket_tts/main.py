@@ -14,6 +14,8 @@ import uvicorn
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
+from pydantic import BaseModel
+from starlette.background import BackgroundTask
 
 from pocket_tts.data.audio import stream_audio_chunks
 from pocket_tts.default_parameters import (
@@ -25,6 +27,7 @@ from pocket_tts.default_parameters import (
     get_default_text_for_language,
     get_default_voice_for_language,
 )
+from pocket_tts.model_manager import ModelLease, ModelManager, ModelMode, ModelStatus
 from pocket_tts.models.model_state import export_model_state
 from pocket_tts.models.tts_model import TTSModel
 from pocket_tts.modules.stateful_module import ModelState
@@ -47,6 +50,17 @@ tts_model: TTSModel | None = None
 # State of the voice served when a request doesn't specify one. It is resolved once from the
 # `serve` options, so that requests never pay for the encoding of the default voice.
 default_voice_state: ModelState | None = None
+model_manager: ModelManager | None = None
+
+
+class ModelSettingsRequest(BaseModel):
+    mode: ModelMode
+    models: list[str]
+
+
+class ModelSelectionRequest(BaseModel):
+    model_name: str
+
 
 web_app = FastAPI(
     title="Kyutai Pocket TTS API", description="Text-to-Speech generation API", version="1.0.0"
@@ -65,6 +79,8 @@ web_app.add_middleware(
 
 
 def _loaded_model() -> TTSModel:
+    if model_manager is not None:
+        return model_manager.active_pair()[1]
     if tts_model is None:
         raise RuntimeError("no model loaded: `pocket-tts serve` loads it before serving requests")
     return tts_model
@@ -75,10 +91,12 @@ async def root() -> str:
     """Serve the frontend."""
     static_path = Path(__file__).parent / "static" / "index.html"
     content = static_path.read_text(encoding="utf-8")
-    # Replace the placeholder with the actual default text prompt
-    origin = str(_loaded_model().origin)
-    print(origin)
-    content = content.replace("DEFAULT_TEXT_PROMPT", get_default_text_for_language(origin))
+    if model_manager is not None:
+        active_model = model_manager.active_model or model_manager.default_model
+        language = model_manager.language_for_model(active_model) or "english"
+    else:
+        language = str(_loaded_model().origin)
+    content = content.replace("DEFAULT_TEXT_PROMPT", get_default_text_for_language(language))
     return content
 
 
@@ -87,17 +105,52 @@ async def health() -> dict[str, str]:
     return {"status": "healthy"}
 
 
+def _configured_model_manager() -> ModelManager:
+    if model_manager is None:
+        raise HTTPException(status_code=503, detail="No model manager is configured.")
+    return model_manager
+
+
+@web_app.get("/models")
+def get_model_settings() -> ModelStatus:
+    return _configured_model_manager().status()
+
+
+@web_app.post(
+    "/models/activate",
+    responses={400: {"description": "The requested model is invalid or not loaded."}},
+)
+def activate_model(selection: ModelSelectionRequest) -> ModelStatus:
+    manager = _configured_model_manager()
+    try:
+        manager.activate_model(selection.model_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return manager.status()
+
+
+@web_app.post("/models/settings", responses={400: {"description": "Invalid model settings."}})
+def update_model_settings(settings: ModelSettingsRequest) -> ModelStatus:
+    manager = _configured_model_manager()
+    try:
+        manager.configure(settings.mode, settings.models)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return manager.status()
+
+
 def write_to_queue(
-    queue: Queue[bytes | None],
+    queue: Queue[bytes | None | Exception],
     text_to_generate: str,
     model_state: ModelState,
     stop: threading.Event,
+    model: TTSModel | None = None,
     teacher_force_previous_chunk: bool = False,
 ):
     """Allows writing to the StreamingResponse as if it were a file."""
 
     class FileLikeToQueue(io.IOBase):
-        def __init__(self, queue: Queue[bytes | None]):
+        def __init__(self, queue: Queue[bytes | None | Exception]):
             self.queue = queue
 
         def write(self, data: bytes):
@@ -107,54 +160,67 @@ def write_to_queue(
             pass
 
         def close(self):
-            self.queue.put(None)
+            pass
 
-    model = _loaded_model()
-    audio_chunks = model.generate_audio_stream(
-        model_state=model_state,
-        text_to_generate=text_to_generate,
-        stop=stop,
-        teacher_force_previous_chunk=teacher_force_previous_chunk,
-    )
-    # FileLikeToQueue only implements the write/close subset that StreamingWAVWriter uses.
-    stream_audio_chunks(
-        cast(BinaryIO, FileLikeToQueue(queue)), audio_chunks, model.config.mimi.sample_rate
-    )
+    model = model or _loaded_model()
+    try:
+        audio_chunks = model.generate_audio_stream(
+            model_state=model_state,
+            text_to_generate=text_to_generate,
+            stop=stop,
+            teacher_force_previous_chunk=teacher_force_previous_chunk,
+        )
+        # FileLikeToQueue only implements the write/close subset that StreamingWAVWriter uses.
+        stream_audio_chunks(
+            cast(BinaryIO, FileLikeToQueue(queue)), audio_chunks, model.config.mimi.sample_rate
+        )
+    except Exception as exc:  # noqa: BLE001
+        queue.put(exc)
+    finally:
+        queue.put(None)
 
 
 def generate_data_with_state(
-    text_to_generate: str, model_state: ModelState, teacher_force_previous_chunk: bool = False
+    text_to_generate: str,
+    model_state: ModelState,
+    model: TTSModel | None = None,
+    teacher_force_previous_chunk: bool = False,
 ) -> Generator[bytes, None, None]:
-    queue: Queue[bytes | None] = Queue()
+    queue: Queue[bytes | None | Exception] = Queue()
     stop = threading.Event()
 
     # Run your function in a thread
     thread = threading.Thread(
         target=write_to_queue,
-        args=(queue, text_to_generate, model_state, stop, teacher_force_previous_chunk),
+        args=(queue, text_to_generate, model_state, stop, model, teacher_force_previous_chunk),
     )
     thread.start()
 
     try:
-        # Yield data as it becomes available
         while True:
             data = queue.get()
             if data is None:
                 break
+            if isinstance(data, Exception):
+                raise data
             yield data
     finally:
-        # Also runs when the client disconnects: stop the generation instead of
-        # finishing it for nobody, and make sure the worker is done with the model.
         stop.set()
         thread.join()
 
 
-@web_app.post("/tts")
+@web_app.post(
+    "/tts",
+    responses={
+        400: {"description": "Invalid input or the loaded model does not support voice cloning."}
+    },
+)
 def text_to_speech(
     text: str = Form(...),
     voice_url: str | None = Form(None),
     voice_wav: UploadFile | None = File(None),
     teacher_force_previous_chunk: bool = Form(False),
+    model_name: str | None = Form(None),
 ) -> StreamingResponse:
     """
     Generate speech from text using the pre-loaded voice prompt or a custom voice.
@@ -165,6 +231,7 @@ def text_to_speech(
         voice_wav: Optional uploaded voice file (mutually exclusive with voice_url)
         teacher_force_previous_chunk: Generate each chunk of a long text as the continuation
             of the previous one instead of starting afresh from the voice prompt
+        model_name: Optional built-in model configuration. Defaults to the active model.
     """
     if not text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
@@ -172,47 +239,79 @@ def text_to_speech(
     if voice_url is not None and voice_wav is not None:
         raise HTTPException(status_code=400, detail="Cannot provide both voice_url and voice_wav")
 
-    # Use the appropriate model state
-    if voice_url is not None:
-        if not (
-            voice_url.startswith("http://")
-            or voice_url.startswith("https://")
-            or voice_url.startswith("hf://")
-            or voice_url in _ORIGINS_OF_PREDEFINED_VOICES
-        ):
-            raise HTTPException(
-                status_code=400, detail="voice_url must start with http://, https://, or hf://"
-            )
-        model_state = _loaded_model()._cached_get_state_for_audio_prompt(voice_url)
-        logging.warning("Using voice from URL: %s", voice_url)
-    elif voice_wav is not None:
-        # Use uploaded voice file - preserve extension for format detection
-        suffix = Path(voice_wav.filename).suffix if voice_wav.filename else ".wav"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
-            content = voice_wav.file.read()
-            temp_file.write(content)
-            temp_file.flush()
-            temp_file_path = temp_file.name
+    if voice_url is not None and not (
+        voice_url.startswith("http://")
+        or voice_url.startswith("https://")
+        or voice_url.startswith("hf://")
+        or voice_url in _ORIGINS_OF_PREDEFINED_VOICES
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "voice_url must be an http://, https://, or hf:// URL, or a predefined voice "
+                f"name ({', '.join(_ORIGINS_OF_PREDEFINED_VOICES)}). Use only the name; "
+                "language labels shown in the web page are informational."
+            ),
+        )
 
-        # Close the file before reading it back (required on Windows)
-        try:
-            model_state = _loaded_model().get_state_for_audio_prompt(
-                Path(temp_file_path), truncate=True
-            )
-        finally:
-            os.unlink(temp_file_path)
-    elif default_voice_state is not None:
-        model_state = default_voice_state
-    else:
-        raise HTTPException(status_code=500, detail="The server has no default voice loaded.")
+    lease: ModelLease | None = None
+    try:
+        if model_manager is not None:
+            try:
+                lease = model_manager.acquire_model(model_name)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            model = lease.model
+            model_state = lease.voice_state
+        else:
+            if model_name is not None:
+                raise HTTPException(
+                    status_code=400, detail="Model selection is unavailable on this server."
+                )
+            model = _loaded_model()
+            model_state = default_voice_state
+
+        if voice_url is not None:
+            model_state = model._cached_get_state_for_audio_prompt(voice_url)
+            logger.warning("Using voice from URL: %s", voice_url)
+        elif voice_wav is not None:
+            if not model.has_voice_cloning:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "The loaded model does not support custom voice cloning. "
+                        "Use a predefined voice or load a model with voice-cloning weights."
+                    ),
+                )
+
+            # Use uploaded voice file - preserve extension for format detection
+            suffix = Path(voice_wav.filename).suffix if voice_wav.filename else ".wav"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+                content = voice_wav.file.read()
+                temp_file.write(content)
+                temp_file.flush()
+                temp_file_path = temp_file.name
+
+            # Close the file before reading it back (required on Windows)
+            try:
+                model_state = model.get_state_for_audio_prompt(Path(temp_file_path), truncate=True)
+            finally:
+                os.unlink(temp_file_path)
+        elif model_state is None:
+            raise HTTPException(status_code=500, detail="The server has no default voice loaded.")
+    except Exception:
+        if lease is not None:
+            lease.release()
+        raise
 
     return StreamingResponse(
-        generate_data_with_state(text, model_state, teacher_force_previous_chunk),
+        generate_data_with_state(text, model_state, model, teacher_force_previous_chunk),
         media_type="audio/wav",
         headers={
             "Content-Disposition": "attachment; filename=generated_speech.wav",
             "Transfer-Encoding": "chunked",
         },
+        background=BackgroundTask(lease.release) if lease is not None else None,
     )
 
 
@@ -221,12 +320,13 @@ def serve(
     host: Annotated[str, typer.Option(help="Host to bind to")] = "localhost",
     port: Annotated[int, typer.Option(help="Port to bind to")] = 8000,
     reload: Annotated[bool, typer.Option(help="Enable auto-reload")] = False,
-    language: Annotated[
+    default_model: Annotated[
         str | None,
         typer.Option(
-            help="Language for the TTS model. "
-            "'english_2026-01', 'english_2026-04', 'english_2026-09', 'english_2026-09_2', 'english_2026-10', 'english_drifting_26-09', 'english_18m_2026-10', 'english_18m_refl_2026-10', 'english_7m_2026-10', 'english_7m_refl_2026-10', 'english_2m_2026-10', 'english_2m_refl_2026-10', 'english', 'french', 'french_24l', 'german', 'german_24l', 'portuguese', 'portuguese_24l', 'italian', 'italian_24l', 'spanish', 'spanish_24l', 'dutch', 'dutch_24l'."
-            " Incompatible with the config argument. Default is 'english', which is the same model as 'english_2026-10'.",
+            "--language",
+            "--default-model",
+            help="Built-in model to load when the server starts. "
+            "Use --default-model or its --language alias. Incompatible with --config.",
             show_default=False,
         ),
     ] = None,
@@ -234,7 +334,7 @@ def serve(
         str | None,
         typer.Option(
             help="Path to a model config .yaml file: a local path, an https:// URL, or an hf:// path. "
-            "Incompatible with the language argument. If not provided, will use the default English model."
+            "Incompatible with --language/--default-model. If omitted, uses the English model."
         ),
     ] = None,
     default_voice: Annotated[
@@ -252,13 +352,24 @@ def serve(
 ):
     """Start the FastAPI server."""
 
-    global tts_model, default_voice_state
-    tts_model = TTSModel.load_model(language=language, config=config, quantize=quantize)
-    if default_voice is None:
-        default_voice = get_default_voice_for_language(language, config)
-    # Resolved before serving: a voice that cannot be loaded fails at startup instead of on
-    # the first request, which would otherwise pay for the encoding of the audio file.
-    default_voice_state = tts_model.get_state_for_audio_prompt(default_voice)
+    global tts_model, default_voice_state, model_manager
+    if config is not None and default_model is not None:
+        raise typer.BadParameter("--default-model cannot be combined with --config.")
+
+    initial_model = "custom" if config is not None else (default_model or "english")
+
+    def load_model(model_name: str) -> TTSModel:
+        if config is not None:
+            return TTSModel.load_model(config=config, quantize=quantize)
+        return TTSModel.load_model(language=model_name, quantize=quantize)
+
+    model_manager = ModelManager(
+        default_model=initial_model,
+        model_loader=load_model,
+        default_voice=default_voice,
+        custom_config=config,
+    )
+    _, tts_model, default_voice_state = model_manager.active_pair()
 
     uvicorn.run("pocket_tts.main:web_app", host=host, port=port, reload=reload)
 

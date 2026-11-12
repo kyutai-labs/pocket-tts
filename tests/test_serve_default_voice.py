@@ -23,6 +23,7 @@ class FakeTTSModel:
         self.config = SimpleNamespace(mimi=SimpleNamespace(sample_rate=24000))
         self.voices_requested: list[Path | str | torch.Tensor] = []
         self.states_used: list[dict[str, Any]] = []
+        self.teacher_forcing_used: list[bool] = []
 
     def get_state_for_audio_prompt(
         self, audio_conditioning: Path | str | torch.Tensor, truncate: bool = False
@@ -40,8 +41,10 @@ class FakeTTSModel:
         model_state: dict[str, Any],
         text_to_generate: str,
         stop: threading.Event | None = None,
+        teacher_force_previous_chunk: bool = False,
     ) -> Iterator[torch.Tensor]:
         self.states_used.append(model_state)
+        self.teacher_forcing_used.append(teacher_force_previous_chunk)
         yield torch.zeros(2400)
 
 
@@ -119,3 +122,20 @@ def test_tts_endpoint_still_rejects_a_voice_url_that_is_not_a_voice(
 
     assert response.status_code == 400
     assert fake_model.states_used == []
+
+
+def test_tts_endpoint_passes_teacher_force_previous_chunk_to_the_model(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    fake_model = FakeTTSModel()
+    monkeypatch.setattr(main, "tts_model", fake_model)
+    monkeypatch.setattr(main, "default_voice_state", {"voice": "./my_voice.wav"})
+    client = TestClient(main.web_app)
+
+    assert client.post("/tts", data={"text": "Hello world."}).status_code == 200
+    response = client.post(
+        "/tts", data={"text": "Hello world.", "teacher_force_previous_chunk": "true"}
+    )
+
+    assert response.status_code == 200
+    assert fake_model.teacher_forcing_used == [False, True]

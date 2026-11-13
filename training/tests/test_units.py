@@ -171,3 +171,12 @@ class TestDrifting:
     def test_decode_is_the_head_output(self):
         head, x_0 = self._head(), torch.randn(3, 4)
         assert torch.equal(Drifting().decode(head, x_0), head(x_0))
+
+
+def test_rss_gib_reads_this_process_and_tolerates_a_missing_one():
+    import os
+
+    from training.train_utils import rss_gib
+
+    assert rss_gib(os.getpid()) > 0  # Linux only, like training itself
+    assert rss_gib(2**22 + 1) == 0.0  # above the default pid_max

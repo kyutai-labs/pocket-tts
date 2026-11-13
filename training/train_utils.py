@@ -3,6 +3,7 @@
 import json
 import logging
 import math
+import os
 import subprocess
 import time
 from collections.abc import Callable
@@ -369,3 +370,12 @@ def check_manifest_sizes(args: TrainArgs, world_size: int) -> None:
                 "Lower data.num_bucket_batches (1 disables length bucketing), data.loader_procs "
                 "or batch_size, or use a larger manifest."
             )
+
+
+def rss_gib(pid: int) -> float:
+    """Resident memory of a process in GiB, 0 where /proc is missing or the process is gone."""
+    try:
+        with open(f"/proc/{pid}/statm") as f:
+            return int(f.read().split()[1]) * os.sysconf("SC_PAGE_SIZE") / 2**30
+    except OSError:
+        return 0.0

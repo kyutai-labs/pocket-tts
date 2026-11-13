@@ -14,6 +14,7 @@ if __name__ == "__main__":
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 import logging
+import multiprocessing
 import signal
 import sys
 import time
@@ -51,6 +52,7 @@ from training.train_utils import (
     ensure_train_latents,
     git_commit,
     lr_at,
+    rss_gib,
     setup_logging,
     write_samples,
 )
@@ -332,10 +334,26 @@ def main(config_path: str):
             last_log, steps_since_log = now, 0
             values = {k: v.item() for k, v in metrics.items() if v.numel() == 1}
             shown = {k: f"{v:.4f}" for k, v in values.items()}
-            logger.info(
-                f"step {step + 1} | lr {lr:.2e} | grad {grad_norm:.2f} | {speed:.2f} it/s | {shown}"
+            # Host memory of this process and of its children (the dataloader processes): a
+            # steady climb over a long run points at a leak before the node starts swapping.
+            rss, child_rss = (
+                rss_gib(os.getpid()),
+                sum(rss_gib(p.pid) for p in multiprocessing.active_children() if p.pid),
             )
-            progress.log("train", step + 1, values, lr=lr, grad_norm=grad_norm.item(), it_s=speed)
+            logger.info(
+                f"step {step + 1} | lr {lr:.2e} | grad {grad_norm:.2f} | {speed:.2f} it/s | "
+                f"rss {rss:.1f}+{child_rss:.1f} GiB | {shown}"
+            )
+            progress.log(
+                "train",
+                step + 1,
+                values,
+                lr=lr,
+                grad_norm=grad_norm.item(),
+                it_s=speed,
+                rss_gib=rss,
+                child_rss_gib=child_rss,
+            )
         if rank == 0 and step - start_step == VERBOSE_STEPS - 1:
             logger.info(f"per-step logging done, logging every {args.log_freq} steps from now on")
 

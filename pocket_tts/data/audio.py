@@ -26,18 +26,21 @@ def audio_read(filepath: str | Path) -> tuple[torch.Tensor, int]:
     filepath = Path(filepath)
 
     if filepath.suffix.lower() == ".wav":
-        # Use built-in wave module for WAV files
-        with wave.open(str(filepath), "rb") as wav_file:
-            sample_rate = wav_file.getframerate()
-            n_channels = wav_file.getnchannels()
-            sample_width = wav_file.getsampwidth()
-            if sample_width != 2:
-                return _audio_read_with_soundfile(filepath)
-            raw_data = wav_file.readframes(-1)
-            samples = np.frombuffer(raw_data, dtype=np.int16).astype(np.float32) / 32768.0
-            if n_channels > 1:
-                samples = samples.reshape(-1, n_channels).mean(axis=1)
-            return torch.from_numpy(samples).unsqueeze(0), sample_rate
+        try:
+            # Use built-in wave module for standard 16-bit PCM WAV files
+            with wave.open(str(filepath), "rb") as wav_file:
+                sample_rate = wav_file.getframerate()
+                n_channels = wav_file.getnchannels()
+                sample_width = wav_file.getsampwidth()
+                if sample_width != 2:
+                    return _audio_read_with_soundfile(filepath)
+                raw_data = wav_file.readframes(-1)
+                samples = np.frombuffer(raw_data, dtype=np.int16).astype(np.float32) / 32768.0
+                if n_channels > 1:
+                    samples = samples.reshape(-1, n_channels).mean(axis=1)
+                return torch.from_numpy(samples).unsqueeze(0), sample_rate
+        except (wave.Error, EOFError, ValueError, OSError):
+            return _audio_read_with_soundfile(filepath)
 
     return _audio_read_with_soundfile(filepath)
 

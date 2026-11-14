@@ -1,6 +1,7 @@
 """Configuration models for loading YAML config files."""
 
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict
@@ -150,6 +151,9 @@ class Config(StrictModel):
     # training text never contained (straight quotes, curly apostrophes in CML-TTS/MLS): their
     # embeddings are untrained and the model speaks filler syllables where they occur.
     replace_characters: dict[str, str] = {}
+    # Rewrite numbers as words before tokenization, for models whose training text spelled them
+    # out ("$1,250" -> "one thousand two hundred fifty dollars"); see pocket_tts/text_normalization.
+    normalize_numbers: Literal["english", "hindi"] | None = None
     model_recommended_frames_after_eos: int | None = None
     # 0.3 beats 0.7 on WER and UTMOS for every shipped model (human evals agreed for English, #223);
     # a config sets its own value only if it was tuned elsewhere.

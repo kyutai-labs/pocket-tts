@@ -1,7 +1,11 @@
 """Tests for the text splitting logic in split_into_best_sentences."""
 
-import pytest
+from typing import cast
 
+import pytest
+import torch
+
+from pocket_tts.models import text_chunking
 from pocket_tts.models.tts_model import prepare_text_prompt, split_into_best_sentences
 from pocket_tts.modules.text_conditioner import Tokenizer, get_default_tokenizer
 
@@ -425,6 +429,71 @@ def test_sentence_ending_on_an_abbreviation_still_splits(tokenizer: Tokenizer):
         "We live in the U.S.",
         "It is big. Very big.",
     ]
+
+
+def test_danda_is_terminal_punctuation():
+    got, _ = prepare_text_prompt("नमस्ते दुनिया।", False, False, capitalize_first_letter=False)
+    assert got == "नमस्ते दुनिया।"
+    got, _ = prepare_text_prompt("पहला चरण॥", False, False, capitalize_first_letter=False)
+    assert got == "पहला चरण॥"
+
+
+TALE = (
+    "It was the best of times, it was the worst of times, it was the age of wisdom, it was the "
+    "age of foolishness. It was the epoch of belief; it was the epoch of incredulity: it was the "
+    "season of Light! Was it the spring of hope? It was the winter of despair..."
+)
+
+
+@pytest.mark.parametrize("max_tokens", [10, 20, 50])
+@pytest.mark.parametrize(
+    "text", [TALE, REIMBURSEMENT, DECIMAL_COMMA, SERVICE_FEE, URLS, TITLES, "Hello world."]
+)
+def test_danda_support_leaves_english_chunks_unchanged(
+    tokenizer: Tokenizer, monkeypatch: pytest.MonkeyPatch, text: str, max_tokens: int
+):
+    """The English tokenizer has no danda piece: same boundary tokens and chunks as before."""
+    before_tokens = tokenizer(".!...?")[0].tolist()[1:]
+    assert text_chunking._end_of_sentence_tokens(tokenizer) == before_tokens
+    after = _split(tokenizer, text, max_tokens)
+    monkeypatch.setattr(text_chunking, "_end_of_sentence_tokens", lambda _: before_tokens)
+    assert _split(tokenizer, text, max_tokens) == after
+
+
+class _DandaTokenizer:
+    """Character-level stand-in for a tokenizer with real danda pieces and an unknown token."""
+
+    unk = 0
+
+    def __init__(self, known: str):
+        self.known = known
+
+    def __call__(self, text: str) -> torch.Tensor:
+        return torch.tensor(
+            [[1] + [self.known.find(c) + 2 if c in self.known else 0 for c in text]]
+        )
+
+    def decode(self, tokens: list[int]) -> str:
+        return "".join(" ⁇ " if t == 0 else "" if t == 1 else self.known[t - 2] for t in tokens)
+
+
+def test_danda_splits_only_when_it_is_a_real_piece():
+    known = "abc .!?।॥"
+    with_danda = cast(Tokenizer, _DandaTokenizer(known))
+    tokens = text_chunking._end_of_sentence_tokens(with_danda)
+    assert known.find("।") + 2 in tokens and known.find("॥") + 2 in tokens
+    assert 0 not in tokens
+    chunks = split_into_best_sentences(with_danda, "abc। cab॥ bca।", 3, False, False, True, False)
+    assert chunks == ["abc।", "cab॥", "bca।"]
+
+    without_danda = cast(Tokenizer, _DandaTokenizer("abc .!?"))
+    assert 0 not in text_chunking._end_of_sentence_tokens(without_danda)
+
+
+def test_normalize_numbers_is_off_by_default_and_opt_in():
+    assert prepare_text_prompt("I have 3 cats.", False, False)[0] == "I have 3 cats."
+    got, _ = prepare_text_prompt("I have 3 cats.", False, False, normalize_numbers="english")
+    assert got == "I have three cats."
 
 
 @pytest.mark.parametrize(

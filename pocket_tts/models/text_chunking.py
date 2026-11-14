@@ -7,6 +7,7 @@ boundaries and regrouped into chunks that fit `max_tokens`.
 import logging
 import re
 
+from pocket_tts import text_normalization
 from pocket_tts.modules.text_conditioner import Tokenizer
 
 logger = logging.getLogger(__name__)
@@ -19,8 +20,11 @@ def prepare_text_prompt(
     append_terminal_punctuation: bool = True,
     capitalize_first_letter: bool = True,
     replace_characters: dict[str, str] | None = None,
+    normalize_numbers: str | None = None,
 ) -> tuple[str, int]:
     text = text.strip()
+    if normalize_numbers:
+        text = text_normalization.normalize_numbers(text, normalize_numbers)
     if replace_characters:
         text = " ".join(text.translate(str.maketrans(replace_characters)).split())
         # Deleted quotes leave '"Hi?", she said' as 'Hi?, she said', which reads as a sentence end
@@ -53,7 +57,8 @@ def prepare_text_prompt(
     return text, frames_after_eos_guess
 
 
-_TERMINAL_PUNCTUATION = ".!?\u2026"
+# Includes the Devanagari danda and double danda.
+_TERMINAL_PUNCTUATION = ".!?\u2026\u0964\u0965"
 # A segment ending on a decimal number, as in "... a fee of $822.95,", "... is 3.14." or, with a
 # decimal comma, "... de 822,95 €,"
 _ENDS_WITH_DECIMAL_NUMBER = re.compile(r"\d[.,]\d+\W*$")
@@ -106,6 +111,17 @@ def _is_inner_punctuation(
     words = tokenizer.decode(list_of_tokens[window_start:segment_start_idx]).split()
     # The first word of the window may be cut, unless the window starts the text.
     return bool(words) and words[-1] in _TITLES and (len(words) > 1 or window_start == 0)
+
+
+def _end_of_sentence_tokens(tokenizer: Tokenizer) -> list[int]:
+    _, *tokens = tokenizer(".!...?")[0].tolist()
+    # The danda only counts when the tokenizer has it as a piece of its own: an unknown token or
+    # byte pieces would also match other characters.
+    for danda in "\u0964\u0965":
+        tokens += [
+            t for t in tokenizer(danda)[0].tolist() if tokenizer.decode([t]).strip() == danda
+        ]
+    return tokens
 
 
 # A closing quote can span several byte tokens; bound the lookahead so the check stays linear.
@@ -193,6 +209,7 @@ def split_into_best_sentences(
     append_terminal_punctuation: bool = True,
     capitalize_first_letter: bool = True,
     replace_characters: dict[str, str] | None = None,
+    normalize_numbers: str | None = None,
 ) -> list[str]:
     text_to_generate, _ = prepare_text_prompt(
         text_to_generate,
@@ -201,12 +218,13 @@ def split_into_best_sentences(
         append_terminal_punctuation,
         capitalize_first_letter,
         replace_characters,
+        normalize_numbers,
     )
     text_to_generate = text_to_generate.strip()
     tokens = tokenizer(text_to_generate)
     list_of_tokens = tokens[0].tolist()
 
-    _, *end_of_sentence_tokens = tokenizer(".!...?")[0].tolist()
+    end_of_sentence_tokens = _end_of_sentence_tokens(tokenizer)
     sentence_boundaries = _find_boundary_indices(
         list_of_tokens, end_of_sentence_tokens, tokenizer, skip_inner_punctuation=True
     )

@@ -1,6 +1,8 @@
 """Various utilities for audio conversion (pcm format, sample rate and channels),
 and volume normalization."""
 
+import math
+
 import torch
 from scipy.signal import resample_poly
 
@@ -13,8 +15,9 @@ def convert_audio(
         # Convert to numpy for scipy resampling
         wav_np = wav.detach().cpu().numpy()
 
-        # Calculate resampling parameters
-        gcd = int(torch.gcd(torch.tensor(from_rate), torch.tensor(to_rate)).item())
+        # Calculate resampling parameters. Rates are Hz and integral, but callers may
+        # pass them as floats (e.g. a config frame_rate); torch.gcd rejects float tensors.
+        gcd = math.gcd(int(from_rate), int(to_rate))
         up = int(to_rate // gcd)
         down = int(from_rate // gcd)
 

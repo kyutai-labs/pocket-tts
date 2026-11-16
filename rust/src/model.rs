@@ -496,7 +496,7 @@ impl<Q: CpuBackend> TtsModel<Q> {
             step_times.push(start.elapsed().as_millis());
         }
         if reached_max_len {
-            if std::env::var("KPOCKET_TTS_ERROR_WITHOUT_EOS").is_ok_and(|v| v == "1") {
+            if std::env::var("POCKET_TTS_ERROR_WITHOUT_EOS").is_ok_and(|v| v == "1") {
                 bail!("Generation reached maximum length without EOS!")
             }
             log::warn!(

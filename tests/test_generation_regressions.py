@@ -95,6 +95,40 @@ def test_generate_reports_autoregressive_errors_before_decoder_done():
     assert latents_queue.get(timeout=1) is None
 
 
+def test_generation_without_eos_fails_in_the_test_suite(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    # tests/conftest.py sets POCKET_TTS_ERROR_WITHOUT_EOS so that a generation that never emits
+    # EOS fails the test instead of only logging a warning.
+    def run_without_eos(*args: object) -> None:
+        model = cast(
+            TTSModel,
+            SimpleNamespace(
+                _MIN_FRAMES_BEFORE_EOS=0,
+                _run_flow_lm_and_increment_step=lambda model_state, backbone_input_latents: (
+                    torch.zeros(1, 1, 4),
+                    torch.tensor(False),
+                ),
+            ),
+        )
+        TTSModel._autoregressive_generation(
+            model,
+            model_state={},
+            max_gen_len=3,
+            frames_after_eos=1,
+            latents_queue=queue.Queue(),
+            stop=threading.Event(),
+            first_input=torch.zeros(1, 1, 4),
+        )
+
+    with pytest.raises(RuntimeError, match="maximum length without EOS"):
+        run_without_eos()
+
+    monkeypatch.delenv("POCKET_TTS_ERROR_WITHOUT_EOS")
+    run_without_eos()
+    assert "Maximum generation length reached without EOS" in caplog.text
+
+
 @pytest.mark.parametrize(
     ("source", "expected"),
     [

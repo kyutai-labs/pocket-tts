@@ -37,10 +37,13 @@ def prepare_text_prompt(
     else:
         frames_after_eos_guess = 1
 
-    # Make sure it starts with an uppercase letter. Only meaningful for
-    # orthographies that have case; see Config.capitalize_first_letter.
-    if capitalize_first_letter and not text[0].isupper():
-        text = text[0].upper() + text[1:]
+    # Make sure it starts with an uppercase letter, after any opening quotes or brackets
+    # ('"hello," she said' -> '"Hello," she said'). Only meaningful for orthographies that
+    # have case; see Config.capitalize_first_letter.
+    if capitalize_first_letter:
+        start = len(text) - len(text.lstrip(_OPENERS))
+        if start < len(text) and not text[start].isupper():
+            text = text[:start] + text[start].upper() + text[start + 1 :]
 
     if append_terminal_punctuation:
         text = _ensure_terminal_punctuation(text)
@@ -59,6 +62,7 @@ _TERMINAL_PUNCTUATION = ".!?\u2026"
 _ENDS_WITH_DECIMAL_NUMBER = re.compile(r"\d[.,]\d+\W*$")
 _WEAK_PUNCTUATION = ",;:-\u2013\u2014"
 _CLOSERS = "\"'\u201d\u2019)]\u00bb"
+_OPENERS = "\"'\u201c\u2018([\u00ab"
 
 
 def _ensure_terminal_punctuation(text: str) -> str:

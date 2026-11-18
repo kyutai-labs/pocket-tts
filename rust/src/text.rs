@@ -106,13 +106,17 @@ pub fn prepare_text_prompt(text: &str, options: &TextOptions) -> Result<(String,
     let number_of_words = text.split_whitespace().count();
     let frames_after_eos_guess = if number_of_words <= 4 { 3 } else { 1 };
 
-    // Make sure it starts with an uppercase letter. Only meaningful for orthographies that have
+    // Make sure it starts with an uppercase letter, after any opening quotes or brackets
+    // ('"hello," she said' -> '"Hello," she said'). Only meaningful for orthographies that have
     // case; see the config's capitalize_first_letter.
     if options.capitalize_first_letter {
-        let mut chars = text.chars();
-        let first = chars.next().unwrap();
-        if !first.is_uppercase() {
-            text = first.to_uppercase().chain(chars).collect();
+        let start = text.len() - text.trim_start_matches(|c| OPENERS.contains(c)).len();
+        let (openers, rest) = text.split_at(start);
+        let mut chars = rest.chars();
+        if let Some(first) = chars.next()
+            && !first.is_uppercase()
+        {
+            text = format!("{openers}{}{}", first.to_uppercase(), chars.as_str());
         }
     }
 
@@ -132,6 +136,7 @@ pub fn prepare_text_prompt(text: &str, options: &TextOptions) -> Result<(String,
 const TERMINAL_PUNCTUATION: &str = ".!?\u{2026}";
 const WEAK_PUNCTUATION: &str = ",;:-\u{2013}\u{2014}";
 const CLOSERS: &str = "\"'\u{201d}\u{2019})]\u{bb}";
+const OPENERS: &str = "\"'\u{201c}\u{2018}([\u{ab}";
 
 /// Make sure the prompt ends with sentence-final punctuation.
 ///
@@ -419,6 +424,17 @@ mod tests {
             "Is it \"so?\""
         );
         assert_eq!(prepare_text_prompt("über", &o).unwrap().0, "Über.");
+        assert_eq!(
+            prepare_text_prompt("\"hello there,\" she said.", &o)
+                .unwrap()
+                .0,
+            "\"Hello there,\" she said."
+        );
+        assert_eq!(
+            prepare_text_prompt("(quietly) she left.", &o).unwrap().0,
+            "(Quietly) she left."
+        );
+        assert_eq!(prepare_text_prompt("“über”", &o).unwrap().0, "“Über”.");
         assert_eq!(prepare_text_prompt("a\nb   c", &o).unwrap().0, "A b  c.");
         assert!(prepare_text_prompt("   ", &o).is_err());
 
@@ -494,7 +510,7 @@ mod tests {
         );
         assert_eq!(
             split("(quietly.) Okay then.", 11),
-            ["(quietly.)", "Okay then."]
+            ["(Quietly.)", "Okay then."]
         );
         // A quote after a space opens the next sentence.
         assert_eq!(

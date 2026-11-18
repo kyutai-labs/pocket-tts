@@ -285,6 +285,22 @@ def test_capitalization_can_be_switched_off():
     assert default == "Hello there."
 
 
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ('"hello there," she said.', '"Hello there," she said.'),
+        ("“hello there,” she said.", "“Hello there,” she said."),
+        ("(quietly) she left.", "(Quietly) she left."),
+        ("'tis the season.", "'Tis the season."),
+        ('"42 is the answer."', '"42 is the answer."'),
+        ('"Already capitalized."', '"Already capitalized."'),
+    ],
+)
+def test_first_letter_after_opening_quotes_is_capitalized(text: str, expected: str):
+    got, _ = prepare_text_prompt(text, False, False)
+    assert got == expected
+
+
 def test_replace_characters_rewrites_unseen_characters_before_capitalizing():
     """Characters a model never saw in training are rewritten, and the text is re-tidied."""
     drop = {c: "" for c in '"¡¿«»'}
@@ -438,7 +454,7 @@ def test_sentence_ending_on_an_abbreviation_still_splits(tokenizer: Tokenizer):
             ["A long first sentence goes right here.", "He said “Stop.”"],
         ),
         ("He said 'Stop.' Then he left.", 8, ["He said 'Stop.'", "Then he left."]),
-        ("(quietly.) Okay then.", 4, ["(quietly.)", "Okay then."]),
+        ("(quietly.) Okay then.", 4, ["(Quietly.)", "Okay then."]),
         ("He said (“Stop.”) Then he left.", 8, ["He said (“Stop.”)", "Then he left."]),
         (
             "“Stop,” he said, and then he left the room very quietly.",

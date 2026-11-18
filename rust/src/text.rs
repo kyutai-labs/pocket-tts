@@ -164,10 +164,16 @@ const TITLES: [&str; 9] = [
     "Mr.", "Mrs.", "Ms.", "Dr.", "Prof.", "Rev.", "vs.", "e.g.", "i.e.",
 ];
 
+/// Tokens decoded before a boundary to find the title: enough for the longest title ("Prof.",
+/// "e.g."), two opening quotes or brackets before it (a curly quote is three byte tokens) and the
+/// start of the previous word.
+const TITLE_WINDOW_TOKENS: usize = 12;
+
 /// Whether the punctuation right before `segment_start_idx` does not end a sentence or clause: it
 /// is followed by a letter or digit without a space ("3.14", "3,14" with a decimal comma,
-/// "1,000", "4 p.m.", "www.kyutai.org"), or it ends a title that precedes a name ("Dr. Miller").
-/// Only the tokens next to the boundary are decoded, as in Python.
+/// "1,000", "4 p.m.", "www.kyutai.org"), or it ends a title that precedes a name ("Dr. Miller"),
+/// also after an opening quote or bracket ("“Mr. Bingley", "(Dr. Miller)"). Only the tokens next
+/// to the boundary are decoded, as in Python.
 fn is_inner_punctuation(
     tokens: &[u32],
     segment_start_idx: usize,
@@ -180,13 +186,14 @@ fn is_inner_punctuation(
     if after.len() >= 2 && after[1].is_alphanumeric() {
         return Ok(true);
     }
-    let window_start = segment_start_idx.saturating_sub(6);
+    let window_start = segment_start_idx.saturating_sub(TITLE_WINDOW_TOKENS);
     let window = tokenizer.decode(&tokens[window_start..segment_start_idx])?;
     let words: Vec<&str> = window.split_whitespace().collect();
     // The first word of the window may be cut, unless the window starts the text.
-    Ok(words
-        .last()
-        .is_some_and(|w| TITLES.contains(w) && (words.len() > 1 || window_start == 0)))
+    Ok(words.last().is_some_and(|w| {
+        TITLES.contains(&w.trim_start_matches(|c| OPENERS.contains(c)))
+            && (words.len() > 1 || window_start == 0)
+    }))
 }
 
 /// Whether `text` ends on a decimal number, possibly followed by punctuation or symbols, as in
@@ -556,5 +563,19 @@ mod tests {
             chunks,
             ["Mail jo@mail.com at 4 p.m.", "Ask Dr. Who.  Then go."]
         );
+    }
+
+    #[test]
+    fn titles_after_opening_quotes_and_brackets_do_not_split() {
+        let chunks = split_into_best_sentences(
+            &CharTokenizer,
+            "Ask “Prof. Oak” or (Dr. Who) now. Then go.",
+            24,
+            &options(),
+        )
+        .unwrap();
+        // Without the rule: ["Ask “Prof.  Oak” or (Dr.", "Who) now.  Then go."]. "“Prof." alone
+        // takes six tokens here, so the window must reach further back to see the space before it.
+        assert_eq!(chunks, ["Ask “Prof. Oak” or (Dr. Who) now.", "Then go."]);
     }
 }

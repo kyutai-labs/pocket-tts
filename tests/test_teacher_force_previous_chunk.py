@@ -35,7 +35,12 @@ def _chunks(model: TTSModel, max_tokens: int) -> list[str]:
     )
 
 
-def test_flag_off_generates_every_chunk_afresh_from_the_voice(model: TTSModel):
+def test_flag_off_generates_every_chunk_afresh_from_the_voice(
+    model: TTSModel, monkeypatch: pytest.MonkeyPatch
+):
+    # The decoder thread decodes however many frames are queued, which depends on timing, and
+    # different groupings differ in the last float bits. Frame by frame is deterministic.
+    monkeypatch.setattr(model, "max_decoder_frames_per_call", 1)
     voice_state = model.get_state_for_audio_prompt("alba")
     chunks = _chunks(model, 50)
     assert len(chunks) > 1

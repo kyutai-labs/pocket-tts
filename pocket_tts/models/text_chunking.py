@@ -88,6 +88,10 @@ def _ensure_terminal_punctuation(text: str) -> str:
 
 # Abbreviations that always precede a name or an example, never end a sentence.
 _TITLES = {"Mr.", "Mrs.", "Ms.", "Dr.", "Prof.", "Rev.", "vs.", "e.g.", "i.e."}
+# Tokens decoded before a boundary to find the title: enough for the longest title ("Prof.",
+# "e.g."), two opening quotes or brackets before it (a curly quote is three byte tokens) and the
+# start of the previous word.
+_TITLE_WINDOW_TOKENS = 12
 
 
 def _is_inner_punctuation(
@@ -96,7 +100,8 @@ def _is_inner_punctuation(
     """Return True when the punctuation right before segment_start_idx does not end a sentence or
     clause: it is followed by a letter or digit without a space ("3.14", "3,14" with a decimal
     comma, "1,000", "4 p.m.", "www.kyutai.org", "jo@icloud.com"), or it ends a title that
-    precedes a name ("Dr. Miller", "e.g. this").
+    precedes a name ("Dr. Miller", "e.g. this"), also after an opening quote or bracket
+    ("“Mr. Bingley", "(Dr. Miller)").
 
     Only the tokens next to the boundary are decoded, so checking every sentence boundary
     stays linear in the text length. Decoding the period together with the next token keeps
@@ -106,10 +111,14 @@ def _is_inner_punctuation(
     after = tokenizer.decode(list_of_tokens[segment_start_idx - 1 : segment_start_idx + 1])
     if len(after) >= 2 and after[1].isalnum():
         return True
-    window_start = max(0, segment_start_idx - 6)
+    window_start = max(0, segment_start_idx - _TITLE_WINDOW_TOKENS)
     words = tokenizer.decode(list_of_tokens[window_start:segment_start_idx]).split()
     # The first word of the window may be cut, unless the window starts the text.
-    return bool(words) and words[-1] in _TITLES and (len(words) > 1 or window_start == 0)
+    return (
+        bool(words)
+        and words[-1].lstrip(_OPENERS) in _TITLES
+        and (len(words) > 1 or window_start == 0)
+    )
 
 
 # A closing quote can span several byte tokens; bound the lookahead so the check stays linear.

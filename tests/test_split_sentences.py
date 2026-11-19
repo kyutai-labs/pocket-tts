@@ -417,6 +417,11 @@ TITLES = (
     "Hi, I'm calling to follow up on your latest lab results, the ones we discussed with Dr. "
     "Miller and Prof. Chen, the specialists in cardiology, and the general practitioner."
 )
+# A curly quote is three byte tokens: "“Mrs." only fits a window of more than six tokens.
+QUOTED_TITLES = (
+    "She looked up from the letter and said, “Mrs. Hughes will come on Monday,” and then she asked "
+    "whether the doctor (Dr. Patel, who moved to the city last spring) would come as well."
+)
 
 
 @pytest.mark.parametrize(
@@ -424,11 +429,13 @@ TITLES = (
     [
         (URLS, ["www.actu.com/tech,", "liam_jones@icloud.com,", "p.m."]),
         (TITLES, ["Dr. Miller", "Prof. Chen"]),
+        (QUOTED_TITLES, ["“Mrs. Hughes", "(Dr. Patel"]),
     ],
 )
 def test_no_cut_inside_words_or_after_titles(tokenizer: Tokenizer, text: str, kept: list[str]):
-    """A period followed by a letter (URLs, emails, "p.m.") or ending a title ("Dr.") is not a
-    sentence end: no chunk is cut there and no space is inserted ("icloud. com")."""
+    """A period followed by a letter (URLs, emails, "p.m.") or ending a title ("Dr."), also after
+    an opening quote or bracket, is not a sentence end: no chunk is cut there and no space is
+    inserted ("icloud. com")."""
     chunks = _split(tokenizer, text, 20)
     assert len(chunks) > 1
     for words in kept:

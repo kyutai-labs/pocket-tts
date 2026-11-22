@@ -769,7 +769,7 @@ class TTSModel(nn.Module):
 
         prev_chunk: str | None = None
         prev_latents: list[torch.Tensor] = []
-        for chunk in chunks:
+        for i, chunk in enumerate(chunks):
             if stop.is_set():
                 break
             forced, text_chunk = None, chunk
@@ -802,7 +802,8 @@ class TTSModel(nn.Module):
                 model_state=model_state,
                 text_to_generate=text_to_generate,
                 frames_after_eos=effective_frames,
-                copy_state=copy_state or teacher_force_previous_chunk,
+                # Every chunk starts from the voice state: only the last one may consume it.
+                copy_state=copy_state or teacher_force_previous_chunk or i < len(chunks) - 1,
                 stop=stop,
                 latents_out=prev_latents if teacher_force_previous_chunk else None,
                 forced_latents=forced,

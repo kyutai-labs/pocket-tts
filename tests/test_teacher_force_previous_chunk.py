@@ -53,6 +53,20 @@ def test_flag_off_generates_every_chunk_afresh_from_the_voice(
     assert torch.equal(audio, torch.cat(separate))
 
 
+def test_copy_state_false_generates_every_chunk_afresh_from_the_voice(
+    model: TTSModel, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(model, "max_decoder_frames_per_call", 1)
+    assert len(_chunks(model, 50)) > 1
+
+    torch.manual_seed(0)
+    expected = model.generate_audio(model.get_state_for_audio_prompt("alba"), TEXT)
+    torch.manual_seed(0)
+    audio = model.generate_audio(model.get_state_for_audio_prompt("alba"), TEXT, copy_state=False)
+
+    assert torch.equal(audio, expected)
+
+
 def test_flag_on_continues_the_previous_chunk(model: TTSModel, monkeypatch: pytest.MonkeyPatch):
     voice_state = model.get_state_for_audio_prompt("alba")
     chunks = _chunks(model, 25)

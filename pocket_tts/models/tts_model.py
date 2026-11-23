@@ -624,7 +624,9 @@ class TTSModel(nn.Module):
                 based on text length (1-3 frames).
             copy_state: Whether to create a deep copy of the model state before
                 generation. If True, preserves the original state for reuse.
-                If False, modifies the input state in-place. Defaults to True.
+                If False, modifies the input state in-place: a long text is generated in
+                chunks that each start from the voice prompt, so only the last chunk is
+                generated in the input state (earlier ones use a copy). Defaults to True.
             max_tokens: Long texts are generated in chunks of at most this many tokens.
                 Defaults to 50, or 25 with `teacher_force_previous_chunk`.
             teacher_force_previous_chunk: When True, each chunk after the first is generated
@@ -702,7 +704,9 @@ class TTSModel(nn.Module):
                 based on text length (1-3 frames). Defaults to None.
             copy_state: Whether to create a deep copy of the model state before
                 generation. If True, preserves the original state for reuse.
-                If False, modifies the input state in-place. Defaults to True.
+                If False, modifies the input state in-place: a long text is generated in
+                chunks that each start from the voice prompt, so only the last chunk is
+                generated in the input state (earlier ones use a copy). Defaults to True.
             max_tokens: Long texts are generated in chunks of at most this many tokens.
                 Defaults to 50, or 25 with `teacher_force_previous_chunk`.
             teacher_force_previous_chunk: When True, each chunk after the first is generated

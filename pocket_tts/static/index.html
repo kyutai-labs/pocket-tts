@@ -93,6 +93,10 @@
             <span id="generate-text">Generate audio</span>
         </button>
 
+        <button id="stop-btn" class="hidden w-full px-4 py-2 rounded text-white bg-red-600 hover:bg-red-700">
+            Stop
+        </button>
+
         <div id="status" class="hidden">
             <div class="flex items-center space-x-2">
                 <div id="status-spinner" class="spinner w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full"></div>
@@ -186,6 +190,9 @@
                 const source = this.audioContext.createBufferSource();
                 source.buffer = audioBuffer;
                 source.connect(this.audioContext.destination);
+                source.onended = () => {
+                    if (this.onDrained && this.audioContext.currentTime >= this.nextStartTime) this.onDrained();
+                };
 
                 const currentTime = this.audioContext.currentTime;
                 const startTime = Math.max(currentTime, this.nextStartTime);
@@ -241,6 +248,7 @@
         // Application state
         let streamingPlayer = null;
         let currentAudioBlob = null;
+        let abortController = null;
 
         // DOM elements
         const textInput = document.getElementById('text-input');
@@ -252,9 +260,21 @@
         const audioSection = document.getElementById('audio-section');
         const audio = document.getElementById('audio');
         const downloadLink = document.getElementById('download-link');
+        const stopBtn = document.getElementById('stop-btn');
 
         // Event listeners
         generateBtn.addEventListener('click', generateAudio);
+        stopBtn.addEventListener('click', stopAudio);
+
+        function stopAudio() {
+            abortController.abort();
+            if (streamingPlayer) {
+                streamingPlayer.stop();
+                streamingPlayer = null;
+            }
+            stopBtn.classList.add('hidden');
+            hideStatus();
+        }
 
         function showStatus(message, isLoading = false) {
             statusText.textContent = message;
@@ -299,6 +319,8 @@
             generateText.textContent = 'Generating...';
             showStatus('Generating speech...', true);
             audioSection.classList.add('hidden');
+            stopBtn.classList.remove('hidden');
+            abortController = new AbortController();
 
             try {
                 const formData = new FormData();
@@ -320,7 +342,8 @@
 
                 const response = await fetch(ttsEndpoint, {
                     method: 'POST',
-                    body: formData
+                    body: formData,
+                    signal: abortController.signal
                 });
 
                 if (!response.ok) {
@@ -346,7 +369,7 @@
                             }
                         }
                     } catch (e) {
-                        console.error('Error processing stream:', e);
+                        if (e.name !== 'AbortError') console.error('Error processing stream:', e);
                     }
                 };
 
@@ -357,6 +380,13 @@
                 const blob = await responseForHistory.blob();
                 const totalTime = ((performance.now() - startTime) / 1000).toFixed(2);
                 currentAudioBlob = blob;
+
+                // Hide Stop once the streamed audio has finished playing
+                const player = streamingPlayer;
+                player.onDrained = () => {
+                    if (streamingPlayer === player) stopBtn.classList.add('hidden');
+                };
+                if (player.audioContext.currentTime >= player.nextStartTime) player.onDrained();
 
                 // Update UI with audio
                 const audioUrl = URL.createObjectURL(blob);
@@ -380,7 +410,9 @@
                 audioSection.classList.remove('hidden');
 
             } catch (error) {
+                if (error.name === 'AbortError') return;
                 console.error('Error generating audio:', error);
+                stopBtn.classList.add('hidden');
                 showStatus(`Error: ${error.message}`, false);
                 setTimeout(hideStatus, 3000);
             } finally {

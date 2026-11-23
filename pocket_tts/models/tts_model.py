@@ -106,6 +106,7 @@ class TTSModel(nn.Module):
         append_terminal_punctuation: bool = True,
         capitalize_first_letter: bool = True,
         replace_characters: dict[str, str] | None = None,
+        normalize_numbers: str | None = None,
     ):
         super().__init__()
         self.flow_lm = flow_lm
@@ -124,6 +125,7 @@ class TTSModel(nn.Module):
         self.append_terminal_punctuation = append_terminal_punctuation
         self.capitalize_first_letter = capitalize_first_letter
         self.replace_characters = replace_characters or {}
+        self.normalize_numbers = normalize_numbers
 
     @property
     def device(self) -> torch.device:
@@ -162,6 +164,7 @@ class TTSModel(nn.Module):
             append_terminal_punctuation=config.append_terminal_punctuation,
             capitalize_first_letter=config.capitalize_first_letter,
             replace_characters=config.replace_characters,
+            normalize_numbers=config.normalize_numbers,
         )
         return tts_model
 
@@ -769,6 +772,7 @@ class TTSModel(nn.Module):
             append_terminal_punctuation=self.append_terminal_punctuation,
             capitalize_first_letter=self.capitalize_first_letter,
             replace_characters=self.replace_characters,
+            normalize_numbers=self.normalize_numbers,
         )
 
         prev_chunk: str | None = None
@@ -788,6 +792,7 @@ class TTSModel(nn.Module):
                 self.append_terminal_punctuation,
                 self.capitalize_first_letter,
                 self.replace_characters,
+                self.normalize_numbers,
             )
             # The EOS delay depends on the new chunk only.
             _, frames_after_eos_guess = prepare_text_prompt(
@@ -797,6 +802,7 @@ class TTSModel(nn.Module):
                 self.append_terminal_punctuation,
                 self.capitalize_first_letter,
                 self.replace_characters,
+                self.normalize_numbers,
             )
             frames_after_eos_guess += 2
             effective_frames = (

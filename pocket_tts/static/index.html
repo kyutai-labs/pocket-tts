@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
     <title>Pocket TTS - Streaming</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -18,30 +19,30 @@
         }
     </style>
 </head>
-<body class="bg-gray-50 min-h-screen">
+<body class="bg-gray-50 min-h-screen dark:bg-gray-900 dark:text-gray-100">
     <div class="max-w-xl mx-auto p-4 space-y-4">
         <h1 class="text-xl font-bold text-center">Pocket TTS</h1>
         
-        <div class="bg-white p-4 rounded-lg shadow">
+        <div class="bg-white p-4 rounded-lg shadow dark:bg-gray-800">
             <textarea
                 id="text-input"
-                class="w-full border rounded p-2"
+                class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600"
                 placeholder="Enter your text here..."
                 rows="4"
             >DEFAULT_TEXT_PROMPT</textarea>
         </div>
 
-        <div class="bg-white p-4 rounded-lg shadow">
-            <label for="voice-url-input" class="block text-sm font-medium text-gray-700 mb-2">
+        <div class="bg-white p-4 rounded-lg shadow dark:bg-gray-800">
+            <label for="voice-url-input" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Optional voice URL (leave empty to use default voice):
             </label>
             <input
                 type="text"
                 id="voice-url-input"
-                class="w-full border rounded p-2"
+                class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600"
                 placeholder="hf://kyutai/tts-voices/alba-mackenna/casual.wav"
             />
-            <p class="text-xs text-gray-500 mt-1">
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 Supports: http://, https://, or hf:// URLs.<br>
                 You can also use predefined voices (language code in parentheses):<br>
                 "alba" (en), "anna" (en), "azelma" (en), "bill_boerst" (en), "caro_davy" (en),
@@ -55,30 +56,30 @@
                     href="https://huggingface.co/kyutai/tts-voices"
                     target="_blank"
                     rel="noopener noreferrer"
-                    class="text-blue-600 hover:underline"
+                    class="text-blue-600 dark:text-blue-400 hover:underline"
                 >
                     voice repository</a>.
             </p>
         </div>
 
-        <div class="bg-white p-4 rounded-lg shadow">
-            <label for="voice-wav-input" class="block text-sm font-medium text-gray-700 mb-2">
+        <div class="bg-white p-4 rounded-lg shadow dark:bg-gray-800">
+            <label for="voice-wav-input" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Or upload an audio file for voice cloning:
             </label>
             <input
                 type="file"
                 id="voice-wav-input"
-                class="w-full border rounded p-2"
+                class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600"
                 accept=".wav,.mp3,.flac,.ogg,.m4a,audio/*"
             />
-            <p class="text-xs text-gray-500 mt-1">
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 Upload an audio file (WAV, MP3, FLAC, etc.) to use as voice reference. Takes precedence over voice URL.
                 For best results,
                 <a
                     href="https://podcast.adobe.com/en/enhance"
                     target="_blank"
                     rel="noopener noreferrer"
-                    class="text-blue-600 hover:underline"
+                    class="text-blue-600 dark:text-blue-400 hover:underline"
                     >clean the sample</a
                 >
                 first.
@@ -88,7 +89,7 @@
         
         <button
             id="generate-btn"
-            class="w-full px-4 py-2 rounded text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            class="w-full px-4 py-2 rounded text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed"
         >
             <span id="generate-text">Generate audio</span>
         </button>
@@ -101,11 +102,11 @@
         </div>
 
         <div id="audio-section" class="hidden">
-            <div class="bg-white p-4 rounded-lg shadow">
+            <div class="bg-white p-4 rounded-lg shadow dark:bg-gray-800">
                 <h3 class="text-lg font-semibold mb-2">Generated Audio</h3>
                 <audio id="audio" controls class="w-full"></audio>
                 <div class="mt-2">
-                    <a id="download-link" class="text-blue-600 text-sm hover:underline">Download</a>
+                    <a id="download-link" class="text-blue-600 dark:text-blue-400 text-sm hover:underline">Download</a>
                 </div>
             </div>
         </div>

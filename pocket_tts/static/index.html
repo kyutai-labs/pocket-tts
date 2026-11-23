@@ -16,6 +16,16 @@
             from { transform: rotate(0deg); }
             to { transform: rotate(360deg); }
         }
+        dialog {
+            border: 0;
+            border-radius: 0.5rem;
+            max-width: 36rem;
+            padding: 0;
+            width: calc(100% - 2rem);
+        }
+        dialog::backdrop {
+            background: rgb(17 24 39 / 0.5);
+        }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
@@ -31,6 +41,35 @@
             >DEFAULT_TEXT_PROMPT</textarea>
         </div>
 
+        <div class="bg-white p-4 rounded-lg shadow space-y-3">
+            <div>
+                <label for="model-select" class="block text-sm font-medium text-gray-700 mb-1">
+                    Model
+                </label>
+                <select id="model-select" class="w-full border rounded p-2"></select>
+                <p id="model-status" class="text-xs text-gray-500 mt-1"></p>
+            </div>
+            <div>
+                <label for="language-select" class="block text-sm font-medium text-gray-700 mb-1">
+                    Preferred speech language
+                </label>
+                <select id="language-select" class="w-full border rounded p-2"></select>
+                <div class="flex flex-wrap items-center justify-between gap-2 mt-2">
+                    <label class="text-xs text-gray-600 flex items-center gap-2">
+                        <input id="language-lock" type="checkbox" class="rounded">
+                        Keep this language when changing models
+                    </label>
+                    <button id="model-language-button" type="button" class="text-xs text-blue-600 hover:underline">
+                        Use model's default language
+                    </button>
+                </div>
+                <p id="language-warning" class="text-xs text-amber-700 mt-2 hidden"></p>
+            </div>
+            <button id="model-settings-button" type="button" class="text-sm text-blue-600 hover:underline">
+                Model loading settings
+            </button>
+        </div>
+
         <div class="bg-white p-4 rounded-lg shadow">
             <label for="voice-url-input" class="block text-sm font-medium text-gray-700 mb-2">
                 Optional voice URL (leave empty to use default voice):
@@ -43,7 +82,9 @@
             />
             <p class="text-xs text-gray-500 mt-1">
                 Supports: http://, https://, or hf:// URLs.<br>
-                You can also use predefined voices (language code in parentheses):<br>
+                You can also use predefined voice names. Enter only the name; the language in
+                parentheses is informational (for example, enter <code>rafael</code>, not
+                <code>rafael (pt)</code>):<br>
                 "alba" (en), "anna" (en), "azelma" (en), "bill_boerst" (en), "caro_davy" (en),
                 "charles" (en), "cosette" (en), "eponine" (en), "eve" (en), "fantine" (en),
                 "george" (en),  "jane" (en), "javert" (en), "jean" (en),
@@ -85,7 +126,6 @@
             </p>
         </div>
 
-        
         <button
             id="generate-btn"
             class="w-full px-4 py-2 rounded text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
@@ -110,6 +150,46 @@
             </div>
         </div>
     </div>
+
+    <dialog id="model-settings-dialog">
+        <div class="p-5 space-y-4">
+            <div class="flex items-center justify-between">
+                <h2 class="text-lg font-semibold">Model loading settings</h2>
+                <button id="close-model-settings" type="button" class="text-gray-500 text-xl" aria-label="Close">×</button>
+            </div>
+            <p class="text-sm text-gray-600">
+                Keeping multiple models loaded makes switching faster but uses more memory.
+            </p>
+            <fieldset class="space-y-2">
+                <legend class="sr-only">Loading mode</legend>
+                <label class="flex items-start gap-2 text-sm">
+                    <input type="radio" name="model-loading-mode" value="single" checked>
+                    <span><strong>One model at a time</strong><br><span class="text-gray-500">Lower memory use; changing models reloads them.</span></span>
+                </label>
+                <label class="flex items-start gap-2 text-sm">
+                    <input type="radio" name="model-loading-mode" value="multiple">
+                    <span><strong>Keep selected models loaded</strong><br><span class="text-gray-500">Faster switching; uses more memory.</span></span>
+                </label>
+            </fieldset>
+            <div id="single-model-settings">
+                <label for="single-model-select" class="block text-sm font-medium text-gray-700 mb-1">
+                    Model to keep loaded
+                </label>
+                <select id="single-model-select" class="w-full border rounded p-2"></select>
+            </div>
+            <div id="multiple-model-settings" class="hidden">
+                <p class="text-sm font-medium text-gray-700 mb-1">Models to keep loaded</p>
+                <div id="preloaded-model-list" class="max-h-56 overflow-y-auto border rounded p-2 space-y-2"></div>
+            </div>
+            <p id="model-settings-error" class="text-sm text-red-600 hidden"></p>
+            <div class="flex justify-end gap-2">
+                <button id="cancel-model-settings" type="button" class="px-3 py-2 border rounded">Cancel</button>
+                <button id="apply-model-settings" type="button" class="px-3 py-2 rounded text-white bg-blue-600 hover:bg-blue-700">
+                    Apply and load
+                </button>
+            </div>
+        </div>
+    </dialog>
 
     <script>
         class StreamingWavPlayer {
@@ -252,9 +332,276 @@
         const audioSection = document.getElementById('audio-section');
         const audio = document.getElementById('audio');
         const downloadLink = document.getElementById('download-link');
+        const modelSelect = document.getElementById('model-select');
+        const modelStatusText = document.getElementById('model-status');
+        const languageSelect = document.getElementById('language-select');
+        const languageLock = document.getElementById('language-lock');
+        const languageWarning = document.getElementById('language-warning');
+        const modelSettingsDialog = document.getElementById('model-settings-dialog');
+        let modelStatus = null;
+        let initialDefaultText = textInput.value;
+        let previousDefaultText = initialDefaultText;
+
+        function modelById(id) {
+            return modelStatus?.models.find((model) => model.id === id);
+        }
+
+        function selectedModel() {
+            return modelById(modelSelect.value);
+        }
+
+        function selectedLanguage() {
+            return modelStatus?.languages.find((language) => language.id === languageSelect.value);
+        }
+
+        function updateLanguageWarning() {
+            const model = selectedModel();
+            const language = selectedLanguage();
+            const modelLanguage = modelStatus?.languages.find(
+                (option) => option.id === model?.language
+            );
+            if (model && language && model.language !== language.id) {
+                languageWarning.textContent =
+                    `This model is trained for ${modelLanguage?.label || model.language}. ` +
+                    `The selected ${language.label} language is a preference only and is not guaranteed.`;
+                languageWarning.classList.remove('hidden');
+            } else {
+                languageWarning.textContent = '';
+                languageWarning.classList.add('hidden');
+            }
+        }
+
+        function setSelectedLanguage(languageId, updatePrompt = true) {
+            const language = modelStatus?.languages.find((option) => option.id === languageId);
+            if (!language) return;
+
+            if (updatePrompt && textInput.value === previousDefaultText) {
+                textInput.value = language.default_text;
+            }
+            previousDefaultText = language.default_text;
+            languageSelect.value = language.id;
+            updateLanguageWarning();
+        }
+
+        function populateModelSelect(preserveSelection = true) {
+            const currentValue = preserveSelection
+                ? modelSelect.value || modelStatus.active_model
+                : modelStatus.active_model;
+            const visibleModels = modelStatus.mode === 'multiple'
+                ? modelStatus.models.filter((model) => model.loaded)
+                : modelStatus.models;
+            modelSelect.replaceChildren();
+            for (const model of visibleModels) {
+                const option = document.createElement('option');
+                option.value = model.id;
+                option.textContent = model.label;
+                modelSelect.appendChild(option);
+            }
+            modelSelect.value = visibleModels.some((model) => model.id === currentValue)
+                ? currentValue
+                : modelStatus.active_model;
+            if (!modelSelect.value && visibleModels.length) {
+                modelSelect.value = visibleModels[0].id;
+            }
+            const model = selectedModel();
+            if (model) {
+                const cloneStatus = model.voice_cloning === null
+                    ? 'voice-cloning support is checked when loaded'
+                    : model.voice_cloning
+                        ? 'custom voice cloning available'
+                        : 'custom voice cloning unavailable';
+                modelStatusText.textContent = `${model.language_label} · ${cloneStatus}`;
+            }
+            updateLanguageWarning();
+        }
+
+        function populateLanguageSelect() {
+            languageSelect.replaceChildren();
+            for (const language of modelStatus.languages) {
+                const option = document.createElement('option');
+                option.value = language.id;
+                option.textContent = language.label;
+                languageSelect.appendChild(option);
+            }
+        }
+
+        function applyModelStatus(
+            status, preserveLanguage = false, preserveModelSelection = true
+        ) {
+            const previousLanguage = languageSelect.value;
+            modelStatus = status;
+            populateLanguageSelect();
+            populateModelSelect(preserveModelSelection);
+            const model = selectedModel();
+            const language = preserveLanguage && modelStatus.languages.some(
+                (option) => option.id === previousLanguage
+            )
+                ? previousLanguage
+                : model?.language;
+            setSelectedLanguage(language || modelStatus.languages[0]?.id, !preserveLanguage);
+        }
+
+        async function readErrorMessage(response) {
+            const fallback = `Server error: ${response.status}`;
+            if (response.headers.get('content-type')?.includes('application/json')) {
+                const body = await response.json();
+                if (typeof body.detail === 'string') return body.detail;
+            }
+            return fallback;
+        }
+
+        async function refreshModelStatus(preserveLanguage = false) {
+            const response = await fetch('/models');
+            if (!response.ok) throw new Error(await readErrorMessage(response));
+            applyModelStatus(await response.json(), preserveLanguage);
+        }
+
+        async function activateSelectedModel(model) {
+            generateBtn.disabled = true;
+            modelSelect.disabled = true;
+            document.getElementById('model-settings-button').disabled = true;
+            showStatus(`Loading ${model.label}...`, true);
+            try {
+                const response = await fetch('/models/activate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model_name: model.id })
+                });
+                if (!response.ok) throw new Error(await readErrorMessage(response));
+                applyModelStatus(await response.json(), true, true);
+                hideStatus();
+            } catch (error) {
+                try {
+                    await refreshModelStatus(true);
+                    if (!languageLock.checked && selectedModel()) {
+                        setSelectedLanguage(selectedModel().language);
+                    }
+                } catch (refreshError) {
+                    console.error('Error refreshing model status:', refreshError);
+                }
+                showStatus(`Model error: ${error.message}`, false);
+                setTimeout(hideStatus, 10000);
+            } finally {
+                generateBtn.disabled = false;
+                modelSelect.disabled = false;
+                document.getElementById('model-settings-button').disabled = false;
+            }
+        }
+
+        function populateModelSettings() {
+            const singleSelect = document.getElementById('single-model-select');
+            const preloadList = document.getElementById('preloaded-model-list');
+            singleSelect.replaceChildren();
+            preloadList.replaceChildren();
+
+            for (const model of modelStatus.models) {
+                const option = document.createElement('option');
+                option.value = model.id;
+                option.textContent = model.label;
+                singleSelect.appendChild(option);
+
+                const label = document.createElement('label');
+                label.className = 'flex items-center gap-2 text-sm';
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.value = model.id;
+                checkbox.checked = modelStatus.preloaded_models.includes(model.id);
+                checkbox.className = 'preloaded-model-checkbox rounded';
+                const name = document.createElement('span');
+                name.textContent = model.label;
+                label.append(checkbox, name);
+                preloadList.appendChild(label);
+            }
+            singleSelect.value = modelStatus.active_model || modelStatus.default_model;
+            document.querySelector(
+                `input[name="model-loading-mode"][value="${modelStatus.mode}"]`
+            ).checked = true;
+            updateModelSettingsMode();
+        }
+
+        function updateModelSettingsMode() {
+            const mode = document.querySelector(
+                'input[name="model-loading-mode"]:checked'
+            ).value;
+            document.getElementById('single-model-settings').classList.toggle(
+                'hidden', mode !== 'single'
+            );
+            document.getElementById('multiple-model-settings').classList.toggle(
+                'hidden', mode !== 'multiple'
+            );
+        }
+
+        async function applyModelSettings() {
+            const errorText = document.getElementById('model-settings-error');
+            const applyButton = document.getElementById('apply-model-settings');
+            errorText.classList.add('hidden');
+            applyButton.disabled = true;
+            const mode = document.querySelector(
+                'input[name="model-loading-mode"]:checked'
+            ).value;
+            const models = mode === 'single'
+                ? [document.getElementById('single-model-select').value]
+                : Array.from(document.querySelectorAll('.preloaded-model-checkbox:checked'))
+                    .map((checkbox) => checkbox.value);
+
+            try {
+                const response = await fetch('/models/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode, models })
+                });
+                if (!response.ok) throw new Error(await readErrorMessage(response));
+                applyModelStatus(await response.json(), languageLock.checked, false);
+                modelSettingsDialog.close();
+            } catch (error) {
+                errorText.textContent = error.message;
+                errorText.classList.remove('hidden');
+            } finally {
+                applyButton.disabled = false;
+            }
+        }
 
         // Event listeners
         generateBtn.addEventListener('click', generateAudio);
+        modelSelect.addEventListener('change', () => {
+            const model = selectedModel();
+            if (!model) return;
+            if (!languageLock.checked && model) {
+                setSelectedLanguage(model.language);
+            } else {
+                updateLanguageWarning();
+            }
+            activateSelectedModel(model);
+        });
+        languageSelect.addEventListener('change', () => {
+            setSelectedLanguage(languageSelect.value);
+        });
+        document.getElementById('model-language-button').addEventListener('click', () => {
+            const model = selectedModel();
+            if (model) setSelectedLanguage(model.language);
+        });
+        document.getElementById('model-settings-button').addEventListener('click', () => {
+            document.getElementById('model-settings-error').classList.add('hidden');
+            populateModelSettings();
+            modelSettingsDialog.showModal();
+        });
+        document.getElementById('close-model-settings').addEventListener(
+            'click', () => modelSettingsDialog.close()
+        );
+        document.getElementById('cancel-model-settings').addEventListener(
+            'click', () => modelSettingsDialog.close()
+        );
+        document.querySelectorAll('input[name="model-loading-mode"]').forEach((input) => {
+            input.addEventListener('change', updateModelSettingsMode);
+        });
+        document.getElementById('apply-model-settings').addEventListener(
+            'click', applyModelSettings
+        );
+
+        refreshModelStatus().catch((error) => {
+            modelStatusText.textContent = error.message;
+            generateBtn.disabled = true;
+        });
 
         function showStatus(message, isLoading = false) {
             statusText.textContent = message;
@@ -303,6 +650,7 @@
             try {
                 const formData = new FormData();
                 formData.append('text', text);
+                formData.append('model_name', modelSelect.value);
 
                 // Add voice URL if provided (only if no WAV file is uploaded)
                 const voiceUrl = document.getElementById('voice-url-input').value.trim();
@@ -323,9 +671,7 @@
                     body: formData
                 });
 
-                if (!response.ok) {
-                    throw new Error(`Server error: ${response.status}`);
-                }
+                if (!response.ok) throw new Error(await readErrorMessage(response));
 
                 // Clone the response for both streaming and blob collection
                 const responseForPlayback = response.clone();
@@ -378,11 +724,14 @@
                 downloadLink.download = `tts-audio.wav`;
                 
                 audioSection.classList.remove('hidden');
+                await refreshModelStatus(true).catch((error) => {
+                    console.error('Error refreshing model status:', error);
+                });
 
             } catch (error) {
                 console.error('Error generating audio:', error);
                 showStatus(`Error: ${error.message}`, false);
-                setTimeout(hideStatus, 3000);
+                setTimeout(hideStatus, 10000);
             } finally {
                 // Re-enable button
                 generateBtn.disabled = false;

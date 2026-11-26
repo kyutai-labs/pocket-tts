@@ -1087,7 +1087,11 @@ class TTSModel(nn.Module):
             if isinstance(audio_conditioning, str):
                 audio_conditioning = download_if_necessary(audio_conditioning)
 
-            return _import_model_state(audio_conditioning, self.device)
+            return _import_model_state(
+                audio_conditioning,
+                self.device,
+                init_states(self.flow_lm, batch_size=1, sequence_length=0),
+            )
 
         elif (
             isinstance(audio_conditioning, str)
@@ -1112,6 +1116,7 @@ class TTSModel(nn.Module):
                     get_predefined_voice(language=self.origin.stem, name=audio_conditioning)
                 ),
                 self.device,
+                init_states(self.flow_lm, batch_size=1, sequence_length=0),
             )
 
         if not self.has_voice_cloning and isinstance(audio_conditioning, (str, Path)):

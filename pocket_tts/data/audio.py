@@ -80,7 +80,7 @@ class StreamingWAVWriter:
         """Initialize WAV writer with header."""
         # For stdout streaming, we need to handle the unseekable stream case
         # The wave module supports unseekable streams since Python 3.4
-        # Closed with the underlying stream by the caller's `with f:` block.
+        # Closed by finalize(), which the caller runs in a `finally:` before closing the stream.
         self.wave_writer = wave.open(self.output_stream, "wb")  # noqa: SIM115
         self.wave_writer.setnchannels(1)  # Mono
         self.wave_writer.setsampwidth(2)  # 16-bit
@@ -115,19 +115,21 @@ class StreamingWAVWriter:
 
     def finalize(self):
         """Close the wave writer."""
-        self._flush()
-
-        # Let's add 200ms of silence to ensure proper playback
-        silence_duration_sec = 0.2
-        num_silence_samples = int(self.sample_rate * silence_duration_sec)
-
         writer = self._writer
-        writer.writeframesraw(bytes(num_silence_samples * 2))
+        try:
+            self._flush()
 
-        if not self.is_seekable:
-            # do not update the header for unseekable streams
-            writer._patchheader = lambda: None  # ty: ignore[unresolved-attribute]
-        writer.close()
+            # Let's add 200ms of silence to ensure proper playback
+            silence_duration_sec = 0.2
+            num_silence_samples = int(self.sample_rate * silence_duration_sec)
+            writer.writeframesraw(bytes(num_silence_samples * 2))
+        finally:
+            # Even when the stream broke: an unclosed writer patches the header from its
+            # __del__, after the caller closed the stream ("I/O operation on closed file").
+            if not self.is_seekable:
+                # do not update the header for unseekable streams
+                writer._patchheader = lambda: None  # ty: ignore[unresolved-attribute]
+            writer.close()
 
 
 def is_file_like(obj: object) -> TypeIs[BinaryIO]:
@@ -165,10 +167,13 @@ def stream_audio_chunks(
             writer = StreamingWAVWriter(f, sample_rate)
             writer.write_header(sample_rate)
 
-        for chunk in audio_chunks:
-            # Then write to file
+        try:
+            for chunk in audio_chunks:
+                # Then write to file
+                if path is not None:
+                    writer.write_pcm_data(chunk)
+        finally:
+            # Also when the generation fails or is interrupted: the header then gives the
+            # length of the audio written so far.
             if path is not None:
-                writer.write_pcm_data(chunk)
-
-        if path is not None:
-            writer.finalize()
+                writer.finalize()

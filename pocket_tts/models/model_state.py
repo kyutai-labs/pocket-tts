@@ -30,12 +30,14 @@ def _is_safetensors_source(source: str | Path) -> bool:
 
 
 def _import_model_state(
-    source: str | Path, device: torch.device
+    source: str | Path, device: torch.device, expected: dict[str, dict[str, torch.Tensor]]
 ) -> dict[str, dict[str, torch.Tensor]]:
+    """`expected` is the `init_states()` of the model the state is loaded into."""
     result = {}
     with safetensors.safe_open(source, framework="pt") as f:
         for key in f.keys():
-            module_name, tensor_key = key.split("/")
+            # The voices of pocket-tts 1.0 hold a bare `audio_prompt`, rejected by the check below.
+            module_name, _, tensor_key = key.rpartition("/")
             result.setdefault(module_name, {})
             if tensor_key == "current_end":
                 # we used the shape[0] as step index before for torch.compile() compatibility,
@@ -46,4 +48,30 @@ def _import_model_state(
                 )
             else:
                 result[module_name][tensor_key] = f.get_tensor(key).to(device)
+    _check_model_state(result, expected, source)
     return result
+
+
+def _check_model_state(
+    state: dict[str, dict[str, torch.Tensor]],
+    expected: dict[str, dict[str, torch.Tensor]],
+    source: str | Path,
+):
+    """Fail on a state exported with a model of another size: otherwise the attention fails
+    at the first generation step or, when the state has more layers, the extra ones are
+    silently ignored."""
+    error = f"{source} is not a voice state of this model"
+    hint = "a voice state only works with the model that exported it, re-export it"
+    missing, extra = sorted(expected.keys() - state.keys()), sorted(state.keys() - expected.keys())
+    if missing or extra:
+        what = f"it has no {missing[0]}" if missing else f"this model has no {extra[0]}"
+        raise ValueError(f"{error}: {what} ({hint})")
+    for name, module_state in expected.items():
+        want, got = module_state["cache"].shape, state[name].get("cache")
+        # Only the time axis (dim 2) depends on the voice.
+        if got is None or got.shape[:2] != want[:2] or got.shape[3:] != want[3:]:
+            shape = None if got is None else list(got.shape)
+            raise ValueError(
+                f"{error}: {name}/cache has shape {shape}, this model needs "
+                f"[2, 1, _, {want[3]}, {want[4]}] ({hint})"
+            )
